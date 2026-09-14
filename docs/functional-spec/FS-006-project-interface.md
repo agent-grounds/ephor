@@ -80,6 +80,29 @@ everywhere — the envelope evolves by addition, and an incompatible change is
 a version bump with a changelog entry (§11). Paths in an answer resolve
 against the summons's working directory.
 
+For a `custom-status` binding using `format: "answer"`, each reported
+`matters[]` row keeps the source's account of its activity. A supplied `time`
+is the row's `updated_at`; it is authoritative on every observation. When the
+source omits `time`, ephor reuses the activity time retained for the same
+provider slot and source-stated matter key — including a time the source
+supplied on an earlier observation — or establishes the time the key was first
+seen when there is no retained observation. A successful answer that omits the
+key ends that observation, so a later reappearance establishes a new
+first-seen time. A failed refresh instead keeps the stale last-good slot and
+its activity times. Thus refreshing an unchanged answer is not activity, while
+a later supplied time or an independently changed state remains movement
+([§FS-005-dispatch.5](FS-005-dispatch.md#5-an-item-that-moved-reopens-its-work)).
+
+The row also keeps its typed envelope metadata alongside `data`, with a typed
+field winning a same-named conflict and unrelated passthrough surviving.
+Presence matters for `terminal`: an explicit `true` or `false` is kept as
+source-stated finality, while omission leaves finality to the ordinary state
+inference. A `terminal` value inside `data` is passthrough, not an explicit
+envelope field, and cannot decide finality. These rules apply only to
+`custom-status` answer-envelope matter rows. An answer carrying only `summary`
+still becomes one refresh-timed status line, and the legacy stdout `text` and
+`json` formats keep their refresh-time behavior.
+
 ## 5. Checks are verbs, and every script is self-contained
 
 A project's checks are three well-known names probed at the forest root —

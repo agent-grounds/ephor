@@ -907,6 +907,326 @@ fn status_without_config_reports_error() {
         .stderr(predicate::str::contains("Cannot read feed config"));
 }
 
+fn custom_answer(
+    time: Option<&str>,
+    state: &str,
+    terminal: Option<bool>,
+    data: serde_json::Value,
+) -> serde_json::Value {
+    let mut matter = json!({
+        "key": "poll:fixed",
+        "kind": "status",
+        "title": "fixed polling matter",
+        "state": state,
+        "data": data
+    });
+    if let Some(time) = time {
+        matter["time"] = json!(time);
+    }
+    if let Some(terminal) = terminal {
+        matter["terminal"] = json!(terminal);
+    }
+    json!({ "v": 1, "needs_response": true, "matters": [matter] })
+}
+
+fn write_custom_answer_fixture(
+    tmp: &Path,
+    answer: &serde_json::Value,
+) -> (std::path::PathBuf, std::path::PathBuf) {
+    write_feed_fixture(tmp);
+    let project_root = tmp.join("demo");
+    let answer_path = project_root.join("answer.json");
+    fs::write(
+        &answer_path,
+        serde_json::to_string_pretty(answer).expect("the answer serializes"),
+    )
+    .expect("write answer");
+    let reporter = project_root.join("answer.sh");
+    make_executable(
+        &reporter,
+        &format!(
+            "#!/usr/bin/env bash\nset -euo pipefail\ncp '{}' \"$EPHOR_ANSWER\"\n",
+            answer_path.to_string_lossy()
+        ),
+    );
+    fs::write(
+        tmp.join("status.json"),
+        serde_json::to_string_pretty(&json!({
+            "defaults": { "ttl_seconds": 0, "provider_timeout_seconds": 10, "github_user": "tester" },
+            "projects": {
+                "demo": {
+                    "providers": [{
+                        "provider": "custom-status",
+                        "command": reporter.to_string_lossy(),
+                        "format": "answer"
+                    }]
+                }
+            }
+        }))
+        .unwrap(),
+    )
+    .unwrap();
+    (answer_path, reporter)
+}
+
+fn replace_custom_answer(path: &Path, answer: &serde_json::Value) {
+    fs::write(
+        path,
+        serde_json::to_string_pretty(answer).expect("the answer serializes"),
+    )
+    .expect("replace answer");
+}
+
+fn refresh_custom_answer(tmp: &Path) {
+    let mut cmd = ephor_cmd();
+    for (key, value) in feed_env(tmp) {
+        cmd.env(key, value);
+    }
+    cmd.args(["refresh", "demo"]).assert().success();
+}
+
+fn custom_answer_cache(tmp: &Path) -> serde_json::Value {
+    serde_json::from_str(&fs::read_to_string(tmp.join("state/ephor/feed/demo.json")).unwrap())
+        .unwrap()
+}
+
+fn custom_answer_matter(tmp: &Path) -> serde_json::Value {
+    custom_answer_cache(tmp)["providers"]["custom-status"]["matters"][0].clone()
+}
+
+/// A source-stated last-activity time crosses the custom-status answer seam as
+/// the matter's actual activity (§FS-006-project-interface.4).
+#[test]
+fn custom_status_answer_supplied_time_becomes_updated_at() {
+    let tmp = tempdir();
+    write_custom_answer_fixture(
+        tmp.path(),
+        &custom_answer(Some("2026-09-01T00:00:00Z"), "waiting", None, json!({})),
+    );
+    refresh_custom_answer(tmp.path());
+
+    assert_eq!(
+        custom_answer_matter(tmp.path())["updated_at"],
+        "2026-09-01T00:00:00Z"
+    );
+}
+
+/// Missing source time is first-seen time, retained for as long as the same
+/// provider-slot/key observation remains (§FS-006-project-interface.4).
+#[test]
+fn custom_status_answer_omitted_time_retains_first_seen_activity() {
+    let tmp = tempdir();
+    write_custom_answer_fixture(tmp.path(), &custom_answer(None, "waiting", None, json!({})));
+    refresh_custom_answer(tmp.path());
+    let first = custom_answer_matter(tmp.path())["updated_at"].clone();
+
+    std::thread::sleep(std::time::Duration::from_millis(20));
+    refresh_custom_answer(tmp.path());
+    let second = custom_answer_matter(tmp.path())["updated_at"].clone();
+
+    assert_eq!(second, first, "unchanged omission invented new activity");
+}
+
+/// Omitting time after supplying it does not erase the retained source value
+/// (§FS-006-project-interface.4).
+#[test]
+fn custom_status_answer_supplied_then_omitted_time_retains_activity() {
+    let tmp = tempdir();
+    let (answer, _) = write_custom_answer_fixture(
+        tmp.path(),
+        &custom_answer(Some("2026-09-01T00:00:00Z"), "waiting", None, json!({})),
+    );
+    refresh_custom_answer(tmp.path());
+    replace_custom_answer(&answer, &custom_answer(None, "waiting", None, json!({})));
+    refresh_custom_answer(tmp.path());
+
+    assert_eq!(
+        custom_answer_matter(tmp.path())["updated_at"],
+        "2026-09-01T00:00:00Z"
+    );
+}
+
+/// A newly supplied time wins over an earlier retained first-seen value
+/// (§FS-006-project-interface.4).
+#[test]
+fn custom_status_answer_newly_supplied_time_is_authoritative() {
+    let tmp = tempdir();
+    let (answer, _) =
+        write_custom_answer_fixture(tmp.path(), &custom_answer(None, "waiting", None, json!({})));
+    refresh_custom_answer(tmp.path());
+    replace_custom_answer(
+        &answer,
+        &custom_answer(Some("2026-09-02T00:00:00Z"), "waiting", None, json!({})),
+    );
+    refresh_custom_answer(tmp.path());
+
+    assert_eq!(
+        custom_answer_matter(tmp.path())["updated_at"],
+        "2026-09-02T00:00:00Z"
+    );
+}
+
+/// Successful absence ends the retained observation; the same source key is
+/// first seen anew if it later returns (§FS-006-project-interface.4,
+/// §FS-007-matters.1).
+#[test]
+fn custom_status_answer_disappearance_ends_the_retained_observation() {
+    let tmp = tempdir();
+    let (answer, _) =
+        write_custom_answer_fixture(tmp.path(), &custom_answer(None, "waiting", None, json!({})));
+    refresh_custom_answer(tmp.path());
+    let first: chrono::DateTime<chrono::Utc> = custom_answer_matter(tmp.path())["updated_at"]
+        .as_str()
+        .unwrap()
+        .parse()
+        .unwrap();
+
+    replace_custom_answer(&answer, &json!({ "v": 1, "matters": [] }));
+    refresh_custom_answer(tmp.path());
+    assert!(
+        custom_answer_cache(tmp.path())["providers"]["custom-status"]["matters"]
+            .as_array()
+            .unwrap()
+            .is_empty()
+    );
+
+    std::thread::sleep(std::time::Duration::from_millis(20));
+    replace_custom_answer(&answer, &custom_answer(None, "waiting", None, json!({})));
+    refresh_custom_answer(tmp.path());
+    let returned: chrono::DateTime<chrono::Utc> = custom_answer_matter(tmp.path())["updated_at"]
+        .as_str()
+        .unwrap()
+        .parse()
+        .unwrap();
+    assert!(returned > first, "reappearance reused {first}");
+}
+
+/// Provider failure retains the last-good slot and its activity rather than
+/// treating failure as successful disappearance (§FS-006-project-interface.4).
+#[test]
+fn custom_status_answer_failed_refresh_retains_last_good_activity() {
+    let tmp = tempdir();
+    let (_, reporter) =
+        write_custom_answer_fixture(tmp.path(), &custom_answer(None, "waiting", None, json!({})));
+    refresh_custom_answer(tmp.path());
+    let first = custom_answer_matter(tmp.path())["updated_at"].clone();
+    make_executable(&reporter, "#!/usr/bin/env bash\nexit 1\n");
+
+    let mut cmd = ephor_cmd();
+    for (key, value) in feed_env(tmp.path()) {
+        cmd.env(key, value);
+    }
+    cmd.args(["refresh", "demo"])
+        .assert()
+        .code(3)
+        .stderr(predicate::str::contains("custom-status"));
+
+    let cache = custom_answer_cache(tmp.path());
+    assert_eq!(cache["providers"]["custom-status"]["stale"], true);
+    assert_eq!(custom_answer_matter(tmp.path())["updated_at"], first);
+}
+
+/// Explicit source finality precedes state spelling for the retained matter
+/// (§FS-003-feed-categories.2, §FS-006-project-interface.4).
+#[test]
+fn custom_status_answer_explicit_true_finishes_an_open_spelling() {
+    let tmp = tempdir();
+    write_custom_answer_fixture(
+        tmp.path(),
+        &custom_answer(None, "waiting", Some(true), json!({})),
+    );
+    refresh_custom_answer(tmp.path());
+
+    let matter: ephor::matter::Matter =
+        serde_json::from_value(custom_answer_matter(tmp.path())).unwrap();
+    assert_eq!(
+        (
+            matter.is_finished(),
+            matter.as_item().is_finished(),
+            matter.needs_response
+        ),
+        (true, true, false)
+    );
+}
+
+/// Explicit false is as authoritative as true: a source-specific state whose
+/// spelling looks terminal remains unfinished (§FS-003-feed-categories.2,
+/// §FS-006-project-interface.4).
+#[test]
+fn custom_status_answer_explicit_false_keeps_a_terminal_spelling_open() {
+    let tmp = tempdir();
+    write_custom_answer_fixture(
+        tmp.path(),
+        &custom_answer(None, "done", Some(false), json!({})),
+    );
+    refresh_custom_answer(tmp.path());
+
+    let matter: ephor::matter::Matter =
+        serde_json::from_value(custom_answer_matter(tmp.path())).unwrap();
+    assert_eq!(
+        (
+            matter.is_finished(),
+            matter.as_item().is_finished(),
+            matter.needs_response
+        ),
+        (false, false, true)
+    );
+}
+
+/// Typed matter metadata wins name conflicts without dropping unrelated
+/// passthrough (§FS-006-project-interface.4).
+#[test]
+fn custom_status_answer_typed_metadata_wins_passthrough_conflicts() {
+    let tmp = tempdir();
+    write_custom_answer_fixture(
+        tmp.path(),
+        &custom_answer(
+            None,
+            "waiting",
+            Some(false),
+            json!({ "terminal": "pretender", "episode": "fixed" }),
+        ),
+    );
+    refresh_custom_answer(tmp.path());
+
+    let raw = custom_answer_matter(tmp.path())["raw"].clone();
+    assert_eq!(raw["terminal"], false);
+    assert_eq!(raw["episode"], "fixed");
+}
+
+/// Passthrough named `terminal` is still data when the typed field is absent:
+/// it survives, but cannot impersonate source-stated finality
+/// (§FS-003-feed-categories.2, §FS-006-project-interface.4).
+#[test]
+fn custom_status_answer_passthrough_terminal_does_not_decide_finality() {
+    let tmp = tempdir();
+    write_custom_answer_fixture(
+        tmp.path(),
+        &custom_answer(None, "waiting", None, json!({ "terminal": true })),
+    );
+    refresh_custom_answer(tmp.path());
+
+    let matter = custom_answer_matter(tmp.path());
+    assert_eq!(matter["needs_response"], true);
+    assert_eq!(matter["raw"]["terminal"], true);
+}
+
+/// A summary-only answer remains the refresh-timed one-line case rather than
+/// entering matter reconciliation (§FS-006-project-interface.4).
+#[test]
+fn custom_status_answer_summary_remains_refresh_timed() {
+    let tmp = tempdir();
+    let before = chrono::Utc::now();
+    write_custom_answer_fixture(tmp.path(), &json!({ "v": 1, "summary": "all clear" }));
+    refresh_custom_answer(tmp.path());
+
+    let matter = custom_answer_matter(tmp.path());
+    let observed: chrono::DateTime<chrono::Utc> =
+        matter["updated_at"].as_str().unwrap().parse().unwrap();
+    assert_eq!(matter["title"], "all clear");
+    assert!(observed >= before);
+}
+
 /// custom-status is a summons like every other command ephor runs
 /// (§AR-002-summons, §FS-006-project-interface.3): it is told about the project
 /// in the one `EPHOR_*` vocabulary, it may answer in the published envelope by

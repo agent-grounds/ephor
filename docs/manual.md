@@ -970,7 +970,12 @@ With `format: "answer"` the command writes the envelope to the file named by
 ([§FS-006-project-interface.4](functional-spec/FS-006-project-interface.md#4-the-answer-envelope)); each
 `matters[]` entry becomes an item, and an answer carrying only a `summary`
 becomes one status line. This is the form every other verb speaks, and the one
-to write today.
+to write today. A matter's `time` is its last activity, not the time ephor
+refreshed it. When `time` is omitted, the same continuously observed key keeps
+its retained activity time; a key that has not been retained is first seen at
+that refresh. Explicit `terminal: true` and `terminal: false` both override
+what the state name appears to mean. The typed envelope fields win conflicts
+with same-named `data`, while unrelated passthrough is kept.
 
 The two older forms read standard output instead and stay supported: `text`
 makes one item whose title is the command's first line, and `json` reads an
