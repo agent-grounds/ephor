@@ -271,6 +271,12 @@ pub struct Dispatch {
     /// field existed reads unchanged (§FS-006-project-interface.11).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub plan: Option<String>,
+    /// The work root that plan was laid into. Absent on non-workflow
+    /// dispatches and records written before this was retained; those old
+    /// workflow records remain readable and are resolved conservatively from
+    /// the configured work roots (§FS-005-dispatch.19).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub root: Option<PathBuf>,
     /// The item as it was when this was asked for.
     pub snapshot: Snapshot,
 }

@@ -1837,6 +1837,7 @@ impl Dispatcher {
             // A ticket goes into the item's own plan, which the entry already
             // names (§FS-005-dispatch.3).
             plan: None,
+            root: None,
             snapshot: Snapshot::of(item),
         });
         Ok(outcome)
@@ -1972,17 +1973,84 @@ impl Dispatcher {
     /// not evidence to fall back past: either means the action may be laid
     /// again by its existing path.
     pub fn repeated_workflow(&self, item: &Item, entry_id: &str) -> Option<PathBuf> {
-        let entry = self.ledger.entries.get(&item.id)?;
-        let dispatch = entry
-            .dispatches
-            .iter()
-            .rev()
-            .find(|dispatch| dispatch.is_workflow() && dispatch.recipe == entry_id)?;
-        if !dispatch.snapshot.changes(&Snapshot::of(item)).is_empty() {
+        let (project, plan_id, root, ambiguous_legacy_identity) = {
+            let entry = self.ledger.entries.get(&item.id)?;
+            let dispatch = entry
+                .dispatches
+                .iter()
+                .rev()
+                .find(|dispatch| dispatch.is_workflow() && dispatch.recipe == entry_id)?;
+            if !dispatch.snapshot.changes(&Snapshot::of(item)).is_empty() {
+                return None;
+            }
+            let plan_id = dispatch.plan.clone()?;
+            let ambiguous_legacy_identity = dispatch.root.is_none()
+                && entry
+                    .dispatches
+                    .iter()
+                    .filter(|candidate| {
+                        candidate.is_workflow()
+                            && candidate.recipe == entry_id
+                            && candidate.plan.as_deref() == Some(plan_id.as_str())
+                    })
+                    .count()
+                    > 1;
+            (
+                entry.project.clone(),
+                plan_id,
+                dispatch.root.clone(),
+                ambiguous_legacy_identity,
+            )
+        };
+
+        // New records retain the selected dispatch's own root, so a missing
+        // newest plan never falls back to older work with the same id.
+        if let Some(root) = root {
+            return runtime::workflow::laid(&root.join(&plan_id)).map(|found| found.path);
+        }
+        if ambiguous_legacy_identity {
             return None;
         }
-        let plan_id = dispatch.plan.as_deref()?;
-        runtime::workflow::laid(&entry.root.join(plan_id)).map(|found| found.path)
+
+        // A later dispatch can move the item-level ledger entry to another
+        // work root. Find the selected dispatch's plan in the same bounded
+        // recorded-work reading the board and named starts use, instead of
+        // resolving every historical dispatch below that mutable root
+        // (§FS-005-dispatch.19). The old ledger shape has no per-dispatch
+        // root, so more than one distinct plan with this identity is not
+        // positive evidence: guessing one could refuse with somebody else's
+        // plan.
+        let mut found = BTreeMap::new();
+        let placements: Vec<Placement> =
+            crate::registry::array_field(&self.registry_doc, "projects")
+                .iter()
+                .filter(|candidate| crate::registry::id_of(candidate) == project.as_str())
+                .filter_map(|project| {
+                    Placement::load(&self.registry_doc, crate::registry::id_of(project))
+                })
+                .collect();
+        for plan in enumerate_roots(
+            &self.global,
+            &self.organizations,
+            &self.projects,
+            &placements,
+            &self.ledger,
+        )
+        .into_iter()
+        .flat_map(|root| root.plans)
+        {
+            if plan.project == project
+                && plan.plan_id == plan_id
+                && plan.item.as_deref().is_none_or(|id| id == item.id)
+            {
+                found.entry(canonical(&plan.path)).or_insert(plan.path);
+            }
+        }
+        if found.len() == 1 {
+            found.into_values().next()
+        } else {
+            None
+        }
     }
 
     /// The ids of this project's workflow entries that asked to run
@@ -2366,6 +2434,7 @@ impl Dispatcher {
             recipe: entry_id.clone(),
             at: Utc::now(),
             plan: Some(laying.plan_id.clone()),
+            root: Some(root.dir.clone()),
             snapshot: Snapshot::of(item),
         });
         Ok(Laid {

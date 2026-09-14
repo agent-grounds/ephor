@@ -39,6 +39,139 @@ fn plant(dir: &Path, plan: &str, title: &str) {
     fs::write(dir.join(plan), format!("# Rhei: {title}\n")).unwrap();
 }
 
+/// A workflow dispatch keeps its exact plan identity when later work for the
+/// same matter moves the item-level root (§FS-005-dispatch.19). Existing
+/// ledgers carry no root on each dispatch, so the bounded work-root reading
+/// resolves a unique old plan and treats an ambiguous identity as stale
+/// evidence rather than naming another plan.
+#[test]
+fn repeated_workflow_finds_a_unique_recorded_plan_in_its_prior_root() {
+    let tmp = tempfile::tempdir().unwrap();
+    let project_root = tmp.path().join("widget");
+    let branch_template = format!("{}/branches/{{branch}}", project_root.display());
+    let old_workspace = project_root.join("branches/old");
+    let new_workspace = project_root.join("branches/new");
+    let recorded_root = old_workspace.join("panta");
+    let newest_entry_root = new_workspace.join("panta");
+    let plan_id = "forge-widget-42-review";
+    plant(&recorded_root.join(plan_id), "index.rhei.md", "review");
+    plant(
+        &newest_entry_root.join("forge-widget-42-other-review"),
+        "index.rhei.md",
+        "other review",
+    );
+
+    let item = crate::feed::model::Item {
+        id: "forge:widget/42".to_string(),
+        project: "widget".to_string(),
+        source: "forge".to_string(),
+        kind: crate::feed::model::ItemKind::Issue,
+        role: None,
+        title: "Review it".to_string(),
+        url: None,
+        state: Some("open".to_string()),
+        needs_response: false,
+        updated_at: chrono::DateTime::parse_from_rfc3339("2026-09-14T12:00:00Z")
+            .unwrap()
+            .with_timezone(&Utc),
+        raw: serde_json::json!({}),
+    };
+    let mut ledger = empty_ledger();
+    ledger.entries.insert(
+        item.id.clone(),
+        Entry {
+            project: item.project.clone(),
+            title: item.title.clone(),
+            url: None,
+            root: newest_entry_root.clone(),
+            checkout: new_workspace,
+            branch: Some("new".to_string()),
+            plan_id: "forge-widget-42".to_string(),
+            plan: newest_entry_root.join("forge-widget-42.rhei.md"),
+            dispatches: vec![
+                ledger::Dispatch {
+                    ticket: String::new(),
+                    recipe: "review".to_string(),
+                    at: Utc::now(),
+                    plan: Some(plan_id.to_string()),
+                    root: None,
+                    snapshot: Snapshot::of(&item),
+                },
+                ledger::Dispatch {
+                    ticket: String::new(),
+                    recipe: "other-review".to_string(),
+                    at: Utc::now(),
+                    plan: Some("forge-widget-42-other-review".to_string()),
+                    root: None,
+                    snapshot: Snapshot::of(&item),
+                },
+            ],
+            pool: None,
+        },
+    );
+    let ledger: Ledger = serde_json::from_value(serde_json::to_value(ledger).unwrap())
+        .expect("a workflow record written before per-dispatch roots still reads");
+    let mut dispatcher = Dispatcher {
+        registry_doc: serde_json::json!({
+            "projects": [{
+                "id": "widget",
+                "root": project_root,
+                "branch_root_template": branch_template,
+                "branches": [
+                    { "id": "old", "branch": "old" },
+                    { "id": "new", "branch": "new" }
+                ]
+            }]
+        }),
+        global: WorkConfig::default(),
+        projects: BTreeMap::new(),
+        organizations: BTreeMap::new(),
+        placements: BTreeMap::new(),
+        behind: BTreeMap::new(),
+        rosters: BTreeMap::new(),
+        workflows: BTreeMap::new(),
+        actions: Vec::new(),
+        project_actions: BTreeMap::new(),
+        notes: Vec::new(),
+        ledger,
+    };
+
+    assert_eq!(
+        dispatcher.repeated_workflow(&item, "review"),
+        Some(recorded_root.join(plan_id).join("index.rhei.md"))
+    );
+
+    plant(
+        &newest_entry_root.join(plan_id),
+        "index.rhei.md",
+        "another plan with the same id",
+    );
+    assert_eq!(
+        dispatcher.repeated_workflow(&item, "review"),
+        None,
+        "an ambiguous plan id is not positive duplicate evidence"
+    );
+
+    dispatcher
+        .ledger
+        .entries
+        .get_mut(&item.id)
+        .unwrap()
+        .dispatches[0]
+        .root = Some(newest_entry_root.clone());
+    assert_eq!(
+        dispatcher.repeated_workflow(&item, "review"),
+        Some(newest_entry_root.join(plan_id).join("index.rhei.md")),
+        "a retained dispatch root identifies its exact plan"
+    );
+    fs::remove_dir_all(newest_entry_root.join(plan_id)).unwrap();
+    assert_eq!(
+        dispatcher.repeated_workflow(&item, "review"),
+        None,
+        "a missing selected plan must not fall back to the older same-id plan"
+    );
+}
+
 /// The work roots are enumerated from the configured places
 /// (§FS-005-dispatch.15): the project's own checkout and each branch
 /// workspace on disk — the work root is per branch workspace, and each
@@ -2229,6 +2362,7 @@ fn the_ledgers_recipe_answers_for_a_ticket_ephor_dispatched() {
                 recipe: "review".to_string(),
                 at: Utc::now(),
                 plan: None,
+                root: None,
                 snapshot: Default::default(),
             }],
         },
@@ -2307,6 +2441,7 @@ fn laid_ledger(root: &Path, entry: &str) -> Ledger {
                 recipe: entry.to_string(),
                 at: Utc::now(),
                 plan: Some(format!("forge-widget-42-{entry}")),
+                root: None,
                 snapshot: Default::default(),
             }],
         },
