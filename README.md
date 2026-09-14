@@ -625,9 +625,21 @@ systemctl --user daemon-reload
 systemctl --user enable --now ephor-refresh.timer
 ```
 
-`ephor-work-sync.{service,timer}` is the same for work: it refreshes and then
-reopens every dispatched item that has moved, half-hourly. It writes tickets
-and runs nothing — spawning agents stays a thing you ask for.
+`ephor-work-sync.{service,timer}` is the same for work: half-hourly it
+refreshes, reopens every dispatched item that has moved, and starts detached
+runs for reopened work that opted into autorun. A final due sweep starts
+opted-in work born anywhere else
+([§FS-005-dispatch.24](docs/functional-spec/FS-005-dispatch.md#24-work-nobody-has-to-start-starts-itself)).
+A run started at either position outlives normal service completion and an
+explicit stop or restart; stop the run with the runtime's command displayed on
+its live row, not by stopping the service
+([§FS-005-dispatch.20](docs/functional-spec/FS-005-dispatch.md#20-a-run-of-the-runtime-starts-beneath-the-screen-and-is-watched-by-attaching)).
+Because that policy applies to the whole unit, stopping it also leaves any
+other descendant already spawned by the current ephor command to finish.
+
+If the units are linked as above, update the checkout, then run
+`systemctl --user daemon-reload`. If they were copied, replace the copies from
+the updated checkout first, then run `systemctl --user daemon-reload`.
 
 ## Development
 

@@ -3,6 +3,10 @@ Description=Refresh ephor feeds, reopen work whose item has moved, and start wha
 
 [Service]
 Type=oneshot
+# §FS-005-dispatch.20: detached runs outlive this unit's completion, stop,
+# and restart. This unit-wide policy also leaves any other descendant already
+# spawned by the current ephor command to finish.
+KillMode=process
 # Refresh first: sync compares the item against the snapshot taken when its
 # work was dispatched, so it needs the item as it is now (§FS-005-dispatch.5).
 # Then the sweep, which starts a run only where a recipe asked to run itself
