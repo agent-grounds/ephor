@@ -1366,6 +1366,14 @@ run does — nothing new is watched, because nothing about "is a run live here"
 changed. A move that needs nobody does not suddenly need somebody staying,
 and a run is the longest such move ephor makes.
 
+**Detachment outlives the service that starts it.** Once the binding has said
+that a run began, normal completion of the shipped periodic service that
+started it does not end it, and neither does explicitly stopping or restarting
+that service. Those operations end or replace the finite sweep, not the
+runtime's run. Watching remains attaching to the run, and stopping remains the
+binding's own command shown for that run; service stop is never a second way to
+stop work already detached.
+
 **A run has an identity, and it is the binding's.** A live run names itself —
 an id, and while it serves one, the address of its control — and both are
 read from the artifacts the binding leaves beside its lock, never from
@@ -1878,6 +1886,16 @@ the run [§20](#20-a-run-of-the-runtime-starts-beneath-the-screen-and-is-watched
 already describes — detached, identified by the binding, watched by
 attaching. Nothing about how a run is seen, stopped, or answered changes
 because nobody pressed the key that began it.
+
+**Both starts in the periodic sweep hand the run over before the service
+leaves.** Synchronizing moved work may start its due run, and the final due
+sweep starts work born anywhere else; a run detached at either position
+survives the service's completion, stop, and restart on the terms
+[§20](#20-a-run-of-the-runtime-starts-beneath-the-screen-and-is-watched-by-attaching)
+gives every detached run. A later activation reads the world again and still
+starts nothing in a checkout whose earlier run is live: surviving the launcher
+changes none of the opt-in, eligibility, exclusion, ceiling, or back-off guards
+above.
 
 **A start that fails is not tried again immediately.** A root that cannot
 start a run — a runner that refuses, a workspace that has gone wrong — would
