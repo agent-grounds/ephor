@@ -182,10 +182,10 @@ fn answer_matter_raw(matter: &crate::seams::answer::Matter) -> Value {
     insert_optional(&mut raw, "number", matter.number.as_deref());
     insert_optional(&mut raw, "branch", matter.branch.as_deref());
     insert_optional(&mut raw, "time", matter.time.as_deref());
-    if !matter.refs.is_empty() {
+    if matter.refs_supplied() {
         raw.insert("refs".to_string(), strings(&matter.refs));
     }
-    if !matter.reasons.is_empty() {
+    if matter.reasons_supplied() {
         raw.insert("reasons".to_string(), strings(&matter.reasons));
     }
     let mut provenance = Map::new();
@@ -197,9 +197,16 @@ fn answer_matter_raw(matter: &crate::seams::answer::Matter) -> Value {
         "terminal".to_string(),
         matter.terminal.map(Value::Bool).unwrap_or(Value::Null),
     );
-    let mut source = Map::new();
-    source.insert(CUSTOM_STATUS_ANSWER.to_string(), Value::Object(provenance));
-    raw.insert(SOURCE_METADATA.to_string(), Value::Object(source));
+    let source = raw
+        .entry(SOURCE_METADATA.to_string())
+        .or_insert_with(|| Value::Object(Map::new()));
+    if !source.is_object() {
+        *source = Value::Object(Map::new());
+    }
+    source
+        .as_object_mut()
+        .expect("an object")
+        .insert(CUSTOM_STATUS_ANSWER.to_string(), Value::Object(provenance));
     Value::Object(raw)
 }
 
@@ -354,12 +361,38 @@ mod tests {
                 "state": "waiting",
                 "terminal": false,
                 "time": "2026-09-01T00:00:00Z",
-                "data": { "terminal": "pretender", "episode": "fixed" }
+                "refs": [],
+                "data": {
+                    "terminal": "pretender",
+                    "refs": ["passthrough-ref"],
+                    "episode": "fixed",
+                    "_ephor": {
+                        "keep": "unrelated-passthrough",
+                        "custom_status_answer": {
+                            "time_supplied": false,
+                            "terminal": "pretender"
+                        }
+                    }
+                }
+            }, {
+                "key": "poll:omitted",
+                "data": { "refs": ["passthrough-ref"] }
             }]
         }));
         assert_eq!(rows[0].updated_at.to_rfc3339(), "2026-09-01T00:00:00+00:00");
         assert_eq!(rows[0].raw["terminal"], false);
+        assert_eq!(rows[0].raw["refs"], json!([]));
         assert_eq!(rows[0].raw["episode"], "fixed");
+        assert_eq!(rows[0].raw["_ephor"]["keep"], "unrelated-passthrough");
+        assert_eq!(
+            rows[0].raw["_ephor"]["custom_status_answer"]["time_supplied"],
+            true
+        );
+        assert_eq!(
+            rows[0].raw["_ephor"]["custom_status_answer"]["terminal"],
+            false
+        );
+        assert_eq!(rows[1].raw["refs"], json!(["passthrough-ref"]));
     }
 
     /// Explicit source finality governs both the adapter item and the matter
