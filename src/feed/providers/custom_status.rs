@@ -16,7 +16,9 @@ use std::time::Duration;
 use serde::Deserialize;
 use serde_json::{Map, Value};
 
-use crate::feed::model::{Item, ItemKind, CUSTOM_STATUS_ANSWER, SOURCE_METADATA};
+use crate::feed::model::{
+    custom_status_raw, Item, ItemKind, CUSTOM_STATUS_ANSWER, SOURCE_METADATA,
+};
 use crate::feed::provider::{Provider, ProviderContext, ProviderError, ProviderResult};
 use crate::feed::providers::parse_config;
 use crate::seams::dossier;
@@ -83,7 +85,7 @@ impl CustomStatus {
                 .and_then(Value::as_bool)
                 .unwrap_or(false),
             updated_at: chrono::Utc::now(),
-            raw: value.clone(),
+            raw: custom_status_raw(value.clone(), None),
         }
     }
 
@@ -159,15 +161,16 @@ impl CustomStatus {
             state: None,
             needs_response: normalized.facts.needs_response.unwrap_or(false),
             updated_at: chrono::Utc::now(),
-            raw: serde_json::to_value(&normalized.facts.data).unwrap_or(Value::Null),
+            raw: custom_status_raw(Value::Object(normalized.facts.data.clone()), None),
         }])
     }
 }
 
 /// Preserve the envelope's typed matter fields beside its free passthrough,
-/// with the typed vocabulary taking precedence. The provenance record keeps
-/// presence-sensitive fields distinguishable from same-named passthrough
-/// without adding a second persisted model (§FS-006-project-interface.4).
+/// with the typed vocabulary taking precedence. The reader has already
+/// overlaid explicitly empty lists while their presence was still available.
+/// Provenance is authored only after escaping colliding input, and never
+/// replaces a non-object passthrough value (§FS-006-project-interface.4).
 fn answer_matter_raw(matter: &crate::seams::answer::Matter) -> Value {
     let mut raw = matter.data.clone();
     raw.insert("key".to_string(), Value::String(matter.key.clone()));
@@ -182,10 +185,10 @@ fn answer_matter_raw(matter: &crate::seams::answer::Matter) -> Value {
     insert_optional(&mut raw, "number", matter.number.as_deref());
     insert_optional(&mut raw, "branch", matter.branch.as_deref());
     insert_optional(&mut raw, "time", matter.time.as_deref());
-    if matter.refs_supplied() {
+    if !matter.refs.is_empty() {
         raw.insert("refs".to_string(), strings(&matter.refs));
     }
-    if matter.reasons_supplied() {
+    if !matter.reasons.is_empty() {
         raw.insert("reasons".to_string(), strings(&matter.reasons));
     }
     let mut provenance = Map::new();
@@ -200,14 +203,13 @@ fn answer_matter_raw(matter: &crate::seams::answer::Matter) -> Value {
     let source = raw
         .entry(SOURCE_METADATA.to_string())
         .or_insert_with(|| Value::Object(Map::new()));
-    if !source.is_object() {
-        *source = Value::Object(Map::new());
+    if let Some(source) = source.as_object_mut() {
+        source.insert(
+            CUSTOM_STATUS_ANSWER.to_string(),
+            Value::Object(provenance.clone()),
+        );
     }
-    source
-        .as_object_mut()
-        .expect("an object")
-        .insert(CUSTOM_STATUS_ANSWER.to_string(), Value::Object(provenance));
-    Value::Object(raw)
+    custom_status_raw(Value::Object(raw), Some(Value::Object(provenance)))
 }
 
 fn insert_optional(raw: &mut Map<String, Value>, key: &str, value: Option<&str>) {
@@ -218,6 +220,29 @@ fn insert_optional(raw: &mut Map<String, Value>, key: &str, value: Option<&str>)
 
 fn strings(values: &[String]) -> Value {
     Value::Array(values.iter().cloned().map(Value::String).collect())
+}
+
+/// Only this adapter overlays typed lists into passthrough. Do it while the
+/// validated input still distinguishes omission from an explicit empty list,
+/// leaving the shared reader and its publicly constructible types unchanged
+/// for every other answer consumer (§FS-006-project-interface.4).
+fn read_answer(
+    text: &str,
+    verb: &str,
+    place: &Path,
+) -> crate::error::Result<crate::seams::answer::Normalized> {
+    let mut normalized = crate::seams::answer::parse(text, verb, place)?;
+    let input: Value = serde_json::from_str(text).expect("the shared reader validated this JSON");
+    if let Some(matters) = input.get("matters").and_then(Value::as_array) {
+        for (matter, input) in normalized.matters.iter_mut().zip(matters) {
+            for field in ["refs", "reasons"] {
+                if let Some(value) = input.get(field) {
+                    matter.data.insert(field.to_string(), value.clone());
+                }
+            }
+        }
+    }
+    Ok(normalized)
 }
 
 impl Provider for CustomStatus {
@@ -305,7 +330,7 @@ fn run(
     let summons = Summons::new("custom-status", command)
         .at(Place::Workspace)
         .carrying(dossier);
-    summons::run(&summons, &site, Mode::Captured(timeout))
+    summons::run_with_answer_reader(&summons, &site, Mode::Captured(timeout), read_answer)
         .map_err(|err| ProviderError(err.to_string()))
 }
 
@@ -313,16 +338,16 @@ fn run(
 mod tests {
     use super::*;
     use crate::feed::provider::ProviderContext;
-    use crate::seams::answer::Envelope;
     use serde_json::json;
     use std::path::{Path, PathBuf};
 
     fn items(answer: Value) -> Vec<Item> {
-        let envelope: Envelope = serde_json::from_value(answer).unwrap();
         let answer = summons::Answer {
             outcome: Outcome::Done,
             exit_code: Some(0),
-            answer: Some(envelope.normalize(Path::new("/fixture"))),
+            answer: Some(
+                read_answer(&answer.to_string(), "custom-status", Path::new("/fixture")).unwrap(),
+            ),
             output: Some(String::new()),
             errors: Some(String::new()),
             place: PathBuf::from("/fixture"),

@@ -63,20 +63,50 @@ pub fn is_terminal(state: Option<&str>) -> bool {
 /// finished work that has none.
 pub const UNANSWERED: &str = "unanswered";
 
-/// Provider facts that must retain their typed presence ride beside the
-/// provider's passthrough rather than changing the core model's stored shape
-/// (§FS-006-project-interface.4). The outer name is ephor's namespace; the
-/// inner name keeps this adapter's provenance from becoming a general claim
-/// about arbitrary `raw` data.
+/// The original metadata overlay remains readable but is not evidence of
+/// provenance: legacy JSON could already contain it (§FS-006-project-interface.4).
 pub(crate) const SOURCE_METADATA: &str = "_ephor";
 pub(crate) const CUSTOM_STATUS_ANSWER: &str = "custom_status_answer";
+
+/// The custom-status adapter owns this record at its ingestion boundary. Any
+/// input at this key is nested under `passthrough` before the adapter writes
+/// `answer`; legacy JSON and summary-only answers never author that member.
+/// Escaping rather than reserving an input key keeps every JSON value intact
+/// without changing the public Item/Matter layouts or cache model
+/// (§FS-006-project-interface.4).
+const CUSTOM_STATUS_ORIGIN: &str = "_ephor_custom_status";
+
+pub(crate) fn custom_status_raw(mut raw: Value, answer: Option<Value>) -> Value {
+    if let Some(raw) = raw.as_object_mut() {
+        let mut origin = serde_json::Map::new();
+        if let Some(passthrough) = raw.remove(CUSTOM_STATUS_ORIGIN) {
+            origin.insert("passthrough".to_string(), passthrough);
+        }
+        if let Some(answer) = answer {
+            origin.insert("answer".to_string(), answer);
+        }
+        if !origin.is_empty() {
+            raw.insert(CUSTOM_STATUS_ORIGIN.to_string(), Value::Object(origin));
+        }
+    }
+    raw
+}
+
+/// Read only the adapter-authored record, never the legacy metadata overlay.
+/// Other providers' free data cannot acquire custom-status semantics
+/// (§FS-006-project-interface.4).
+pub(crate) fn custom_status_answer<'a>(source: &str, raw: &'a Value) -> Option<&'a Value> {
+    if source != "custom-status" {
+        return None;
+    }
+    raw.get(CUSTOM_STATUS_ORIGIN)?.get("answer")
+}
 
 /// Finality explicitly stated by a structured source. Passthrough that merely
 /// uses the same public field name has no authority
 /// (§FS-003-feed-categories.2).
-pub(crate) fn source_terminal(raw: &Value) -> Option<bool> {
-    raw.get(SOURCE_METADATA)?
-        .get(CUSTOM_STATUS_ANSWER)?
+pub(crate) fn source_terminal(source: &str, raw: &Value) -> Option<bool> {
+    custom_status_answer(source, raw)?
         .get("terminal")?
         .as_bool()
 }
@@ -146,7 +176,8 @@ impl Item {
     /// The work is over: the item belongs under Recent rather than in its own
     /// category (§FS-003-feed-categories.2).
     pub fn is_finished(&self) -> bool {
-        source_terminal(&self.raw).unwrap_or_else(|| is_terminal(self.state.as_deref()))
+        source_terminal(&self.source, &self.raw)
+            .unwrap_or_else(|| is_terminal(self.state.as_deref()))
     }
 
     /// The first-class issue dependencies that still block this item

@@ -1,4 +1,5 @@
 mod common;
+mod custom_status_compat;
 
 use std::fs;
 use std::path::Path;
