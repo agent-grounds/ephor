@@ -3973,8 +3973,21 @@ systemctl --user enable --now ephor-rebase-sweep.timer
 ```
 
 `ephor-refresh` fetches every ten minutes. `ephor-work-sync` refreshes and then
-reopens everything whose item has moved, half-hourly — it writes tickets and
-runs nothing, because spawning agents stays something you ask for.
+reopens everything whose item has moved, half-hourly. When reopened work has
+opted into autorun, synchronization starts its detached run; the final due
+sweep starts opted-in work born anywhere else
+([§FS-005-dispatch.24](functional-spec/FS-005-dispatch.md#24-work-nobody-has-to-start-starts-itself)).
+A run started at either position outlives normal completion, explicit stop,
+and restart of the service. Stop the run with the runtime's command displayed
+on its live row, not with `systemctl --user stop ephor-work-sync.service`
+([§FS-005-dispatch.20](functional-spec/FS-005-dispatch.md#20-a-run-of-the-runtime-starts-beneath-the-screen-and-is-watched-by-attaching)).
+The process-only policy is unit-wide, so stopping the service also leaves any
+other descendant already spawned by the current ephor command to finish.
+
+Units linked as above follow the checkout: update it, then run
+`systemctl --user daemon-reload`. If you copied the units instead, replace
+those copies from the updated checkout first, then run
+`systemctl --user daemon-reload`.
 
 `ephor-rebase-sweep` replays every idle branch checkout onto its project's main
 branch, hourly ([§8.11.1](#8111-sweeping-every-idle-checkout-onto-main)), so a
