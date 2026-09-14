@@ -29,6 +29,17 @@ with `--set` answering its inputs ([§FS-005-dispatch.19](FS-005-dispatch.md#19-
 freehand row: whatever the reader wants to run once, in the resolved place,
 with the dossier already exported ([§FS-005-dispatch.10](FS-005-dispatch.md#10-what-ephor-offers-is-not-a-limit-on-what-can-be-asked)).
 
+Repeating a workflow entry for the same unchanged matter refuses when that
+entry's newest recorded plan is still laid ([§FS-005-dispatch.19](FS-005-dispatch.md#19-a-workflow-the-runtime-offers-is-an-action-and-its-inputs-are-answered-here)). The prose
+answer is written to standard error and the command exits `1`:
+`<entry> already laid <plan> for <id>; start that work with
+\`ephor work run --item <id>\` (use
+\`ephor work lay <entry> --item <id>\` to lay another plan)`.
+In machine form standard output is the existing refusal outcome
+`{"ok":false,"says":"<the same sentence>"}`; the screen receives that same
+outcome from the shared move. No plan path is returned as a newly written
+plan, because nothing was written.
+
 ## 2. Branches, and where each one stands
 
 `ephor branches` prints what the registry knows about a project's branches

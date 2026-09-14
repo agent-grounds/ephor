@@ -1299,6 +1299,30 @@ input it answered and where the answer came from. A workflow that fails to be
 written leaves nothing behind, so the board is never given half of one to
 report on, and the refusal read back is the binding's own.
 
+**Repeating the same workflow action does not instantiate it again.** Before
+resolving a new destination or writing carried files, the shared action move
+reads the ledger for the newest workflow dispatch with the same matter id and
+selected entry id. Where that dispatch records the matter's unchanged current
+snapshot and its exact recorded plan still resolves to a laid plan on disk,
+the move refuses with the entry, that plan, the complete
+`ephor work run --item <id>` starter, and
+`ephor work lay <entry> --item <id>` as the deliberate way to lay another.
+Entry id is the identity here: two entries naming the same runtime workflow
+remain two actions. The refusal writes no carried files, plan directory, or
+ledger dispatch and requests no runtime start; explicit input answers, carried
+values, confirmation, and dry-run do not bypass it.
+
+Only positive evidence refuses. No record, a changed snapshot, a missing plan,
+or a record that cannot resolve to a laid plan leaves the existing laying or
+lower-level refusal in charge and neither deletes nor repairs the record. A
+recorded workflow that has finished still supplies positive evidence while
+its matter remains actionable: named running owns the truthful answer about
+what remains to advance, and direct `work lay` owns an intentional repeat.
+Finished matters themselves remain ineligible for workflow offers. First-time
+actions, another entry id, changed matters, command and recipe actions, sweep
+suppression, and named-run safety and ceiling policy retain their existing
+behavior.
+
 **A values-file refusal leaves no partial laying.** A missing, unreadable,
 malformed, or non-mapping values file is reported before a plan or workspace
 is written. The same is true when the runtime rejects the effective values:
