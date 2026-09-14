@@ -4299,7 +4299,7 @@ well, for whoever is watching; a script that reads only standard output still
 learns that the thing did not happen and why.
 
 A repeated workflow action uses that refusal shape and exits `1`
-([§FS-011-command-line.1](functional-spec/FS-011-command-line.md#1-actions)).
+([§FS-011-command-line.1](functional-spec/FS-011-command-line.md#1-what-may-be-done-here-listed-and-run)).
 In prose its only output is the reason on standard error:
 
 ```text

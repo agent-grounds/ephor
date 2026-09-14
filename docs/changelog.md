@@ -274,7 +274,7 @@ ships, the previous "latest" section moves verbatim to
 
 - **Repeating a workflow action no longer lays a second plan**
   ([§FS-005-dispatch.19](functional-spec/FS-005-dispatch.md#19-a-workflow-the-runtime-offers-is-an-action-and-its-inputs-are-answered-here),
-  [§FS-011-command-line.1](functional-spec/FS-011-command-line.md#1-actions)).
+  [§FS-011-command-line.1](functional-spec/FS-011-command-line.md#1-what-may-be-done-here-listed-and-run)).
   When the selected entry's newest workflow dispatch records the unchanged
   matter and its exact plan is still present, the shared action move now
   refuses before resolving inputs or asking the runtime to instantiate. It
