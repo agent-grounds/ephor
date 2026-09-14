@@ -602,9 +602,9 @@ fn issue_92_repeating_an_entry_finds_its_plan_in_a_prior_work_root() {
     assert_eq!(workflow_dispatches(&world).len(), 2);
     let runtime_log = world.read("runtime.log");
     assert!(
-        runtime_log.lines().all(|line| {
-            !line.starts_with("instantiate ") && !line.starts_with("run ")
-        }),
+        runtime_log
+            .lines()
+            .all(|line| { !line.starts_with("instantiate ") && !line.starts_with("run ") }),
         "repeat asked the runtime to instantiate or start work:\n{runtime_log}"
     );
 }
