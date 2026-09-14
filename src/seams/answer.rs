@@ -55,7 +55,6 @@ pub struct Envelope {
 
 /// A subject the command reports (§FS-007-matters.1).
 #[derive(Debug, Clone, Deserialize)]
-#[serde(from = "MatterAnswer")]
 pub struct Matter {
     pub key: String,
     #[serde(default)]
@@ -82,77 +81,6 @@ pub struct Matter {
     pub reasons: Vec<String>,
     #[serde(default)]
     pub data: Map<String, Value>,
-    presence: MatterPresence,
-}
-
-#[derive(Debug, Clone, Copy, Default)]
-struct MatterPresence {
-    refs: bool,
-    reasons: bool,
-}
-
-#[derive(Deserialize)]
-struct MatterAnswer {
-    key: String,
-    #[serde(default)]
-    kind: Option<String>,
-    #[serde(default)]
-    title: Option<String>,
-    #[serde(default)]
-    state: Option<String>,
-    #[serde(default)]
-    terminal: Option<bool>,
-    #[serde(default)]
-    url: Option<String>,
-    #[serde(default)]
-    repo: Option<String>,
-    #[serde(default)]
-    number: Option<String>,
-    #[serde(default)]
-    branch: Option<String>,
-    #[serde(default)]
-    time: Option<String>,
-    #[serde(default)]
-    refs: Option<Vec<String>>,
-    #[serde(default)]
-    reasons: Option<Vec<String>>,
-    #[serde(default)]
-    data: Map<String, Value>,
-}
-
-impl From<MatterAnswer> for Matter {
-    fn from(answer: MatterAnswer) -> Self {
-        let presence = MatterPresence {
-            refs: answer.refs.is_some(),
-            reasons: answer.reasons.is_some(),
-        };
-        Self {
-            key: answer.key,
-            kind: answer.kind,
-            title: answer.title,
-            state: answer.state,
-            terminal: answer.terminal,
-            url: answer.url,
-            repo: answer.repo,
-            number: answer.number,
-            branch: answer.branch,
-            time: answer.time,
-            refs: answer.refs.unwrap_or_default(),
-            reasons: answer.reasons.unwrap_or_default(),
-            data: answer.data,
-            presence,
-        }
-    }
-}
-
-impl Matter {
-    pub(crate) fn refs_supplied(&self) -> bool {
-        self.presence.refs
-    }
-
-    pub(crate) fn reasons_supplied(&self) -> bool {
-        self.presence.reasons
-    }
 }
 
 /// Messages grouped in one channel (§FS-007-matters.3).

@@ -287,6 +287,18 @@ impl Answer {
 /// that answer is validated against the published envelope and normalized
 /// before it is handed back, and the file is discarded either way.
 pub fn run(summons: &Summons, site: &Site, mode: Mode) -> Result<Answer> {
+    run_with_answer_reader(summons, site, mode, answer::parse)
+}
+
+/// Let an adapter retain input presence while reading the same validated
+/// envelope, without extending the public answer types
+/// (§FS-006-project-interface.4).
+pub(crate) fn run_with_answer_reader(
+    summons: &Summons,
+    site: &Site,
+    mode: Mode,
+    read_answer: fn(&str, &str, &std::path::Path) -> Result<Normalized>,
+) -> Result<Answer> {
     // The two things a summons leans on are re-checked here, at invocation,
     // however recently a capability table answered about them: a table speaks
     // for the moment it was resolved, and a directory deleted since then has
@@ -330,7 +342,7 @@ pub fn run(summons: &Summons, site: &Site, mode: Mode) -> Result<Answer> {
         _ => Outcome::Failed,
     };
     let answer = match answer_file.read()? {
-        Some(text) => Some(answer::parse(&text, &summons.verb, &place)?),
+        Some(text) => Some(read_answer(&text, &summons.verb, &place)?),
         None => None,
     };
 

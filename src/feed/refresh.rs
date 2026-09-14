@@ -315,12 +315,11 @@ fn reconcile_custom_status_answer_matters(
 ) -> Vec<crate::matter::Matter> {
     let previous = previous.unwrap_or_default();
     for matter in &mut current {
-        if custom_status_answer_time_supplied(&matter.raw) != Some(false) {
+        if custom_status_answer_time_supplied(matter) != Some(false) {
             continue;
         }
         if let Some(retained) = previous.iter().find(|retained| {
-            retained.key == matter.key
-                && custom_status_answer_time_supplied(&retained.raw).is_some()
+            retained.key == matter.key && custom_status_answer_time_supplied(retained).is_some()
         }) {
             matter.updated_at = retained.updated_at;
         }
@@ -328,9 +327,8 @@ fn reconcile_custom_status_answer_matters(
     current
 }
 
-fn custom_status_answer_time_supplied(raw: &Value) -> Option<bool> {
-    raw.get(crate::feed::model::SOURCE_METADATA)?
-        .get(crate::feed::model::CUSTOM_STATUS_ANSWER)?
+fn custom_status_answer_time_supplied(matter: &crate::matter::Matter) -> Option<bool> {
+    crate::feed::model::custom_status_answer(&matter.source, &matter.raw)?
         .get("time_supplied")?
         .as_bool()
 }
@@ -807,14 +805,10 @@ mod tests {
             state: Some("waiting".to_string()),
             needs_response: false,
             updated_at: at.parse().unwrap(),
-            raw: serde_json::json!({
-                "_ephor": {
-                    "custom_status_answer": {
-                        "time_supplied": supplied,
-                        "terminal": null
-                    }
-                }
-            }),
+            raw: crate::feed::model::custom_status_raw(
+                serde_json::json!({}),
+                Some(serde_json::json!({ "time_supplied": supplied, "terminal": null })),
+            ),
         })
     }
 
