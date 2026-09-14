@@ -348,6 +348,37 @@ fn matching_plan_directories(world: &World) -> Vec<std::path::PathBuf> {
     matching
 }
 
+fn tree_snapshot(root: &std::path::Path) -> Vec<(std::path::PathBuf, Option<Vec<u8>>)> {
+    fn visit(
+        base: &std::path::Path,
+        dir: &std::path::Path,
+        found: &mut Vec<(std::path::PathBuf, Option<Vec<u8>>)>,
+    ) {
+        let mut entries: Vec<_> = std::fs::read_dir(dir)
+            .expect("read snapshot directory")
+            .filter_map(Result::ok)
+            .collect();
+        entries.sort_by_key(std::fs::DirEntry::file_name);
+        for entry in entries {
+            let path = entry.path();
+            let relative = path.strip_prefix(base).expect("snapshot path below root");
+            if path.is_dir() {
+                found.push((relative.to_path_buf(), None));
+                visit(base, &path, found);
+            } else {
+                found.push((
+                    relative.to_path_buf(),
+                    Some(std::fs::read(&path).expect("read snapshot file")),
+                ));
+            }
+        }
+    }
+
+    let mut found = Vec::new();
+    visit(root, root, &mut found);
+    found
+}
+
 fn repeat_refusal(plan: &std::path::Path) -> String {
     format!(
         "{WORKFLOW_ENTRY} already laid {} for {WORKFLOW_ITEM}; start that work with \
@@ -493,6 +524,84 @@ fn issue_92_repeating_a_workflow_action_refuses_the_recorded_plan() {
         failures.is_empty(),
         "issue #92 workflow-action contract failed:\n- {}",
         failures.join("\n- ")
+    );
+}
+
+/// A later, differently named entry can lay unchanged work for the same
+/// matter into another root without hiding the first entry's exact plan
+/// (§FS-005-dispatch.19). Repeating the first action discovers its original
+/// plan before destination or runtime resolution and leaves both roots and
+/// the ledger byte-for-byte unchanged (§FS-011-command-line.1).
+#[test]
+fn issue_92_repeating_an_entry_finds_its_plan_in_a_prior_work_root() {
+    let world = watching();
+    let first_branch = "you/ABC-42-retry";
+    let later_branch = "you/ABC-43-follow-up";
+    let workspace_base = world.path().join("branches");
+    let workspace_template = workspace_base.join("{branch}");
+    let first_workspace = workspace_base.join(first_branch);
+    let later_workspace = workspace_base.join(later_branch);
+    std::fs::create_dir_all(&first_workspace).expect("the first branch workspace");
+    std::fs::create_dir_all(&later_workspace).expect("the later branch workspace");
+
+    let mut registry = world.registry_doc();
+    registry["projects"][0]["branch_root_template"] = json!(workspace_template.to_string_lossy());
+    registry["projects"][0]["branches"] = json!([
+        { "id": "demo-retry", "branch": first_branch, "active": true,
+          "ticket": "ABC-42" },
+        { "id": "demo-follow-up", "branch": later_branch, "active": false,
+          "ticket": "ABC-43" }
+    ]);
+    write_json(&world.registry_path(), &registry);
+
+    let first = action_output(&world, &[]);
+    assert!(
+        first.status.success(),
+        "the first entry could not lay in its branch root:\n{}",
+        String::from_utf8_lossy(&first.stderr)
+    );
+    let first_plan = first_workspace.join("panta").join(WORKFLOW_PLAN);
+    assert!(first_plan.join("index.rhei.md").is_file());
+
+    change_cached_matter(&world, |matter| matter["branch"] = json!(later_branch));
+    add_second_entry_for_same_workflow(&world);
+    let later = world
+        .ephor()
+        .args(["actions", "run", "other-review", "--item", WORKFLOW_ITEM])
+        .output()
+        .expect("the later entry runs");
+    assert!(
+        later.status.success(),
+        "the other entry could not lay in its branch root:\n{}",
+        String::from_utf8_lossy(&later.stderr)
+    );
+    let later_plan = later_workspace
+        .join("panta")
+        .join("acmeforge-app-101-other-review");
+    assert!(later_plan.join("index.rhei.md").is_file());
+    let dispatches = workflow_dispatches(&world);
+    assert_eq!(dispatches.len(), 2);
+    assert_eq!(dispatches[0]["root"], json!(first_workspace.join("panta")));
+    assert_eq!(dispatches[1]["root"], json!(later_workspace.join("panta")));
+
+    std::fs::write(world.path().join("runtime.log"), "").expect("clear setup runtime traces");
+    let ledger_before = world.read("state/ephor/work.json");
+    let roots_before = tree_snapshot(&workspace_base);
+    let repeat = action_output(&world, &[]);
+    let expected = repeat_refusal(&first_plan);
+    assert_eq!(repeat.status.code(), Some(1));
+    assert!(repeat.stdout.is_empty(), "refusal wrote prose to stdout");
+    assert_eq!(
+        String::from_utf8_lossy(&repeat.stderr),
+        format!("{expected}\n")
+    );
+    assert_eq!(world.read("state/ephor/work.json"), ledger_before);
+    assert_eq!(tree_snapshot(&workspace_base), roots_before);
+    assert_eq!(workflow_dispatches(&world).len(), 2);
+    assert_eq!(
+        world.read("runtime.log"),
+        "",
+        "repeat asked the runtime to instantiate or start work"
     );
 }
 
