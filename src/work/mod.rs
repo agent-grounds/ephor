@@ -1963,6 +1963,28 @@ impl Dispatcher {
         Ok(entries)
     }
 
+    /// The exact plan the newest matching workflow-action dispatch already
+    /// laid for this unchanged matter, where it is still on disk
+    /// (§FS-005-dispatch.19).
+    ///
+    /// The newest matching record owns the answer even when an older one would
+    /// still match the current snapshot. A moved matter or a missing plan is
+    /// not evidence to fall back past: either means the action may be laid
+    /// again by its existing path.
+    pub fn repeated_workflow(&self, item: &Item, entry_id: &str) -> Option<PathBuf> {
+        let entry = self.ledger.entries.get(&item.id)?;
+        let dispatch = entry
+            .dispatches
+            .iter()
+            .rev()
+            .find(|dispatch| dispatch.is_workflow() && dispatch.recipe == entry_id)?;
+        if !dispatch.snapshot.changes(&Snapshot::of(item)).is_empty() {
+            return None;
+        }
+        let plan_id = dispatch.plan.as_deref()?;
+        runtime::workflow::laid(&entry.root.join(plan_id)).map(|found| found.path)
+    }
+
     /// The ids of this project's workflow entries that asked to run
     /// themselves (§FS-005-dispatch.28). What the due sweep matches a laid
     /// plan's laying entry against: silence is the key, so an id that is not

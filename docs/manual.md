@@ -3317,6 +3317,23 @@ are named in the runtime's language, where the same spelling says nothing.
 Say nothing and nothing changes: the entry is a menu row, laid by you and
 started by you.
 
+**Choosing the same workflow action again is not a request for a second
+plan.** When that entry's newest ledger record is for the matter as it still
+stands and its exact plan is still present, the action refuses before it
+answers inputs or asks the runtime to render anything
+([§FS-005-dispatch.19](functional-spec/FS-005-dispatch.md#19-a-workflow-the-runtime-offers-is-an-action-and-its-inputs-are-answered-here)):
+
+```text
+review-change already laid /work/acme-widget-42-review-change/index.rhei.md for github-prs:acme/widget#42; start that work with `ephor work run --item github-prs:acme/widget#42` (use `ephor work lay review-change --item github-prs:acme/widget#42` to lay another plan)
+```
+
+The entry id is the identity: another entry may name the same runtime
+workflow without being a repeat. A matter that moved since the newest matching
+record, or a record whose plan can no longer be found, follows the ordinary
+laying path. `ephor work run --item <id>` is the supported way to start all
+work already laid for the matter; `ephor work lay <entry> --item <id>` is the
+explicit request for another plan.
+
 **Answering the inputs.** Six steps, each displacing the ones after it:
 
 1. what you answered explicitly for this laying alone — `--set <input>=<value>`,
@@ -3379,7 +3396,7 @@ from the board, with `R` on the item's work screen, or with
 `autorun`, because silence about autorun means the reader starts it and this is
 the reader
 ([§FS-005-dispatch.30](functional-spec/FS-005-dispatch.md#30-a-run-asked-for-by-name-reaches-the-whole-of-that-matters-work)).
-A second laying of the same entry is
+An explicit second laying of the same entry is
 `<matter>-<entry>-2`: two runs of one workflow about one item are two records,
 not a correction of the first.
 
@@ -4280,6 +4297,21 @@ A command that is **refused** answers too. Under `--json` it prints
 happened prints — and keeps the exit code it had. The reason is on stderr as
 well, for whoever is watching; a script that reads only standard output still
 learns that the thing did not happen and why.
+
+A repeated workflow action uses that refusal shape and exits `1`
+([§FS-011-command-line.1](functional-spec/FS-011-command-line.md#1-actions)).
+In prose its only output is the reason on standard error:
+
+```text
+review-change already laid /work/acme-widget-42-review-change/index.rhei.md for github-prs:acme/widget#42; start that work with `ephor work run --item github-prs:acme/widget#42` (use `ephor work lay review-change --item github-prs:acme/widget#42` to lay another plan)
+```
+
+With `--json`, standard output carries the same sentence and no new `plan`
+field:
+
+```json
+{"ok":false,"says":"review-change already laid /work/acme-widget-42-review-change/index.rhei.md for github-prs:acme/widget#42; start that work with `ephor work run --item github-prs:acme/widget#42` (use `ephor work lay review-change --item github-prs:acme/widget#42` to lay another plan)"}
+```
 
 Two names are ephor's own and configuration may not take them: `@command` is
 the freehand row and `@workflows` is the row that opens the runtime's
