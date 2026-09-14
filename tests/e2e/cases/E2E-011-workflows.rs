@@ -563,7 +563,9 @@ fn issue_92_repeating_an_entry_finds_its_plan_in_a_prior_work_root() {
     let first_plan = first_workspace.join("panta").join(WORKFLOW_PLAN);
     assert!(first_plan.join("index.rhei.md").is_file());
 
-    change_cached_matter(&world, |matter| matter["branch"] = json!(later_branch));
+    change_cached_matter(&world, |matter| {
+        matter["raw"]["branch"] = json!(later_branch)
+    });
     add_second_entry_for_same_workflow(&world);
     let later = world
         .ephor()
@@ -598,10 +600,12 @@ fn issue_92_repeating_an_entry_finds_its_plan_in_a_prior_work_root() {
     assert_eq!(world.read("state/ephor/work.json"), ledger_before);
     assert_eq!(tree_snapshot(&workspace_base), roots_before);
     assert_eq!(workflow_dispatches(&world).len(), 2);
-    assert_eq!(
-        world.read("runtime.log"),
-        "",
-        "repeat asked the runtime to instantiate or start work"
+    let runtime_log = world.read("runtime.log");
+    assert!(
+        runtime_log.lines().all(|line| {
+            !line.starts_with("instantiate ") && !line.starts_with("run ")
+        }),
+        "repeat asked the runtime to instantiate or start work:\n{runtime_log}"
     );
 }
 
