@@ -63,6 +63,24 @@ pub fn is_terminal(state: Option<&str>) -> bool {
 /// finished work that has none.
 pub const UNANSWERED: &str = "unanswered";
 
+/// Provider facts that must retain their typed presence ride beside the
+/// provider's passthrough rather than changing the core model's stored shape
+/// (§FS-006-project-interface.4). The outer name is ephor's namespace; the
+/// inner name keeps this adapter's provenance from becoming a general claim
+/// about arbitrary `raw` data.
+pub(crate) const SOURCE_METADATA: &str = "_ephor";
+pub(crate) const CUSTOM_STATUS_ANSWER: &str = "custom_status_answer";
+
+/// Finality explicitly stated by a structured source. Passthrough that merely
+/// uses the same public field name has no authority
+/// (§FS-003-feed-categories.2).
+pub(crate) fn source_terminal(raw: &Value) -> Option<bool> {
+    raw.get(SOURCE_METADATA)?
+        .get(CUSTOM_STATUS_ANSWER)?
+        .get("terminal")?
+        .as_bool()
+}
+
 /// Record on a report's passthrough that an answer was missing when the
 /// subject finished. Written wherever settling clears the response it owed, so
 /// that clearing it does not also forget it (§FS-003-feed-categories.2).
@@ -128,7 +146,7 @@ impl Item {
     /// The work is over: the item belongs under Recent rather than in its own
     /// category (§FS-003-feed-categories.2).
     pub fn is_finished(&self) -> bool {
-        is_terminal(self.state.as_deref())
+        source_terminal(&self.raw).unwrap_or_else(|| is_terminal(self.state.as_deref()))
     }
 
     /// The first-class issue dependencies that still block this item

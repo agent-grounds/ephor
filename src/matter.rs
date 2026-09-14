@@ -587,7 +587,8 @@ impl Matter {
     /// The work is over (§FS-003-feed-categories.2) — the same question the
     /// row's own renderer asks, asked of the model.
     pub fn is_finished(&self) -> bool {
-        crate::feed::model::is_terminal(self.state.as_deref())
+        crate::feed::model::source_terminal(&self.raw)
+            .unwrap_or_else(|| crate::feed::model::is_terminal(self.state.as_deref()))
     }
 
     /// Finished work is news, not a task (§FS-003-feed-categories.2). Applied
