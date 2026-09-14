@@ -241,6 +241,19 @@ pub fn refresh_project(
     for (name, (ok, error, items)) in results {
         let slot = if ok {
             ok_count += 1;
+            let matters: Vec<crate::matter::Matter> =
+                items.iter().map(crate::matter::Matter::of_item).collect();
+            let matters = if name == "custom-status" {
+                reconcile_custom_status_answer_matters(
+                    matters,
+                    previous
+                        .providers
+                        .get(&name)
+                        .map(|slot| slot.matters.as_slice()),
+                )
+            } else {
+                matters
+            };
             ProviderSlot {
                 fetched_at: Some(now),
                 ok: true,
@@ -249,7 +262,7 @@ pub fn refresh_project(
                 unreachable: false,
                 // Fetch normalization: what a source reported becomes the
                 // matter it is about, once, here (§AR-008-pipeline.1).
-                matters: items.iter().map(crate::matter::Matter::of_item).collect(),
+                matters,
                 cursor: previous
                     .providers
                     .get(&name)
@@ -289,6 +302,37 @@ pub fn refresh_project(
         failures,
         total_failure,
     })
+}
+
+/// Missing activity belongs to the retained provider-slot/key observation,
+/// not to the refresh that happened to see it. Supplied time remains
+/// authoritative, and an empty successful result naturally ends the
+/// observation because only the immediately previous slot is consulted
+/// (§FS-006-project-interface.4, §FS-007-matters.1).
+fn reconcile_custom_status_answer_matters(
+    mut current: Vec<crate::matter::Matter>,
+    previous: Option<&[crate::matter::Matter]>,
+) -> Vec<crate::matter::Matter> {
+    let previous = previous.unwrap_or_default();
+    for matter in &mut current {
+        if custom_status_answer_time_supplied(&matter.raw) != Some(false) {
+            continue;
+        }
+        if let Some(retained) = previous.iter().find(|retained| {
+            retained.key == matter.key
+                && custom_status_answer_time_supplied(&retained.raw).is_some()
+        }) {
+            matter.updated_at = retained.updated_at;
+        }
+    }
+    current
+}
+
+fn custom_status_answer_time_supplied(raw: &Value) -> Option<bool> {
+    raw.get(crate::feed::model::SOURCE_METADATA)?
+        .get(crate::feed::model::CUSTOM_STATUS_ANSWER)?
+        .get("time_supplied")?
+        .as_bool()
 }
 
 /// One project's refresh, as it lands.
@@ -750,6 +794,71 @@ fn fetch_one(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn answer_matter(key: &str, at: &str, supplied: bool) -> crate::matter::Matter {
+        crate::matter::Matter::of_item(&crate::feed::model::Item {
+            id: key.to_string(),
+            project: "demo".to_string(),
+            source: "custom-status".to_string(),
+            kind: crate::feed::model::ItemKind::Status,
+            role: None,
+            title: key.to_string(),
+            url: None,
+            state: Some("waiting".to_string()),
+            needs_response: false,
+            updated_at: at.parse().unwrap(),
+            raw: serde_json::json!({
+                "_ephor": {
+                    "custom_status_answer": {
+                        "time_supplied": supplied,
+                        "terminal": null
+                    }
+                }
+            }),
+        })
+    }
+
+    /// The previous-slot boundary retains omitted activity only for one
+    /// continuous same-key observation, while every newly supplied time wins
+    /// (§FS-006-project-interface.4, §FS-007-matters.1).
+    #[test]
+    fn custom_status_answer_reconciliation_tracks_one_retained_observation() {
+        let first = answer_matter("poll:fixed", "2026-09-01T00:00:00Z", false);
+        let omitted = answer_matter("poll:fixed", "2026-09-02T00:00:00Z", false);
+        let retained = reconcile_custom_status_answer_matters(
+            vec![omitted],
+            Some(std::slice::from_ref(&first)),
+        );
+        assert_eq!(retained[0].updated_at, first.updated_at);
+
+        let supplied = answer_matter("poll:fixed", "2026-09-03T00:00:00Z", true);
+        let later_omission = answer_matter("poll:fixed", "2026-09-04T00:00:00Z", false);
+        let retained = reconcile_custom_status_answer_matters(
+            vec![later_omission],
+            Some(std::slice::from_ref(&supplied)),
+        );
+        assert_eq!(retained[0].updated_at, supplied.updated_at);
+
+        let disappeared =
+            reconcile_custom_status_answer_matters(Vec::new(), Some(std::slice::from_ref(&first)));
+        let reappeared = answer_matter("poll:fixed", "2026-09-05T00:00:00Z", false);
+        let reappeared =
+            reconcile_custom_status_answer_matters(vec![reappeared], Some(disappeared.as_slice()));
+        assert_eq!(
+            reappeared[0].updated_at,
+            "2026-09-05T00:00:00Z".parse().unwrap()
+        );
+
+        let authoritative = answer_matter("poll:fixed", "2026-09-06T00:00:00Z", true);
+        let authoritative = reconcile_custom_status_answer_matters(
+            vec![authoritative],
+            Some(std::slice::from_ref(&first)),
+        );
+        assert_eq!(
+            authoritative[0].updated_at,
+            "2026-09-06T00:00:00Z".parse().unwrap()
+        );
+    }
 
     /// §FS-011-command-line.9: a run started from the screen asks the
     /// projects it was handed — the ones that screen was opened over — so a

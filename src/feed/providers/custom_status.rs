@@ -14,9 +14,9 @@ use std::path::Path;
 use std::time::Duration;
 
 use serde::Deserialize;
-use serde_json::Value;
+use serde_json::{Map, Value};
 
-use crate::feed::model::{Item, ItemKind};
+use crate::feed::model::{Item, ItemKind, CUSTOM_STATUS_ANSWER, SOURCE_METADATA};
 use crate::feed::provider::{Provider, ProviderContext, ProviderError, ProviderResult};
 use crate::feed::providers::parse_config;
 use crate::seams::dossier;
@@ -108,24 +108,42 @@ impl CustomStatus {
             return Ok(Vec::new());
         };
         if !normalized.matters.is_empty() {
-            return Ok(normalized
+            return normalized
                 .matters
                 .iter()
                 .enumerate()
-                .map(|(index, matter)| Item {
-                    id: matter.key.clone(),
-                    project: ctx.project_id.clone(),
-                    source: "custom-status".to_string(),
-                    kind: ItemKind::Status,
-                    role: None,
-                    title: matter.title.clone().unwrap_or_else(|| matter.key.clone()),
-                    url: matter.url.clone(),
-                    state: matter.state.clone(),
-                    needs_response: normalized.facts.needs_response.unwrap_or(false) && index == 0,
-                    updated_at: chrono::Utc::now(),
-                    raw: serde_json::to_value(&matter.data).unwrap_or(Value::Null),
+                .map(|(index, matter)| {
+                    let updated_at = matter
+                        .time
+                        .as_deref()
+                        .map(|time| {
+                            chrono::DateTime::parse_from_rfc3339(time)
+                                .map(|time| time.with_timezone(&chrono::Utc))
+                                .map_err(|err| {
+                                    ProviderError(format!(
+                                        "invalid activity time for {}: {err}",
+                                        matter.key
+                                    ))
+                                })
+                        })
+                        .transpose()?
+                        .unwrap_or_else(chrono::Utc::now);
+                    Ok(Item {
+                        id: matter.key.clone(),
+                        project: ctx.project_id.clone(),
+                        source: "custom-status".to_string(),
+                        kind: ItemKind::Status,
+                        role: None,
+                        title: matter.title.clone().unwrap_or_else(|| matter.key.clone()),
+                        url: matter.url.clone(),
+                        state: matter.state.clone(),
+                        needs_response: normalized.facts.needs_response.unwrap_or(false)
+                            && index == 0,
+                        updated_at,
+                        raw: answer_matter_raw(matter),
+                    })
                 })
-                .collect());
+                .collect();
         }
         let Some(summary) = normalized.facts.summary.clone() else {
             return Ok(Vec::new());
@@ -144,6 +162,55 @@ impl CustomStatus {
             raw: serde_json::to_value(&normalized.facts.data).unwrap_or(Value::Null),
         }])
     }
+}
+
+/// Preserve the envelope's typed matter fields beside its free passthrough,
+/// with the typed vocabulary taking precedence. The provenance record keeps
+/// presence-sensitive fields distinguishable from same-named passthrough
+/// without adding a second persisted model (§FS-006-project-interface.4).
+fn answer_matter_raw(matter: &crate::seams::answer::Matter) -> Value {
+    let mut raw = matter.data.clone();
+    raw.insert("key".to_string(), Value::String(matter.key.clone()));
+    insert_optional(&mut raw, "kind", matter.kind.as_deref());
+    insert_optional(&mut raw, "title", matter.title.as_deref());
+    insert_optional(&mut raw, "state", matter.state.as_deref());
+    if let Some(terminal) = matter.terminal {
+        raw.insert("terminal".to_string(), Value::Bool(terminal));
+    }
+    insert_optional(&mut raw, "url", matter.url.as_deref());
+    insert_optional(&mut raw, "repo", matter.repo.as_deref());
+    insert_optional(&mut raw, "number", matter.number.as_deref());
+    insert_optional(&mut raw, "branch", matter.branch.as_deref());
+    insert_optional(&mut raw, "time", matter.time.as_deref());
+    if !matter.refs.is_empty() {
+        raw.insert("refs".to_string(), strings(&matter.refs));
+    }
+    if !matter.reasons.is_empty() {
+        raw.insert("reasons".to_string(), strings(&matter.reasons));
+    }
+    let mut provenance = Map::new();
+    provenance.insert(
+        "time_supplied".to_string(),
+        Value::Bool(matter.time.is_some()),
+    );
+    provenance.insert(
+        "terminal".to_string(),
+        matter.terminal.map(Value::Bool).unwrap_or(Value::Null),
+    );
+    let mut source = Map::new();
+    source.insert(CUSTOM_STATUS_ANSWER.to_string(), Value::Object(provenance));
+    raw.insert(SOURCE_METADATA.to_string(), Value::Object(source));
+    Value::Object(raw)
+}
+
+fn insert_optional(raw: &mut Map<String, Value>, key: &str, value: Option<&str>) {
+    if let Some(value) = value {
+        raw.insert(key.to_string(), Value::String(value.to_string()));
+    }
+}
+
+fn strings(values: &[String]) -> Value {
+    Value::Array(values.iter().cloned().map(Value::String).collect())
 }
 
 impl Provider for CustomStatus {
