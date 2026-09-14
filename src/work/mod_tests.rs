@@ -138,7 +138,7 @@ fn repeated_workflow_finds_a_unique_recorded_plan_in_its_prior_root() {
 
     assert_eq!(
         dispatcher.repeated_workflow(&item, "review"),
-        Some(recorded_root.join(plan_id).join("index.rhei.md"))
+        Some(fs::canonicalize(recorded_root.join(plan_id).join("index.rhei.md")).unwrap())
     );
 
     plant(
