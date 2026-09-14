@@ -34,6 +34,11 @@ Work does not stop mattering the moment it is finished, but most of it stops
 asking for anything. An item whose state is terminal — closed, merged, done,
 resolved, declined, however its forge spells it — leaves its category, and it
 appears under **Recent** only while it still leaves the reader something to do.
+Where a structured source explicitly reports `terminal`, that `true` or
+`false` decides finality for both the incoming item and the retained matter,
+even when the source's state spelling suggests the opposite. State-name
+inference applies only when the typed field was omitted; a same-named value in
+free passthrough data does not count as that field.
 There are three such things, and they are the whole list:
 
 - **An answer is missing** — whatever would have made the subject await one

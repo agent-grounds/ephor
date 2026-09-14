@@ -234,3 +234,87 @@ fn run(
     summons::run(&summons, &site, Mode::Captured(timeout))
         .map_err(|err| ProviderError(err.to_string()))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::feed::provider::ProviderContext;
+    use crate::seams::answer::Envelope;
+    use serde_json::json;
+    use std::path::{Path, PathBuf};
+
+    fn items(answer: Value) -> Vec<Item> {
+        let envelope: Envelope = serde_json::from_value(answer).unwrap();
+        let answer = summons::Answer {
+            outcome: Outcome::Done,
+            exit_code: Some(0),
+            answer: Some(envelope.normalize(Path::new("/fixture"))),
+            output: Some(String::new()),
+            errors: Some(String::new()),
+            place: PathBuf::from("/fixture"),
+        };
+        let provider = CustomStatus::from_config(&json!({
+            "provider": "custom-status",
+            "command": "true",
+            "format": "answer"
+        }))
+        .unwrap();
+        provider
+            .items_from_answer(
+                &ProviderContext {
+                    project_id: "demo".to_string(),
+                    project_root: PathBuf::from("/fixture"),
+                    main_branch: "main".to_string(),
+                    tickets: Vec::new(),
+                    github_user: None,
+                    timeout: Duration::from_secs(1),
+                    secrets_dir: PathBuf::from("/secrets"),
+                },
+                &answer,
+            )
+            .unwrap()
+    }
+
+    /// The adapter carries source activity and typed metadata into its item,
+    /// with typed fields taking precedence over passthrough
+    /// (§FS-006-project-interface.4).
+    #[test]
+    fn custom_status_answer_unit_mapping_keeps_activity_and_typed_metadata() {
+        let rows = items(json!({
+            "v": 1,
+            "matters": [{
+                "key": "poll:fixed",
+                "state": "waiting",
+                "terminal": false,
+                "time": "2026-09-01T00:00:00Z",
+                "data": { "terminal": "pretender", "episode": "fixed" }
+            }]
+        }));
+        assert_eq!(rows[0].updated_at.to_rfc3339(), "2026-09-01T00:00:00+00:00");
+        assert_eq!(rows[0].raw["terminal"], false);
+        assert_eq!(rows[0].raw["episode"], "fixed");
+    }
+
+    /// Explicit source finality governs both the adapter item and the matter
+    /// made from it before state-name inference (§FS-003-feed-categories.2).
+    #[test]
+    fn custom_status_answer_unit_explicit_finality_precedes_state_spelling() {
+        for (terminal, state, expected) in [(true, "waiting", true), (false, "done", false)] {
+            let row = items(json!({
+                "v": 1,
+                "matters": [{
+                    "key": "poll:fixed",
+                    "state": state,
+                    "terminal": terminal
+                }]
+            }))
+            .remove(0);
+            let matter = crate::matter::Matter::of_item(&row);
+            assert_eq!(
+                (row.is_finished(), matter.is_finished()),
+                (expected, expected),
+                "terminal {terminal} with state {state}"
+            );
+        }
+    }
+}

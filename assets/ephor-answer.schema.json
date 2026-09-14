@@ -81,13 +81,13 @@
         },
         "terminal": {
           "type": "boolean",
-          "description": "Whether the state is final as the source understands finality (closed, merged, resolved). Drives Recent (FS-003-feed-categories.2)."
+          "description": "Whether the state is final as the source understands finality (closed, merged, resolved). When present, true or false takes precedence over state-name inference and drives Recent (FS-003-feed-categories.2)."
         },
         "url": { "type": "string" },
         "repo": { "type": "string", "description": "owner/name or the forge's slug." },
         "number": { "type": "string" },
         "branch": { "type": "string", "description": "Head branch name, for workspace resolution." },
-        "time": { "type": "string", "format": "date-time", "description": "Last activity." },
+        "time": { "type": "string", "format": "date-time", "description": "Last activity. A custom-status answer matter uses this value as updated_at across refreshes (FS-006-project-interface.4)." },
         "refs": {
           "type": "array",
           "items": { "type": "string" },

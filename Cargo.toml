@@ -126,6 +126,10 @@ name = "e2e_025_named_run_refusals"
 path = "tests/e2e/cases/E2E-025-named-run-refusals.rs"
 
 [[test]]
+name = "e2e_026_custom_status_activity"
+path = "tests/e2e/cases/E2E-026-custom-status-activity.rs"
+
+[[test]]
 name = "agents_test"
 path = "tests/integration/agents_test.rs"
 
