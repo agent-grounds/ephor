@@ -910,6 +910,29 @@ fn sendable_target(item: &Item) -> Option<crate::feed::reply::ReplyTarget> {
 }
 
 impl Session {
+    /// The shared refusal for a workflow action whose newest matching ledger
+    /// record still describes this matter and resolves its exact laid plan
+    /// (§FS-005-dispatch.19, §FS-011-command-line.1, §AR-009-surfaces.1).
+    ///
+    /// The TUI asks this before opening its input screen; [`Session::hand_over`]
+    /// asks it before parsing command-line answers. Both therefore receive the
+    /// same outcome before destination or input resolution can begin.
+    pub(crate) fn repeated_workflow(&self, item: &Item, entry_id: &str) -> Option<views::Outcome> {
+        let plan = self
+            .dispatcher
+            .as_ref()?
+            .repeated_workflow(item, entry_id)?;
+        Some(views::Outcome::refused(format!(
+            "{entry_id} already laid {} for {}; start that work with \
+             `ephor work run --item {}` (use `ephor work lay {entry_id} --item {}` to lay \
+             another plan)",
+            plan.display(),
+            item.id,
+            item.id,
+            item.id,
+        )))
+    }
+
     /// Hand one entry's work over about one matter (§FS-005-dispatch.4): a
     /// recipe entry opens a ticket, a workflow entry lays a plan down beside
     /// the matter's (§FS-005-dispatch.19). One path for both surfaces, so
@@ -1004,6 +1027,14 @@ impl Session {
         }
         if entry.action.workflow.is_none() {
             return views::Outcome::refused("That entry hands no work over");
+        }
+        // A repeated workflow action is answered from the ledger before input
+        // parsing, destination resolution, or runtime instantiation. Both
+        // surfaces consume this move, so prose, JSON, and the screen receive
+        // one refusal and nothing has had a chance to write (§FS-005-dispatch.19,
+        // §FS-011-command-line.1, §AR-009-surfaces.1).
+        if let Some(refusal) = self.repeated_workflow(item, &entry.action.id) {
+            return refusal;
         }
         let typed = match parse_answers(answers) {
             Ok(typed) => typed,

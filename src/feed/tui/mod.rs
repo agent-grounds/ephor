@@ -1245,6 +1245,13 @@ impl App {
         typed: std::collections::BTreeMap<String, String>,
         picked: Option<crate::work::recipe::HandList>,
     ) -> Result<()> {
+        // A repeat is one shared action refusal, before this surface opens an
+        // input screen or resolves the proposed destination
+        // (§FS-005-dispatch.19, §AR-009-surfaces.1).
+        if let Some(refusal) = self.ctx.repeated_workflow(item, &entry.id) {
+            self.message = refusal.says;
+            return Ok(());
+        }
         let Some(dispatcher) = &mut self.ctx.dispatcher else {
             self.message = "Work needs the registry, which could not be read".to_string();
             return Ok(());

@@ -297,6 +297,16 @@ fn actions_run(args: &ActionsRunArgs) -> Result<ExitCode> {
                 .to_string(),
         ));
     }
+    // Positive duplicate evidence answers before command-only input and
+    // confirmation handling, just as it answers before the TUI opens its
+    // input screen (§FS-005-dispatch.19, §FS-011-command-line.1).
+    if entry.action.workflow.is_some() {
+        if let Named::Item(item) = &named {
+            if let Some(refusal) = session.repeated_workflow(item, &entry.action.id) {
+                return Ok(report(&refusal, args.json));
+            }
+        }
+    }
     // A confirmation that a screen asks with a second keystroke, a command
     // asks with a flag (§FS-006-project-interface.9).
     if entry.action.confirm && !args.yes && !args.dry_run {
