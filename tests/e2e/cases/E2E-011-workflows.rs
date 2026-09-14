@@ -66,6 +66,7 @@ esac
 const ACME_RUNTIME: &str = r#"#!/usr/bin/env bash
 set -euo pipefail
 verb="$1"; shift
+printf '%s\n' "$verb $*" >> "$RUNTIME_LOG"
 
 if [ "$verb" = templates ]; then
   if [ -n "${WORKFLOW_LISTING_CALLED:-}" ]; then
@@ -212,6 +213,10 @@ fn watching() -> World {
             .replace(
                 "$STAGING_LOG",
                 &world.path().join("staging.log").to_string_lossy(),
+            )
+            .replace(
+                "$RUNTIME_LOG",
+                &world.path().join("runtime.log").to_string_lossy(),
             ),
     );
     // One hand the binding's own registry declares, so who does the work is
@@ -286,6 +291,420 @@ fn assert_destination_carried_paths(world: &World, text: &str) {
     assert!(
         !text.contains("ephor-workflow-values-"),
         "ephemeral paths escaped into public runtime text: {text}"
+    );
+}
+
+const WORKFLOW_ITEM: &str = "acmeforge:app/101";
+const WORKFLOW_ENTRY: &str = "review-change";
+const WORKFLOW_PLAN: &str = "acmeforge-app-101-review-change";
+
+fn action_output(world: &World, tail: &[&str]) -> std::process::Output {
+    let mut args = vec!["actions", "run", WORKFLOW_ENTRY, "--item", WORKFLOW_ITEM];
+    args.extend_from_slice(tail);
+    world.ephor().args(args).output().expect("the action runs")
+}
+
+fn lay_by_action(world: &World) -> std::path::PathBuf {
+    let first = action_output(world, &[]);
+    assert!(
+        first.status.success(),
+        "fixture could not lay its first workflow action:\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&first.stdout),
+        String::from_utf8_lossy(&first.stderr)
+    );
+    let plan = work_root(world).join(WORKFLOW_PLAN);
+    assert!(
+        plan.join("index.rhei.md").is_file(),
+        "the first workflow action did not lay {}",
+        plan.display()
+    );
+    plan
+}
+
+fn workflow_dispatches(world: &World) -> Vec<serde_json::Value> {
+    read_json(&world.path().join("state/ephor/work.json"))["entries"][WORKFLOW_ITEM]["dispatches"]
+        .as_array()
+        .expect("the workflow dispatches")
+        .clone()
+}
+
+fn matching_plan_directories(world: &World) -> Vec<std::path::PathBuf> {
+    let root = work_root(world);
+    if !root.is_dir() {
+        return Vec::new();
+    }
+    let mut matching: Vec<_> = std::fs::read_dir(root)
+        .expect("read the work root")
+        .filter_map(Result::ok)
+        .map(|entry| entry.path())
+        .filter(|path| {
+            path.is_dir()
+                && path
+                    .file_name()
+                    .is_some_and(|name| name.to_string_lossy().starts_with(WORKFLOW_PLAN))
+        })
+        .collect();
+    matching.sort();
+    matching
+}
+
+fn repeat_refusal(plan: &std::path::Path) -> String {
+    format!(
+        "{WORKFLOW_ENTRY} already laid {} for {WORKFLOW_ITEM}; start that work with \
+         `ephor work run --item {WORKFLOW_ITEM}` (use \
+         `ephor work lay {WORKFLOW_ENTRY} --item {WORKFLOW_ITEM}` to lay another plan)",
+        plan.join("index.rhei.md").display()
+    )
+}
+
+fn check_repeat(
+    failures: &mut Vec<String>,
+    label: &str,
+    world: &World,
+    output: &std::process::Output,
+    expected: &str,
+    json: bool,
+    expected_records: usize,
+) {
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    if output.status.code() != Some(1) {
+        failures.push(format!(
+            "{label}: expected refusal exit 1, got {:?}\nstdout:\n{stdout}\nstderr:\n{stderr}",
+            output.status.code()
+        ));
+    }
+    if json {
+        match serde_json::from_slice::<serde_json::Value>(&output.stdout) {
+            Ok(view) => {
+                let schema = ephor::api::schema::holds("outcome", &view);
+                if !schema.is_empty() {
+                    failures.push(format!(
+                        "{label}: JSON does not match the published outcome schema: {schema:?}\n{view}"
+                    ));
+                }
+                if view != json!({ "ok": false, "says": expected }) {
+                    failures.push(format!(
+                        "{label}: expected the refusal outcome with the same sentence, got:\n{view}"
+                    ));
+                }
+            }
+            Err(error) => failures.push(format!("{label}: stdout is not JSON: {error}\n{stdout}")),
+        }
+    } else {
+        if !stdout.is_empty() {
+            failures.push(format!(
+                "{label}: refusal prose belongs only on stderr; stdout was:\n{stdout}"
+            ));
+        }
+        if stderr != format!("{expected}\n") {
+            failures.push(format!(
+                "{label}: expected this exact refusal on stderr:\n{expected}\nactual:\n{stderr}"
+            ));
+        }
+    }
+    let plans = matching_plan_directories(world);
+    if plans.len() != expected_records {
+        failures.push(format!(
+            "{label}: repeat left {} matching plan directories, expected {expected_records}: {plans:?}",
+            plans.len(),
+        ));
+    }
+    let dispatches = workflow_dispatches(world);
+    if dispatches.len() != expected_records {
+        failures.push(format!(
+            "{label}: repeat left {} ledger dispatches, expected {expected_records}: {dispatches:?}",
+            dispatches.len()
+        ));
+    }
+    let carried = work_root(world).join(".ephor");
+    let carried_count = std::fs::read_dir(&carried)
+        .map(|entries| entries.filter_map(Result::ok).count())
+        .unwrap_or(0);
+    if carried_count != expected_records {
+        failures.push(format!(
+            "{label}: repeat left {carried_count} carried-files directories, expected {expected_records}, in {}",
+            carried.display()
+        ));
+    }
+    let runtime_log = world.read("runtime.log");
+    let starts: Vec<_> = runtime_log
+        .lines()
+        .filter(|line| line.starts_with("run "))
+        .collect();
+    if !starts.is_empty() {
+        failures.push(format!(
+            "{label}: repeat requested runtime starts: {starts:?}"
+        ));
+    }
+}
+
+/// Repeating the same workflow menu action for the unchanged matter refuses
+/// the exact plan its newest matching ledger dispatch recorded
+/// (§FS-005-dispatch.19). The command and screen call this same move
+/// (§AR-009-surfaces.1), so its one refusal is also the TUI status sentence.
+/// Prose and JSON carry the same answer (§FS-011-command-line.1,
+/// §REQ-002-parity.3), and the JSON remains the published `outcome` shape
+/// (§REQ-002-parity.4).
+#[test]
+fn issue_92_repeating_a_workflow_action_refuses_the_recorded_plan() {
+    let world = watching();
+    let plan = lay_by_action(&world);
+    let dispatch = workflow_dispatches(&world);
+    assert_eq!(dispatch.len(), 1, "setup must record exactly one laying");
+    assert_eq!(dispatch[0]["recipe"], json!(WORKFLOW_ENTRY));
+    assert_eq!(dispatch[0]["plan"], json!(WORKFLOW_PLAN));
+
+    std::fs::write(world.path().join("runtime.log"), "").expect("clear setup runtime traces");
+    let expected = repeat_refusal(&plan);
+    let mut failures = Vec::new();
+
+    let prose = action_output(&world, &[]);
+    check_repeat(
+        &mut failures,
+        "prose repeat",
+        &world,
+        &prose,
+        &expected,
+        false,
+        1,
+    );
+    let machine = action_output(&world, &["--json"]);
+    check_repeat(
+        &mut failures,
+        "JSON repeat",
+        &world,
+        &machine,
+        &expected,
+        true,
+        1,
+    );
+
+    assert!(
+        failures.is_empty(),
+        "issue #92 workflow-action contract failed:\n- {}",
+        failures.join("\n- ")
+    );
+}
+
+fn change_cached_matter(world: &World, change: impl FnOnce(&mut serde_json::Value)) {
+    let path = world
+        .path()
+        .join("state/ephor/feed")
+        .join(format!("{PROJECT}.json"));
+    let mut feed = read_json(&path);
+    let matter = feed["providers"]
+        .as_object_mut()
+        .expect("feed providers")
+        .values_mut()
+        .filter_map(|slot| slot["matters"].as_array_mut())
+        .flatten()
+        .find(|matter| matter["key"] == WORKFLOW_ITEM || matter["id"] == WORKFLOW_ITEM)
+        .expect("the workflow matter");
+    change(matter);
+    write_json(&path, &feed);
+}
+
+fn replace_cached_updated_at(world: &World, updated_at: &str) {
+    change_cached_matter(world, |matter| matter["updated_at"] = json!(updated_at));
+}
+
+fn add_second_entry_for_same_workflow(world: &World) {
+    let mut config = read_json(&world.config_path());
+    config["actions"] = json!([{
+        "id": "other-review",
+        "icon": "⌘",
+        "description": "review this change another way",
+        "workflow": "changeset-review",
+        "when": { "kinds": ["pr"] },
+        "inputs": { "change_ref": "{repo}#{number}",
+                    "dossier_path": "{dossier}", "item_path": "{item}" }
+    }]);
+    write_json(&world.config_path(), &config);
+}
+
+/// Only positive ledger evidence blocks a workflow action
+/// (§FS-005-dispatch.19): absence, a different entry id (even one naming the
+/// same runtime workflow), a changed snapshot, and a missing recorded plan
+/// retain the existing laying behavior. Entry id, not workflow name, is the
+/// action identity.
+#[test]
+fn issue_92_duplicate_identity_and_stale_evidence_boundaries() {
+    let first = watching();
+    let first_output = action_output(&first, &[]);
+    assert!(
+        first_output.status.success(),
+        "no record remains a first laying"
+    );
+    assert_eq!(workflow_dispatches(&first).len(), 1);
+
+    let another = watching();
+    lay_by_action(&another);
+    add_second_entry_for_same_workflow(&another);
+    let other = another
+        .ephor()
+        .args(["actions", "run", "other-review", "--item", WORKFLOW_ITEM])
+        .output()
+        .expect("the other action runs");
+    assert!(
+        other.status.success(),
+        "another entry using the same workflow was refused:\n{}",
+        String::from_utf8_lossy(&other.stderr)
+    );
+    assert_eq!(workflow_dispatches(&another).len(), 2);
+
+    let changed = watching();
+    lay_by_action(&changed);
+    replace_cached_updated_at(&changed, "2026-07-31T12:00:00Z");
+    let moved = action_output(&changed, &[]);
+    assert!(
+        moved.status.success(),
+        "a changed matter was refused:\n{}",
+        String::from_utf8_lossy(&moved.stderr)
+    );
+    assert_eq!(workflow_dispatches(&changed).len(), 2);
+
+    let missing = watching();
+    let absent_plan = lay_by_action(&missing);
+    std::fs::remove_dir_all(&absent_plan).expect("remove the recorded plan");
+    let laid_again = action_output(&missing, &[]);
+    assert!(
+        laid_again.status.success(),
+        "a missing recorded plan became positive duplicate evidence:\n{}",
+        String::from_utf8_lossy(&laid_again.stderr)
+    );
+    assert_eq!(workflow_dispatches(&missing).len(), 2);
+    assert!(absent_plan.join("index.rhei.md").is_file());
+
+    let finished = watching();
+    change_cached_matter(&finished, |matter| matter["state"] = json!("merged"));
+    let menu = finished
+        .ephor()
+        .args(["actions", "--item", WORKFLOW_ITEM, "--json"])
+        .output()
+        .expect("the finished matter's menu");
+    let menu = shaped("actions", &menu);
+    assert!(
+        menu["offers"]
+            .as_array()
+            .expect("the action offers")
+            .iter()
+            .all(|offer| offer["id"] != WORKFLOW_ENTRY),
+        "a finished matter was offered a workflow: {menu}"
+    );
+}
+
+/// When a changed matter legitimately laid the same entry again, the newest
+/// matching dispatch is the duplicate evidence and the refusal names its
+/// exact plan (§FS-005-dispatch.19), not the older plan for the earlier
+/// snapshot.
+#[test]
+fn issue_92_newest_matching_dispatch_selects_its_exact_plan() {
+    let world = watching();
+    lay_by_action(&world);
+    replace_cached_updated_at(&world, "2026-07-31T12:00:00Z");
+    let second = action_output(&world, &[]);
+    assert!(
+        second.status.success(),
+        "the changed matter could not lay its second plan"
+    );
+    let plan = work_root(&world).join(format!("{WORKFLOW_PLAN}-2"));
+    assert!(plan.join("index.rhei.md").is_file());
+    assert_eq!(workflow_dispatches(&world).len(), 2);
+
+    std::fs::write(world.path().join("runtime.log"), "").unwrap();
+    let output = action_output(&world, &[]);
+    let mut failures = Vec::new();
+    check_repeat(
+        &mut failures,
+        "repeat after a changed-matter laying",
+        &world,
+        &output,
+        &repeat_refusal(&plan),
+        false,
+        2,
+    );
+    assert!(
+        failures.is_empty(),
+        "issue #92 newest-dispatch contract failed:\n- {}",
+        failures.join("\n- ")
+    );
+}
+
+fn require_confirmation(world: &World) {
+    let path = world.path().join("workflows/changeset-review/.ephor.json");
+    let mut entry = read_json(&path);
+    entry["confirm"] = json!(true);
+    write_json(&path, &entry);
+}
+
+/// Once the ledger supplies positive duplicate evidence, input overrides,
+/// confirmation, dry-run, and a finished recorded workflow cannot turn the
+/// repeat into a new laying (§FS-005-dispatch.19). The deliberate route to a
+/// second plan remains `work lay`.
+#[test]
+fn issue_92_duplicate_guard_precedes_inputs_confirmation_dry_run_and_finish() {
+    let mut failures = Vec::new();
+
+    for (label, tail) in [
+        ("input override", vec!["--set", "change_ref=elsewhere#2"]),
+        ("dry run", vec!["--dry-run"]),
+    ] {
+        let world = watching();
+        let plan = lay_by_action(&world);
+        std::fs::write(world.path().join("runtime.log"), "").unwrap();
+        let output = action_output(&world, &tail);
+        check_repeat(
+            &mut failures,
+            label,
+            &world,
+            &output,
+            &repeat_refusal(&plan),
+            false,
+            1,
+        );
+    }
+
+    let confirmed = watching();
+    require_confirmation(&confirmed);
+    let first = action_output(&confirmed, &["--yes"]);
+    assert!(first.status.success(), "confirmed setup laying failed");
+    let plan = work_root(&confirmed).join(WORKFLOW_PLAN);
+    std::fs::write(confirmed.path().join("runtime.log"), "").unwrap();
+    let repeat = action_output(&confirmed, &["--yes"]);
+    check_repeat(
+        &mut failures,
+        "confirmed repeat",
+        &confirmed,
+        &repeat,
+        &repeat_refusal(&plan),
+        false,
+        1,
+    );
+
+    let finished = watching();
+    let plan = lay_by_action(&finished);
+    std::fs::write(
+        plan.join("tasks/01-finished.md"),
+        "### Task review: review it\n**State:** done\n\nfinished\n",
+    )
+    .expect("write a finished workflow task");
+    std::fs::write(finished.path().join("runtime.log"), "").unwrap();
+    let repeat = action_output(&finished, &[]);
+    check_repeat(
+        &mut failures,
+        "finished recorded workflow",
+        &finished,
+        &repeat,
+        &repeat_refusal(&plan),
+        false,
+        1,
+    );
+
+    assert!(
+        failures.is_empty(),
+        "issue #92 duplicate guard boundaries failed:\n- {}",
+        failures.join("\n- ")
     );
 }
 
