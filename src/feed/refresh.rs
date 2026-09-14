@@ -846,7 +846,9 @@ mod tests {
             reconcile_custom_status_answer_matters(vec![reappeared], Some(disappeared.as_slice()));
         assert_eq!(
             reappeared[0].updated_at,
-            "2026-09-05T00:00:00Z".parse().unwrap()
+            "2026-09-05T00:00:00Z"
+                .parse::<chrono::DateTime<chrono::Utc>>()
+                .unwrap()
         );
 
         let authoritative = answer_matter("poll:fixed", "2026-09-06T00:00:00Z", true);
@@ -856,7 +858,9 @@ mod tests {
         );
         assert_eq!(
             authoritative[0].updated_at,
-            "2026-09-06T00:00:00Z".parse().unwrap()
+            "2026-09-06T00:00:00Z"
+                .parse::<chrono::DateTime<chrono::Utc>>()
+                .unwrap()
         );
     }
 

@@ -1178,20 +1178,59 @@ fn custom_status_answer_explicit_false_keeps_a_terminal_spelling_open() {
 #[test]
 fn custom_status_answer_typed_metadata_wins_passthrough_conflicts() {
     let tmp = tempdir();
+    let mut answer = custom_answer(
+        None,
+        "waiting",
+        Some(false),
+        json!({
+            "terminal": "pretender",
+            "refs": ["passthrough-ref"],
+            "episode": "fixed",
+            "_ephor": {
+                "keep": "unrelated-passthrough",
+                "custom_status_answer": {
+                    "time_supplied": true,
+                    "terminal": "pretender"
+                }
+            }
+        }),
+    );
+    answer["matters"][0]["refs"] = json!([]);
+    write_custom_answer_fixture(tmp.path(), &answer);
+    refresh_custom_answer(tmp.path());
+
+    let raw = custom_answer_matter(tmp.path())["raw"].clone();
+    assert_eq!(raw["terminal"], false);
+    assert_eq!(raw["refs"], json!([]));
+    assert_eq!(raw["episode"], "fixed");
+    assert_eq!(raw["_ephor"]["keep"], "unrelated-passthrough");
+    assert_eq!(
+        raw["_ephor"]["custom_status_answer"]["time_supplied"],
+        false
+    );
+    assert_eq!(raw["_ephor"]["custom_status_answer"]["terminal"], false);
+}
+
+/// An omitted typed list leaves same-named passthrough untouched, unlike an
+/// explicitly supplied empty list (§FS-006-project-interface.4).
+#[test]
+fn custom_status_answer_omitted_refs_preserve_passthrough() {
+    let tmp = tempdir();
     write_custom_answer_fixture(
         tmp.path(),
         &custom_answer(
             None,
             "waiting",
             Some(false),
-            json!({ "terminal": "pretender", "episode": "fixed" }),
+            json!({ "refs": ["passthrough-ref"] }),
         ),
     );
     refresh_custom_answer(tmp.path());
 
-    let raw = custom_answer_matter(tmp.path())["raw"].clone();
-    assert_eq!(raw["terminal"], false);
-    assert_eq!(raw["episode"], "fixed");
+    assert_eq!(
+        custom_answer_matter(tmp.path())["raw"]["refs"],
+        json!(["passthrough-ref"])
+    );
 }
 
 /// Passthrough named `terminal` is still data when the typed field is absent:
