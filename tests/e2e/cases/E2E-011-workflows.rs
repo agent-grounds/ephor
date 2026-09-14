@@ -428,6 +428,15 @@ fn check_repeat(
         ));
     }
     let runtime_log = world.read("runtime.log");
+    let instantiations: Vec<_> = runtime_log
+        .lines()
+        .filter(|line| line.starts_with("instantiate "))
+        .collect();
+    if !instantiations.is_empty() {
+        failures.push(format!(
+            "{label}: repeat asked the runtime to instantiate: {instantiations:?}"
+        ));
+    }
     let starts: Vec<_> = runtime_log
         .lines()
         .filter(|line| line.starts_with("run "))
