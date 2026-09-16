@@ -38,7 +38,8 @@ use crate::feed::provider::{
 };
 use crate::feed::providers::github;
 use crate::feed::providers::{
-    gh_command, github_login, parse_config, parse_github_time, restart_actions, show_failing_checks,
+    gh_command, github_login, names_under, parse_config, parse_github_time, restart_actions,
+    show_failing_checks,
 };
 use crate::forge::{policy, Message, PullRequest, Reason, Review, Role, Thread};
 
@@ -112,6 +113,7 @@ id author{login} body createdAt reactions(first:50){nodes{content user{login}}}}
 /// an unattended sweep turns on (§FS-004-quick-actions.6.1).
 const SEARCH_SELECTION: &str = "... on PullRequest{\
 number title url updatedAt state headRefName reviewDecision isDraft \
+assignees(first:20){nodes{login}} labels(first:20){nodes{name}} \
 repository{nameWithOwner}}";
 
 /// The searches that put a pull request in front of the user, and the reason
@@ -636,6 +638,8 @@ impl Provider for GithubPrs {
                 review,
                 threads,
                 gate,
+                assignees: names_under(&pull, "/assignees/nodes", "login"),
+                labels: names_under(&pull, "/labels/nodes", "name"),
             };
             items.push(policy::pull_request_item(
                 "github-prs",

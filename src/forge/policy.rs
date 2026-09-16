@@ -262,6 +262,7 @@ pub fn pull_request_item(forge: &str, project: &str, pr: &PullRequest) -> Item {
                 .collect::<Vec<_>>()),
         );
     }
+    insert_held_and_labelled(&mut raw, pr.assignees.as_deref(), pr.labels.as_deref());
 
     let mut item = Item {
         id: format!("{forge}:{}", pr.id),
@@ -278,6 +279,23 @@ pub fn pull_request_item(forge: &str, project: &str, pr: &PullRequest) -> Item {
     };
     settle(&mut item);
     item
+}
+
+/// Carry what the forge said about who holds a matter and what it is labelled
+/// into the item, where a selector reads it (§FS-005-dispatch.31). A key is
+/// written only where the source reported one, because the absent key is how a
+/// selector tells silence from an empty list and refuses rather than matching.
+fn insert_held_and_labelled(
+    raw: &mut serde_json::Map<String, Value>,
+    assignees: Option<&[String]>,
+    labels: Option<&[String]>,
+) {
+    if let Some(assignees) = assignees {
+        raw.insert("assignees".to_string(), json!(assignees));
+    }
+    if let Some(labels) = labels {
+        raw.insert("labels".to_string(), json!(labels));
+    }
 }
 
 /// One notice as a feed item (§FS-001-forge-interface.1).
@@ -416,6 +434,11 @@ pub fn issue_item(forge: &str, project: &str, issue: &Issue, unclaimed: Unclaime
             serde_json::to_value(blocked_by).unwrap_or_else(|_| json!([])),
         );
     }
+    insert_held_and_labelled(
+        &mut raw,
+        issue.assignees.as_deref(),
+        issue.labels.as_deref(),
+    );
     let raw = if raw.is_empty() {
         Value::Null
     } else {
@@ -485,6 +508,8 @@ mod tests {
             review: None,
             threads,
             gate: None,
+            assignees: None,
+            labels: None,
         }
     }
 
@@ -1000,6 +1025,8 @@ mod tests {
             updated_at: Utc::now(),
             role: Role::Author,
             assigned: None,
+            assignees: None,
+            labels: None,
             blocked_by: None,
             messages: vec![message("them", false)],
         };
@@ -1026,6 +1053,8 @@ mod tests {
             updated_at: Utc::now(),
             role: Role::Author,
             assigned: None,
+            assignees: None,
+            labels: None,
             blocked_by: None,
             messages: vec![message("me", true), message("them", false)],
         };
@@ -1053,6 +1082,8 @@ mod tests {
             updated_at: Utc::now(),
             role: Role::Author,
             assigned: None,
+            assignees: None,
+            labels: None,
             blocked_by: None,
             messages: vec![message("me", true), message("them", false)],
         };
@@ -1090,6 +1121,8 @@ mod tests {
             updated_at: Utc::now(),
             role: Role::Author,
             assigned: Some(false),
+            assignees: None,
+            labels: None,
             blocked_by: None,
             // The reader's own issue, never answered: silent in the most
             // misleading way available.
@@ -1106,6 +1139,8 @@ mod tests {
         // as it always did.
         let taken = Issue {
             assigned: Some(true),
+            assignees: None,
+            labels: None,
             ..unclaimed.clone()
         };
         assert!(!issue_item("github-issues", "widget", &taken, Unclaimed::Awaits).needs_response);
@@ -1115,6 +1150,8 @@ mod tests {
         // (§FS-001-forge-interface.1).
         let unsaid = Issue {
             assigned: None,
+            assignees: None,
+            labels: None,
             ..unclaimed.clone()
         };
         assert!(!issue_item("github-issues", "widget", &unsaid, Unclaimed::Awaits).needs_response);
@@ -1141,6 +1178,8 @@ mod tests {
             updated_at: Utc::now(),
             role: Role::Author,
             assigned: Some(false),
+            assignees: None,
+            labels: None,
             blocked_by: Some(vec![crate::forge::IssueDependency {
                 key: "acme/widget#6".to_string(),
                 title: "Repair section ownership".to_string(),
@@ -1188,6 +1227,8 @@ mod tests {
             updated_at: Utc::now(),
             role: Role::Reviewer,
             assigned: None,
+            assignees: None,
+            labels: None,
             blocked_by: None,
             messages: Vec::new(),
         };
