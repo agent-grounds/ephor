@@ -62,6 +62,13 @@ a plan in a checkout root says this work is confined to this tree, and a root
 that held everything would say nothing. The rule is only worth having in its
 strict form.
 
+Configuration is how a person makes that claim. A recipe or work entry may
+choose its own root, so one project can place a checkout-local fix and a
+project-wide sweep at their respective smallest scopes. Ephor renders that
+choice; it does not infer reach from the work or introduce a second scope
+classification that could disagree with the configured path
+([§FS-005-dispatch.6.1](FS-005-dispatch.md#61-the-work-root-is-a-template-and-it-may-reach-above-the-project)).
+
 ## 3. Upper scopes decide, the checkout scope executes
 
 Work above a checkout surveys, decides and reports. Where it finds something
@@ -134,16 +141,13 @@ name.
 
 ## 7. What is not yet held
 
-Three parts of the rule above are this program's to enforce and are not yet
-enforced. Saying so costs a paragraph; a reader discovering it from behaviour
-costs more.
+Two parts of the rule above are this program's to enforce and are not yet
+enforced. Placement is no longer one of them: recipes and work entries can
+choose independently, and the ledger retains every resulting root
+([§FS-005-dispatch.6.1](FS-005-dispatch.md#61-the-work-root-is-a-template-and-it-may-reach-above-the-project),
+[§FS-005-dispatch.15.1](FS-005-dispatch.md#151-the-board-keeps-itself-current)). Saying what remains costs a
+paragraph; a reader discovering it from behaviour costs more.
 
-- **Placement is chosen per project, not per entry.** One project's dispatches
-  are placed by one answer, so a project cannot send fixes to minted checkouts
-  and sweeps to its own root at the same time ([§FS-005-dispatch.25](FS-005-dispatch.md#25-work-about-a-matter-with-no-branch-can-mint-the-branch-it-needs) mints the
-  branch, [§FS-005-dispatch.6.1](FS-005-dispatch.md#61-the-work-root-is-a-template-and-it-may-reach-above-the-project) renders the root, and neither varies by entry).
-  Until placement is per entry, [§2](#2-reach-places-and-nothing-else-does) is a rule a person applies by configuring one
-  scope at a time.
 - **A mutating verb above a checkout does not yet report by default.** [§3](#3-upper-scopes-decide-the-checkout-scope-executes) says
   upper scopes decide and hand down; nothing refuses a verb that would act at
   organization or project scope instead, so today the division holds only

@@ -379,6 +379,50 @@ fn tree_snapshot(root: &std::path::Path) -> Vec<(std::path::PathBuf, Option<Vec<
     found
 }
 
+/// A workflow lay, its carried `.ephor` files, and every shared bootstrap file
+/// are one unsaved batch. If the ledger commit fails, an existing root is
+/// byte-for-byte what it was before and the original save diagnostic is kept
+/// (§FS-005-dispatch.4).
+#[test]
+fn issue_43_failed_save_rolls_back_workflow_and_carried_artifacts() {
+    let world = watching();
+    lay_by_action(&world);
+    let root = work_root(&world);
+    let before_tree = tree_snapshot(&root);
+    let ledger_path = world.path().join("state/ephor/work.json");
+    let before_ledger = std::fs::read(&ledger_path).expect("the committed ledger");
+
+    let entry_path = world.path().join("workflows/changeset-review/.ephor.json");
+    let mut entry = read_json(&entry_path);
+    entry["id"] = json!("second-review");
+    entry["description"] = json!("lay a second review");
+    write_json(&entry_path, &entry);
+
+    let temporary = ledger_path.with_extension("json.tmp");
+    std::fs::create_dir_all(&temporary).expect("force the real ledger write failure");
+    let output = world
+        .ephor()
+        .args(["actions", "run", "second-review", "--item", WORKFLOW_ITEM])
+        .output()
+        .expect("the workflow action runs");
+    assert_eq!(output.status.code(), Some(1));
+    assert_eq!(
+        String::from_utf8_lossy(&output.stderr).trim(),
+        format!(
+            "Cannot write {}: Is a directory (os error 21)",
+            temporary.display()
+        )
+    );
+    assert!(
+        tree_snapshot(&root) == before_tree,
+        "the failed workflow batch changed the existing work root"
+    );
+    assert!(
+        std::fs::read(&ledger_path).unwrap() == before_ledger,
+        "the failed workflow batch changed the committed ledger"
+    );
+}
+
 fn repeat_refusal(plan: &std::path::Path) -> String {
     format!(
         "{WORKFLOW_ENTRY} already laid {} for {WORKFLOW_ITEM}; start that work with \
@@ -2137,6 +2181,144 @@ exit 1
             .args(["work", "run", "--item", item, "--json"])
             .output()
             .expect("the key runs")
+    }
+
+    /// A new ephor process reads every placement retained for one matter.
+    /// Listing/status, due work, named and plain runs, and workflow repeat
+    /// detection all consume that one bounded reading rather than the latest
+    /// item-level root (§FS-005-dispatch.15.1, §FS-005-dispatch.28,
+    /// §FS-005-dispatch.30).
+    #[test]
+    fn issue_43_restart_reaches_recipe_and_workflow_plans_in_two_roots() {
+        let world = world(
+            "acme-two-roots",
+            &format!("{RENDERS}{DETACHES}{REFUSES}"),
+            false,
+        );
+        world.configure(json!({
+            "projects": { PROJECT: {
+                "providers": [ { "provider": "acmeforge", "user": "you", "repos": ["widget"] } ]
+            } },
+            "work": {
+                "runner": "acme-two-roots",
+                "recipes": [{
+                    "id": "triage", "icon": "◆", "description": "look at the issue",
+                    "state": "fix", "when": { "kinds": ["issue"] },
+                    "brief": "Look at {title}."
+                }]
+            }
+        }));
+        dispatch(&world, &["--item", ITEM, "--recipe", "triage"]);
+        world
+            .ephor()
+            .args(["work", "lay", "fix-issue", "--item", ITEM])
+            .assert()
+            .success();
+
+        let recipe_root = work_root(&world);
+        let workflow_root = world.path().join("project-panta");
+        std::fs::create_dir_all(&workflow_root).unwrap();
+        for file in ["index.panta.md", "states.yaml", ".gitignore"] {
+            std::fs::copy(recipe_root.join(file), workflow_root.join(file)).unwrap();
+        }
+        std::fs::rename(recipe_root.join(LAID), workflow_root.join(LAID)).unwrap();
+        let carried = recipe_root.join(".ephor").join(LAID);
+        if carried.exists() {
+            std::fs::create_dir_all(workflow_root.join(".ephor")).unwrap();
+            std::fs::rename(&carried, workflow_root.join(".ephor").join(LAID)).unwrap();
+        }
+
+        // This is the shape a process restarted after two committed
+        // placements reads. The item-level fields describe the latest root;
+        // only the recipe dispatch retains the earlier one.
+        let ledger_path = world.path().join("state/ephor/work.json");
+        let mut ledger = read_json(&ledger_path);
+        let entry = &mut ledger["entries"][ITEM];
+        entry["root"] = json!(workflow_root);
+        entry["plan"] = json!(workflow_root.join(format!("{OWN}.rhei.md")));
+        for dispatch in entry["dispatches"].as_array_mut().unwrap() {
+            let root = if dispatch["plan"].is_null() {
+                &recipe_root
+            } else {
+                &workflow_root
+            };
+            dispatch["root"] = json!(root);
+            dispatch["checkout"] = json!(world.forest());
+            dispatch["branch"] = serde_json::Value::Null;
+        }
+        write_json(&ledger_path, &ledger);
+
+        let entry_path = world.path().join("workflows/supervised-fix/.ephor.json");
+        let mut workflow_entry = read_json(&entry_path);
+        workflow_entry["autorun"] = json!(true);
+        write_json(&entry_path, &workflow_entry);
+        world.configure(json!({
+            "projects": { PROJECT: {
+                "providers": [ { "provider": "acmeforge", "user": "you", "repos": ["widget"] } ]
+            } },
+            "work": {
+                "root": workflow_root,
+                "runner": "acme-two-roots",
+                "recipes": [{
+                    "id": "triage", "icon": "◆", "description": "look at the issue",
+                    "state": "fix", "autorun": true,
+                    "when": { "kinds": ["issue"] }, "brief": "Look at {title}."
+                }]
+            }
+        }));
+
+        // Every invocation below is a fresh process. The configured and
+        // latest root is the workflow root; the recipe root is reachable only
+        // from per-dispatch provenance.
+        let listed = world
+            .ephor()
+            .args(["work", "list", "--json"])
+            .output()
+            .expect("a fresh process lists work");
+        assert!(
+            listed.status.success(),
+            "{}",
+            String::from_utf8_lossy(&listed.stderr)
+        );
+        let listing = json_of(&listed).to_string();
+        assert!(
+            listing.contains("triage-1"),
+            "the earlier recipe plan is absent: {listing}"
+        );
+        assert!(
+            listing.contains(LAID),
+            "the later workflow plan is absent: {listing}"
+        );
+
+        let repeat = world
+            .ephor()
+            .args(["actions", "run", "fix-issue", "--item", ITEM])
+            .output()
+            .expect("repeat detection runs in a fresh process");
+        assert_eq!(repeat.status.code(), Some(1));
+        assert!(
+            String::from_utf8_lossy(&repeat.stderr).contains("already"),
+            "repeat detection lost the recorded workflow: {}",
+            String::from_utf8_lossy(&repeat.stderr)
+        );
+
+        for args in [
+            vec!["work", "run", "--due", "--json"],
+            vec!["work", "run", "--item", ITEM, "--json"],
+            vec!["work", "run", "--json"],
+        ] {
+            forget_runs(&world);
+            let output = world.ephor().args(args).output().expect("a run starts");
+            assert!(
+                output.status.success(),
+                "{}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+            let mut plans = plans_run(&world);
+            plans.sort();
+            plans.dedup();
+            assert_eq!(plans, [LAID.to_string(), OWN.to_string()]);
+        }
     }
 
     /// The key reaches the plan a workflow laid, and names *that* plan to the

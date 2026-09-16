@@ -451,7 +451,43 @@ impl Entry {
 }
 
 pub fn ledger_path() -> PathBuf {
+    #[cfg(test)]
+    if let Some(path) = TEST_LEDGER_PATH.with(|slot| slot.borrow().clone()) {
+        return path;
+    }
     paths::state_dir().join("work.json")
+}
+
+#[cfg(test)]
+thread_local! {
+    static TEST_LEDGER_PATH: std::cell::RefCell<Option<PathBuf>> = const {
+        std::cell::RefCell::new(None)
+    };
+}
+
+/// Point this thread's unit-test ledger at an isolated file. Production and
+/// integration builds do not contain this hook; it lets a unit test force the
+/// real atomic store failure without racing the process environment.
+#[cfg(test)]
+pub(super) fn use_test_path(path: PathBuf) -> TestLedgerPath {
+    TEST_LEDGER_PATH.with(|slot| {
+        assert!(
+            slot.borrow().is_none(),
+            "a test ledger path is already active"
+        );
+        *slot.borrow_mut() = Some(path);
+    });
+    TestLedgerPath
+}
+
+#[cfg(test)]
+pub(super) struct TestLedgerPath;
+
+#[cfg(test)]
+impl Drop for TestLedgerPath {
+    fn drop(&mut self) {
+        TEST_LEDGER_PATH.with(|slot| *slot.borrow_mut() = None);
+    }
 }
 
 pub fn load() -> Result<Ledger> {
@@ -607,6 +643,29 @@ mod tests {
 #[cfg(test)]
 mod compat_tests {
     use super::*;
+
+    /// Placement provenance is retained on each dispatch and is additive in
+    /// the ledger machine form (§FS-005-dispatch.4).
+    #[test]
+    fn issue_43_dispatch_round_trips_its_root_checkout_and_branch() {
+        let dispatch: Dispatch = serde_json::from_value(serde_json::json!({
+            "ticket": "fix-1",
+            "recipe": "fix",
+            "at": "2026-09-16T12:00:00Z",
+            "root": "/work/checkout/panta",
+            "checkout": "/work/checkout",
+            "branch": "fix/issue-43",
+            "snapshot": {
+                "updated_at": "2026-09-16T11:00:00Z"
+            }
+        }))
+        .expect("the additive placement fields read");
+
+        let written = serde_json::to_value(dispatch).expect("the dispatch writes back");
+        assert_eq!(written["root"], "/work/checkout/panta");
+        assert_eq!(written["checkout"], "/work/checkout");
+        assert_eq!(written["branch"], "fix/issue-43");
+    }
 
     /// A ledger written before the runtime was carved out still reads: the
     /// field was named for the runtime and is named for the plan now, and the
