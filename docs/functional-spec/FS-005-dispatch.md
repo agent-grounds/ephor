@@ -2661,3 +2661,66 @@ orders the guards again at its own surface. Thus a root with both an unreadable
 machine or wrong checkout branch and a live run is refused for the root fact
 on every surface. `--force` changes only the live-run answer: it never turns a
 root refusal into a runnable root.
+
+## 31. A selector can ask who holds a matter, and what it is labelled
+
+[§1](#1-a-recipe-decides-which-items-deserve-work-and-what-to-ask-for) gave the
+selector the vocabulary of the *matter itself* — its kind, the reader's role on
+it, what its gate is doing, whether it owes an answer, which source reported
+it. That vocabulary cannot express the one distinction a busy tracker is
+actually organized around: **which of these is mine to do, and which belongs to
+something else already working the queue.** A repository whose automation files
+its own issues gives every one of them the same kind, the same role, and the
+same source as the reader's own, so a selector over that vocabulary either
+takes the automation's queue along with the reader's or takes neither. A reader
+who cannot say *this one is mine* dispatches blind, and a sweep that runs with
+nobody present ([§24](#24-work-nobody-has-to-start-starts-itself)) makes that
+the expensive kind of blind.
+
+Two forge facts answer it, and a selector asks about both:
+
+- **`assignees`** — the logins the forge says hold this matter. This is the
+  *who*, and it is the difference between a backlog and an assignment.
+  [§FS-001-forge-interface.1](FS-001-forge-interface.md#1-capabilities) already
+  has `assigned`, but that is a yes-or-no about anybody at all: it can say a
+  matter is taken and never say by whom, which is precisely the question a
+  reader filtering their own work is asking.
+- **`labels`** — the words the forge carries on the matter. This is the *what*,
+  and on a tracker whose automation labels its own work it is the boundary
+  between one pipeline's queue and another's.
+
+**A positive asks for any; a negative forbids every one.** An entry is either a
+plain name, which the matter must carry at least one of, or a name behind `!`,
+which the matter must not carry at all. `["enhancement", "!GenAI"]` is
+therefore *labelled `enhancement`, and not labelled `GenAI`* — the ordinary
+shape of a queue a reader keeps and a machine feeds. The two halves are asked
+independently: all negatives must hold, and the positives, where any were
+written, must find one. This is the any-of rule `kinds`, `roles` and `sources`
+already follow ([§1](#1-a-recipe-decides-which-items-deserve-work-and-what-to-ask-for)),
+with the refusal the other three have no need of.
+
+**A fact nobody reported refuses, and never matches.** A source that says
+nothing about labels or assignees has not said the matter is unlabelled or
+unheld — it has said nothing, and the distinction is the same one `assigned`
+is already careful about
+([§FS-001-forge-interface.1](FS-001-forge-interface.md#1-capabilities)). So a
+selector that asks either question of a matter carrying no such report refuses
+it, exactly as a selector asking about a checkout it could not measure refuses
+([§FS-004-quick-actions.6](FS-004-quick-actions.md#6-a-branch-that-trails-its-main-branch-is-offered-the-rebase)).
+The negative form refuses on silence too, and deliberately: reading "no labels
+were reported" as "this one is not labelled `GenAI`" would hand the automation's
+queue to an unattended sweep on the strength of a fact nobody stated. A matter
+whose source *did* report, and reported none, is a matter with no labels, and
+answers both forms as such.
+
+**The question costs nothing extra to ask.** Both facts ride the search a
+refresh already makes, as fields on the request rather than a request of their
+own, so a selector gaining this vocabulary does not make a refresh dearer
+([§FS-001-forge-interface.8](FS-001-forge-interface.md#8-a-refresh-is-asked-in-the-cheapest-form-the-forge-offers)).
+
+**A refusal names the field, as every other refusal does.** `ephor work offers`
+says which of the two refused and what the matter carried instead
+([§27](#27-an-offer-that-a-selector-refused-says-why)), including the case where
+the source reported nothing — a reader whose recipe silently stopped matching
+must be able to tell a matter that failed the filter from a source that never
+answered it.
