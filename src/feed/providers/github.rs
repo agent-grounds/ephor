@@ -473,6 +473,22 @@ pub(crate) fn github_login(
     Ok(login)
 }
 
+/// The `field` of every node under `pointer` — the shape GitHub answers a
+/// connection in (§FS-005-dispatch.31). `None` where the connection is absent
+/// from the result, which is what keeps "the search did not ask" apart from
+/// "the search asked and there are none".
+pub(crate) fn names_under(found: &Value, pointer: &str, field: &str) -> Option<Vec<String>> {
+    Some(
+        found
+            .pointer(pointer)?
+            .as_array()?
+            .iter()
+            .filter_map(|node| node.get(field).and_then(Value::as_str))
+            .map(String::from)
+            .collect(),
+    )
+}
+
 pub(crate) fn parse_github_time(value: &Value) -> chrono::DateTime<chrono::Utc> {
     value
         .as_str()

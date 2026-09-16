@@ -326,6 +326,18 @@ pub struct PullRequest {
     pub threads: Vec<Thread>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub gate: Option<Gate>,
+    /// The logins holding this pull request, where the forge tracks that
+    /// (§FS-005-dispatch.31). `None` is an implementation that does not report
+    /// assignment, and it is kept apart from `Some([])` for the reason
+    /// [`Issue::assigned`] is: a selector must be able to refuse on silence
+    /// rather than read it as "nobody holds this".
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub assignees: Option<Vec<String>>,
+    /// The labels the forge carries on this pull request
+    /// (§FS-005-dispatch.31), with `None` and `Some([])` apart for the same
+    /// reason.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub labels: Option<Vec<String>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -351,6 +363,17 @@ pub struct Issue {
     /// made must never be counted as unclaimed work.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub assigned: Option<bool>,
+    /// The logins holding this issue, where the forge names them
+    /// (§FS-005-dispatch.31). `assigned` above answers *whether anybody* has
+    /// it; this answers *who*, which is the question a reader filtering their
+    /// own work asks. `None` and `Some([])` stay apart for the reason
+    /// `assigned` keeps them apart.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub assignees: Option<Vec<String>>,
+    /// The labels the forge carries on this issue (§FS-005-dispatch.31), with
+    /// `None` and `Some([])` apart for the same reason.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub labels: Option<Vec<String>>,
     /// The forge's first-class dependencies for this issue
     /// (§FS-001-forge-interface.1). `None` means the implementation has no
     /// dependency notion; `Some([])` means it asked and there are none.

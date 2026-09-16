@@ -1947,8 +1947,34 @@ Finished work never matches.
 | `gate` | `failing` (jobs failed) · `blocked` (the forge refuses) · `red` (either) · `green` · `any` |
 | `needs_response` | `true` / `false` |
 | `sources` | provider names |
+| `assignees` | logins the matter must be held by; `!login` one it must not |
+| `labels` | labels the matter must carry; `!label` one it must not |
 | `behind` | `true` — the branch trails the project's `main_branch` · `false` — level with it |
 | `behind_upstream` | `true` — the branch trails its own **published copy** · `false` — level with it |
+
+**`assignees` and `labels` are how a reader's queue is told from a machine's**
+([§FS-005-dispatch.31](functional-spec/FS-005-dispatch.md#31-a-selector-can-ask-who-holds-a-matter-and-what-it-is-labelled)).
+A repository whose automation files its own issues gives them the same kind,
+the same role and the same source as your own, so no other field separates
+them. Both are asked the same way: a plain name is one the matter must carry —
+any one of them, as `kinds` and `roles` are satisfied by any one — and a name
+behind `!` is one it must not carry at all.
+
+```json
+{ "when": { "kinds": ["issue"], "labels": ["enhancement", "!GenAI"],
+            "assignees": ["kimeta"] } }
+```
+
+*labelled `enhancement`, not labelled `GenAI`, and held by `kimeta`.*
+
+**A fact nobody reported refuses, and never matches.** A source that says
+nothing about labels or assignees has not said the matter is unlabelled or
+unheld, so a selector asking either question of it refuses — including the
+negative form, since reading silence as "not labelled `GenAI`" would hand the
+automation's queue to an unattended sweep on a fact nobody stated. A source
+that *did* report, and reported none, is a matter with no labels and answers
+both forms as such. `github-prs` and `github-issues` report both; every field
+rides the search a refresh already makes, so asking costs no extra call.
 
 A project's own tasks carry no role at all, so a `roles` selector — non-empty
 by definition — excludes every one of them; write a task recipe with `kinds:
