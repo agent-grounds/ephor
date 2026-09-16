@@ -1389,3 +1389,282 @@ fn actions_json_agrees_with_itself_about_the_main_attributed_matter() {
         "{offer}"
     );
 }
+
+/// A recipe root is rendered after branch minting, and later placement of the
+/// same recipe may use the project root without losing the checkout-local
+/// plan. A workflow entry can choose the checkout independently; dry run and
+/// write agree, and ticket ids remain unique across the matter's roots
+/// (§FS-005-dispatch.3, §FS-005-dispatch.6.1,
+/// §FS-005-dispatch.25, §FS-005-dispatch.28).
+#[test]
+fn issue_43_recipe_and_workflow_roots_place_one_matter_in_multiple_scopes() {
+    let world = watching(Some("fix/issue-{number}"), true);
+    world.organize("foundation", "Foundation");
+    let organization_default = world.path().join("organization-default");
+    let configured = |root: &str| {
+        json!({
+            "projects": { PROJECT: {
+                "providers": [
+                    { "provider": "acmeforge", "user": "you", "repos": ["widget"] }
+                ],
+                "work": {
+                    "root": "{root}/project-default",
+                    "recipes": [{
+                        "id": "fix-scope", "description": "fix in its chosen scope",
+                        "state": "fix", "needs_checkout": true,
+                        "branch": "fix/issue-{number}", "root": root,
+                        "when": { "kinds": ["issue"] }, "brief": "Fix {title}."
+                    }]
+                }
+            } },
+            "organizations": {
+                "foundation": { "work": { "root": organization_default } }
+            },
+            "work": { "root": "{workspace}/site-default", "runner": "acme-runtime" }
+        })
+    };
+    world.configure(configured("{workspace}/recipe-panta"));
+
+    let checkout_plan = workspace(&world).join("recipe-panta/acmeforge-acme-widget-95.rhei.md");
+    let preview = world
+        .ephor()
+        .args([
+            "work",
+            "dispatch",
+            "--item",
+            ITEM,
+            "--recipe",
+            "fix-scope",
+            "--dry-run",
+            "--json",
+        ])
+        .assert()
+        .success();
+    assert_eq!(
+        json_of(preview.get_output())["items"][0]["plan"],
+        json!(checkout_plan)
+    );
+    assert!(!workspace(&world).exists(), "a preview minted the checkout");
+
+    world
+        .ephor()
+        .args(["work", "dispatch", "--item", ITEM, "--recipe", "fix-scope"])
+        .assert()
+        .success();
+    assert!(checkout_plan.is_file(), "recipe override did not win");
+    assert!(!world.forest().join("project-default").exists());
+    assert!(!workspace(&world).join("site-default").exists());
+
+    // The same recipe now chooses the project scope. This is a second plan
+    // for the same matter, and its ticket number continues the first plan's
+    // history rather than starting again at one.
+    world.configure(configured("{root}/project-panta"));
+    world
+        .ephor()
+        .args([
+            "work",
+            "dispatch",
+            "--item",
+            ITEM,
+            "--recipe",
+            "fix-scope",
+            "--again",
+        ])
+        .assert()
+        .success();
+    let project_plan = world
+        .forest()
+        .join("project-panta/acmeforge-acme-widget-95.rhei.md");
+    assert!(
+        project_plan.is_file(),
+        "the project-scoped plan was not written"
+    );
+    assert!(std::fs::read_to_string(&project_plan)
+        .unwrap()
+        .contains("Task fix-scope-2"));
+    assert!(std::fs::read_to_string(&checkout_plan)
+        .unwrap()
+        .contains("Task fix-scope-1"));
+
+    // The adjacent workflow entry has its own answer and returns to the
+    // checkout without changing either recipe plan.
+    let entry_path = workflows(&world)
+        .join("supervised-ticket-fix")
+        .join(".ephor.json");
+    let mut entry = read_json(&entry_path);
+    entry["root"] = json!("{workspace}/workflow-panta");
+    write_json(&entry_path, &entry);
+    world
+        .ephor()
+        .args(["work", "lay", "fix-issue", "--item", ITEM])
+        .assert()
+        .success();
+    assert!(
+        workspace(&world)
+            .join("workflow-panta/acmeforge-acme-widget-95-fix-issue/index.rhei.md")
+            .is_file(),
+        "the workflow entry's root did not win"
+    );
+
+    let ledger = read_json(&world.path().join("state/ephor/work.json"));
+    let roots: std::collections::BTreeSet<_> = ledger["entries"][ITEM]["dispatches"]
+        .as_array()
+        .expect("dispatch history")
+        .iter()
+        .filter_map(|dispatch| dispatch["root"].as_str())
+        .collect();
+    assert_eq!(
+        roots.len(),
+        3,
+        "every committed placement is retained: {ledger}"
+    );
+
+    // Omitting the two new override levels preserves the three configured
+    // levels and their project > organization > site precedence.
+    let recipe_without_root = json!({
+        "id": "fix-scope", "description": "fix in its chosen scope",
+        "state": "fix", "needs_checkout": true,
+        "branch": "fix/issue-{number}",
+        "when": { "kinds": ["issue"] }, "brief": "Fix {title}."
+    });
+    world.configure(json!({
+        "projects": { PROJECT: {
+            "providers": [
+                { "provider": "acmeforge", "user": "you", "repos": ["widget"] }
+            ],
+            "work": {
+                "root": "{root}/project-default",
+                "recipes": [recipe_without_root.clone()]
+            }
+        } },
+        "organizations": {
+            "foundation": { "work": { "root": organization_default } }
+        },
+        "work": { "root": "{workspace}/site-default", "runner": "acme-runtime" }
+    }));
+    world
+        .ephor()
+        .args([
+            "work",
+            "dispatch",
+            "--item",
+            ITEM,
+            "--recipe",
+            "fix-scope",
+            "--again",
+        ])
+        .assert()
+        .success();
+    assert!(world
+        .forest()
+        .join("project-default/acmeforge-acme-widget-95.rhei.md")
+        .is_file());
+
+    world.configure(json!({
+        "projects": { PROJECT: {
+            "providers": [
+                { "provider": "acmeforge", "user": "you", "repos": ["widget"] }
+            ],
+            "work": { "recipes": [recipe_without_root.clone()] }
+        } },
+        "organizations": {
+            "foundation": { "work": { "root": organization_default } }
+        },
+        "work": { "root": "{workspace}/site-default", "runner": "acme-runtime" }
+    }));
+    world
+        .ephor()
+        .args([
+            "work",
+            "dispatch",
+            "--item",
+            ITEM,
+            "--recipe",
+            "fix-scope",
+            "--again",
+        ])
+        .assert()
+        .success();
+    assert!(organization_default
+        .join("acmeforge-acme-widget-95.rhei.md")
+        .is_file());
+
+    world.configure(json!({
+        "projects": { PROJECT: {
+            "providers": [
+                { "provider": "acmeforge", "user": "you", "repos": ["widget"] }
+            ],
+            "work": { "recipes": [recipe_without_root.clone()] }
+        } },
+        "work": { "root": "{workspace}/site-default", "runner": "acme-runtime" }
+    }));
+    world
+        .ephor()
+        .args([
+            "work",
+            "dispatch",
+            "--item",
+            ITEM,
+            "--recipe",
+            "fix-scope",
+            "--again",
+        ])
+        .assert()
+        .success();
+    assert!(workspace(&world)
+        .join("site-default/acmeforge-acme-widget-95.rhei.md")
+        .is_file());
+
+    // Ad-hoc work has no recipe or entry override and continues to use the
+    // configured placement.
+    let ask_root = world.forest().join("ask-default");
+    world.configure(json!({
+        "projects": { PROJECT: {
+            "providers": [
+                { "provider": "acmeforge", "user": "you", "repos": ["widget"] }
+            ],
+            "work": { "root": ask_root }
+        } },
+        "work": { "runner": "acme-runtime" }
+    }));
+    world
+        .ephor()
+        .args(["work", "ask", "--item", ITEM, "inspect", "this", "--json"])
+        .assert()
+        .success();
+    assert!(ask_root.join("acmeforge-acme-widget-95.rhei.md").is_file());
+
+    // An override uses the established renderer and therefore preserves its
+    // named refusal for an unanswered placeholder.
+    world.configure(json!({
+        "projects": { PROJECT: {
+            "providers": [
+                { "provider": "acmeforge", "user": "you", "repos": ["widget"] }
+            ],
+            "work": {
+                "recipes": [{
+                    "id": "fix-scope", "description": "fix in its chosen scope",
+                    "state": "fix", "needs_checkout": true,
+                    "branch": "fix/issue-{number}", "root": "{unanswered}/panta",
+                    "when": { "kinds": ["issue"] }, "brief": "Fix {title}."
+                }]
+            }
+        } },
+        "work": { "runner": "acme-runtime" }
+    }));
+    world
+        .ephor()
+        .args([
+            "work",
+            "dispatch",
+            "--item",
+            ITEM,
+            "--recipe",
+            "fix-scope",
+            "--again",
+            "--dry-run",
+        ])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("unanswered"));
+}

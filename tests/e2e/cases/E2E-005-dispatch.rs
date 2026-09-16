@@ -168,6 +168,63 @@ fn watching() -> World {
     world
 }
 
+/// A failed ledger store is a failed hand-over: first creation leaves no plan
+/// or bootstrapped work root, the exact save diagnostic survives rollback, and
+/// a fresh process lists no invisible work (§FS-005-dispatch.4).
+#[test]
+fn issue_43_failed_save_rolls_back_first_creation_and_fresh_list_is_empty() {
+    let world = watching();
+    world.configure(json!({
+        "projects": { PROJECT: { "providers": [
+            { "provider": "acmeforge", "user": "you", "repos": ["app"] }
+        ] } },
+        "work": {
+            "runner": "acme-runtime",
+            "recipes": [{
+                "id": "rollback", "description": "pin rollback", "state": "fix",
+                "needs_checkout": false,
+                "when": { "kinds": ["pr"] }, "brief": "Pin {title}."
+            }]
+        }
+    }));
+    let ledger = world.path().join("state/ephor/work.json");
+    let temporary = ledger.with_extension("json.tmp");
+    std::fs::create_dir_all(&temporary).expect("force the real ledger write failure");
+
+    let output = world
+        .ephor()
+        .args([
+            "work",
+            "dispatch",
+            "--item",
+            "acmeforge:app/101",
+            "--recipe",
+            "rollback",
+        ])
+        .output()
+        .expect("dispatch runs");
+    assert_eq!(output.status.code(), Some(1));
+    assert_eq!(
+        String::from_utf8_lossy(&output.stderr).trim(),
+        format!(
+            "ERROR: Cannot write {}: Is a directory (os error 21)",
+            temporary.display()
+        )
+    );
+    assert!(!ledger.exists(), "the failed batch committed a ledger");
+    assert!(
+        !world.forest().join("panta").exists(),
+        "the failed batch left its bootstrapped work root"
+    );
+
+    let listed = world
+        .ephor()
+        .args(["work", "list", "--json"])
+        .assert()
+        .success();
+    assert_eq!(json_of(listed.get_output()), json!([]));
+}
+
 fn plan_path(world: &World) -> std::path::PathBuf {
     world.forest().join("panta").join(format!("{PLAN}.rhei.md"))
 }
