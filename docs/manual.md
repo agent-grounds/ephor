@@ -1937,6 +1937,72 @@ the gate-fixer to start itself says nothing about the rest of the menu, and
 every refusal dispatch makes still applies, including refusing to run in a
 working tree standing on another branch. Arguments after `--` on `ephor work dispatch` are passed unchanged and in order to every autorun that invocation starts; ephor neither interprets nor remembers them, later due sweeps, syncs, and interface runs receive none, and dry runs still start no runtime.
 
+**`dispatch`** is the same shape one step earlier: it says that the sweep which
+*finds* the matters needs nobody either, and how often that sweep should happen
+([§FS-005-dispatch.31](functional-spec/FS-005-dispatch.md#31-a-recipe-can-ask-for-its-own-sweep-and-say-how-often)).
+Without it, `ephor work dispatch` stays yours to type — which is what a stock
+install does, since no shipped unit runs that verb.
+
+| `dispatch` | Means |
+|---|---|
+| omitted | the key stays yours, exactly as before |
+| `"0h"` | swept every time ephor is asked |
+| `"30m"`, `"6h"`, `"7d"` | swept at most that often |
+
+The sweep is `ephor work sync`, which the work-sync timer already runs, so a
+recipe that adopts this field is swept by the timer you already have — there is
+no unit file to edit. What changes there is one question and not one job: sync
+already walks every matter in the feed and asks whether ephor has work about it,
+reopening the ones that moved (§8.4); a matter it has *no* work about is now
+opened where a self-sweeping recipe covers it and that recipe's interval has
+elapsed, and passed over otherwise, as before.
+
+The interval paces the looking rather than triggering it. Ephor has no daemon
+and only ever acts while a command is running, so whatever rate your unit fires
+at is the ceiling on every value here: `"0h"` means *whenever you ask me*, never
+*continuously*, and on a stock half-hourly timer it means every half hour. A
+recipe that wants a floor of its own writes the floor. The unit sets the
+resolution and the recipe sets the rhythm — which is how `ephor work run --due`
+already works, and it is why a per-recipe interval does not need a timer unit
+per recipe.
+
+The recipe that sweeps is the one your own `ephor work dispatch` would have
+chosen — the first that applies, since recipes are offered in priority order.
+A matter whose best recipe said nothing about sweeping is left alone rather
+than handed down the list to a lesser recipe that happened to say `dispatch`.
+Everything dispatch refuses, this refuses, and a dry run still writes nothing —
+including the record of having swept.
+
+Because an unattended sweep makes the selector load-bearing in a way it is not
+otherwise, a recipe may bound one sweep of its own. `"6h"` is sugar for
+`{ "every": "6h" }`; the map form takes a bound beside it:
+
+```json
+{ "id": "implement",
+  "when": { "kinds": ["issue"], "roles": ["author"] },
+  "autorun": true,
+  "dispatch": { "every": "6h", "limit": 3 },
+  "brief": "Do {title} on {branch}, in {workspace}." }
+```
+
+The limit counts what *this* recipe opened in *this* sweep, so two self-sweeping
+recipes do not spend each other's allowance, and it bounds what is opened rather
+than what is stepped over. The interval is a safety control as much as a cost
+one: a recipe that sweeps daily gives you a day to notice a selector that has
+started matching the wrong thing.
+
+`dispatch` and `autorun` answer two different questions — *find them yourself*
+and *do not wait for me to start it* — and neither implies the other. A recipe
+may sweep itself and still wait for your key to run, or `autorun` without ever
+sweeping.
+
+When each recipe last swept is ephor's record of its own activity, kept in
+`$XDG_STATE_HOME/ephor/sweeps.json` beside the feed cache and the burn store
+rather than in the work ledger. Deleting it costs a sweep's worth of waiting
+rather than the sweep itself: a record that is missing or unreadable means *due
+now*. Your own `ephor work dispatch` marks the same clock, so a queue you just
+emptied by hand does not send the timer straight back to look at it.
+
 **The selector.** Every field that is set must hold; an empty one asks nothing.
 Finished work never matches.
 
