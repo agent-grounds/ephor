@@ -28,6 +28,7 @@
       "icon": "⛬",
       "description": "fix this task end to end",
       "workflow": "supervised-ticket-fix",
+      "root": "{root}/panta",
       "autorun": true,
       "when": { "kinds": ["task"] },
       "inputs": { "ticket": "{title}" }
@@ -92,6 +93,7 @@
             "description": "do the issue on a branch of its own",
             "state": "fix",
             "branch": "fix/issue-{number}",
+            "root": "{workspace}/panta",
             "when": { "kinds": ["issue"], "roles": ["author"] },
             "brief": "Do {title} on {branch}, in {workspace}. The issue and its comments are above."
           }

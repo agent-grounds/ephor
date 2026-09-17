@@ -1755,6 +1755,8 @@ Add your own, or replace a shipped one by reusing its id:
         "needs_checkout": true,
         // For an item with no branch of its own; ephor makes the workspace (§8.18)
         "branch": "fix/issue-{number}",
+        // This recipe's plan follows that resolved or minted workspace.
+        "root": "{workspace}/panta",
         "autorun": true,                // and do not wait for me to start it
         "when": { "kinds": ["pr"], "roles": ["author"], "gate": "failing" },
         "brief": "The gate on {title} is red. Run `just check` in {workspace} …",
@@ -1779,6 +1781,16 @@ either gating or a poll declaring `waiting_on` (§8.9). Omitting `max_active` is
 unlimited, so a configuration that never names it is bounded exactly as before.
 `ranking` is read only from the site's own `work` block — the sweep it orders
 already spans every configured project.
+
+A recipe may select its own whole `root` template. A workflow entry may do the
+same with `root` flat beside `workflow` and `branch`, in any of its three homes.
+The narrowest answer wins: entry, recipe, project, organization, then site.
+Ephor resolves or mints the branch first and then renders the selected template
+with the same values as project placement, so `{workspace}` is that checkout
+and `{root}` is the registry project root. This lets issue work use
+`{workspace}/panta` while a maintenance sweep in the same project uses
+`{root}/panta`. A command entry cannot carry `root`, because it hands no work
+over. Omitting the field keeps the earlier placement behavior.
 
 Between those two there is a third, over the projects that actually share a
 machine:
@@ -3252,6 +3264,7 @@ and offers already use, with `workflow` where a `command` would be:
 ```json
 { "id": "review-change", "icon": "⌥", "description": "review this change",
   "workflow": "changeset-review",
+  "root": "{root}/panta",
   "when": { "kinds": ["pr"] },
   "requires_checkout": true,
   "inputs": { "change_ref": "{branch}" },
@@ -3270,7 +3283,17 @@ A workflow the runtime ships ranks with what ephor ships, one the project
 keeps with the project's offers, one you keep with your own — the provenance
 the menu already orders by. Wherever it lives, the entry may also say
 `"branch"`: which branch the work it lays down belongs on, for a matter that
-has none of its own (§8.18).
+has none of its own (§8.18), and `"root"`: the whole work-root template for
+what it lays down. The entry template overrides project, organization and site
+placement and is rendered after branch resolution.
+
+Each successful hand-off records its root, checkout and branch. If later work
+about the same matter lands elsewhere, listing, status, due sweeps, named and
+plain runs, repeat detection, cancellation and proposal lookup continue to
+read every committed root. If the ledger cannot be committed, ephor restores
+the entire unsaved hand-off batch—including existing plan and bootstrap bytes,
+workflow output and carried files—so a fresh process never finds an
+unlisted partial hand-off.
 
 **`"autorun": true` makes it work nobody has to be present for** (§8.15.1).
 

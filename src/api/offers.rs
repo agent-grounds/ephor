@@ -102,6 +102,7 @@ pub fn agent_entry(recipe: &crate::work::recipe::Recipe) -> ActionConfig {
         description: recipe.description.clone(),
         agent: Some(recipe.clone()),
         branch: recipe.branch.clone(),
+        root: recipe.root.clone(),
         ..ActionConfig::default()
     }
 }
@@ -702,6 +703,12 @@ pub fn gate_of(action: &ActionConfig, state: &WorkspaceState, can: &CapabilitySe
     // (§FS-004-quick-actions.2).
     if let Some(refusal) = action.hand.as_ref().and_then(|hand| hand.refusal.clone()) {
         return Gate::Blocked(refusal);
+    }
+    // Naming also resolves a hand-off's selected work root. Its refusal wins
+    // before checkout gating, including entries that need no checkout
+    // (§FS-005-dispatch.6.1, §FS-005-dispatch.25).
+    if let Some(Minted::Refused(why)) = &action.minted {
+        return Gate::Blocked(why.clone());
     }
     // Saying which branch the work belongs on says that it needs the checkout
     // (§FS-005-dispatch.25).

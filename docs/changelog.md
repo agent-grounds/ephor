@@ -113,6 +113,15 @@ ships, the previous "latest" section moves verbatim to
 
 ### Added
 
+- **Recipes and workflow entries can place their own work root**
+  ([§FS-005-dispatch.1](functional-spec/FS-005-dispatch.md#1-recipes-say-what-work-to-do),
+  [§FS-005-dispatch.6.1](functional-spec/FS-005-dispatch.md#61-root-templates-are-rendered-from-one-placeholder-map)).
+  Optional `root` templates on recipes and flat workflow entries override
+  project, organization and site placement after branch resolution, letting
+  one project keep issue fixes in minted checkouts and maintenance work at its
+  project root. Every committed placement stays visible with its root,
+  checkout and branch. (PR #101)
+
 - **Every idle checkout is replayed onto main on a timer, and a reused one says
   how far behind it is**
   ([§FS-004-quick-actions.6.1](functional-spec/FS-004-quick-actions.md#61-the-same-replay-over-every-checkout-nobody-is-holding),
@@ -268,6 +277,13 @@ ships, the previous "latest" section moves verbatim to
   behavior. (PR #70)
 
 ### Fixed
+
+- **A failed ledger save no longer leaves undiscoverable work behind**
+  ([§FS-005-dispatch.4](functional-spec/FS-005-dispatch.md#4-the-ledger-is-the-record-of-dispatch-not-of-runtime-state)).
+  Hand-off mutations are journalled until the atomic ledger replacement
+  commits; failure restores the whole unsaved batch, including prior plan and
+  root-file bytes, workflow output and carried files. Root discovery now keeps
+  every recorded placement for listing, runs and repeat detection. (PR #101)
 
 - **Periodic work sync leaves the detached runs it starts alive when its
   oneshot ends**

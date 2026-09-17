@@ -20,7 +20,7 @@ use crate::feed::gate::Gate;
 use crate::feed::model::Item;
 use crate::paths;
 
-#[derive(Debug, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Ledger {
     #[serde(default = "version")]
     pub version: u32,
@@ -271,12 +271,19 @@ pub struct Dispatch {
     /// field existed reads unchanged (§FS-006-project-interface.11).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub plan: Option<String>,
-    /// The work root that plan was laid into. Absent on non-workflow
-    /// dispatches and records written before this was retained; those old
-    /// workflow records remain readable and are resolved conservatively from
-    /// the configured work roots (§FS-005-dispatch.19).
+    /// The work root this dispatch committed. Absent on records written
+    /// before placement provenance was retained; those records fall back to
+    /// their entry's item-level fields (§FS-005-dispatch.4).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub root: Option<PathBuf>,
+    /// The checkout the runtime uses for this dispatch. Additive and absent
+    /// on legacy records (§FS-005-dispatch.4).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub checkout: Option<PathBuf>,
+    /// The branch resolved for this dispatch. Additive and absent on legacy
+    /// records or work about no branch (§FS-005-dispatch.4).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub branch: Option<String>,
     /// The item as it was when this was asked for.
     pub snapshot: Snapshot,
 }
@@ -467,7 +474,7 @@ thread_local! {
 
 /// Point this thread's unit-test ledger at an isolated file. Production and
 /// integration builds do not contain this hook; it lets a unit test force the
-/// real atomic store failure without racing the process environment.
+/// real atomic store failure without racing process-global state.
 #[cfg(test)]
 pub(super) fn use_test_path(path: PathBuf) -> TestLedgerPath {
     TEST_LEDGER_PATH.with(|slot| {

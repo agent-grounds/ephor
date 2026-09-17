@@ -535,6 +535,12 @@ pub struct Recipe {
     /// checkout; a recipe that says nothing is placed as it always was.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub branch: Option<String>,
+    /// The whole work-root template for work handed over through this recipe.
+    /// It wins the project, organization and site answers and is rendered
+    /// after branch placement, from the same subject values (§FS-005-dispatch.1,
+    /// §FS-005-dispatch.6.1, §FS-005-dispatch.25).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub root: Option<String>,
     /// This work needs nobody to start it: a ticket written from this recipe
     /// gets its run without anyone pressing a key (§FS-005-dispatch.24). The
     /// reader's deliberate act is adopting the recipe, made once, rather than
@@ -877,6 +883,7 @@ pub fn shipped() -> Vec<Recipe> {
         // branch-less matter opts into branch minting below
         // (§FS-005-dispatch.25).
         branch: None,
+        root: None,
         // Silence means the key: what ships is started by the reader, and
         // saying otherwise is a thing configuration does (§FS-005-dispatch.24).
         autorun: false,
@@ -1419,6 +1426,29 @@ mod tests {
             .iter()
             .filter(|recipe| recipe.id != "implement")
             .all(|recipe| recipe.branch.is_none()));
+    }
+
+    /// A recipe may select a whole work-root template of its own; omission is
+    /// the compatibility path through project, organization and site
+    /// placement (§FS-005-dispatch.1, §FS-005-dispatch.6.1).
+    #[test]
+    fn issue_43_a_recipe_accepts_an_optional_root_template() {
+        let placed = serde_json::from_value::<Recipe>(json!({
+            "id": "fix", "description": "fix it", "brief": "Fix {title}.",
+            "root": "{workspace}/panta"
+        }));
+        assert!(
+            placed.is_ok(),
+            "a recipe root is valid configuration: {placed:?}"
+        );
+
+        let omitted = serde_json::from_value::<Recipe>(json!({
+            "id": "sweep", "description": "sweep it", "brief": "Sweep."
+        }));
+        assert!(
+            omitted.is_ok(),
+            "omitting root keeps existing recipes valid"
+        );
     }
 
     #[test]

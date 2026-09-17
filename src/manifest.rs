@@ -183,6 +183,10 @@ pub struct Offer {
     /// registry's own template for them.
     #[serde(default)]
     pub branch: Option<String>,
+    /// The whole work-root template for a workflow this offer lays down
+    /// (§FS-005-dispatch.28).
+    #[serde(default)]
+    pub root: Option<String>,
     #[serde(default)]
     pub cwd: Option<String>,
     #[serde(default)]
@@ -242,6 +246,7 @@ impl Offer {
             // (§FS-005-dispatch.25).
             requires_checkout: false,
             branch: self.branch.clone(),
+            root: self.root.clone(),
             minted: None,
             confirm: self.confirm,
             background: self.background,

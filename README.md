@@ -300,6 +300,16 @@ no `branch_root_template` is refused by name, and so is checkout-needing work
 about an item with no branch and no template
 ([§FS-005-dispatch.25](docs/functional-spec/FS-005-dispatch.md#25-work-about-a-matter-with-no-branch-can-mint-the-branch-it-needs)).
 
+**A work root for one kind of work**: a recipe or an entry that hands work
+over may also add `"root"`. The selected template is entry → recipe → project
+→ organization → site, rendered after branch resolution with the same values
+as `work.root`. Thus an issue recipe can use `"root": "{workspace}/panta"`
+inside its minted checkout while a project maintenance workflow uses
+`"root": "{root}/panta"`. Command entries refuse the field because they hand
+no work over. Each successful dispatch records its exact root, checkout and
+branch, so earlier placements remain listable and runnable after later work
+lands elsewhere.
+
 The command runs via `sh -c` **in the item's checkout**, resolved through
 the org → project → branch hierarchy: the item is matched to its registry
 branch (the same matching the tree uses for grouping), and when the
@@ -551,6 +561,9 @@ and `assets/ephor-work.states.yaml` as `states.yaml`. **An existing
 `states.yaml` is never replaced**: edit it for a different agent, model, or
 timeout, or point `work.states` at one of your own. A recipe whose `state` the
 machine in force does not declare is refused by name rather than written.
+The ledger replacement is the commit point for a hand-off: if it fails, ephor
+restores the whole unsaved batch instead of leaving plans or workflow files a
+fresh `work list` cannot discover.
 
 A rhei project that already holds plans of its own and declares no state
 machine is refused: `states.yaml` is how every plan in a project resolves its

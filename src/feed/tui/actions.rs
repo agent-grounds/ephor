@@ -1203,6 +1203,7 @@ mod tests {
             when: Default::default(),
             needs_checkout: false,
             branch: None,
+            root: None,
             autorun: false,
             brief: "b".to_string(),
             opens_with: None,

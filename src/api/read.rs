@@ -214,26 +214,14 @@ impl Session {
                     && job.record.branch.as_deref() == branch
             })
             .collect();
-        // The one reading of this subject's work root, for every row of the
-        // menu (§AR-005-capabilities.1).
+        // The one bounded reading of this subject's committed work roots, for
+        // every row of the menu (§FS-005-dispatch.15.1,
+        // §AR-005-capabilities.1).
         let at = match (item, self.dispatcher.as_ref()) {
             (Some(item), Some(dispatcher)) => dispatcher.work_at(item),
             _ => None,
         };
-        // The run's own identity, read from the descriptor beside the lock —
-        // the way in is the runner's own attach command (§FS-005-dispatch.20,
-        // §FS-011-command-line.8).
-        let run = at.as_ref().and_then(|at| at.identity.clone());
-        let id = run.as_ref().and_then(|run| run.id.clone());
-        let attach = id
-            .as_deref()
-            .map(|id| crate::work::runtime::attach_command(&self.work_config, id));
         let now = chrono::Utc::now();
-        let since = run
-            .as_ref()
-            .and_then(|run| run.started_at.as_deref())
-            .and_then(|at| chrono::DateTime::parse_from_rfc3339(at).ok())
-            .map(|at| (now - at.with_timezone(&chrono::Utc)).num_seconds());
         for entry in entries.iter_mut() {
             // The two rows that are not a thing to start again
             // (§FS-005-dispatch.21): the freehand row starts *whatever the
@@ -294,8 +282,21 @@ impl Session {
             let Some(going) = at.as_ref().and_then(|at| at.going(&key)) else {
                 continue;
             };
+            // The identity belongs to the particular committed root this
+            // entry's work was found in (§FS-005-dispatch.20,
+            // §FS-005-dispatch.30).
+            let run = going.identity().cloned();
+            let id = run.as_ref().and_then(|run| run.id.clone());
+            let attach = id
+                .as_deref()
+                .map(|id| crate::work::runtime::attach_command(&self.work_config, id));
+            let since = run
+                .as_ref()
+                .and_then(|run| run.started_at.as_deref())
+                .and_then(|at| chrono::DateTime::parse_from_rfc3339(at).ok())
+                .map(|at| (now - at.with_timezone(&chrono::Utc)).num_seconds());
             entry.running = Some(match going {
-                crate::work::WorkGoing::Running { root, doing } => offers::Running::Run {
+                crate::work::WorkGoing::Running { root, doing, .. } => offers::Running::Run {
                     root,
                     id: id.clone(),
                     control_url: run.as_ref().and_then(|run| run.control_url.clone()),
@@ -308,6 +309,7 @@ impl Session {
                     ticket,
                     state,
                     plan,
+                    ..
                 } => offers::Running::Waiting {
                     root,
                     ticket,
@@ -321,7 +323,7 @@ impl Session {
                     // minute ago would be the watch inventing news.
                     since: None,
                 },
-                crate::work::WorkGoing::Queued { root } => offers::Running::Queued {
+                crate::work::WorkGoing::Queued { root, .. } => offers::Running::Queued {
                     root,
                     id: id.clone(),
                     attach: attach.clone(),
@@ -357,6 +359,22 @@ impl Session {
             Subject::Item(item) => ("item", item.id.clone(), item.title.clone()),
             Subject::Branch { branch, .. } => ("branch", branch.to_string(), branch.to_string()),
         };
+        let offers = entries
+            .iter()
+            .map(|entry| {
+                let mut offer = offer_of(entry);
+                if let Subject::Item(item) = subject {
+                    let (branch, template) = match &entry.action.agent {
+                        Some(recipe) => (recipe.branch.as_deref(), recipe.root.as_deref()),
+                        None => (entry.action.branch.as_deref(), entry.action.root.as_deref()),
+                    };
+                    if entry.action.agent.is_some() || entry.action.workflow.is_some() {
+                        offer.root = self.work_root_for(item, branch, template);
+                    }
+                }
+                offer
+            })
+            .collect();
         Ok(views::Actions {
             project,
             subject: kind,
@@ -366,7 +384,7 @@ impl Session {
             workspace: placed.workspace,
             workspace_state: workspace_state_name(&placed.state),
             branch: placed.branch.map(|info| info.branch),
-            offers: entries.iter().map(offer_of).collect(),
+            offers,
             roster: roster
                 .iter()
                 .map(|hand| views::HandOffer {
@@ -581,6 +599,7 @@ pub fn offer_of(entry: &offers::MenuEntry) -> views::Offer {
             Some(Minted::Named { workspace, .. }) => Some(workspace.clone()),
             _ => None,
         },
+        root: None,
         cwd: entry.action.cwd.clone(),
         background: entry.action.background,
         window: entry.action.window,
@@ -782,17 +801,32 @@ impl Session {
         let entries = self.work_entries(item)?;
         Ok(entries
             .iter()
-            .map(|entry| views::Offer {
-                // The words the ticket would actually carry about this matter
-                // (§FS-005-dispatch.7). The work screen puts them under the
-                // row the cursor is on, so the reading carries them too: the
-                // prose form may summarise, but it may never *know* something
-                // the machine form does not (§REQ-002-parity.3).
-                brief: match (&entry.action.agent, &mut self.dispatcher) {
-                    (Some(recipe), Some(dispatcher)) => Some(dispatcher.brief(item, recipe)),
-                    _ => None,
-                },
-                ..offer_of(entry)
+            .map(|entry| {
+                let (brief, root) = match &mut self.dispatcher {
+                    Some(dispatcher) => {
+                        let (branch, template) = match &entry.action.agent {
+                            Some(recipe) => (recipe.branch.as_deref(), recipe.root.as_deref()),
+                            None => (entry.action.branch.as_deref(), entry.action.root.as_deref()),
+                        };
+                        let root = dispatcher.work_root_for(item, branch, template);
+                        let brief = entry
+                            .action
+                            .agent
+                            .as_ref()
+                            .map(|recipe| dispatcher.brief(item, recipe));
+                        (brief, root)
+                    }
+                    None => (None, None),
+                };
+                views::Offer {
+                    // The words and placement the hand-off would actually
+                    // carry (§FS-005-dispatch.6.1, §FS-005-dispatch.7). The
+                    // work screen and machine reading share this preview
+                    // (§REQ-002-parity.3).
+                    brief,
+                    root,
+                    ..offer_of(entry)
+                }
             })
             .collect())
     }
@@ -845,6 +879,17 @@ impl Session {
                 plan_id: status.plan_id.clone(),
                 root: status.root.clone(),
                 checkout: status.checkout.clone(),
+                plans: status
+                    .plans
+                    .iter()
+                    .map(|plan| views::WorkPlan {
+                        plan: plan.path.clone(),
+                        plan_id: plan.plan_id.clone(),
+                        root: plan.root.clone(),
+                        checkout: plan.checkout.clone(),
+                        branch: plan.branch.clone(),
+                    })
+                    .collect(),
                 stale: status.stale(),
                 missing: status.missing,
                 changes: status.changes.clone(),

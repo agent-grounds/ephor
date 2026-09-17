@@ -206,6 +206,10 @@ pub struct WorkStatus {
     /// The checkout the runtime is run from.
     pub checkout: PathBuf,
     pub plan: PathBuf,
+    /// Every committed recipe-plan placement for this matter. The singular
+    /// fields above remain the latest placement for compatibility
+    /// (§FS-005-dispatch.4, §REQ-002-parity.4).
+    pub plans: Vec<RecordedPlan>,
     /// The plan the ledger points at is gone — reported, never repaired.
     pub missing: bool,
     pub tickets: Vec<TicketStatus>,
@@ -225,6 +229,17 @@ pub struct WorkStatus {
     /// (§FS-005-dispatch.23). None where no run is live here, and on one
     /// writing normally.
     pub quiet: Option<u64>,
+}
+
+/// One committed recipe-plan placement from the ledger's normalized reading
+/// (§FS-005-dispatch.15.1).
+#[derive(Debug, Clone)]
+pub struct RecordedPlan {
+    pub root: PathBuf,
+    pub checkout: PathBuf,
+    pub branch: Option<String>,
+    pub plan_id: String,
+    pub path: PathBuf,
 }
 
 impl WorkStatus {
@@ -454,6 +469,9 @@ impl WorkLine {
 pub enum WorkGoing {
     Running {
         root: PathBuf,
+        /// The run holding this particular recorded root, where one names
+        /// itself (§FS-005-dispatch.20, §FS-005-dispatch.30).
+        identity: Option<runtime::watch::RunIdentity>,
         /// The ticket the run holds and the state it is in, in the words the
         /// board already uses.
         doing: String,
@@ -470,6 +488,7 @@ pub enum WorkGoing {
     /// exactly the mistake §21 exists to prevent.
     Waiting {
         root: PathBuf,
+        identity: Option<runtime::watch::RunIdentity>,
         /// The ticket the question is in, and the state the machine parked it
         /// in — the plan is where the answer belongs (§FS-005-dispatch.9).
         ticket: String,
@@ -478,6 +497,7 @@ pub enum WorkGoing {
     },
     Queued {
         root: PathBuf,
+        identity: Option<runtime::watch::RunIdentity>,
     },
 }
 
@@ -486,7 +506,15 @@ impl WorkGoing {
         match self {
             WorkGoing::Running { root, .. }
             | WorkGoing::Waiting { root, .. }
-            | WorkGoing::Queued { root } => root,
+            | WorkGoing::Queued { root, .. } => root,
+        }
+    }
+
+    pub fn identity(&self) -> Option<&runtime::watch::RunIdentity> {
+        match self {
+            WorkGoing::Running { identity, .. }
+            | WorkGoing::Waiting { identity, .. }
+            | WorkGoing::Queued { identity, .. } => identity.as_ref(),
         }
     }
 }
@@ -501,6 +529,13 @@ impl WorkGoing {
 /// reading of the world, taken when the menu was assembled.
 pub struct WorkAt<'a> {
     entry: &'a Entry,
+    roots: Vec<WorkAtRoot>,
+}
+
+/// One of an item's committed work roots, read once for every menu entry
+/// (§FS-005-dispatch.15.1).
+struct WorkAtRoot {
+    root: PathBuf,
     /// The run lock is held: something is running on this root right now.
     live: bool,
     /// The root's own state machine, where it has a readable one. Finality and
@@ -509,7 +544,7 @@ pub struct WorkAt<'a> {
     /// (§FS-005-dispatch.15).
     machine: Option<WorkRoot>,
     /// The matter's own plan.
-    plan: Option<Plan>,
+    plan: Option<(PathBuf, Plan)>,
     /// What answers for which tickets the run has in hand — the run's own
     /// stream where the binding writes one, the journal otherwise
     /// (§FS-005-dispatch.15.2) — and when the root's lock was born, which
@@ -519,7 +554,7 @@ pub struct WorkAt<'a> {
     lock_born: Option<std::time::SystemTime>,
     /// What the live run calls itself, from the descriptor beside its lock
     /// (§FS-005-dispatch.20).
-    pub identity: Option<runtime::watch::RunIdentity>,
+    identity: Option<runtime::watch::RunIdentity>,
 }
 
 impl WorkAt<'_> {
@@ -528,7 +563,7 @@ impl WorkAt<'_> {
     }
 
     pub fn live(&self) -> bool {
-        self.live
+        self.roots.iter().any(|root| root.live)
     }
 
     /// What the work one entry hands over is doing right now
@@ -541,151 +576,122 @@ impl WorkAt<'_> {
     pub fn going(&self, action: &str) -> Option<WorkGoing> {
         let mut waiting: Option<WorkGoing> = None;
         let mut running: Option<WorkGoing> = None;
-        let mut queued = false;
-        // `judge` is the machine that answers for the plan the ticket is in,
-        // never assumed to be the root's (§FS-005-dispatch.28).
-        let mut consider = |judge: Option<&WorkRoot>,
-                            plan_id: &str,
-                            path: &std::path::Path,
-                            ticket: &plan::PlanTicket| {
-            let Some(machine) = judge else {
-                // With no machine nothing here is judged over and nothing is
-                // judged a question: the ticket is open work, and whether a run
-                // holds it is still the journal's to say.
-                return self.hold(plan_id, ticket, &mut running, &mut queued);
-            };
-            let state = ticket.state.as_deref().unwrap_or("?");
-            if ticket
-                .state
-                .as_deref()
-                .is_some_and(|at| machine.is_final(at))
-            {
-                return;
-            }
-            // A ticket the machine parks is waiting on the reader
-            // (§FS-005-dispatch.9, §FS-005-dispatch.20). It is *not* queued:
-            // §15 is explicit that calling it that would promise a turn that
-            // never comes, and it is not the run's to advance either.
-            if ticket
-                .state
-                .as_deref()
-                .is_some_and(|at| machine.is_gating(at))
-            {
-                if waiting.is_none() {
-                    waiting = Some(WorkGoing::Waiting {
-                        root: self.entry.root.clone(),
-                        ticket: format!("{plan_id}.{}", ticket.id),
-                        state: state.to_string(),
-                        plan: path.to_path_buf(),
-                    });
+        let mut queued: Option<WorkGoing> = None;
+        for at in &self.roots {
+            // `judge` is the machine that answers for the plan the ticket is
+            // in, never assumed to be the root's (§FS-005-dispatch.28).
+            let mut consider = |judge: Option<&WorkRoot>,
+                                plan_id: &str,
+                                path: &std::path::Path,
+                                ticket: &plan::PlanTicket| {
+                let Some(machine) = judge else {
+                    return hold_at(at, plan_id, ticket, &mut running, &mut queued);
+                };
+                let state = ticket.state.as_deref().unwrap_or("?");
+                if ticket
+                    .state
+                    .as_deref()
+                    .is_some_and(|state| machine.is_final(state))
+                {
+                    return;
                 }
-                return;
-            }
-            self.hold(plan_id, ticket, &mut running, &mut queued);
-        };
-        // The tickets this entry wrote into the matter's own plan.
-        let mine: std::collections::BTreeSet<&str> = self
-            .entry
-            .dispatches
-            .iter()
-            .filter(|dispatch| dispatch.recipe == action && !dispatch.is_workflow())
-            .map(|dispatch| dispatch.ticket.as_str())
-            .collect();
-        if !mine.is_empty() {
-            if let Some(plan) = self.plan.as_ref() {
+                if ticket
+                    .state
+                    .as_deref()
+                    .is_some_and(|state| machine.is_gating(state))
+                {
+                    if waiting.is_none() {
+                        waiting = Some(WorkGoing::Waiting {
+                            root: at.root.clone(),
+                            identity: at.identity.clone(),
+                            ticket: format!("{plan_id}.{}", ticket.id),
+                            state: state.to_string(),
+                            plan: path.to_path_buf(),
+                        });
+                    }
+                    return;
+                }
+                hold_at(at, plan_id, ticket, &mut running, &mut queued);
+            };
+
+            let mine: BTreeSet<&str> = self
+                .entry
+                .dispatches
+                .iter()
+                .filter(|dispatch| {
+                    dispatch.recipe == action
+                        && !dispatch.is_workflow()
+                        && canonical(dispatch.root.as_ref().unwrap_or(&self.entry.root))
+                            == canonical(&at.root)
+                })
+                .map(|dispatch| dispatch.ticket.as_str())
+                .collect();
+            if let Some((path, plan)) = at.plan.as_ref() {
                 for ticket in plan.tickets() {
                     if mine.contains(ticket.id.as_str()) {
-                        // The matter's own plan is one the root holds
-                        // directly: the root's machine answers for it.
-                        consider(
-                            self.machine.as_ref(),
-                            &self.entry.plan_id,
-                            &self.entry.plan,
-                            &ticket,
-                        );
+                        consider(at.machine.as_ref(), &self.entry.plan_id, path, &ticket);
                     }
                 }
             }
-        }
-        // And the plans this entry laid down of its own
-        // (§FS-005-dispatch.19), which are operations exactly as tickets are.
-        // One plan per dispatch and one dispatch per entry, so nothing here is
-        // read twice by a menu asking about every row.
-        for dispatch in self
-            .entry
-            .dispatches
-            .iter()
-            .filter(|dispatch| dispatch.recipe == action && dispatch.is_workflow())
-        {
-            let Some(name) = dispatch.plan.as_deref() else {
-                continue;
-            };
-            let Some(laid) = runtime::workflow::laid(&self.entry.root.join(name)) else {
-                continue;
-            };
-            let Ok(Some(plan)) = Plan::read(&laid.path) else {
-                continue;
-            };
-            // A plan a workflow laid down is a store of its own, and its
-            // tasks mean what the machine in force there says they mean
-            // (§FS-005-dispatch.28, §FS-006-project-interface.7) — the board
-            // reads it the same way, and one row must not disagree with the
-            // screen it was narrowed from (§AR-009-surfaces.1). Declaring
-            // none, it is the root's machine the runtime resolves it against;
-            // with one that will not read, nothing there is judged, rather
-            // than judged by a machine that answers for other work.
-            let own = plan::own_machine(&laid.path);
-            let judge: Option<&WorkRoot> = match &own {
-                Ok(Some(store)) => Some(store),
-                Ok(None) => self.machine.as_ref(),
-                Err(_) => None,
-            };
-            for ticket in plan.tickets() {
-                consider(judge, &laid.plan_id, &laid.path, &ticket);
-            }
-        }
-        waiting.or(running).or_else(|| {
-            queued.then(|| WorkGoing::Queued {
-                root: self.entry.root.clone(),
-            })
-        })
-    }
 
-    /// Whether the live run holds this open ticket, off the journal already
-    /// read — and the queue where it does not. A root nothing holds is not an
-    /// operation: an open ticket there is waiting work, which is the work
-    /// screen's business (§FS-005-dispatch.15).
-    fn hold(
-        &self,
-        plan_id: &str,
-        ticket: &plan::PlanTicket,
-        running: &mut Option<WorkGoing>,
-        queued: &mut bool,
-    ) {
-        if !self.live {
-            return;
-        }
-        let state = ticket.state.as_deref().unwrap_or("?");
-        if self.witness.as_ref().is_some_and(|witness| {
-            witness.holds(
-                &self.entry.root,
-                self.lock_born,
-                plan_id,
-                &ticket.id,
-                Some(state),
-            )
-        }) {
-            if running.is_none() {
-                // The board's own phrasing for a held ticket, narrowed to one
-                // row (§FS-005-dispatch.15).
-                *running = Some(WorkGoing::Running {
-                    root: self.entry.root.clone(),
-                    doing: format!("{plan_id}.{} [{state}]", ticket.id),
-                });
+            for dispatch in self.entry.dispatches.iter().filter(|dispatch| {
+                dispatch.recipe == action
+                    && dispatch.is_workflow()
+                    && canonical(dispatch.root.as_ref().unwrap_or(&self.entry.root))
+                        == canonical(&at.root)
+            }) {
+                let Some(name) = dispatch.plan.as_deref() else {
+                    continue;
+                };
+                let Some(laid) = runtime::workflow::laid(&at.root.join(name)) else {
+                    continue;
+                };
+                let Ok(Some(plan)) = Plan::read(&laid.path) else {
+                    continue;
+                };
+                let own = plan::own_machine(&laid.path);
+                let judge = match &own {
+                    Ok(Some(store)) => Some(store),
+                    Ok(None) => at.machine.as_ref(),
+                    Err(_) => None,
+                };
+                for ticket in plan.tickets() {
+                    consider(judge, &laid.plan_id, &laid.path, &ticket);
+                }
             }
-            return;
         }
-        *queued = true;
+        waiting.or(running).or(queued)
+    }
+}
+
+fn hold_at(
+    at: &WorkAtRoot,
+    plan_id: &str,
+    ticket: &plan::PlanTicket,
+    running: &mut Option<WorkGoing>,
+    queued: &mut Option<WorkGoing>,
+) {
+    if !at.live {
+        return;
+    }
+    let state = ticket.state.as_deref().unwrap_or("?");
+    if at.witness.as_ref().is_some_and(|witness| {
+        witness.holds(&at.root, at.lock_born, plan_id, &ticket.id, Some(state))
+    }) {
+        if running.is_none() {
+            *running = Some(WorkGoing::Running {
+                root: at.root.clone(),
+                identity: at.identity.clone(),
+                doing: format!("{plan_id}.{} [{state}]", ticket.id),
+            });
+        }
+        return;
+    }
+    if queued.is_none() {
+        *queued = Some(WorkGoing::Queued {
+            root: at.root.clone(),
+            identity: at.identity.clone(),
+        });
     }
 }
 
@@ -713,6 +719,155 @@ pub struct Pinned {
     /// entry so a start that fails here can be recorded against what refused
     /// it (§FS-005-dispatch.29).
     pub pool: Option<String>,
+}
+
+/// The first pre-image of one path touched by an unsaved hand-off
+/// (§FS-005-dispatch.4). Directory images are used only for workflow output
+/// and carried-file trees; an existing work root journals its shared files
+/// individually so unrelated runtime work is never rolled back.
+enum PathImage {
+    Missing,
+    File(Vec<u8>),
+    Directory(Vec<TreeImage>),
+}
+
+enum TreeImage {
+    Directory(PathBuf),
+    File(PathBuf, Vec<u8>),
+    #[cfg(unix)]
+    Symlink(PathBuf, PathBuf),
+}
+
+impl PathImage {
+    fn capture(path: &std::path::Path) -> std::io::Result<PathImage> {
+        let metadata = match std::fs::symlink_metadata(path) {
+            Ok(metadata) => metadata,
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
+                return Ok(PathImage::Missing);
+            }
+            Err(err) => return Err(err),
+        };
+        if metadata.is_file() {
+            return std::fs::read(path).map(PathImage::File);
+        }
+        let mut entries = Vec::new();
+        capture_tree(path, path, &mut entries)?;
+        Ok(PathImage::Directory(entries))
+    }
+
+    fn restore(&self, path: &std::path::Path) -> std::io::Result<()> {
+        remove_path(path)?;
+        match self {
+            PathImage::Missing => Ok(()),
+            PathImage::File(bytes) => {
+                if let Some(parent) = path.parent() {
+                    std::fs::create_dir_all(parent)?;
+                }
+                std::fs::write(path, bytes)
+            }
+            PathImage::Directory(entries) => {
+                std::fs::create_dir_all(path)?;
+                for entry in entries {
+                    match entry {
+                        TreeImage::Directory(relative) => {
+                            std::fs::create_dir_all(path.join(relative))?;
+                        }
+                        TreeImage::File(relative, bytes) => {
+                            let target = path.join(relative);
+                            if let Some(parent) = target.parent() {
+                                std::fs::create_dir_all(parent)?;
+                            }
+                            std::fs::write(target, bytes)?;
+                        }
+                        #[cfg(unix)]
+                        TreeImage::Symlink(relative, target) => {
+                            let link = path.join(relative);
+                            if let Some(parent) = link.parent() {
+                                std::fs::create_dir_all(parent)?;
+                            }
+                            std::os::unix::fs::symlink(target, link)?;
+                        }
+                    }
+                }
+                Ok(())
+            }
+        }
+    }
+}
+
+fn capture_tree(
+    root: &std::path::Path,
+    dir: &std::path::Path,
+    entries: &mut Vec<TreeImage>,
+) -> std::io::Result<()> {
+    for found in std::fs::read_dir(dir)? {
+        let path = found?.path();
+        let relative = path.strip_prefix(root).unwrap_or(&path).to_path_buf();
+        let metadata = std::fs::symlink_metadata(&path)?;
+        if metadata.file_type().is_symlink() {
+            #[cfg(unix)]
+            entries.push(TreeImage::Symlink(relative, std::fs::read_link(&path)?));
+            #[cfg(not(unix))]
+            entries.push(TreeImage::File(relative, std::fs::read(&path)?));
+        } else if metadata.is_dir() {
+            entries.push(TreeImage::Directory(relative));
+            capture_tree(root, &path, entries)?;
+        } else {
+            entries.push(TreeImage::File(relative, std::fs::read(&path)?));
+        }
+    }
+    Ok(())
+}
+
+fn remove_path(path: &std::path::Path) -> std::io::Result<()> {
+    let metadata = match std::fs::symlink_metadata(path) {
+        Ok(metadata) => metadata,
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(err) => return Err(err),
+    };
+    if metadata.is_dir() && !metadata.file_type().is_symlink() {
+        std::fs::remove_dir_all(path)
+    } else {
+        std::fs::remove_file(path)
+    }
+}
+
+#[derive(Default)]
+struct Journal {
+    ledger: Option<Ledger>,
+    paths: Vec<(PathBuf, PathImage)>,
+    seen: BTreeSet<PathBuf>,
+}
+
+impl Journal {
+    fn begin(&mut self, ledger: &Ledger) {
+        self.ledger.get_or_insert_with(|| ledger.clone());
+    }
+
+    fn remember(&mut self, path: &std::path::Path) -> Result<()> {
+        let path = path.to_path_buf();
+        if self.seen.contains(&path) {
+            return Ok(());
+        }
+        let image = PathImage::capture(&path).map_err(|err| {
+            EphorError::Command(format!("Cannot journal {}: {err}", path.display()))
+        })?;
+        self.seen.insert(path.clone());
+        self.paths.push((path, image));
+        Ok(())
+    }
+
+    fn rollback(mut self) -> (Ledger, Option<(PathBuf, std::io::Error)>) {
+        let mut failed = None;
+        for (path, image) in self.paths.drain(..).rev() {
+            if let Err(err) = image.restore(&path) {
+                if failed.is_none() {
+                    failed = Some((path, err));
+                }
+            }
+        }
+        (self.ledger.take().unwrap_or_default(), failed)
+    }
 }
 
 /// Reads the work configuration, offers recipes, writes tickets, and keeps the
@@ -746,6 +901,9 @@ pub struct Dispatcher {
     /// What the reader should know about the hands this dispatcher resolved,
     /// each said once (§FS-006-project-interface.9).
     notes: Vec<String>,
+    /// Work-root pre-images retained until the ledger replacement commits
+    /// the whole hand-off (§FS-005-dispatch.4).
+    journal: Journal,
     pub ledger: Ledger,
 }
 
@@ -775,6 +933,7 @@ impl Dispatcher {
                 .map(|(id, project)| (id.clone(), project.actions.clone()))
                 .collect(),
             notes: Vec::new(),
+            journal: Journal::default(),
             ledger: ledger::load()?,
         })
     }
@@ -971,7 +1130,22 @@ impl Dispatcher {
         if let Some(entry) = self.ledger.entries.get(&item.id) {
             return Some(entry.root.clone());
         }
-        let template = self.root_template(&item.project);
+        self.work_root_for(item, branch, None)
+    }
+
+    /// The root a particular recipe or entry would select. The optional
+    /// override is one whole template above the configured tiers and is
+    /// rendered after branch placement (§FS-005-dispatch.6.1,
+    /// §FS-005-dispatch.25).
+    pub fn work_root_for(
+        &mut self,
+        item: &Item,
+        branch: Option<&str>,
+        root: Option<&str>,
+    ) -> Option<PathBuf> {
+        let template = root
+            .map(str::to_string)
+            .unwrap_or_else(|| self.root_template(&item.project));
         let placement = self.placement(&item.project)?.clone();
         let checkout = crate::branches::placed_through(&placement, item, branch);
         let subject = Subject {
@@ -1281,7 +1455,12 @@ impl Dispatcher {
     /// Where an item's work belongs, refusing where it would not run
     /// (§FS-005-dispatch.6).
     fn site(&mut self, item: &Item, recipe: &Recipe) -> Result<Site> {
-        self.site_for(item, recipe.needs_checkout, recipe.branch.as_deref())
+        self.site_for(
+            item,
+            recipe.needs_checkout,
+            recipe.branch.as_deref(),
+            recipe.root.as_deref(),
+        )
     }
 
     /// The same, for an entry that is not a recipe: a workflow says what it
@@ -1306,8 +1485,14 @@ impl Dispatcher {
         item: &Item,
         needs_checkout: bool,
         branch: Option<&str>,
+        root: Option<&str>,
     ) -> Result<Site> {
-        let template = self.root_template(&item.project);
+        // An entry or recipe answer wins as one whole template; broader
+        // configuration is consulted only when it is absent
+        // (§FS-005-dispatch.6.1, §FS-005-dispatch.28).
+        let template = root
+            .map(str::to_string)
+            .unwrap_or_else(|| self.root_template(&item.project));
         // A project ephor cannot place has nowhere to put the work, and the
         // ladder owns that sentence (§AR-005-capabilities.2).
         let placement = self.placement(&item.project).cloned().ok_or_else(|| {
@@ -1651,10 +1836,11 @@ impl Dispatcher {
             }
             let path = plan::plan_path_in(&site.dir, &plan_id);
             let existing = Plan::read(&path)?;
-            let ticket = existing
-                .as_ref()
-                .map(|plan| plan.next_ticket_id(&recipe.id))
-                .unwrap_or_else(|| format!("{}-1", recipe.id));
+            let ticket = next_ticket_id(
+                self.ledger.entries.get(&item.id),
+                existing.as_ref(),
+                &recipe.id,
+            );
             return Ok(match existing {
                 Some(_) => Outcome::Reopened {
                     plan: path,
@@ -1707,6 +1893,8 @@ impl Dispatcher {
         // (§FS-005-dispatch.25).
         self.mint(item, &site)?;
 
+        self.begin_handoff();
+        self.journal_work_root(&site.dir)?;
         let root = WorkRoot::ensure(&site.dir, &states)?;
         // Read back rather than assumed: a workspace the mint just made can
         // come with a machine of the runtime's own, which `ensure` leaves
@@ -1730,6 +1918,7 @@ impl Dispatcher {
             None => why,
         })?;
         let path = root.plan_path(&plan_id);
+        self.journal.remember(&path)?;
         let mut brief = dossier::render(&recipe.brief, &site.values);
         // What is handed over is the situation rather than the request to
         // reproduce it: the repository is standing in what this report
@@ -1752,7 +1941,7 @@ impl Dispatcher {
 
         let (outcome, ticket_id) = match Plan::read(&path)? {
             None => {
-                let ticket_id = format!("{}-1", recipe.id);
+                let ticket_id = next_ticket_id(self.ledger.entries.get(&item.id), None, &recipe.id);
                 let ticket = Ticket {
                     id: ticket_id.clone(),
                     title: format!("{} — {}", recipe.description, item.title),
@@ -1776,7 +1965,11 @@ impl Dispatcher {
                 )
             }
             Some(mut existing) => {
-                let ticket_id = existing.next_ticket_id(&recipe.id);
+                let ticket_id = next_ticket_id(
+                    self.ledger.entries.get(&item.id),
+                    Some(&existing),
+                    &recipe.id,
+                );
                 let prior = existing.last_ticket().map(|ticket| ticket.id);
                 let mut body = String::new();
                 if !changes.is_empty() {
@@ -1837,7 +2030,9 @@ impl Dispatcher {
             // A ticket goes into the item's own plan, which the entry already
             // names (§FS-005-dispatch.3).
             plan: None,
-            root: None,
+            root: Some(root.dir.clone()),
+            checkout: Some(site.checkout.workspace.clone()),
+            branch: site.checkout.branch.clone(),
             snapshot: Snapshot::of(item),
         });
         Ok(outcome)
@@ -2125,7 +2320,12 @@ impl Dispatcher {
         })?;
         crate::work::workflow::validate_file_values(&workflow, file_values)
             .map_err(EphorError::Command)?;
-        let site = self.site_for(item, entry.requires_checkout, entry.branch.as_deref())?;
+        let site = self.site_for(
+            item,
+            entry.requires_checkout,
+            entry.branch.as_deref(),
+            entry.root.as_deref(),
+        )?;
         // Where the plan goes: named after the matter and the entry, and
         // named apart from what an earlier run of the same entry left, since
         // two runs of one workflow about one item are two records and not a
@@ -2362,8 +2562,12 @@ impl Dispatcher {
         // anything. The workspace goes in here, and the work root is the first
         // thing inside it (§FS-005-dispatch.25).
         self.mint(item, &laying.site)?;
+        self.begin_handoff();
+        self.journal_work_root(&laying.site.dir)?;
         let root = WorkRoot::ensure(&laying.site.dir, &states)?;
         let carried = carried(&root.dir, &laying.plan_id);
+        self.journal.remember(&carried)?;
+        self.journal.remember(&laying.output)?;
         std::fs::create_dir_all(&carried).map_err(|err| {
             EphorError::Command(format!("Cannot make {}: {err}", carried.display()))
         })?;
@@ -2435,6 +2639,8 @@ impl Dispatcher {
             at: Utc::now(),
             plan: Some(laying.plan_id.clone()),
             root: Some(root.dir.clone()),
+            checkout: Some(laying.site.checkout.workspace.clone()),
+            branch: laying.site.checkout.branch.clone(),
             snapshot: Snapshot::of(item),
         });
         Ok(Laid {
@@ -2477,6 +2683,10 @@ impl Dispatcher {
             // And so it mints nothing: what is asked for on the spot is asked
             // about the matter as it stands (§FS-005-dispatch.25).
             branch: None,
+            // An ad-hoc ask has no per-recipe placement and keeps the
+            // configured project/organization/site answer
+            // (§FS-005-dispatch.6.1).
+            root: None,
             // Typed on the spot by somebody who is right there: the reader
             // starts it, as they always did (§FS-005-dispatch.24).
             autorun: false,
@@ -2535,11 +2745,23 @@ impl Dispatcher {
                 "{item} has no work to cancel — nothing was dispatched for it"
             ))
         })?;
+        let dispatch = entry
+            .dispatches
+            .iter()
+            .rev()
+            .find(|dispatch| !dispatch.is_workflow() && dispatch.ticket == ticket);
+        let root = dispatch
+            .and_then(|dispatch| dispatch.root.as_ref())
+            .unwrap_or(&entry.root);
+        let plan = match dispatch.and_then(|dispatch| dispatch.root.as_ref()) {
+            Some(_) => plan::plan_path_in(root, &entry.plan_id),
+            None => entry.plan.clone(),
+        };
         cancel_ticket(
             &self.global,
-            &entry.root,
+            root,
             &entry.plan_id,
-            &entry.plan,
+            &plan,
             ticket,
             why,
             dry_run,
@@ -2553,7 +2775,10 @@ impl Dispatcher {
     /// (§FS-005-dispatch.4).
     pub fn proposal(&self, item: &Item) -> Option<runtime::results::Proposal> {
         let entry = self.ledger.entries.get(&item.id)?;
-        runtime::results::proposal(&entry.root, &entry.plan_id)
+        recipe_roots(entry)
+            .into_iter()
+            .rev()
+            .find_map(|root| runtime::results::proposal(&root, &entry.plan_id))
     }
 
     /// Record that this matter's proposed reply was posted, so it is offered
@@ -2562,7 +2787,14 @@ impl Dispatcher {
         let Some(entry) = self.ledger.entries.get(&item.id) else {
             return Ok(());
         };
-        runtime::results::mark_posted(&entry.root, &entry.plan_id)
+        if let Some(root) = recipe_roots(entry)
+            .into_iter()
+            .rev()
+            .find(|root| runtime::results::proposal(root, &entry.plan_id).is_some())
+        {
+            return runtime::results::mark_posted(&root, &entry.plan_id);
+        }
+        Ok(())
     }
 
     /// Everything one item's work root has to say about what is going there,
@@ -2582,27 +2814,47 @@ impl Dispatcher {
     /// (§FS-005-dispatch.21).
     pub fn work_at(&self, item: &Item) -> Option<WorkAt<'_>> {
         let entry = self.ledger.entries.get(&item.id)?;
-        let live = runtime::watch::live(&self.global, &entry.root);
-        Some(WorkAt {
-            machine: WorkRoot::open(&entry.root).ok().flatten(),
-            plan: Plan::read(&entry.plan).ok().flatten(),
-            // Neither the witness nor the lock's birth is worth reading on a
-            // root nothing holds: a slot nobody released under a free lock is
-            // a dead run's leavings, which is the board's business and not a
-            // running mark (§FS-005-dispatch.15).
-            witness: live.then(|| runtime::watch::witness(&self.global, &entry.root)),
-            lock_born: live
-                .then(|| runtime::watch::lock_born(&entry.root))
-                .flatten(),
-            // Who the run says it is, read from the descriptor beside the lock
-            // and gated on it: a descriptor outlives the run that wrote it
-            // (§FS-005-dispatch.20).
-            identity: live
-                .then(|| runtime::watch::identity(&self.global, &entry.root))
-                .flatten(),
-            live,
-            entry,
-        })
+        let mut root_paths: Vec<PathBuf> = Vec::new();
+        for dispatch in &entry.dispatches {
+            let root = dispatch.root.as_ref().unwrap_or(&entry.root);
+            if !root_paths
+                .iter()
+                .any(|seen| canonical(seen) == canonical(root))
+            {
+                root_paths.push(root.clone());
+            }
+        }
+        if root_paths.is_empty() {
+            root_paths.push(entry.root.clone());
+        }
+        let plans = recorded_recipe_plans(entry);
+        let roots = root_paths
+            .into_iter()
+            .map(|root| {
+                let live = runtime::watch::live(&self.global, &root);
+                let plan = plans
+                    .iter()
+                    .find(|plan| canonical(&plan.root) == canonical(&root))
+                    .and_then(|recorded| {
+                        Plan::read(&recorded.path)
+                            .ok()
+                            .flatten()
+                            .map(|plan| (recorded.path.clone(), plan))
+                    });
+                WorkAtRoot {
+                    machine: WorkRoot::open(&root).ok().flatten(),
+                    plan,
+                    witness: live.then(|| runtime::watch::witness(&self.global, &root)),
+                    lock_born: live.then(|| runtime::watch::lock_born(&root)).flatten(),
+                    identity: live
+                        .then(|| runtime::watch::identity(&self.global, &root))
+                        .flatten(),
+                    live,
+                    root,
+                }
+            })
+            .collect();
+        Some(WorkAt { entry, roots })
     }
 
     /// What an item's work is doing, read from the plan.
@@ -2800,7 +3052,10 @@ pub fn due_among(
         .flat_map(|entry| {
             entry.dispatches.iter().map(move |dispatch| {
                 (
-                    (entry.root.clone(), dispatch.ticket.clone()),
+                    (
+                        canonical(dispatch.root.as_ref().unwrap_or(&entry.root)),
+                        dispatch.ticket.clone(),
+                    ),
                     dispatch.recipe.clone(),
                 )
             })
@@ -2822,7 +3077,8 @@ pub fn due_among(
                 .filter(|dispatch| dispatch.is_workflow())
                 .filter_map(move |dispatch| {
                     let plan_id = dispatch.plan.as_deref()?;
-                    let found = runtime::workflow::laid(&entry.root.join(plan_id))?;
+                    let root = dispatch.root.as_ref().unwrap_or(&entry.root);
+                    let found = runtime::workflow::laid(&root.join(plan_id))?;
                     Some((canonical(&found.path), dispatch.recipe.clone()))
                 })
         })
@@ -2996,16 +3252,17 @@ pub fn due_among(
         // (§FS-005-dispatch.3). Dispatch refuses on this and so does a
         // start, because with nobody watching there is no one to notice
         // (§FS-005-dispatch.24).
-        let known = ledger
-            .entries
-            .values()
-            .find(|entry| entry.root == group.root);
+        let known = ledger.entries.values().find(|entry| {
+            entry.dispatches.iter().any(|dispatch| {
+                canonical(dispatch.root.as_ref().unwrap_or(&entry.root)) == canonical(&group.root)
+            }) || (entry.dispatches.is_empty() && canonical(&entry.root) == canonical(&group.root))
+        });
         let checkout = checkout_of(ledger, &group.root);
         // Where a run may not be made here at all, and why. The key is told
         // rather than dropped, for the reason the machine guard above is
         // (§FS-005-dispatch.30).
         let mut refusal = None;
-        if let Some(wanted) = known.and_then(|entry| entry.branch.as_deref()) {
+        if let Some(wanted) = branch_of(ledger, &group.root) {
             // Only a branch that can be read and disagrees refuses: an
             // unreadable or detached HEAD is a fact nobody can establish,
             // and refusing on one is worse than the run — the same
@@ -3055,7 +3312,7 @@ pub fn due_among(
                     ledger
                         .entries
                         .iter()
-                        .find(|(_, candidate)| candidate.root == entry.root)
+                        .find(|(_, candidate)| std::ptr::eq(*candidate, entry))
                         .map(|(id, _)| id.clone())
                 })
             }),
@@ -3494,7 +3751,13 @@ impl Dispatcher {
                     .ledger
                     .entries
                     .values()
-                    .find(|entry| entry.root == root.root)
+                    .find(|entry| {
+                        entry.dispatches.iter().any(|dispatch| {
+                            canonical(dispatch.root.as_ref().unwrap_or(&entry.root))
+                                == canonical(&root.root)
+                        }) || (entry.dispatches.is_empty()
+                            && canonical(&entry.root) == canonical(&root.root))
+                    })
                     .cloned()
                     .and_then(|entry| {
                         let status = self.status_of(&entry, None);
@@ -3634,7 +3897,11 @@ impl Dispatcher {
         self.ledger
             .entries
             .values()
-            .find(|entry| entry.root == root)
+            .find(|entry| {
+                entry.dispatches.iter().any(|dispatch| {
+                    canonical(dispatch.root.as_ref().unwrap_or(&entry.root)) == canonical(root)
+                }) || (entry.dispatches.is_empty() && canonical(&entry.root) == canonical(root))
+            })
             .and_then(|entry| entry.pool.clone())
     }
 
@@ -3656,8 +3923,49 @@ impl Dispatcher {
         }
     }
 
-    pub fn save(&self) -> Result<()> {
-        ledger::store(&self.ledger)
+    /// Commit the ledger and only then release the work-root pre-images. A
+    /// failed atomic store restores the entire unsaved batch and the loaded
+    /// in-memory ledger (§FS-005-dispatch.4).
+    pub fn save(&mut self) -> Result<()> {
+        match ledger::store(&self.ledger) {
+            Ok(()) => {
+                self.journal = Journal::default();
+                Ok(())
+            }
+            Err(save_error) => {
+                if self.journal.ledger.is_none() {
+                    return Err(save_error);
+                }
+                let journal = std::mem::take(&mut self.journal);
+                let (ledger, cleanup) = journal.rollback();
+                self.ledger = ledger;
+                match cleanup {
+                    None => Err(save_error),
+                    Some((path, cleanup)) => Err(EphorError::Command(format!(
+                        "{save_error}; rollback could not restore {}: {cleanup}",
+                        path.display()
+                    ))),
+                }
+            }
+        }
+    }
+
+    fn begin_handoff(&mut self) {
+        self.journal.begin(&self.ledger);
+    }
+
+    /// Remember exactly the bootstrap paths `WorkRoot::ensure` may mutate.
+    /// A root absent before the batch is remembered as one created tree;
+    /// an existing root's unrelated contents are deliberately not captured
+    /// or restored (§FS-005-dispatch.4).
+    fn journal_work_root(&mut self, root: &std::path::Path) -> Result<()> {
+        if !root.exists() {
+            return self.journal.remember(root);
+        }
+        for name in ["index.panta.md", "states.yaml", ".gitignore"] {
+            self.journal.remember(&root.join(name))?;
+        }
+        Ok(())
     }
 }
 
@@ -4223,12 +4531,60 @@ fn root_checkout(root: &std::path::Path) -> PathBuf {
 /// both guard on it and two spellings of "which tree is this" would be two
 /// guards (§AR-009-surfaces.1).
 fn checkout_of(ledger: &Ledger, root: &std::path::Path) -> PathBuf {
+    let root = canonical(root);
     ledger
         .entries
         .values()
-        .find(|entry| entry.root == root)
-        .map(Entry::checkout)
-        .unwrap_or_else(|| root_checkout(root))
+        .flat_map(|entry| {
+            entry
+                .dispatches
+                .iter()
+                .rev()
+                .map(move |dispatch| (entry, dispatch))
+        })
+        .find(|(entry, dispatch)| canonical(dispatch.root.as_ref().unwrap_or(&entry.root)) == root)
+        .map(|(entry, dispatch)| {
+            dispatch
+                .checkout
+                .clone()
+                .unwrap_or_else(|| entry.checkout())
+        })
+        .or_else(|| {
+            ledger
+                .entries
+                .values()
+                .find(|entry| entry.dispatches.is_empty() && canonical(&entry.root) == root)
+                .map(Entry::checkout)
+        })
+        .unwrap_or_else(|| root_checkout(&root))
+}
+
+/// The branch recorded for work in one root, with the old entry-level field
+/// as the legacy answer (§FS-005-dispatch.4, §FS-005-dispatch.30).
+fn branch_of<'a>(ledger: &'a Ledger, root: &std::path::Path) -> Option<&'a str> {
+    let root = canonical(root);
+    ledger
+        .entries
+        .values()
+        .flat_map(|entry| {
+            entry
+                .dispatches
+                .iter()
+                .rev()
+                .map(move |dispatch| (entry, dispatch))
+        })
+        .find(|(entry, dispatch)| canonical(dispatch.root.as_ref().unwrap_or(&entry.root)) == root)
+        .and_then(|(entry, dispatch)| match dispatch.root.is_some() {
+            true => dispatch.branch.as_deref(),
+            false => dispatch.branch.as_deref().or(entry.branch.as_deref()),
+        })
+        .or_else(|| {
+            ledger
+                .entries
+                .values()
+                .find(|entry| entry.dispatches.is_empty() && canonical(&entry.root) == root)
+                .and_then(|entry| entry.branch.as_deref())
+        })
 }
 
 /// Every working tree a live run holds right now, each mapped to the work
@@ -4424,6 +4780,93 @@ fn recipe_of_ticket(id: &str) -> Option<&str> {
         .then_some(recipe)
 }
 
+/// The next ticket id across every committed root of one matter
+/// (§FS-005-dispatch.3). The plan is included for compatibility with work a
+/// person or older ephor wrote without a matching dispatch record.
+fn next_ticket_id(entry: Option<&Entry>, plan: Option<&Plan>, recipe: &str) -> String {
+    let number = |id: &str| {
+        id.strip_prefix(recipe)?
+            .strip_prefix('-')?
+            .parse::<u32>()
+            .ok()
+    };
+    let recorded = entry
+        .into_iter()
+        .flat_map(|entry| entry.dispatches.iter())
+        .filter_map(|dispatch| number(&dispatch.ticket));
+    let on_plan = plan
+        .into_iter()
+        .flat_map(Plan::tickets)
+        .filter_map(|ticket| number(&ticket.id));
+    format!(
+        "{recipe}-{}",
+        recorded.chain(on_plan).max().unwrap_or(0) + 1
+    )
+}
+
+/// Every root holding this matter's recipe plan, in dispatch order and once
+/// each. Legacy dispatches use the entry-level placement
+/// (§FS-005-dispatch.4, §FS-005-dispatch.15.1).
+fn recipe_roots(entry: &Entry) -> Vec<PathBuf> {
+    recorded_recipe_plans(entry)
+        .into_iter()
+        .map(|plan| plan.root)
+        .collect()
+}
+
+/// The normalized recipe-plan placements all consumers use. A dispatch from
+/// before provenance existed falls back to the entry's singular fields; new
+/// records retain the exact root, checkout and branch used
+/// (§FS-005-dispatch.4, §FS-005-dispatch.15.1).
+pub fn recorded_recipe_plans(entry: &Entry) -> Vec<RecordedPlan> {
+    let mut plans: Vec<RecordedPlan> = Vec::new();
+    for dispatch in entry
+        .dispatches
+        .iter()
+        .filter(|dispatch| !dispatch.is_workflow())
+    {
+        let root = dispatch.root.clone().unwrap_or_else(|| entry.root.clone());
+        let path = match dispatch.root.is_some() {
+            true => plan::plan_path_in(&root, &entry.plan_id),
+            false => entry.plan.clone(),
+        };
+        let checkout = dispatch
+            .checkout
+            .clone()
+            .unwrap_or_else(|| entry.checkout());
+        let branch = match dispatch.root.is_some() {
+            true => dispatch.branch.clone(),
+            false => dispatch.branch.clone().or_else(|| entry.branch.clone()),
+        };
+        if let Some(existing) = plans
+            .iter_mut()
+            .find(|have| canonical(&have.root) == canonical(&root))
+        {
+            existing.checkout = checkout;
+            existing.branch = branch;
+            existing.path = path;
+            continue;
+        }
+        plans.push(RecordedPlan {
+            root,
+            checkout,
+            branch,
+            plan_id: entry.plan_id.clone(),
+            path,
+        });
+    }
+    if plans.is_empty() && entry.plan.is_file() {
+        plans.push(RecordedPlan {
+            root: entry.root.clone(),
+            checkout: entry.checkout(),
+            branch: entry.branch.clone(),
+            plan_id: entry.plan_id.clone(),
+            path: entry.plan.clone(),
+        });
+    }
+    plans
+}
+
 /// An entry's work as it stands, read from the plan (§FS-005-dispatch.4). A
 /// free function so a test can read a plan back the way every surface does.
 pub fn status_of_entry(global: &WorkConfig, entry: &Entry, item: Option<&Item>) -> WorkStatus {
@@ -4489,94 +4932,75 @@ pub fn status_of_entry_seen(
         .iter()
         .map(|dispatch| (dispatch.ticket.as_str(), dispatch.at))
         .collect();
-    let root = WorkRoot::open(&entry.root).ok().flatten();
-    let plan = Plan::read(&entry.plan).ok().flatten();
-    // What a run on this root is doing, read once for every ticket asked
-    // about (§FS-005-dispatch.15.1).
-    let run = look.of(global, &entry.root);
-    let (live, quiet) = (run.live, run.quiet);
-    let lock_born = live
-        .then(|| runtime::watch::lock_born(&entry.root))
-        .flatten();
-    let holds = |ticket: &plan::PlanTicket| {
-        run.witness.as_ref().is_some_and(|witness| {
-            witness.holds(
-                &entry.root,
-                lock_born,
-                &entry.plan_id,
-                &ticket.id,
-                ticket.state.as_deref(),
-            )
-        })
-    };
-    let tickets: Vec<TicketStatus> = plan
-        .as_ref()
-        .map(|plan| {
-            plan.tickets()
-                .into_iter()
-                .map(|ticket| TicketStatus {
-                    // A live run holds it, or a live run on this root will
-                    // reach it: open and being worked on are different facts
-                    // (§FS-005-dispatch.23).
-                    running: holds(&ticket),
-                    queued: live && !holds(&ticket),
-                    asked: asked.get(ticket.id.as_str()).copied(),
-                    recipe: recipes
-                        .get(ticket.id.as_str())
-                        .map(|recipe| recipe.to_string())
-                        .unwrap_or_else(|| ticket.id.clone()),
-                    finished: ticket
-                        .state
-                        .as_deref()
-                        .map(|state| {
-                            root.as_ref()
-                                .map(|root| root.is_final(state))
-                                // With no machine to ask, a ticket is
-                                // finished when the work left a verdict.
-                                .unwrap_or(false)
-                        })
-                        .unwrap_or(false),
-                    // The abandonment state is the machine's word too:
-                    // judged only where the machine is there to say it is
-                    // final (§FS-005-dispatch.16).
-                    cancelled: ticket.cancelled()
-                        && root
-                            .as_ref()
-                            .is_some_and(|root| root.cancel_state().is_some()),
-                    waiting: ticket
-                        .state
-                        .as_deref()
-                        .map(|state| {
-                            root.as_ref()
-                                .map(|root| root.is_gating(state))
-                                .unwrap_or(false)
-                        })
-                        .unwrap_or(false),
-                    // The review's line where the work reached one; for a
-                    // ticket taken back, the reason the reader gave, read
-                    // out of the runtime's own result (§FS-005-dispatch.16).
-                    verdict: runtime::results::verdict(&entry.root, &entry.plan_id, &ticket.id)
-                        .or_else(|| {
-                            ticket
-                                .cancelled()
-                                .then(|| {
-                                    runtime::results::result(
-                                        &entry.root,
-                                        &entry.plan_id,
-                                        &ticket.id,
-                                    )
-                                })
-                                .flatten()
-                        }),
-                    assignee: ticket.assignee,
-                    pinned: ticket.pinned,
-                    id: ticket.id,
-                    title: ticket.title,
-                    state: ticket.state,
-                })
-                .collect()
-        })
-        .unwrap_or_default();
+    let plans = recorded_recipe_plans(entry);
+    let mut tickets: Vec<TicketStatus> = Vec::new();
+    let mut missing = false;
+    let mut quiet = None;
+    for recorded in &plans {
+        let machine = WorkRoot::open(&recorded.root).ok().flatten();
+        let plan = Plan::read(&recorded.path).ok().flatten();
+        missing |= plan.is_none();
+        // What a run on this root is doing, read once for every ticket asked
+        // about there (§FS-005-dispatch.15.1).
+        let run = look.of(global, &recorded.root);
+        let live = run.live;
+        quiet = quiet.or(run.quiet);
+        let lock_born = live
+            .then(|| runtime::watch::lock_born(&recorded.root))
+            .flatten();
+        let holds = |ticket: &plan::PlanTicket| {
+            run.witness.as_ref().is_some_and(|witness| {
+                witness.holds(
+                    &recorded.root,
+                    lock_born,
+                    &recorded.plan_id,
+                    &ticket.id,
+                    ticket.state.as_deref(),
+                )
+            })
+        };
+        for ticket in plan.into_iter().flat_map(|plan| plan.tickets()) {
+            let running = holds(&ticket);
+            tickets.push(TicketStatus {
+                running,
+                queued: live && !running,
+                asked: asked.get(ticket.id.as_str()).copied(),
+                recipe: recipes
+                    .get(ticket.id.as_str())
+                    .map(|recipe| recipe.to_string())
+                    .unwrap_or_else(|| ticket.id.clone()),
+                finished: ticket
+                    .state
+                    .as_deref()
+                    .is_some_and(|state| machine.as_ref().is_some_and(|root| root.is_final(state))),
+                cancelled: ticket.cancelled()
+                    && machine
+                        .as_ref()
+                        .is_some_and(|root| root.cancel_state().is_some()),
+                waiting: ticket.state.as_deref().is_some_and(|state| {
+                    machine.as_ref().is_some_and(|root| root.is_gating(state))
+                }),
+                verdict: runtime::results::verdict(&recorded.root, &recorded.plan_id, &ticket.id)
+                    .or_else(|| {
+                        ticket
+                            .cancelled()
+                            .then(|| {
+                                runtime::results::result(
+                                    &recorded.root,
+                                    &recorded.plan_id,
+                                    &ticket.id,
+                                )
+                            })
+                            .flatten()
+                    }),
+                assignee: ticket.assignee,
+                pinned: ticket.pinned,
+                id: ticket.id,
+                title: ticket.title,
+                state: ticket.state,
+            });
+        }
+    }
     let advance = tickets.iter().find(|ticket| ticket.waiting).map(|ticket| {
         runtime::advance_command(global, &ticket.id, ticket.state.as_deref().unwrap_or("?"))
     });
@@ -4591,16 +5015,13 @@ pub fn status_of_entry_seen(
         plan_id: entry.plan_id.clone(),
         checkout: entry.checkout(),
         plan: entry.plan.clone(),
+        plans,
         // The matter's own plan is missing only where something was meant
         // to be in it. An entry whose every dispatch laid a plan of its own
         // never wrote a ticket here (§FS-005-dispatch.19), so there is no
         // plan to be missing — and reporting one would be ephor alarming a
         // reader about a file it never said it would write.
-        missing: plan.is_none()
-            && entry
-                .dispatches
-                .iter()
-                .any(|dispatch| !dispatch.is_workflow()),
+        missing,
         tickets,
         advance,
         changes: item
@@ -4765,42 +5186,62 @@ pub fn enumerate_roots(
     let canon = canonical;
     let mut groups: BTreeMap<PathBuf, RootPlans> = BTreeMap::new();
     for (item_id, entry) in &ledger.entries {
-        let root = canon(&entry.root);
-        let group = groups.entry(root.clone()).or_insert_with(|| RootPlans {
-            root,
-            plans: Vec::new(),
-        });
-        // The matter's own plan, where a ticket was ever written into it. An
-        // entry whose every dispatch laid a plan of its own never wrote one
-        // (§FS-005-dispatch.19), and a row for a file ephor never promised
-        // would be the board reporting on itself.
-        if entry.plan.is_file() || entry.dispatches.iter().any(|d| !d.is_workflow()) {
+        // Every dispatch is a durable placement seed. Older records carry no
+        // placement and therefore fall back to the item-level fields they
+        // were written with (§FS-005-dispatch.4,
+        // §FS-005-dispatch.15.1).
+        for dispatch in &entry.dispatches {
+            let recorded_root = dispatch.root.as_ref().unwrap_or(&entry.root);
+            let root = canon(recorded_root);
+            let group = groups.entry(root.clone()).or_insert_with(|| RootPlans {
+                root,
+                plans: Vec::new(),
+            });
+            let found = match dispatch.plan.as_deref() {
+                Some(plan_id) => runtime::workflow::laid(&recorded_root.join(plan_id))
+                    .map(|found| (found.plan_id, found.path)),
+                None => {
+                    let path = match dispatch.root.is_some() {
+                        true => plan::plan_path_in(recorded_root, &entry.plan_id),
+                        false => entry.plan.clone(),
+                    };
+                    Some((entry.plan_id.clone(), path))
+                }
+            };
+            let Some((plan_id, path)) = found else {
+                continue;
+            };
+            let path_key = canon(&path);
+            if group.plans.iter().any(|plan| canon(&plan.path) == path_key) {
+                continue;
+            }
             group.plans.push(PlanRef {
                 project: entry.project.clone(),
-                plan_id: entry.plan_id.clone(),
-                path: entry.plan.clone(),
+                plan_id,
+                path,
                 item: Some(item_id.clone()),
                 title: entry.title.clone(),
             });
         }
-        // And the plans workflows laid down beside it. The listing below finds
-        // these anyway — they are plans in a work root — but only the ledger
-        // knows which matter they are about, which is what `Enter` needs
-        // (§FS-005-dispatch.15).
-        for dispatch in entry.dispatches.iter().filter(|d| d.is_workflow()) {
-            let Some(plan_id) = dispatch.plan.as_deref() else {
-                continue;
-            };
-            let Some(found) = runtime::workflow::laid(&entry.root.join(plan_id)) else {
-                continue;
-            };
-            group.plans.push(PlanRef {
-                project: entry.project.clone(),
-                plan_id: found.plan_id,
-                path: found.path,
-                item: Some(item_id.clone()),
-                title: entry.title.clone(),
-            });
+        // A defensive compatibility path for a ledger entry with no dispatch
+        // history at all: if its old item-level plan exists, retain the exact
+        // bounded reading the previous format provided (§FS-005-dispatch.4).
+        if entry.dispatches.is_empty() && entry.plan.is_file() {
+            let root = canon(&entry.root);
+            groups
+                .entry(root.clone())
+                .or_insert_with(|| RootPlans {
+                    root,
+                    plans: Vec::new(),
+                })
+                .plans
+                .push(PlanRef {
+                    project: entry.project.clone(),
+                    plan_id: entry.plan_id.clone(),
+                    path: entry.plan.clone(),
+                    item: Some(item_id.clone()),
+                    title: entry.title.clone(),
+                });
         }
     }
     for placement in placements {
