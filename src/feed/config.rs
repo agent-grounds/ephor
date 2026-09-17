@@ -825,6 +825,7 @@ mod tests {
                 "root": "{workspace}/site-panta", "agent": { "brief": "fix it" }
             }],
             "projects": { "demo": {
+                "providers": [],
                 "actions": [{
                     "id": "project-flow", "icon": "◆", "description": "project flow",
                     "root": "{root}/project-panta", "workflow": "sweep"

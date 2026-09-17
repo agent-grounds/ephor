@@ -114,8 +114,8 @@ ships, the previous "latest" section moves verbatim to
 ### Added
 
 - **Recipes and workflow entries can place their own work root**
-  ([§FS-005-dispatch.1](functional-spec/FS-005-dispatch.md#1-recipes-say-what-work-to-do),
-  [§FS-005-dispatch.6.1](functional-spec/FS-005-dispatch.md#61-root-templates-are-rendered-from-one-placeholder-map)).
+  ([§FS-005-dispatch.1](functional-spec/FS-005-dispatch.md#1-a-recipe-decides-which-items-deserve-work-and-what-to-ask-for),
+  [§FS-005-dispatch.6.1](functional-spec/FS-005-dispatch.md#61-the-work-root-is-a-template-and-it-may-reach-above-the-project)).
   Optional `root` templates on recipes and flat workflow entries override
   project, organization and site placement after branch resolution, letting
   one project keep issue fixes in minted checkouts and maintenance work at its
@@ -279,7 +279,7 @@ ships, the previous "latest" section moves verbatim to
 ### Fixed
 
 - **A failed ledger save no longer leaves undiscoverable work behind**
-  ([§FS-005-dispatch.4](functional-spec/FS-005-dispatch.md#4-the-ledger-is-the-record-of-dispatch-not-of-runtime-state)).
+  ([§FS-005-dispatch.4](functional-spec/FS-005-dispatch.md#4-the-ledger-is-ephors-record-and-never-the-truth-about-the-work)).
   Hand-off mutations are journalled until the atomic ledger replacement
   commits; failure restores the whole unsaved batch, including prior plan and
   root-file bytes, workflow output and carried files. Root discovery now keeps
