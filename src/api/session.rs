@@ -339,8 +339,10 @@ impl Session {
     /// (the rebase entries, and the `needs_checkout` gate), and reporting
     /// "could not be measured" on every item with no local checkout would be
     /// noise on nearly every reading rather than the one thing worth saying.
-    /// What is left — `roles`, `gate`, `needs_response`, `sources` — are
-    /// facts about the matter itself, true wherever it is read from.
+    /// What is left — `roles`, `gate`, `needs_response`, `sources`,
+    /// `assignees`, `labels` — are facts about the matter itself, true
+    /// wherever it is read from, the last two even where what they report is
+    /// that the source said nothing (§FS-005-dispatch.31).
     ///
     /// The same recipes and the same facts [`Session::actions_with`] matches
     /// them against, so the offers reading never says less than what decided
