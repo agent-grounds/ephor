@@ -330,6 +330,10 @@ impl GithubIssues {
         } else {
             Vec::new()
         };
+        // Who holds it, read once: `assigned` is the same fact counted rather
+        // than named (§FS-005-dispatch.31), and deriving it here is what keeps
+        // the two from drifting apart on a later change to either read.
+        let assignees = names_under(found, "/assignees/nodes", "login");
         Some(Issue {
             key: format!("{repo}#{number}"),
             title: found
@@ -349,13 +353,8 @@ impl GithubIssues {
             // is the policy's to decide (§FS-001-forge-interface.3). Absent
             // from the search result is not "nobody has it" — it is a field
             // that did not come back, so it stays unsaid.
-            assigned: found
-                .pointer("/assignees/nodes")
-                .and_then(Value::as_array)
-                .map(|assignees| !assignees.is_empty()),
-            // Who holds it, beside whether anybody does: the same nodes, read
-            // for their logins rather than counted (§FS-005-dispatch.31).
-            assignees: names_under(found, "/assignees/nodes", "login"),
+            assigned: assignees.as_ref().map(|held| !held.is_empty()),
+            assignees,
             labels: names_under(found, "/labels/nodes", "name"),
             blocked_by: found
                 .pointer("/blockedBy/nodes")
