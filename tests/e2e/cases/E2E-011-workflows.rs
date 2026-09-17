@@ -571,13 +571,50 @@ fn issue_92_repeating_a_workflow_action_refuses_the_recorded_plan() {
     );
 }
 
+/// Workflow output and the carried `.ephor` files are part of the same
+/// hand-off as its ledger record. If that record cannot commit, a fresh reader
+/// sees no work and no root/bootstrap/workflow artifact remains
+/// (§FS-005-dispatch.4, §FS-005-dispatch.28).
+#[test]
+fn issue_43_a_failed_ledger_save_rolls_back_workflow_output_and_carried_files() {
+    let world = watching();
+    let forced = world.path().join("state/ephor/work.json.tmp");
+    std::fs::create_dir_all(&forced).expect("the forced save failure");
+
+    let output = action_output(&world, &[]);
+    assert_eq!(output.status.code(), Some(1));
+    assert!(
+        String::from_utf8_lossy(&output.stderr)
+            .contains(&format!("Cannot write {}", forced.display())),
+        "the command failed for something other than the ledger save:\n{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        !work_root(&world).exists(),
+        "failed workflow hand-off left {}",
+        work_root(&world).display()
+    );
+
+    let listed = world
+        .ephor()
+        .args(["work", "list", "--json"])
+        .output()
+        .expect("a fresh listing runs");
+    assert!(
+        listed.status.success(),
+        "fresh listing failed: {}",
+        String::from_utf8_lossy(&listed.stderr)
+    );
+    assert_eq!(json_of(&listed), json!([]));
+}
+
 /// A later, differently named entry can lay unchanged work for the same
 /// matter into another root without hiding the first entry's exact plan
 /// (§FS-005-dispatch.19). Repeating the first action discovers its original
 /// plan before destination or runtime resolution and leaves both roots and
 /// the ledger byte-for-byte unchanged (§FS-011-command-line.1).
 #[test]
-fn issue_92_repeating_an_entry_finds_its_plan_in_a_prior_work_root() {
+fn issue_43_repeating_an_entry_finds_its_plan_in_a_prior_work_root() {
     let world = watching();
     let first_branch = "you/ABC-42-retry";
     let later_branch = "you/ABC-43-follow-up";
@@ -629,6 +666,26 @@ fn issue_92_repeating_an_entry_finds_its_plan_in_a_prior_work_root() {
     assert_eq!(dispatches.len(), 2);
     assert_eq!(dispatches[0]["root"], json!(first_workspace.join("panta")));
     assert_eq!(dispatches[1]["root"], json!(later_workspace.join("panta")));
+
+    // A fresh process reads both committed placements from the ledger. The
+    // existing single-root fields remain, while each laid-plan row carries
+    // its own additive placement (§FS-005-dispatch.4,
+    // §FS-005-dispatch.15.1, §FS-005-dispatch.28).
+    let listed = world
+        .ephor()
+        .args(["work", "list", "--json"])
+        .output()
+        .expect("a fresh listing runs");
+    assert!(listed.status.success());
+    let listed = json_of(&listed);
+    let workflows = listed[0]["workflows"].as_array().expect("workflow plans");
+    assert_eq!(workflows.len(), 2, "{listed}");
+    assert_eq!(workflows[0]["root"], json!(first_workspace.join("panta")));
+    assert_eq!(workflows[0]["checkout"], json!(first_workspace));
+    assert_eq!(workflows[0]["branch"], json!(first_branch));
+    assert_eq!(workflows[1]["root"], json!(later_workspace.join("panta")));
+    assert_eq!(workflows[1]["checkout"], json!(later_workspace));
+    assert_eq!(workflows[1]["branch"], json!(later_branch));
 
     std::fs::write(world.path().join("runtime.log"), "").expect("clear setup runtime traces");
     let ledger_before = world.read("state/ephor/work.json");
@@ -2317,7 +2374,7 @@ exit 1
             let mut plans = plans_run(&world);
             plans.sort();
             plans.dedup();
-            assert_eq!(plans, [LAID.to_string(), OWN.to_string()]);
+            assert_eq!(plans, [OWN.to_string(), LAID.to_string()]);
         }
     }
 
@@ -2642,7 +2699,7 @@ exit 1
     /// which is what a guard written for a sweep nobody is watching would
     /// have it say (§FS-005-dispatch.30).
     #[test]
-    fn a_checkout_standing_on_another_branch_is_refused_by_name() {
+    fn issue_43_legacy_workflow_branch_safety_and_new_branchless_readings() {
         let world = world(
             "acme-branch",
             &format!("{RENDERS}{DETACHES}{REFUSES}"),
@@ -2664,6 +2721,17 @@ exit 1
         let mut ledger: serde_json::Value =
             serde_json::from_str(&std::fs::read_to_string(&work_json).unwrap()).unwrap();
         ledger["entries"][ITEM]["branch"] = json!("fix/issue-13");
+        // Legacy workflows already recorded root, but not checkout or branch
+        // on each dispatch (§FS-005-dispatch.4).
+        for dispatch in ledger["entries"][ITEM]["dispatches"]
+            .as_array_mut()
+            .unwrap()
+        {
+            assert!(dispatch["root"].is_string());
+            let dispatch = dispatch.as_object_mut().unwrap();
+            dispatch.remove("checkout");
+            dispatch.remove("branch");
+        }
         std::fs::write(&work_json, serde_json::to_string_pretty(&ledger).unwrap()).unwrap();
 
         let output = run_item(&world, ITEM);
@@ -2694,6 +2762,38 @@ exit 1
 
         // Standing on the branch the record names, the same key starts it.
         std::fs::write(checkout.join(".git/HEAD"), "ref: refs/heads/fix/issue-13\n").unwrap();
+        let output = run_item(&world, ITEM);
+        let reading = json_of(&output);
+        assert!(output.status.success(), "{reading}");
+        assert_eq!(reading["runs"][0]["outcome"], "started", "{reading}");
+        assert_eq!(plans_run(&world), [LAID.to_string()]);
+
+        // The same missing branch on a new record is an intentional absence;
+        // its recorded checkout distinguishes it from the legacy case.
+        forget_runs(&world);
+        std::fs::write(checkout.join(".git/HEAD"), "ref: refs/heads/main\n").unwrap();
+        let mut ledger = read_json(&work_json);
+        for dispatch in ledger["entries"][ITEM]["dispatches"]
+            .as_array_mut()
+            .unwrap()
+        {
+            dispatch["checkout"] = json!(checkout);
+        }
+        write_json(&work_json, &ledger);
+        let listed = world
+            .ephor()
+            .args(["work", "list", "--json"])
+            .assert()
+            .success();
+        let listing = json_of(listed.get_output());
+        let row = listing
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|row| row["item"] == ITEM)
+            .unwrap();
+        assert_eq!(row["branch"], "fix/issue-13");
+        assert!(row["workflows"][0]["branch"].is_null(), "{row}");
         let output = run_item(&world, ITEM);
         let reading = json_of(&output);
         assert!(output.status.success(), "{reading}");

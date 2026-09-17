@@ -45,15 +45,14 @@ a problem ephor already recognizes should not need to be described to it
 before anything can be done about it. Configuration adds recipes, and a
 configured recipe that reuses a shipped one's name replaces it.
 
-A recipe may also carry a `root` template saying where this kind of hand-over
-belongs. An entry that asks for agent work or lays down a workflow may carry
-the same flat key in each of its three homes — site actions, project actions,
-and the entry beside a workflow — and that entry's answer displaces the
-selected recipe's. An entry that runs a command carries no work to place, so a
-`root` on it is refused where the configuration is read rather than silently
-ignored. Omitting every new key preserves the placement that configuration had
-before this choice existed ([§6.1](#61-the-work-root-is-a-template-and-it-may-reach-above-the-project),
-[§28](#28-a-workflow-entry-can-ask-for-the-same-thing-a-recipe-can)).
+A recipe may also carry `root`, the whole work-root template for work handed
+over through that recipe. The same flat key may be written on an entry that
+asks an agent or lays down a workflow, in each of the three entry homes: site
+actions, project offers, and the entry beside a workflow. An agent entry
+carries its `root` into the recipe it becomes. A command entry is refused for
+carrying `root`, because it runs here and hands no work to a root. Omitting the
+key preserves the placement the enclosing configuration would otherwise
+choose.
 
 The shipped `implement` recipe is the exception to the otherwise branch-neutral
 defaults: it carries `"branch": "fix/issue-{number}"`. With no configured
@@ -140,23 +139,22 @@ where anything was dropped the ticket says so and links to the whole.
 
 ## 3. One rhei per item, one ticket per dispatch
 
-An item's work lives in one plan named after the item in each committed work
-root. Dispatching another recipe into a root the matter already used appends to
-that plan; choosing a different root creates that matter's plan there. Ticket
-ids are unique across the matter's whole dispatch history, not merely inside
-one root, so returning to an earlier root cannot reuse an id. The several plans
-are one recorded history rather than rival copies: the ledger names every one
-of them and every reading consumes that same record
-([§4](#4-the-ledger-is-ephors-record-and-never-the-truth-about-the-work)).
+An item's recipe work lives in at most one plan named after the item **per
+committed root**. Dispatching a second recipe into a root already used by that
+item appends a ticket to that root's plan; dispatching into a different root
+creates the matter plan there. Ticket ids are unique across the matter's whole
+dispatch history, not merely within one root, so two of its plans never name
+different tickets alike.
 
-The plan is created in the project the item belongs to, in the checkout the
-item's branch resolves to — the same resolution actions already use
-([§FS-004-quick-actions.1](FS-004-quick-actions.md#1-a-quick-action-belongs-to-the-source-that-found-the-problem)).
-Work about a branch belongs in that branch's working tree: it is where the
-change is, where the tools run, and where the runtime will put the agent. Where
-the branch is not checked out, dispatch says so and offers the checkout,
-because writing a ticket about code that is not on the machine only moves the
-problem.
+The item first resolves the checkout and branch where its work runs — the same
+resolution actions already use
+([§FS-004-quick-actions.1](FS-004-quick-actions.md#1-a-quick-action-belongs-to-the-source-that-found-the-problem)) — and then [§6.1](#61-the-work-root-is-a-template-and-it-may-reach-above-the-project)
+selects the root where its plan is recorded. Work about a branch runs in that
+branch's working tree: it is where the change is, where the tools run, and
+where the runtime will put the agent, even when the configured scope records
+its plan in a wider root. Where the branch is not checked out and no branch
+template can mint it, dispatch says so and offers the checkout, because a
+ticket about code that is not on the machine only moves the problem.
 
 **Not all work has an item behind it.** A sweep that replays every idle
 checkout onto its project's main branch
@@ -201,27 +199,24 @@ what the item looked like at that moment. The ledger is what makes the second
 question answerable — has this already been handed over? — and it is written
 where ephor's other state lives, not in the reader's repositories.
 
-Every committed dispatch records the exact work root, checkout and branch it
-used. Recipe tickets and workflow plans carry the same placement provenance;
-older records without it fall back to the item's existing root, checkout and
-branch fields. Those old fields remain in the machine form, and additions that
-describe several roots are additive, so an older single-root ledger and a
-consumer of its published fields keep working
-([§REQ-002-parity.4](../requirements/REQ-002-parity.md#4-the-machine-form-is-a-contract-not-a-dump)).
+Every dispatch also records the work root, checkout and branch it used. Those
+per-dispatch facts are the durable index of every place the matter's work was
+committed; a later dispatch cannot replace an earlier placement. A record from
+before those fields existed falls back to the entry's item-level root, checkout
+and branch. Existing ledger fields remain readable and machine readings grow
+only by additive placement fields.
 
-**The ledger write is the commit point for ephor's work-root writes.** Before
-the first mutation in a batch, ephor remembers the first pre-image — bytes or
-absence — of every item plan, root manifest, state machine, ignore file,
-workflow output and carried `.ephor` file it may touch, together with the
-loaded ledger. The journal keeps that first image even when the same path is
-written repeatedly. Only a successful atomic ledger replacement clears it. If
-the ledger cannot be saved, ephor restores pre-existing files byte for byte,
-removes only what the unsaved batch created, and restores the in-memory ledger;
-the rollback covers first creation, append, workflow laying and work-root
-bootstrap as one batch. A cleanup failure retains the original save error and
-also names the exact path cleanup could not restore. A workspace minted for
-the hand-over and the effects of a recipe's deterministic opening move keep
-their existing contracts: neither is part of this file journal.
+**The ledger save is the commit point for a hand-off.** Before the first
+work-root mutation, ephor journals the first pre-image — prior bytes or absence
+— of every path it can change: the matter plan, root manifest, state machine and
+ignore file, workflow output, and carried `.ephor` files, together with the
+loaded ledger. The journal spans the whole unsaved batch and is cleared only
+after the ledger's atomic rename succeeds. If saving fails, ephor restores
+existing paths byte for byte, removes only paths that batch created, and
+restores the loaded in-memory ledger. This does not undo a minted checkout or a
+recipe's deterministic opening move, whose existing contracts remain in force.
+If cleanup itself fails, the error retains the original save failure and names
+the exact path cleanup could not restore.
 
 But the work's state belongs to the runtime and is read from the plan, never
 cached in the ledger. A ledger that remembers "running" when the plan says
@@ -288,27 +283,15 @@ merged pull request is asking it to invent something to do.
 ### 6.1 The work root is a template, and it may reach above the project
 
 Where a plan is written is configuration rather than a constant. `root` is a
-template, rendered from the vocabulary the ticket itself is rendered from
+whole template, rendered from the vocabulary the ticket itself is rendered from
 ([§2](#2-the-ticket-carries-what-ephor-knows-not-a-link-to-it)) — the item's
-own fields, the checkout it resolves to, the project root — and it is read at
-five levels. A work entry's flat `root` answers first, then the selected
-recipe's `root`, `projects.<id>.work.root`,
-`organizations.<org-id>.work.root`, and finally the site's `work.root` — the
-same outer nesting the autorun ceilings are read at
-([§24](#24-work-nobody-has-to-start-starts-itself)). The first one written is
-the whole answer and the others are not consulted; none merges with another,
-because a path is one answer and a half-overridden one is nobody's. An ad-hoc
-`work ask` has no entry or recipe override and keeps the configured
-project/organization/site placement.
-
-Branch placement is resolved first, including a branch an entry or recipe
-mints, and only then is the winning root rendered. Thus `{workspace}` names the
-resolved or minted checkout while `{root}` remains the registry project root.
-Offers, previews, dry runs and writes use this one resolution and the same
-placeholder map; an unknown or unanswered name keeps the existing named
-refusal. The template expresses the scope the person configured. Ephor neither
-infers reach nor adds another scope field to second-guess it
-([§FS-014-work-root-scopes.2](FS-014-work-root-scopes.md#2-reach-places-and-nothing-else-does)).
+own fields, the resolved checkout, and the project root. It is selected in this
+order: the entry being used, the selected recipe, `projects.<id>.work.root`,
+`organizations.<org-id>.work.root`, then the site's `work.root`. The first one
+written answers and the others are not consulted; none merges with another,
+because a path is one answer and a half-overridden one is nobody's. Ad-hoc
+`work ask` has no entry or recipe override and continues through the three
+configuration tiers.
 
 **Two of the names reach above the project.** `{org}` is the organization the
 project's registry row places it in and `{org_root}` is where that organization
@@ -331,6 +314,13 @@ been, and either one is work laid down somewhere nobody meant. The refusal is
 about the *path*: the dossier and a recipe's brief are prose, and carry an
 empty organization the way they carry any other field a matter has not got
 ([§2](#2-the-ticket-carries-what-ephor-knows-not-a-link-to-it)).
+
+Branch placement is resolved before the selected root is rendered. Thus
+`{workspace}` names the existing or deterministically minted checkout and
+`{root}` remains the registry project root. Offers and other previews, dry
+runs, and real writes use the same selection and rendering; a dry run or a
+refusal writes no checkout, root, ledger or workflow file. The existing named
+placeholder refusals apply equally to recipe and entry templates.
 
 **Which scope a plan belongs in is a different question from which tier may
 answer it**, and [§FS-014-work-root-scopes](FS-014-work-root-scopes.md#fs-014-work-root-scopes-a-plan-lives-in-the-smallest-scope-that-can-see-everything-it-touches) is the rule for it.
@@ -894,16 +884,16 @@ naming a field only an item can fill is: an organization placeholder
 nothing answers is a template no dispatch could have written through
 either, so there is nothing under it to have missed.
 
-The ledger's per-dispatch placements are candidates in that same bounded walk,
-including roots no registry template can derive. One normalized recorded-plan
-reading resolves recipe plans and workflow plans from each dispatch's root,
-checkout and branch, with the legacy item-level fallback above, and is consumed
-by list/status, due classification, named and plain runs, the interface run
-key, repeat detection, cancellation and proposal lookup. Discovery still does
-not search for an unknown root: it reads only configured candidates and roots
-the ledger recorded. Returning to an old root therefore makes its plan visible
-again after a fresh process starts, without moving or forgetting work committed
-in another root.
+Every root retained on a committed dispatch is another bounded seed. One
+normalized recorded-plan reading combines those seeds with configured
+candidates and, after a fresh process load, feeds enumeration, list and status,
+due classification, named and plain runs, repeat detection, cancellation, and
+proposal lookup. It resolves each recorded plan with that dispatch's root,
+checkout and branch; no item-level "latest root" may move an earlier plan. The
+reading still performs no filesystem search for an unknown root, preserves one
+live run per checkout and wrong-branch refusals per recorded placement, and
+keeps explicit `work forget` as the act that removes the ledger seed while
+leaving files on disk.
 
 ### 15.2 What a run is doing is read from the run's own stream
 
@@ -2243,11 +2233,12 @@ the dispatch will use
 entry carrying a `branch` is the root inside the workspace that entry names and
 not the project's own.
 
-A recipe or work entry's `root` is rendered only after that branch decision,
-so the same project can place a `fix-issue` plan at `{workspace}/panta` in the
-minted checkout and a project sweep at `{root}/panta`. Preview and dry-run name
-the same resulting path the write uses while making neither checkout nor work
-files, and omitting the override retains the configured placement above it.
+The entry or recipe's selected `root` is rendered only after this resolution,
+so `{workspace}` in an override names the minted checkout while `{root}` still
+names the registry project root. The path promised by an offer or dry run is
+therefore the path a real dispatch or laying writes, including when the same
+project places a checkout-local fix and a project-wide sweep in different
+roots.
 
 **Offers follow.** An entry carrying a `branch` is offered on a matter with no
 branch, in the *will check out first* shape rather than blocked as *the
@@ -2404,12 +2395,12 @@ that runs a command here has no work to start, and an entry that asks for a
 ticket says it inside the recipe it already is — two spellings of one fact
 would drift, so the second is refused where it is written.
 
-The same entry may say `root`, flat beside `workflow`, `branch`, `inputs`, and
-`autorun`, in all three homes. It displaces a selected recipe and every broader
-placement tier, is rendered after branch placement, and is recorded with the
-workflow dispatch so later work about the same matter may choose another root
-without making this plan unreachable. A workflow entry that omits it is placed
-exactly as before.
+The same entry may carry the flat `root` placement key described by
+[§1](#1-a-recipe-decides-which-items-deserve-work-and-what-to-ask-for). Its
+value wins the selected recipe and every configuration tier, and the exact
+root, checkout and branch used are recorded as the provenance of the plan it
+lays. Repeating the entry consults that recorded placement rather than a later
+item-level root.
 
 **The sweep lays it, where nothing else would.** `ephor work dispatch`
 already walks the matters that deserve work and hands each one to the first
@@ -2613,8 +2604,8 @@ themselves, which is the one thing the ledger exists to make unnecessary
 ([§4](#4-the-ledger-is-ephors-record-and-never-the-truth-about-the-work)).
 
 **The key reaches every plan the record says is that matter's.** A run asked
-for by name starts the matter's recipe plans and every plan a workflow laid,
-across every committed root, and names them to the runtime as the record names them
+for by name starts the matter's own plan and every plan a workflow laid beside
+it, and names them to the runtime as the record names them
 ([§28](#28-a-workflow-entry-can-ask-for-the-same-thing-a-recipe-can)) — never
 the id of a plan nobody wrote. Which plans those are is read the way the sweep
 reads them: the roots on disk, the tasks where the runtime wrote them, judged
@@ -2623,12 +2614,9 @@ by the machine in force for the plan they are in
 The key is a narrowing of that reading and not a second one, so the two surfaces
 cannot come apart on what a matter's work is
 ([§15](#15-every-operation-is-visible-in-one-place)).
-
-Each root remains one run, with its recorded checkout and branch subjected to
-the existing one-live-run-per-checkout and wrong-branch refusals. List/status,
-due sweeps, a named run, a plain run and the interface key all take this same
-multi-root reading; repeat detection, cancellation and proposal lookup select
-the exact recorded plan rather than the item's latest root.
+Where those plans occupy several committed roots, the key reaches each root
+with its recorded checkout and branch; the same normalized reading is used by
+a plain run and by the interface key.
 
 **The key is blind to `autorun`.** `autorun` is the condition under which work
 starts with *nobody present*, and its silence means the key
