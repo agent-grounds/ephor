@@ -1204,6 +1204,7 @@ mod tests {
             needs_checkout: false,
             branch: None,
             autorun: false,
+            dispatch: None,
             brief: "b".to_string(),
             opens_with: None,
             hand: None,

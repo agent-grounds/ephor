@@ -9,6 +9,8 @@
 
 use std::collections::BTreeMap;
 
+use chrono::{DateTime, Utc};
+
 use serde::{Deserialize, Serialize};
 
 use crate::feed::gate::Gate;
@@ -543,6 +545,14 @@ pub struct Recipe {
     /// itself says nothing about the rest.
     #[serde(default)]
     pub autorun: bool,
+    /// This recipe's own sweep needs nobody either, and goes at this rhythm
+    /// (§FS-005-dispatch.31). One step earlier than [`Recipe::autorun`] and
+    /// the same shape: its presence is the opt-in, and silence leaves the
+    /// sweep the reader's to type. The two settings answer two different
+    /// questions — *find them yourself* and *do not wait for me to start it* —
+    /// and neither implies the other.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dispatch: Option<Sweep>,
     /// What the ticket asks for, in the reader's words. `{...}` placeholders
     /// are filled from the item (see [`super::dossier::Subject::placeholders`]),
     /// plus `{reply}` — where a proposed answer for this matter belongs, which
@@ -573,6 +583,159 @@ pub struct Recipe {
     pub target: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub model: Option<String>,
+}
+
+/// A recipe's own sweep: how often it looks for its matters, and how much one
+/// look may open (§FS-005-dispatch.31).
+///
+/// Written as the interval alone — `"6h"` — which is the spelling to prefer,
+/// or as `{ "every": "6h", "limit": 3 }` where the recipe wants the bound. One
+/// field says both *this sweep needs nobody* and *at this rhythm*, because an
+/// interval already says the first: a boolean beside it would restate it, and
+/// `false` written beside an interval is a state nothing could mean.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Sweep {
+    /// At most this often. Zero has elapsed by the time anything reads it, so
+    /// `"0h"` falls out of the same comparison every other value goes through
+    /// rather than being a mode beside it — *whenever you ask me*, bounded by
+    /// whatever rate the caller runs at, because ephor has no daemon.
+    every: chrono::TimeDelta,
+    /// The most matters this recipe may open in one sweep of its own. The
+    /// reader is not there to type `--limit` (§FS-005-dispatch.26), and the
+    /// verb hosting the sweep is not the verb that flag is on. Counted per
+    /// recipe, so two self-sweeping recipes do not spend each other's
+    /// allowance. Omitted leaves it bounded by the ceilings every start is
+    /// bounded by and by nothing nearer.
+    pub limit: Option<usize>,
+}
+
+impl Sweep {
+    /// Whether this recipe is due, given when it last swept. A recipe nothing
+    /// was recorded about is due now: the record is ephor's own and a missing
+    /// one costs a sweep's worth of waiting rather than the sweep itself
+    /// (§FS-005-dispatch.31).
+    pub fn due(&self, last: Option<DateTime<Utc>>, now: DateTime<Utc>) -> bool {
+        match last {
+            Some(last) => now >= last + self.every,
+            None => true,
+        }
+    }
+
+    /// How the interval is named back to whoever wrote it.
+    pub fn describe(&self) -> String {
+        let every = match self.every.num_minutes() {
+            0 => "every sweep".to_string(),
+            minutes if minutes % 1440 == 0 => format!("every {}d", minutes / 1440),
+            minutes if minutes % 60 == 0 => format!("every {}h", minutes / 60),
+            minutes => format!("every {minutes}m"),
+        };
+        match self.limit {
+            Some(limit) => format!("{every}, at most {limit}"),
+            None => every,
+        }
+    }
+
+    /// `<n><unit>`, where the unit is `m`, `h` or `d`. Refused rather than
+    /// defaulted: a rhythm nobody can read is a recipe that would sweep at a
+    /// rate its author never chose, and this is the field that spends agents
+    /// unattended.
+    fn parse_every(text: &str) -> std::result::Result<chrono::TimeDelta, String> {
+        let text = text.trim();
+        let unsaid = || {
+            format!(
+                "'{text}' is not an interval; write it as '<number><unit>' with a unit of \
+                 'm', 'h' or 'd' — '0h' is every sweep"
+            )
+        };
+        let (count, unit) = text.split_at(text.len().saturating_sub(1));
+        let count: i64 = count.parse().map_err(|_| unsaid())?;
+        if count < 0 {
+            return Err(format!(
+                "interval '{text}' is negative; '0h' is every sweep"
+            ));
+        }
+        let minutes = match unit {
+            "m" => count,
+            "h" => count.saturating_mul(60),
+            "d" => count.saturating_mul(60 * 24),
+            _ => return Err(unsaid()),
+        };
+        chrono::TimeDelta::try_minutes(minutes)
+            .ok_or_else(|| format!("interval '{text}' is longer than anything can wait"))
+    }
+}
+
+/// The long spelling, as a map writes it. Read from a map and from nothing
+/// else — see [`SweepVisitor`].
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct LongSweep {
+    every: String,
+    #[serde(default)]
+    limit: Option<usize>,
+}
+
+/// One sweep, read from the interval alone or from the map that carries a
+/// bound beside it.
+struct SweepVisitor;
+
+impl<'de> serde::de::Visitor<'de> for SweepVisitor {
+    type Value = Sweep;
+
+    fn expecting(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        f.write_str("an interval like '6h', or { \"every\": \"6h\", \"limit\": 3 }")
+    }
+
+    fn visit_str<E: serde::de::Error>(self, text: &str) -> std::result::Result<Sweep, E> {
+        Ok(Sweep {
+            every: Sweep::parse_every(text).map_err(serde::de::Error::custom)?,
+            limit: None,
+        })
+    }
+
+    fn visit_map<A: serde::de::MapAccess<'de>>(
+        self,
+        map: A,
+    ) -> std::result::Result<Sweep, A::Error> {
+        let long = LongSweep::deserialize(serde::de::value::MapAccessDeserializer::new(map))?;
+        Ok(Sweep {
+            every: Sweep::parse_every(&long.every).map_err(serde::de::Error::custom)?,
+            limit: long.limit,
+        })
+    }
+}
+
+impl<'de> Deserialize<'de> for Sweep {
+    fn deserialize<D: serde::Deserializer<'de>>(
+        deserializer: D,
+    ) -> std::result::Result<Sweep, D::Error> {
+        deserializer.deserialize_any(SweepVisitor)
+    }
+}
+
+impl Serialize for Sweep {
+    /// Back out in the spelling it was written in, so a recipe read and
+    /// rewritten does not change shape.
+    fn serialize<S: serde::Serializer>(
+        &self,
+        serializer: S,
+    ) -> std::result::Result<S::Ok, S::Error> {
+        let every = match self.every.num_minutes() {
+            minutes if minutes % 1440 == 0 && minutes != 0 => format!("{}d", minutes / 1440),
+            minutes if minutes % 60 == 0 => format!("{}h", minutes / 60),
+            minutes => format!("{minutes}m"),
+        };
+        match self.limit {
+            None => serializer.serialize_str(&every),
+            Some(limit) => {
+                use serde::ser::SerializeMap;
+                let mut map = serializer.serialize_map(None)?;
+                map.serialize_entry("every", &every)?;
+                map.serialize_entry("limit", &limit)?;
+                map.end()
+            }
+        }
+    }
 }
 
 /// The deterministic moves ephor can make on its own behalf
@@ -880,6 +1043,9 @@ pub fn shipped() -> Vec<Recipe> {
         // Silence means the key: what ships is started by the reader, and
         // saying otherwise is a thing configuration does (§FS-005-dispatch.24).
         autorun: false,
+        // And nothing that ships sweeps for itself, for the same reason one
+        // step earlier (§FS-005-dispatch.31).
+        dispatch: None,
         brief: brief.to_string(),
         opens_with: None,
         // The shipped recipes name nobody: who does them is the reader's
@@ -1580,5 +1746,128 @@ mod tests {
             json!({ "id": "x", "description": "d", "brief": "b", "kinds": ["pr"] })
         )
         .is_err());
+    }
+
+    // ---- a recipe's own sweep (§FS-005-dispatch.31) ----
+
+    fn recipe_with(dispatch: serde_json::Value) -> serde_json::Value {
+        json!({ "id": "implement", "description": "d", "brief": "b", "dispatch": dispatch })
+    }
+
+    fn sweep(dispatch: serde_json::Value) -> Sweep {
+        serde_json::from_value::<Recipe>(recipe_with(dispatch))
+            .unwrap()
+            .dispatch
+            .unwrap()
+    }
+
+    fn moment(minutes: i64) -> DateTime<Utc> {
+        DateTime::from_timestamp(1_700_000_000 + minutes * 60, 0).unwrap()
+    }
+
+    /// Silence is how a recipe declines, one step earlier than `autorun`
+    /// (§FS-005-dispatch.31).
+    #[test]
+    fn a_recipe_that_says_nothing_sweeps_for_nobody() {
+        let quiet: Recipe =
+            serde_json::from_value(json!({ "id": "q", "description": "d", "brief": "b" })).unwrap();
+        assert!(quiet.dispatch.is_none());
+    }
+
+    #[test]
+    fn the_interval_alone_is_the_spelling_to_prefer() {
+        let every = sweep(json!("6h"));
+        assert_eq!(every.limit, None);
+        assert_eq!(every.describe(), "every 6h");
+        // Not due until the interval has actually passed.
+        assert!(!every.due(Some(moment(0)), moment(359)));
+        assert!(every.due(Some(moment(0)), moment(360)));
+    }
+
+    /// Zero has elapsed by the time anything reads it, so it falls out of the
+    /// same comparison rather than being a mode beside it
+    /// (§FS-005-dispatch.31).
+    #[test]
+    fn zero_is_due_every_time_it_is_asked() {
+        let always = sweep(json!("0h"));
+        assert!(always.due(Some(moment(0)), moment(0)));
+        assert!(always.due(Some(moment(10)), moment(10)));
+        assert_eq!(always.describe(), "every sweep");
+    }
+
+    /// A record nobody wrote means due now: the cost is one early sweep, and
+    /// the other direction is a queue that stops being looked at.
+    #[test]
+    fn a_recipe_nothing_was_recorded_about_is_due() {
+        assert!(sweep(json!("7d")).due(None, moment(0)));
+    }
+
+    #[test]
+    fn every_unit_is_read_and_a_day_is_a_day() {
+        assert!(sweep(json!("30m")).due(Some(moment(0)), moment(30)));
+        assert!(!sweep(json!("30m")).due(Some(moment(0)), moment(29)));
+        assert!(sweep(json!("1d")).due(Some(moment(0)), moment(1440)));
+        assert!(!sweep(json!("1d")).due(Some(moment(0)), moment(1439)));
+    }
+
+    /// The map is for the recipe that wants the bound; the string is sugar for
+    /// it with no bound (§FS-005-dispatch.31.4).
+    #[test]
+    fn the_long_spelling_carries_a_limit() {
+        let bounded = sweep(json!({ "every": "6h", "limit": 3 }));
+        assert_eq!(bounded.limit, Some(3));
+        assert_eq!(bounded.describe(), "every 6h, at most 3");
+        assert!(bounded.due(Some(moment(0)), moment(360)));
+        assert_eq!(sweep(json!({ "every": "6h" })).limit, None);
+    }
+
+    /// A rhythm nobody can read would sweep at a rate its author never chose,
+    /// and this is the field that spends agents unattended — so it refuses
+    /// rather than defaulting.
+    #[test]
+    fn an_interval_that_is_not_one_is_refused() {
+        for bad in [
+            json!("6"),         // no unit
+            json!("h"),         // no number
+            json!(""),          // nothing at all
+            json!("6y"),        // a unit nothing here means
+            json!("-1h"),       // backwards
+            json!("6 h"),       // not one token
+            json!("six hours"), // words
+            json!(6),           // a bare number is not an interval
+            json!(["6h"]),      // nor a list
+        ] {
+            assert!(
+                serde_json::from_value::<Recipe>(recipe_with(bad.clone())).is_err(),
+                "{bad} should not read as an interval"
+            );
+        }
+    }
+
+    #[test]
+    fn the_long_spelling_still_needs_an_interval_it_can_read() {
+        assert!(serde_json::from_value::<Recipe>(recipe_with(json!({ "limit": 3 }))).is_err());
+        assert!(serde_json::from_value::<Recipe>(recipe_with(json!({ "every": "6y" }))).is_err());
+        // And refuses a key it does not know, as every other block here does.
+        assert!(serde_json::from_value::<Recipe>(recipe_with(
+            json!({ "every": "6h", "unattended": true })
+        ))
+        .is_err());
+    }
+
+    /// Read and written back in the spelling it arrived in, so a recipe that
+    /// round-trips does not change shape on disk.
+    #[test]
+    fn a_sweep_serializes_as_it_was_written() {
+        let round = |value: serde_json::Value| serde_json::to_value(sweep(value)).unwrap();
+        assert_eq!(round(json!("6h")), json!("6h"));
+        // Zero keeps the documented spelling rather than degrading to "0m".
+        assert_eq!(round(json!("0h")), json!("0h"));
+        assert_eq!(round(json!("90m")), json!("90m"));
+        assert_eq!(round(json!("2d")), json!("2d"));
+        assert_eq!(
+            round(json!({ "every": "6h", "limit": 3 })),
+            json!({ "every": "6h", "limit": 3 })
+        );
     }
 }
