@@ -9,7 +9,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::process::ExitCode;
 
-use chrono::Utc;
+use chrono::{DateTime, Utc};
 
 use crate::cli::{WorkArgs, WorkCommand};
 use crate::error::{registry_error, EphorError, Result};
@@ -469,13 +469,21 @@ fn kind_filter(kind: &Option<String>) -> Result<Option<ItemKind>> {
 /// be used, and every id it named that matched nothing, are said once each
 /// the way every other fact this sweep learns is (§FS-006-project-interface.9)
 /// — in prose and in `--json` alike, since both read `dispatcher.notes()`.
+/// `asked` is the ordering one invocation named for itself, where the verb has
+/// a flag for it; the configured ranking answers otherwise. Read by both
+/// sweeps, because an unattended one bounded by a recipe's own limit
+/// (§FS-005-dispatch.31.4) is exactly where the order decides which matters get
+/// opened at all.
 fn order_by_ranking(
     dispatcher: &mut Dispatcher,
     config: &StatusConfig,
-    args: &crate::cli::WorkDispatchArgs,
+    asked: Option<&str>,
     items: Vec<Item>,
 ) -> Vec<Item> {
-    let Some(path) = args.ranking.clone().or_else(|| config.work.ranking.clone()) else {
+    let Some(path) = asked
+        .map(str::to_string)
+        .or_else(|| config.work.ranking.clone())
+    else {
         return items;
     };
     let reading = crate::work::ranking::read(&crate::paths::resolve_path(&path));
@@ -503,7 +511,7 @@ fn dispatch_work(
     let dry_run = args.dry_run || gate.holds();
     let mut dispatcher = Dispatcher::load(config)?;
     let items = selected_items(config, projects)?;
-    let items = order_by_ranking(&mut dispatcher, config, args, items);
+    let items = order_by_ranking(&mut dispatcher, config, args.ranking.as_deref(), items);
     let kind = kind_filter(&args.kind)?;
     // Who does it, for this dispatch alone — the first of the seven steps
     // (§FS-005-dispatch.14), in the same grammar the tables write. Parsed
@@ -533,6 +541,8 @@ fn dispatch_work(
     // dispatch (§FS-005-dispatch.12).
     let mut settled = 0usize;
     let mut asked_for_one = false;
+    // Which self-sweeping recipes this walk covered (§FS-005-dispatch.31).
+    let mut swept: std::collections::BTreeSet<String> = Default::default();
     for item in &items {
         // The bound is on what actually gets dispatched — opened, or
         // would-open under `--dry-run` — never on what a filter or an
@@ -654,6 +664,13 @@ fn dispatch_work(
             }
             continue;
         }
+        // A sweep the reader typed marks the clock too: this opens what a
+        // self-sweeping recipe would have opened, so a record that ignored it
+        // would send the timer to look again at a queue a person had just
+        // emptied by hand (§FS-005-dispatch.31).
+        if recipe.dispatch.is_some() {
+            swept.insert(crate::work::sweeps::key(&item.project, &recipe.id));
+        }
         match dispatcher.dispatch(item, &recipe, picked.as_ref(), dry_run) {
             // A deterministic opening move that finished is not a ticket
             // (§FS-005-dispatch.12) — it is reported as what it was, and
@@ -722,6 +739,13 @@ fn dispatch_work(
 
     if !dry_run && (opened > 0 || laid > 0 || settled > 0) {
         dispatcher.save()?;
+        if !swept.is_empty() {
+            let mut sweeps = crate::work::sweeps::load();
+            for key in &swept {
+                sweeps.swept.insert(key.clone(), now);
+            }
+            crate::work::sweeps::store(&sweeps)?;
+        }
         // Work that needs nobody to start it gets its run in the same breath
         // as the ticket (§FS-005-dispatch.24). The sweep decides what that
         // is, so this starts nothing where nothing asked for it and nothing
@@ -1455,10 +1479,40 @@ fn sync_work(
     let dry_run = args.dry_run || gate.holds();
     let mut dispatcher = Dispatcher::load(config)?;
     let items = selected_items(config, projects)?;
+    // The configured ranking orders this walk too: `sync` names no ordering of
+    // its own, and a sweep a recipe's limit bounds is where the order decides
+    // which matters are opened at all (§FS-005-dispatch.31.4).
+    let items = order_by_ranking(&mut dispatcher, config, None, items);
     let mut reopened = 0usize;
     let mut landed: Vec<serde_json::Value> = Vec::new();
+    // The sweep's own record, and what this walk opened per recipe — read once
+    // here rather than per matter, because one walk asks the same handful of
+    // recipes over and over (§FS-005-dispatch.31).
+    let now = Utc::now();
+    let mut sweeps = crate::work::sweeps::load();
+    let mut swept: std::collections::BTreeSet<String> = Default::default();
+    let mut opened_by: std::collections::BTreeMap<String, usize> = Default::default();
+    let mut opened = 0usize;
+    let style = Style::detect();
     for item in &items {
         if !dispatcher.ledger.entries.contains_key(&item.id) {
+            // A matter ephor has no work about. That answer stops being
+            // unconditional: it is opened where a recipe asked for its own
+            // sweep and that recipe's interval has elapsed, and passed over
+            // otherwise, exactly as before (§FS-005-dispatch.31).
+            opening(
+                &mut dispatcher,
+                item,
+                now,
+                &sweeps,
+                &mut swept,
+                &mut opened_by,
+                &mut opened,
+                dry_run,
+                args.json,
+                &style,
+                &mut landed,
+            );
             continue;
         }
         match dispatcher.sync(item, dry_run) {
@@ -1506,9 +1560,20 @@ fn sync_work(
     }
     if !dry_run {
         dispatcher.save()?;
+        // A dry run writes nothing, and that includes the sweep's own record
+        // of having swept (§FS-005-dispatch.31).
+        for key in &swept {
+            sweeps.swept.insert(key.clone(), now);
+        }
+        if !swept.is_empty() {
+            crate::work::sweeps::store(&sweeps)?;
+        }
         // The same continuation dispatch makes: work reopened because its
         // item moved is work again, and where it needs nobody to start it,
-        // nobody has to (§FS-005-dispatch.24, §FS-005-dispatch.5).
+        // nobody has to (§FS-005-dispatch.24, §FS-005-dispatch.5). Work this
+        // walk *opened* is in the same position and is reached by the same
+        // call, which is why the sweep sits in front of it rather than after
+        // (§FS-005-dispatch.31).
         // Nobody typed this one: `work sync` is what a timer runs before
         // `work run --due`, and a budget that bound only the second would let
         // the first start the night's work unbound
@@ -1527,6 +1592,7 @@ fn sync_work(
             serde_json::to_string_pretty(&gated(
                 serde_json::json!({
                     "reopened": reopened,
+                    "opened": opened,
                     "dry_run": dry_run,
                     "items": landed,
                     "notes": dispatcher.notes(),
@@ -1538,11 +1604,23 @@ fn sync_work(
         return Ok(ExitCode::SUCCESS);
     }
     println!(
-        "\n{reopened} ticket(s) {}",
+        "\n{reopened} ticket(s) {}{}",
         if dry_run {
             "would be reopened"
         } else {
             "reopened"
+        },
+        // Said only where a recipe asked for its own sweep, so a site that
+        // adopted none reads exactly as it did before (§FS-005-dispatch.31).
+        match opened {
+            0 => String::new(),
+            opened => format!(
+                ", {opened} {}",
+                match dry_run {
+                    true => "would be opened",
+                    false => "opened",
+                }
+            ),
         }
     );
     if let Some(says) = gate.says() {
@@ -1554,6 +1632,120 @@ fn sync_work(
         println!("note: {}", Style::detect().dim(note));
     }
     Ok(ExitCode::SUCCESS)
+}
+
+/// Open a matter ephor has no work about, where a recipe asked for its own
+/// sweep and its interval has elapsed (§FS-005-dispatch.31).
+///
+/// The recipe asked for is the one the reader's own sweep would have chosen —
+/// the first that applies, because recipes are offered in priority order and
+/// one matter wants one piece of work (§FS-005-dispatch.1). A matter whose best
+/// recipe stayed silent is left alone and never handed to a lesser recipe
+/// further down the list that happened to carry an interval: that would be this
+/// field deciding which work a matter deserves, which is the selector's to
+/// decide and the ordering's.
+#[allow(clippy::too_many_arguments)]
+fn opening(
+    dispatcher: &mut Dispatcher,
+    item: &Item,
+    now: DateTime<Utc>,
+    sweeps: &crate::work::sweeps::Sweeps,
+    swept: &mut std::collections::BTreeSet<String>,
+    opened_by: &mut std::collections::BTreeMap<String, usize>,
+    opened: &mut usize,
+    dry_run: bool,
+    json: bool,
+    style: &Style,
+    landed: &mut Vec<serde_json::Value>,
+) {
+    // A matter whose prerequisites are still open is withheld from the
+    // unattended sweep in silence, exactly as it is from the reader's
+    // (§FS-005-dispatch.1).
+    if item.blocking_reason().is_some() {
+        return;
+    }
+    let Some(recipe) = dispatcher.offers(item).first().cloned() else {
+        return;
+    };
+    // Silence is how a recipe declines, one step earlier than `autorun`.
+    let Some(sweep) = recipe.dispatch.clone() else {
+        return;
+    };
+    let key = crate::work::sweeps::key(&item.project, &recipe.id);
+    // Due is asked against the record as it stood when this walk began, so
+    // every matter in one walk gets the same answer: marking the clock per
+    // matter would let the first matter of a sweep close the window on the
+    // second.
+    if !sweep.due(sweeps.last(&item.project, &recipe.id), now) {
+        return;
+    }
+    // The recipe swept, whether or not this matter was opened: looking is what
+    // the interval paces, and a sweep that looked and found one matter already
+    // bounded has still looked.
+    swept.insert(key.clone());
+    // This recipe's own bound, counting what it opened in this sweep and
+    // nothing else, so two self-sweeping recipes do not spend each other's
+    // allowance (§FS-005-dispatch.31.4). It bounds what is opened and never
+    // what is stepped over, which is the reading `--limit` already has.
+    let mine = opened_by.entry(key).or_insert(0);
+    if sweep.limit.is_some_and(|limit| *mine >= limit) {
+        return;
+    }
+    match dispatcher.dispatch(item, &recipe, None, dry_run) {
+        // A deterministic opening move that finished is not a ticket
+        // (§FS-005-dispatch.12), and costs the bound nothing: nothing was
+        // handed over.
+        Ok(outcome @ Outcome::Settled { .. }) => {
+            landed.push(serde_json::json!({
+                "item": item.id,
+                "title": item.title,
+                "recipe": recipe.id,
+                "outcome": "settled",
+                "says": outcome.describe(),
+            }));
+            if !json {
+                println!(
+                    "{}\n  {}",
+                    title(&item.title),
+                    style.dim(&outcome.describe())
+                );
+            }
+        }
+        Ok(outcome) => {
+            *opened += 1;
+            *mine += 1;
+            landed.push(serde_json::json!({
+                "item": item.id,
+                "title": item.title,
+                "recipe": recipe.id,
+                "outcome": if dry_run { "would-open" } else { "opened" },
+                "says": outcome.describe(),
+            }));
+            if !json {
+                println!(
+                    "{} {}\n  {}",
+                    if dry_run { "would open" } else { "opened" },
+                    title(&item.title),
+                    style.dim(&outcome.describe())
+                );
+            }
+        }
+        // Everything the reader's own sweep refuses, this refuses — a branch
+        // that is not checked out, a hand a narrowing will not permit. Named
+        // and stepped over, with the walk going on to the next matter: nobody
+        // is here to be stopped, and one matter ephor cannot reach is not a
+        // reason to abandon the rest (§FS-005-dispatch.31.3).
+        Err(err) => {
+            landed.push(serde_json::json!({
+                "item": item.id,
+                "title": item.title,
+                "recipe": recipe.id,
+                "outcome": "refused",
+                "says": err.to_string(),
+            }));
+            eprintln!("note: {}: {err}", item.id);
+        }
+    }
 }
 
 /// Run the runtime over every work root that still has something to do. One
