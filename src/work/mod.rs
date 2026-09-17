@@ -3303,13 +3303,33 @@ pub fn due_among(
                 .first()
                 .map(|plan| plan.project.clone())
                 .unwrap_or_default(),
-            projects: group
-                .plans
-                .iter()
-                .map(|plan| plan.project.clone())
-                .collect::<BTreeSet<_>>()
-                .into_iter()
-                .collect(),
+            projects: match reach {
+                Reach::Key(named) => group
+                    .plans
+                    .iter()
+                    .filter(|plan| named.is_none_or(|named| plan.item.as_deref() == Some(named)))
+                    .filter(|plan| {
+                        named.is_some()
+                            || plan
+                                .item
+                                .as_ref()
+                                .and_then(|item| ledger.entries.get(item))
+                                .is_some_and(|entry| {
+                                    canonical(&entry.root) == canonical(&group.root)
+                                })
+                    })
+                    .map(|plan| plan.project.clone())
+                    .collect::<BTreeSet<_>>()
+                    .into_iter()
+                    .collect(),
+                Reach::Sweep => group
+                    .plans
+                    .iter()
+                    .map(|plan| plan.project.clone())
+                    .collect::<BTreeSet<_>>()
+                    .into_iter()
+                    .collect(),
+            },
             root: group.root.clone(),
             checkout,
             plans,
@@ -5223,6 +5243,27 @@ pub fn enumerate_roots(
                 item: Some(item_id.clone()),
                 title: entry.title.clone(),
             });
+        }
+        // Keep the current item-level placement as a seed as well.  A ledger
+        // append can move an entry to a root whose dispatch history predates
+        // that placement (and older records only have these fields); retaining
+        // it keeps the named matter reachable without widening discovery.
+        if entry.plan.is_file() {
+            let root = canon(&entry.root);
+            let group = groups.entry(root.clone()).or_insert_with(|| RootPlans {
+                root,
+                plans: Vec::new(),
+            });
+            let path_key = canon(&entry.plan);
+            if !group.plans.iter().any(|plan| canon(&plan.path) == path_key) {
+                group.plans.push(PlanRef {
+                    project: entry.project.clone(),
+                    plan_id: entry.plan_id.clone(),
+                    path: entry.plan.clone(),
+                    item: Some(item_id.clone()),
+                    title: entry.title.clone(),
+                });
+            }
         }
         // A defensive compatibility path for a ledger entry with no dispatch
         // history at all: if its old item-level plan exists, retain the exact
