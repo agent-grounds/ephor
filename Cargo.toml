@@ -134,6 +134,10 @@ name = "e2e_027_supported_remote_reader"
 path = "tests/e2e/cases/E2E-027-supported-remote-reader.rs"
 
 [[test]]
+name = "e2e_027_a_sweep_nobody_has_to_type"
+path = "tests/e2e/cases/E2E-027-a-sweep-nobody-has-to-type.rs"
+
+[[test]]
 name = "agents_test"
 path = "tests/integration/agents_test.rs"
 
