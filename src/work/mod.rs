@@ -1617,13 +1617,20 @@ impl Dispatcher {
             organization: placement.organization.as_ref(),
         };
         let mut values = subject.placeholders();
-        // Laying the plan is a write, and uses the checkout resolved above —
-        // including a workspace minted from the entry's branch template — so
-        // the root this dispatch writes is the one its preview named
+        // Laying the plan uses the placement checkout, except where this
+        // entry's branch template mints a workspace. The read-resolution
+        // checkout above may be the project's main branch; main is not the
+        // matter's own placement root for read-only work
         // (§FS-005-dispatch.25).
+        let placed = match (placement.own_branch(item), branch) {
+            (Some(_), _) | (None, None) => placement.own_checkout(item),
+            (None, Some(template)) => {
+                crate::branches::minted(&placement, item, template).map_err(EphorError::Command)?
+            }
+        };
         let laid = Subject {
             item,
-            checkout: &checkout,
+            checkout: &placed,
             root: &placement.root,
             organization: placement.organization.as_ref(),
         };
