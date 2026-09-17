@@ -257,6 +257,19 @@ fn list_work(
                     "title": entry.title,
                     "url": entry.url,
                     "plan": entry.plan,
+                    "root": entry.root,
+                    "checkout": entry.checkout(),
+                    "branch": entry.branch,
+                    // Additive multi-root placement detail; the singular
+                    // fields above remain the latest placement
+                    // (§FS-005-dispatch.4, §REQ-002-parity.4).
+                    "plans": status.plans.iter().map(|plan| stated(serde_json::json!({
+                        "plan": plan.path,
+                        "plan_id": plan.plan_id,
+                        "root": plan.root,
+                        "checkout": plan.checkout,
+                        "branch": plan.branch,
+                    }))).collect::<Vec<_>>(),
                     "missing": status.missing,
                     "stale": status.stale(),
                     "changes": status.changes,
@@ -277,11 +290,14 @@ fn list_work(
                     // matter's plan, so without this the ledger's record of
                     // them would be readable nowhere.
                     "workflows": entry.dispatches.iter().filter_map(|dispatch| {
-                        dispatch.plan.as_ref().map(|plan| serde_json::json!({
+                        dispatch.plan.as_ref().map(|plan| stated(serde_json::json!({
                             "plan": plan,
                             "entry": dispatch.recipe,
                             "at": dispatch.at,
-                        }))
+                            "root": dispatch.root.as_ref().unwrap_or(&entry.root),
+                            "checkout": dispatch.checkout.clone().unwrap_or_else(|| entry.checkout()),
+                            "branch": dispatch.branch.as_ref().or(entry.branch.as_ref()),
+                        })))
                     }).collect::<Vec<_>>(),
                 }))
             })
@@ -314,7 +330,15 @@ fn list_work(
         // The matter's own plan, where there is one to name. An entry that
         // is nothing but workflows never had one (§FS-005-dispatch.19), and
         // printing a path to a file ephor never wrote reads as a loss.
-        if !status.tickets.is_empty() || status.missing || entry.plan.is_file() {
+        if !status.plans.is_empty() {
+            for plan in &status.plans {
+                println!(
+                    "{:<width$}  {}",
+                    "",
+                    style.dim(&plan.path.display().to_string())
+                );
+            }
+        } else if status.missing || entry.plan.is_file() {
             println!(
                 "{:<width$}  {}",
                 "",

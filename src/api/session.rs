@@ -1108,20 +1108,48 @@ impl Session {
     /// caller asking about the matter rather than about one entry passes
     /// `None`.
     pub fn work_root(&self, item: &Item, branch: Option<&str>) -> Option<std::path::PathBuf> {
-        let placement = self.placements.get(&item.project)?;
+        self.work_root_for(item, branch, None)
+    }
+
+    /// The work root for one concrete recipe or workflow entry, including
+    /// its placement override (§FS-005-dispatch.6.1, §FS-005-dispatch.25).
+    pub(super) fn work_root_for(
+        &self,
+        item: &Item,
+        branch: Option<&str>,
+        override_root: Option<&str>,
+    ) -> Option<std::path::PathBuf> {
+        self.work_root_for_result(item, branch, override_root).ok()
+    }
+
+    fn work_root_for_result(
+        &self,
+        item: &Item,
+        branch: Option<&str>,
+        override_root: Option<&str>,
+    ) -> Result<std::path::PathBuf, String> {
+        let placement = self
+            .placements
+            .get(&item.project)
+            .ok_or_else(|| format!("{} has no registry placement", item.project))?;
         let checkout = crate::branches::placed_through(placement, item, branch);
-        let root = self.root(&item.project)?.to_path_buf();
+        let root = self
+            .root(&item.project)
+            .ok_or_else(|| format!("{} has no registry root", item.project))?
+            .to_path_buf();
         let organization = placement.organization.as_ref();
-        let template = crate::work::root_template(
-            &self.work_config,
-            organization
-                .and_then(|org| self.config.organizations.get(&org.id))
-                .map(|organization| &organization.work),
-            self.config
-                .projects
-                .get(&item.project)
-                .map(|project| &project.work),
-        );
+        let template = override_root.map(str::to_string).unwrap_or_else(|| {
+            crate::work::root_template(
+                &self.work_config,
+                organization
+                    .and_then(|org| self.config.organizations.get(&org.id))
+                    .map(|organization| &organization.work),
+                self.config
+                    .projects
+                    .get(&item.project)
+                    .map(|project| &project.work),
+            )
+        });
         let subject = crate::work::dossier::Subject {
             item,
             checkout: &checkout,
@@ -1131,7 +1159,7 @@ impl Session {
         // Nothing where the dispatch would refuse: this reading is a preview
         // of that write, and a preview that guessed past a refusal would name
         // a directory nothing will ever be in (§FS-005-dispatch.6.1).
-        subject.work_root(&template).ok()
+        subject.work_root(&template)
     }
 
     /// The work root the picker over one matter's menu reads its roster at
@@ -1150,7 +1178,9 @@ impl Session {
         let mut wanted = entries
             .iter()
             .filter_map(|entry| entry.action.agent.as_ref())
-            .map(|recipe| self.work_root(item, recipe.branch.as_deref()));
+            .map(|recipe| {
+                self.work_root_for(item, recipe.branch.as_deref(), recipe.root.as_deref())
+            });
         let first = wanted.next()?;
         match wanted.all(|root| root == first) {
             true => first,
@@ -1235,6 +1265,7 @@ impl offers::Naming for Filling<'_> {
         // And where the workspace would be, for an entry that says which
         // branch its work belongs on (§FS-005-dispatch.25).
         self.session.name_the_branches(item, actions);
+        self.session.name_the_roots(item, actions);
     }
 }
 
@@ -1290,6 +1321,25 @@ impl Session {
         }
     }
 
+    /// Resolve the same selected root a hand-off will use, before the list is
+    /// gated. A template refusal is therefore visible on the offer and no
+    /// preview advertises a move the dispatch will reject
+    /// (§FS-005-dispatch.6.1, §FS-005-dispatch.25).
+    fn name_the_roots(&self, item: &Item, menu: &mut [ActionConfig]) {
+        for entry in menu
+            .iter_mut()
+            .filter(|entry| entry.agent.is_some() || entry.workflow.is_some())
+        {
+            let (branch, root) = match &entry.agent {
+                Some(recipe) => (recipe.branch.as_deref(), recipe.root.as_deref()),
+                None => (entry.branch.as_deref(), entry.root.as_deref()),
+            };
+            if let Err(why) = self.work_root_for_result(item, branch, root) {
+                entry.minted = Some(Minted::Refused(why));
+            }
+        }
+    }
+
     /// Who each entry's work would go to, filled in when the list is
     /// built (§FS-005-dispatch.14). Never configuration: nobody writes it,
     /// ephor resolves it so the reader sees it before pressing the key —
@@ -1306,7 +1356,7 @@ impl Session {
             .iter()
             .map(|entry| {
                 let recipe = entry.agent.as_ref()?;
-                self.work_root(item, recipe.branch.as_deref())
+                self.work_root_for(item, recipe.branch.as_deref(), recipe.root.as_deref())
             })
             .collect();
         // With no runner bound there is nobody to ask, and the entry says so

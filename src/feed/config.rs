@@ -137,6 +137,11 @@ pub struct ActionConfig {
     /// it needs on disk with `requires_checkout`. Saying it means the work
     /// needs the checkout, and dispatch makes the workspace.
     pub branch: Option<String>,
+    /// The whole work-root template this entry selects for handed-over work
+    /// (§FS-005-dispatch.1, §FS-005-dispatch.28). Commands are refused for
+    /// carrying it while agent and workflow entries render it after branch
+    /// placement.
+    pub root: Option<String>,
     /// What that template came to on the matter this menu is about, filled in
     /// when the menu opens (§FS-005-dispatch.25). Never configuration — the
     /// template is what somebody wrote, and this is the workspace it names
@@ -171,11 +176,12 @@ pub struct Handed {
     pub refusal: Option<String>,
 }
 
-/// What an entry's `branch` template came to on one matter
-/// (§FS-005-dispatch.25): where the work it hands over would go, or why the
-/// template could not say. Resolved when the menu opens, exactly as [`Handed`]
-/// is — nobody writes this down, ephor answers it — so the gate on the row and
-/// the refusal at the keystroke are one answer (§FS-004-quick-actions.2).
+/// What an entry's placement templates came to on one matter: the workspace
+/// its `branch` named, or why either `branch` or `root` could not resolve
+/// (§FS-005-dispatch.6.1, §FS-005-dispatch.25). Resolved when the menu opens,
+/// exactly as [`Handed`] is — nobody writes this down, ephor answers it — so
+/// the gate on the row and the refusal at the keystroke are one answer
+/// (§FS-004-quick-actions.2).
 #[derive(Debug, Clone)]
 pub enum Minted {
     /// The branch the template named, the workspace it belongs in, and where
@@ -186,7 +192,8 @@ pub enum Minted {
         workspace: std::path::PathBuf,
         state: crate::branches::WorkspaceState,
     },
-    /// The template names no workspace here, and why.
+    /// A branch names no workspace, or the selected root cannot render, and
+    /// why.
     Refused(String),
 }
 
@@ -272,6 +279,11 @@ struct RawAction {
     requires_checkout: bool,
     #[serde(default)]
     branch: Option<String>,
+    /// The whole work-root template for work this entry hands over. Flat
+    /// beside `branch` in every entry home (§FS-005-dispatch.1,
+    /// §FS-005-dispatch.28).
+    #[serde(default)]
+    root: Option<String>,
     #[serde(default)]
     confirm: bool,
     #[serde(default)]
@@ -341,6 +353,12 @@ impl TryFrom<RawAction> for ActionConfig {
                  already has — say what it needs of one with 'requires_checkout'"
             ));
         }
+        if raw.root.is_some() && raw.agent.is_none() && raw.workflow.is_none() {
+            return Err(format!(
+                "action {named} carries 'root' and runs a command here: a root template places \
+                 work handed over, and a command hands no work over"
+            ));
+        }
         if raw.background && raw.window {
             return Err(format!(
                 "action {named} says both 'background' and 'window': a move that needs nobody runs \
@@ -394,6 +412,7 @@ impl TryFrom<RawAction> for ActionConfig {
             when: raw.when.clone(),
             needs_checkout: raw.requires_checkout,
             branch: raw.branch.clone(),
+            root: raw.root.clone(),
             autorun: ask.autorun,
             brief: ask.brief,
             // Ephor's own deterministic moves belong to the recipes that ship
@@ -418,6 +437,7 @@ impl TryFrom<RawAction> for ActionConfig {
             requires: raw.requires,
             requires_checkout: raw.requires_checkout,
             branch: raw.branch,
+            root: raw.root,
             minted: None,
             confirm: raw.confirm,
             background: raw.background,
@@ -793,6 +813,56 @@ mod tests {
         assert!(refused.contains("runs a command"), "{refused}");
     }
 
+    /// A placement override is the flat entry's to say in every home, and an
+    /// agent entry carries it into the recipe it becomes
+    /// (§FS-005-dispatch.1, §FS-005-dispatch.6.1). A command hands no work
+    /// over, so accepting the same key there would silently ignore it.
+    #[test]
+    fn issue_43_work_entries_accept_root_in_every_home_and_commands_refuse_it() {
+        let config = serde_json::from_value::<StatusConfig>(serde_json::json!({
+            "actions": [{
+                "id": "site-fix", "icon": "◆", "description": "site fix",
+                "root": "{workspace}/site-panta", "agent": { "brief": "fix it" }
+            }],
+            "projects": { "demo": {
+                "actions": [{
+                    "id": "project-flow", "icon": "◆", "description": "project flow",
+                    "root": "{root}/project-panta", "workflow": "sweep"
+                }]
+            }}
+        }));
+        let config = config.expect("site actions and project offers accept the same flat root");
+        let site = &config.actions[0];
+        assert_eq!(site.root.as_deref(), Some("{workspace}/site-panta"));
+        assert_eq!(
+            site.agent
+                .as_ref()
+                .and_then(|recipe| recipe.root.as_deref()),
+            Some("{workspace}/site-panta"),
+            "an agent entry carries placement into the recipe it dispatches"
+        );
+
+        let beside_workflow = serde_json::from_value::<ActionConfig>(serde_json::json!({
+            "id": "local-flow", "icon": "◆", "description": "local flow",
+            "root": "{root}/local-panta", "workflow": "sweep"
+        }));
+        assert!(
+            beside_workflow.is_ok(),
+            "the entry beside a workflow accepts root: {beside_workflow:?}"
+        );
+
+        let refused = serde_json::from_value::<ActionConfig>(serde_json::json!({
+            "id": "gate", "icon": "🧪", "description": "gate",
+            "root": "{root}/ignored", "command": "just gate"
+        }))
+        .expect_err("a command entry carrying root is refused")
+        .to_string();
+        assert!(
+            refused.contains("'root'") && refused.contains("runs a command"),
+            "the refusal names why root cannot apply: {refused}"
+        );
+    }
+
     /// A workflow entry may say that what it lays down needs nobody to start
     /// it, and nothing else may (§FS-005-dispatch.28): a command has no run
     /// to start, and a recipe already says it inside `agent`, where two
@@ -833,66 +903,6 @@ mod tests {
         .unwrap_err()
         .to_string();
         assert!(on_agent.contains("inside 'agent'"), "{on_agent}");
-    }
-
-    /// Recipe placement and the flat placement on work entries are accepted
-    /// in every configuration home (§FS-005-dispatch.1,
-    /// §FS-005-dispatch.28). This parses through the public configuration
-    /// shape so the missing field fails as configuration, not as a test that
-    /// depends on a future Rust member.
-    #[test]
-    fn issue_43_root_parses_on_recipes_and_every_work_entry_home() {
-        let config = serde_json::from_value::<StatusConfig>(serde_json::json!({
-            "actions": [{
-                "id": "site-agent", "icon": "◆", "description": "site work",
-                "root": "{workspace}/site-panta", "agent": { "brief": "Do it." }
-            }],
-            "projects": { "demo": {
-                "actions": [{
-                    "id": "project-workflow", "icon": "◇", "description": "project work",
-                    "root": "{root}/project-panta", "workflow": "project-sweep"
-                }],
-                "work": { "recipes": [{
-                    "id": "project-recipe", "description": "project recipe",
-                    "root": "{workspace}/project-recipe-panta", "brief": "Do it."
-                }] }
-            } },
-            "work": { "recipes": [{
-                "id": "site-recipe", "description": "site recipe",
-                "root": "{workspace}/site-recipe-panta", "brief": "Do it."
-            }] }
-        }));
-        assert!(
-            config.is_ok(),
-            "root is a placement field on every work entry: {config:?}"
-        );
-
-        // The entry beside a workflow is the same public ActionConfig shape
-        // as the two configured homes above.
-        let adjacent = serde_json::from_value::<ActionConfig>(serde_json::json!({
-            "id": "adjacent", "icon": "◇", "description": "beside the workflow",
-            "root": "{workspace}/adjacent-panta", "workflow": "project-sweep"
-        }));
-        assert!(
-            adjacent.is_ok(),
-            "the workflow-adjacent home rejected root: {adjacent:?}"
-        );
-    }
-
-    /// A command runs here and hands no work to a runtime, so placement on it
-    /// is refused by name rather than ignored (§FS-005-dispatch.1).
-    #[test]
-    fn issue_43_root_on_a_command_entry_is_refused_by_name() {
-        let refused = serde_json::from_value::<ActionConfig>(serde_json::json!({
-            "id": "gate", "icon": "🧪", "description": "run the gate",
-            "root": "{root}/panta", "command": "just gate"
-        }))
-        .expect_err("a command entry has no work root")
-        .to_string();
-        assert!(
-            refused.contains("runs a command here") && refused.contains("hands no work over"),
-            "{refused}"
-        );
     }
 }
 

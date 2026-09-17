@@ -52,6 +52,10 @@ pub struct Offer {
     /// `ready`, made by the dispatch where it is `needs-checkout`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub workspace: Option<std::path::PathBuf>,
+    /// The selected work root this entry would hand work into
+    /// (§FS-005-dispatch.6.1, §FS-005-dispatch.25).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub root: Option<std::path::PathBuf>,
     /// Where it runs — `workspace`, `root`, or `repo:<name>`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cwd: Option<String>,
@@ -431,6 +435,10 @@ pub struct WorkStatus {
     pub plan_id: String,
     pub root: PathBuf,
     pub checkout: PathBuf,
+    /// Every committed placement of this matter's recipe plan. The singular
+    /// fields above remain the latest placement for compatible readers
+    /// (§FS-005-dispatch.4, §FS-005-dispatch.15.1).
+    pub plans: Vec<WorkPlan>,
     /// The item moved since the work was asked for (§FS-005-dispatch.5).
     pub stale: bool,
     /// The plan the ledger points at is gone.
@@ -442,6 +450,18 @@ pub struct WorkStatus {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub quiet: Option<u64>,
     pub tickets: Vec<Ticket>,
+}
+
+/// One committed recipe-plan placement in a work reading
+/// (§FS-005-dispatch.4).
+#[derive(Debug, Clone, Serialize)]
+pub struct WorkPlan {
+    pub plan: PathBuf,
+    pub plan_id: String,
+    pub root: PathBuf,
+    pub checkout: PathBuf,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub branch: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]

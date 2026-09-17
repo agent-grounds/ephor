@@ -52,6 +52,10 @@ pub struct Beside {
     /// (§FS-005-dispatch.25).
     #[serde(default)]
     pub branch: Option<String>,
+    /// Where this workflow's plan belongs, rendered after its branch is
+    /// resolved (§FS-005-dispatch.28).
+    #[serde(default)]
+    pub root: Option<String>,
     #[serde(default)]
     pub confirm: bool,
     #[serde(default)]
@@ -93,6 +97,7 @@ impl Beside {
             requires: self.requires.clone(),
             requires_checkout: self.requires_checkout,
             branch: self.branch.clone(),
+            root: self.root.clone(),
             minted: None,
             confirm: self.confirm,
             // What a workflow lays down is files, and running it is the move

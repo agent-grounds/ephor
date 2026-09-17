@@ -744,6 +744,7 @@ mod tests {
             plan_id: "forge-demo-17".to_string(),
             checkout: PathBuf::from("/w/demo"),
             plan: PathBuf::from("/w/demo/panta/forge-demo-17.rhei.md"),
+            plans: Vec::new(),
             missing: false,
             workflows: 0,
             tickets: vec![TicketStatus {
