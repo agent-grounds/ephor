@@ -93,10 +93,18 @@ impl Subject<'_> {
         if let Some(why) = organization_gap(template, &self.item.project, self.organization) {
             return Err(why);
         }
-        Ok(crate::paths::resolve_path(&render(
-            template,
-            &self.placeholders(),
-        )))
+        let values = self.placeholders();
+        if let Some(name) = named(template)
+            .into_iter()
+            .find(|name| !values.contains_key(name.as_str()))
+        {
+            return Err(format!(
+                "{}: the work root template '{template}' names {{{name}}}, which is not a \
+                 placeholder this runtime knows",
+                self.item.project
+            ));
+        }
+        Ok(crate::paths::resolve_path(&render(template, &values)))
     }
 
     /// The item as data rather than as prose, for the programs in a state

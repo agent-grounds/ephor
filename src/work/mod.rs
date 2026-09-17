@@ -1147,7 +1147,10 @@ impl Dispatcher {
             .map(str::to_string)
             .unwrap_or_else(|| self.root_template(&item.project));
         let placement = self.placement(&item.project)?.clone();
-        let checkout = crate::branches::placed_through(&placement, item, branch);
+        let checkout = match (placement.own_branch(item), branch) {
+            (Some(_), _) | (None, None) => placement.own_checkout(item),
+            (None, Some(template)) => crate::branches::minted(&placement, item, template).ok()?,
+        };
         let subject = Subject {
             item,
             checkout: &checkout,
@@ -1614,18 +1617,13 @@ impl Dispatcher {
             organization: placement.organization.as_ref(),
         };
         let mut values = subject.placeholders();
-        // Laying the plan is a write, and a write resolves through the
-        // matter's own placement, never the main branch it only matched
-        // (§FS-005-dispatch.25). Work that edits the change resolved that way
-        // above and runs there too; work that only reads it runs in the
-        // checkout above — where the code is — and still lays its plan beside
-        // the project rather than inside the trunk every workspace is grown
-        // from. Asked of [`crate::branches::placed_through`], so the root this
-        // dispatch writes is the one [`Dispatcher::work_root_of`] previewed.
-        let placed = crate::branches::placed_through(&placement, item, branch);
+        // Laying the plan is a write, and uses the checkout resolved above —
+        // including a workspace minted from the entry's branch template — so
+        // the root this dispatch writes is the one its preview named
+        // (§FS-005-dispatch.25).
         let laid = Subject {
             item,
-            checkout: &placed,
+            checkout: &checkout,
             root: &placement.root,
             organization: placement.organization.as_ref(),
         };
@@ -1672,7 +1670,8 @@ impl Dispatcher {
             .placement(&item.project)
             .cloned()
             .ok_or_else(|| EphorError::Command(format!("{} cannot be placed", item.project)))?;
-        let (made, source) = crate::checkout::make(&placement, &item.project, &branch, None)?;
+        let (made, source) =
+            crate::checkout::make_at(&placement, &item.project, &branch, None, Some(&site.dir))?;
         // A repository the checkout refused is the checkout's own refusal, in
         // the checkout's own words, and nothing is dispatched behind it.
         if let Some(why) = made.refusal(&source) {
@@ -1891,10 +1890,9 @@ impl Dispatcher {
         // the machine and the opening move have all had their chance to refuse,
         // and before the work root below is the first thing written
         // (§FS-005-dispatch.25).
-        self.mint(item, &site)?;
-
         self.begin_handoff();
         self.journal_work_root(&site.dir)?;
+        self.mint(item, &site)?;
         let root = WorkRoot::ensure(&site.dir, &states)?;
         // Read back rather than assumed: a workspace the mint just made can
         // come with a machine of the runtime's own, which `ensure` leaves
@@ -2562,9 +2560,9 @@ impl Dispatcher {
         // Everything above could still refuse; nothing above has written
         // anything. The workspace goes in here, and the work root is the first
         // thing inside it (§FS-005-dispatch.25).
-        self.mint(item, &laying.site)?;
         self.begin_handoff();
         self.journal_work_root(&laying.site.dir)?;
+        self.mint(item, &laying.site)?;
         let root = WorkRoot::ensure(&laying.site.dir, &states)?;
         let carried = carried(&root.dir, &laying.plan_id);
         self.journal.remember(&carried)?;
@@ -5388,6 +5386,17 @@ pub fn ensure_store(
         workspace,
         root,
     )?;
+    ensure_store_at(global, project, &dir)
+}
+
+/// Initialize a work root whose template has already been selected by a
+/// recipe or workflow entry. The caller has rendered it after branch
+/// placement, so no wider project-level template may replace it here.
+pub fn ensure_store_at(
+    global: &WorkConfig,
+    project: Option<&ProjectWorkConfig>,
+    dir: &std::path::Path,
+) -> Result<Store> {
     let states = states_yaml(global, project)?;
     let made = !dir.is_dir();
     // The directory first: the runner is asked to make a place that is there,
@@ -5399,7 +5408,11 @@ pub fn ensure_store(
         runtime::Initialized::Refused(why) => Some(why),
     };
     WorkRoot::ensure(&dir, &states)?;
-    Ok(Store { dir, made, note })
+    Ok(Store {
+        dir: dir.to_path_buf(),
+        made,
+        note,
+    })
 }
 
 /// Where work resolves to, from the template, with nothing created
