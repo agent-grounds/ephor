@@ -495,6 +495,360 @@ fn the_shipped_implement_recipe_mints_the_issue_workspace() {
     );
 }
 
+/// One project can keep its ordinary work at project scope while a recipe
+/// places an issue fix in the checkout it mints. Preview and execution select
+/// and render the same whole template (§FS-005-dispatch.1,
+/// §FS-005-dispatch.6.1, §FS-005-dispatch.25).
+#[test]
+fn issue_43_a_recipe_root_places_issue_work_in_the_minted_checkout() {
+    let world = watching(Some("fix/issue-{number}"), true);
+    let configure = |root: &str| {
+        world.configure(json!({
+            "projects": { PROJECT: {
+                "providers": [ { "provider": "acmeforge", "user": "you", "repos": ["widget"] } ],
+                "work": {
+                    "root": "{root}/project-panta",
+                    "recipes": [{
+                        "id": "fix-issue", "icon": "⛬", "description": "fix the issue",
+                        "when": { "kinds": ["issue"] },
+                        "branch": "fix/issue-{number}", "root": root,
+                        "brief": "Fix {title}."
+                    }]
+                }
+            } },
+            "work": { "runner": "acme-runtime", "root": "{root}/site-panta" }
+        }));
+    };
+    configure("{workspace}/issue-panta");
+    let expected = workspace(&world)
+        .join("issue-panta")
+        .join("acmeforge-acme-widget-95.rhei.md");
+
+    let offered = world
+        .ephor()
+        .args(["work", "offers", "--item", ITEM, "--json"])
+        .assert()
+        .success();
+    let offered = json_of(offered.get_output());
+    let offer = offered["offers"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|offer| offer["id"] == "fix-issue")
+        .expect("the configured recipe offer");
+    assert_eq!(
+        offer["root"],
+        json!(workspace(&world).join("issue-panta")),
+        "the offer previews the same selected root as dry-run and dispatch"
+    );
+    assert!(!workspace(&world).exists(), "an offer minted the checkout");
+
+    world
+        .ephor()
+        .args([
+            "work",
+            "dispatch",
+            "--item",
+            ITEM,
+            "--recipe",
+            "fix-issue",
+            "--dry-run",
+        ])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            expected.to_string_lossy().into_owned(),
+        ));
+    assert!(!workspace(&world).exists(), "a dry run minted the checkout");
+
+    world
+        .ephor()
+        .args(["work", "dispatch", "--item", ITEM, "--recipe", "fix-issue"])
+        .assert()
+        .success();
+    assert!(expected.is_file(), "recipe override did not place the plan");
+    assert!(!world.forest().join("project-panta").exists());
+    assert!(!world.forest().join("site-panta").exists());
+
+    // The same matter may commit a plan in another root, then append in its
+    // earlier root. Ticket ids stay unique across both plans
+    // (§FS-005-dispatch.3, §FS-005-dispatch.4).
+    configure("{root}/project-panta");
+    world
+        .ephor()
+        .args([
+            "work",
+            "dispatch",
+            "--item",
+            ITEM,
+            "--recipe",
+            "fix-issue",
+            "--again",
+        ])
+        .assert()
+        .success();
+    let project_plan = world
+        .forest()
+        .join("project-panta/acmeforge-acme-widget-95.rhei.md");
+    assert!(project_plan.is_file(), "the second root has no matter plan");
+
+    configure("{workspace}/issue-panta");
+    world
+        .ephor()
+        .args([
+            "work",
+            "dispatch",
+            "--item",
+            ITEM,
+            "--recipe",
+            "fix-issue",
+            "--again",
+        ])
+        .assert()
+        .success();
+    let checkout_plan = std::fs::read_to_string(&expected).expect("checkout plan");
+    let project_plan = std::fs::read_to_string(&project_plan).expect("project plan");
+    assert!(
+        checkout_plan.contains("Task fix-issue-1"),
+        "{checkout_plan}"
+    );
+    assert!(
+        checkout_plan.contains("Task fix-issue-3"),
+        "{checkout_plan}"
+    );
+    assert!(
+        !checkout_plan.contains("Task fix-issue-2"),
+        "{checkout_plan}"
+    );
+    assert!(project_plan.contains("Task fix-issue-2"), "{project_plan}");
+}
+
+/// A workflow entry's override wins the wider tiers even when its branch
+/// template first mints a checkout: `{workspace}` is that checkout while
+/// `{root}` remains the registry project root (§FS-005-dispatch.6.1,
+/// §FS-005-dispatch.25, §FS-005-dispatch.28).
+#[test]
+fn issue_43_a_workflow_entry_root_places_a_sweep_at_the_project_root() {
+    let world = watching(Some("fix/issue-{number}"), true);
+    world.configure(json!({
+        "actions": [{
+            "id": "project-sweep", "icon": "↻", "description": "sweep the project",
+            "when": { "kinds": ["issue"] }, "branch": "fix/issue-{number}",
+            "root": "{root}/sweep-panta", "workflow": "supervised-ticket-fix",
+            "inputs": { "ticket": "{repo}#{number}" }
+        }],
+        "projects": { PROJECT: {
+            "providers": [ { "provider": "acmeforge", "user": "you", "repos": ["widget"] } ],
+            "work": { "root": "{workspace}/project-panta" }
+        } },
+        "work": { "runner": "acme-runtime", "root": "{workspace}/site-panta" }
+    }));
+    let expected = world
+        .forest()
+        .join("sweep-panta/acmeforge-acme-widget-95-project-sweep");
+
+    let preview = world
+        .ephor()
+        .args([
+            "work",
+            "lay",
+            "project-sweep",
+            "--item",
+            ITEM,
+            "--dry-run",
+            "--json",
+        ])
+        .assert()
+        .success();
+    assert_eq!(
+        json_of(preview.get_output())["plan"],
+        json!(expected.to_string_lossy())
+    );
+    assert!(!expected.exists(), "a dry run laid the workflow");
+    assert!(!workspace(&world).exists(), "a dry run minted the checkout");
+
+    world
+        .ephor()
+        .args(["work", "lay", "project-sweep", "--item", ITEM])
+        .assert()
+        .success();
+    assert!(
+        expected.join("index.rhei.md").is_file(),
+        "entry override did not place the workflow"
+    );
+    assert!(
+        workspace(&world).join(".git").exists(),
+        "branch was not minted first"
+    );
+    assert!(!workspace(&world).join("project-panta").exists());
+    assert!(!workspace(&world).join("site-panta").exists());
+}
+
+/// Root overrides use the existing named placeholder refusal and leave both
+/// the prospective checkout and every fallback root untouched
+/// (§FS-005-dispatch.6.1, §FS-005-dispatch.25).
+#[test]
+fn issue_43_a_root_override_with_an_unknown_placeholder_is_refused_before_writing() {
+    let world = watching(Some("fix/issue-{number}"), true);
+    world.configure(json!({
+        "projects": { PROJECT: {
+            "providers": [ { "provider": "acmeforge", "user": "you", "repos": ["widget"] } ],
+            "work": { "recipes": [{
+                "id": "fix-issue", "description": "fix the issue",
+                "when": { "kinds": ["issue"] }, "branch": "fix/issue-{number}",
+                "root": "{workspace}/{unknown_root_name}", "brief": "Fix {title}."
+            }] }
+        } },
+        "work": { "runner": "acme-runtime" }
+    }));
+
+    let offered = world
+        .ephor()
+        .args(["work", "offers", "--item", ITEM, "--json"])
+        .assert()
+        .success();
+    let offered = json_of(offered.get_output());
+    let offer = offered["offers"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|offer| offer["id"] == "fix-issue")
+        .expect("the configured recipe offer");
+    assert_eq!(offer["gate"], "blocked");
+    assert!(
+        offer["refusal"]
+            .as_str()
+            .is_some_and(|why| why.contains("unknown_root_name")),
+        "the offer did not carry the root placeholder refusal: {offer}"
+    );
+
+    world
+        .ephor()
+        .args(["work", "dispatch", "--item", ITEM, "--recipe", "fix-issue"])
+        .assert()
+        .failure()
+        .stderr(
+            predicate::str::contains("unknown_root_name")
+                .and(predicate::str::contains("placeholder")),
+        );
+    assert!(!workspace(&world).exists());
+    assert!(!world.path().join("state/ephor/work.json").exists());
+}
+
+/// A workflow lay after upgrade freezes the old recipe placement before
+/// replacing the item's root, checkout and branch. Failed saves preserve the
+/// legacy bytes, and fresh readers still find and cancel the old ticket
+/// (§FS-005-dispatch.4, §FS-005-dispatch.15.1, §FS-005-dispatch.16).
+#[test]
+fn issue_43_legacy_recipe_survives_a_workflow_lay_in_another_checkout() {
+    let world = watching(Some("fix/issue-{number}"), true);
+    world.configure(json!({
+        "projects": { PROJECT: {
+            "providers": [ { "provider": "acmeforge", "user": "you", "repos": ["widget"] } ],
+            "work": { "recipes": [{
+                "id": "legacy-fix", "description": "fix the issue", "state": "fix",
+                "branch": "fix/issue-{number}", "root": "{workspace}/legacy-panta",
+                "when": { "kinds": ["issue"] }, "brief": "Fix {title}."
+            }] }
+        } },
+        "work": { "runner": "acme-runtime" }
+    }));
+    world
+        .ephor()
+        .args(["work", "dispatch", "--item", ITEM, "--recipe", "legacy-fix"])
+        .assert()
+        .success();
+    let old_checkout = workspace(&world);
+    let old_root = old_checkout.join("legacy-panta");
+    let old_plan = old_root.join("acmeforge-acme-widget-95.rhei.md");
+    let before_plan = std::fs::read(&old_plan).unwrap();
+    let ledger_path = world.path().join("state/ephor/work.json");
+    let mut ledger = read_json(&ledger_path);
+    let dispatch = ledger["entries"][ITEM]["dispatches"][0]
+        .as_object_mut()
+        .unwrap();
+    for field in ["root", "checkout", "branch"] {
+        dispatch.remove(field);
+    }
+    write_json(&ledger_path, &ledger);
+    let before_ledger = std::fs::read(&ledger_path).unwrap();
+
+    let entry_path = workflows(&world).join("supervised-ticket-fix/.ephor.json");
+    let mut entry = read_json(&entry_path);
+    entry["branch"] = json!("sweep/issue-{number}");
+    entry["root"] = json!("{workspace}/sweep-panta");
+    write_json(&entry_path, &entry);
+    let new_checkout = world.forest().join("sweep/issue-95");
+    let new_root = new_checkout.join("sweep-panta");
+
+    let temporary = ledger_path.with_extension("json.tmp");
+    std::fs::create_dir_all(&temporary).unwrap();
+    world
+        .ephor()
+        .args(["work", "lay", "fix-issue", "--item", ITEM])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains(format!(
+            "Cannot write {}:",
+            temporary.display()
+        )));
+    assert_eq!(std::fs::read(&ledger_path).unwrap(), before_ledger);
+    assert_eq!(std::fs::read(&old_plan).unwrap(), before_plan);
+    assert!(!new_root.exists(), "a failed save left workflow artifacts");
+    let listed = world
+        .ephor()
+        .args(["work", "list", "--json"])
+        .assert()
+        .success();
+    let listing = json_of(listed.get_output());
+    assert_eq!(listing[0]["tickets"][0]["id"], "legacy-fix-1");
+    assert_eq!(listing[0]["plans"][0]["plan"], json!(old_plan));
+    std::fs::remove_dir(&temporary).unwrap();
+
+    world
+        .ephor()
+        .args(["work", "lay", "fix-issue", "--item", ITEM])
+        .assert()
+        .success();
+    let ledger = read_json(&ledger_path);
+    let entry = &ledger["entries"][ITEM];
+    assert_eq!(entry["root"], json!(new_root));
+    assert_eq!(entry["checkout"], json!(new_checkout));
+    assert_eq!(entry["branch"], "sweep/issue-95");
+    assert_eq!(entry["dispatches"][0]["root"], json!(old_root));
+    assert_eq!(entry["dispatches"][0]["checkout"], json!(old_checkout));
+    assert_eq!(entry["dispatches"][0]["branch"], "fix/issue-95");
+    let listed = world
+        .ephor()
+        .args(["work", "list", "--json"])
+        .assert()
+        .success();
+    let listing = json_of(listed.get_output());
+    assert_eq!(listing[0]["missing"], false);
+    assert_eq!(listing[0]["tickets"][0]["id"], "legacy-fix-1");
+    assert_eq!(listing[0]["plans"][0]["plan"], json!(old_plan));
+    assert_eq!(listing[0]["plans"][0]["checkout"], json!(old_checkout));
+    assert_eq!(listing[0]["plans"][0]["branch"], "fix/issue-95");
+    assert_eq!(listing[0]["workflows"][0]["root"], json!(new_root));
+    let cancelled = world
+        .ephor()
+        .args([
+            "work",
+            "cancel",
+            "--item",
+            ITEM,
+            "legacy-fix-1",
+            "--dry-run",
+            "--json",
+        ])
+        .assert()
+        .success();
+    let cancelled = json_of(cancelled.get_output());
+    assert_eq!(cancelled["tickets"][0]["plan"], json!(old_plan));
+    assert_eq!(cancelled["tickets"][0]["cancelled"], true);
+    assert_eq!(std::fs::read(&old_plan).unwrap(), before_plan);
+}
+
 /// The shipped default still refuses explicitly when a project cannot make
 /// branch workspaces; it does not fall back to writing the issue at the root.
 #[test]

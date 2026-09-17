@@ -19,6 +19,15 @@ fn read_feed(tmp: &Path) -> Value {
     serde_json::from_str(&fs::read_to_string(feed_path(tmp)).unwrap()).unwrap()
 }
 
+fn json_output(output: &std::process::Output) -> Value {
+    serde_json::from_slice(&output.stdout).unwrap_or_else(|error| {
+        panic!(
+            "stdout is not JSON: {error}\n{}",
+            String::from_utf8_lossy(&output.stdout)
+        )
+    })
+}
+
 /// The one pull request in the fixture feed, for mutating it the way a later
 /// refresh would.
 fn with_pr(tmp: &Path, edit: impl Fn(&mut Value)) {
@@ -119,6 +128,170 @@ fn a_red_gate_becomes_a_ticket_that_carries_what_ephor_knew() {
     let plan = fs::read_to_string(panta.join("github-prs-acme-widget-42.rhei.md")).unwrap();
     assert!(plan.contains("### Task answer-1:"), "{plan}");
     assert!(plan.contains("**Prior:** Task fix-gate-1"), "{plan}");
+}
+
+/// The ledger rename is the commit point: a first hand-off whose ledger save
+/// fails leaves neither an undiscoverable plan nor the root bootstrap files it
+/// created, and a fresh reader still succeeds (§FS-005-dispatch.4).
+#[test]
+fn issue_43_a_failed_first_ledger_save_rolls_back_the_whole_hand_off() {
+    let tmp = tempdir();
+    fixture(tmp.path(), Value::Null);
+    ephor(tmp.path())
+        .args(["refresh", "demo"])
+        .assert()
+        .success();
+    let forced = tmp.path().join("state/ephor/work.json.tmp");
+    fs::create_dir_all(&forced).unwrap();
+
+    ephor(tmp.path())
+        .args([
+            "work",
+            "ask",
+            "--item",
+            "github-prs:acme/widget#42",
+            "record the save failure",
+        ])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains(format!(
+            "Cannot write {}",
+            forced.display()
+        )));
+
+    let root = tmp.path().join("demo/panta");
+    assert!(
+        !root.exists(),
+        "a failed first hand-off left artifacts under {}",
+        root.display()
+    );
+    let ledger = tmp.path().join("state/ephor/work.json");
+    assert!(
+        !ledger.exists(),
+        "a failed first hand-off committed a ledger at {}",
+        ledger.display()
+    );
+    let listed = ephor(tmp.path())
+        .args(["work", "list", "--json"])
+        .assert()
+        .success();
+    assert_eq!(json_output(listed.get_output()), json!([]));
+}
+
+/// A failed append restores every previously committed byte and leaves the
+/// old ledger readable by a fresh process (§FS-005-dispatch.4). The plan and
+/// shared root files are compared independently so recreating a plausible
+/// plan cannot hide collateral damage.
+#[test]
+fn issue_43_a_failed_append_preserves_the_committed_plan_and_shared_root_files() {
+    let tmp = tempdir();
+    fixture(tmp.path(), Value::Null);
+    ephor(tmp.path())
+        .args(["refresh", "demo"])
+        .assert()
+        .success();
+    ephor(tmp.path())
+        .args([
+            "work",
+            "ask",
+            "--item",
+            "github-prs:acme/widget#42",
+            "the committed ticket",
+        ])
+        .assert()
+        .success();
+
+    let root = tmp.path().join("demo/panta");
+    let plan = root.join("github-prs-acme-widget-42.rhei.md");
+    let ledger = tmp.path().join("state/ephor/work.json");
+    let before = [
+        plan.clone(),
+        root.join("index.panta.md"),
+        root.join("states.yaml"),
+        root.join(".gitignore"),
+        ledger.clone(),
+    ]
+    .map(|path| (path.clone(), fs::read(&path).unwrap()));
+    let forced = tmp.path().join("state/ephor/work.json.tmp");
+    fs::create_dir(&forced).unwrap();
+
+    ephor(tmp.path())
+        .args([
+            "work",
+            "ask",
+            "--item",
+            "github-prs:acme/widget#42",
+            "the append that must roll back",
+        ])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains(format!(
+            "Cannot write {}",
+            forced.display()
+        )));
+
+    for (path, bytes) in before {
+        assert!(
+            fs::read(&path).unwrap() == bytes,
+            "{} changed despite the failed commit",
+            path.display()
+        );
+    }
+    let listed = ephor(tmp.path())
+        .args(["work", "list", "--json"])
+        .assert()
+        .success();
+    let rows = json_output(listed.get_output());
+    assert_eq!(rows.as_array().unwrap().len(), 1, "{rows}");
+    assert_eq!(rows[0]["tickets"].as_array().unwrap().len(), 1, "{rows}");
+}
+
+/// A sweep saves once after laying every selected item, so one failed rename
+/// rolls back the entire unsaved batch rather than only the last mutation
+/// (§FS-005-dispatch.4).
+#[test]
+fn issue_43_a_failed_batch_save_rolls_back_every_new_plan() {
+    let tmp = tempdir();
+    fixture(tmp.path(), Value::Null);
+    ephor(tmp.path())
+        .args(["refresh", "demo"])
+        .assert()
+        .success();
+
+    let feed = feed_path(tmp.path());
+    let mut cache = read_feed(tmp.path());
+    let mut second = cache["providers"]["github-prs"]["matters"][0].clone();
+    second["key"] = json!("github-prs:acme/widget#43");
+    second["raw"]["number"] = json!(43);
+    second["raw"]["title"] = json!("Another failing change");
+    cache["providers"]["github-prs"]["matters"]
+        .as_array_mut()
+        .unwrap()
+        .push(second);
+    fs::write(&feed, serde_json::to_string_pretty(&cache).unwrap()).unwrap();
+
+    let forced = tmp.path().join("state/ephor/work.json.tmp");
+    fs::create_dir_all(&forced).unwrap();
+    ephor(tmp.path())
+        .args(["work", "dispatch", "--recipe", "fix-gate"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains(format!(
+            "Cannot write {}",
+            forced.display()
+        )));
+
+    let root = tmp.path().join("demo/panta");
+    assert!(
+        !root.exists(),
+        "the failed batch left one or more hand-off artifacts under {}",
+        root.display()
+    );
+    let listed = ephor(tmp.path())
+        .args(["work", "list", "--json"])
+        .assert()
+        .success();
+    assert_eq!(json_output(listed.get_output()), json!([]));
 }
 
 #[test]

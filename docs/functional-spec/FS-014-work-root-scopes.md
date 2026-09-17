@@ -62,12 +62,10 @@ a plan in a checkout root says this work is confined to this tree, and a root
 that held everything would say nothing. The rule is only worth having in its
 strict form.
 
-Configuration is how a person makes that claim. A recipe or work entry may
-choose its own root, so one project can place a checkout-local fix and a
-project-wide sweep at their respective smallest scopes. Ephor renders that
-choice; it does not infer reach from the work or introduce a second scope
-classification that could disagree with the configured path
-([§FS-005-dispatch.6.1](FS-005-dispatch.md#61-the-work-root-is-a-template-and-it-may-reach-above-the-project)).
+The person expresses that intended scope by configuring the recipe or workflow
+entry's `root` ([§FS-005-dispatch.6.1](FS-005-dispatch.md#61-the-work-root-is-a-template-and-it-may-reach-above-the-project)). Ephor applies the configured placement; it does not infer what the work
+will reach, add a second scope declaration, or prove that the chosen root is the
+smallest possible one.
 
 ## 3. Upper scopes decide, the checkout scope executes
 
@@ -142,11 +140,8 @@ name.
 ## 7. What is not yet held
 
 Two parts of the rule above are this program's to enforce and are not yet
-enforced. Placement is no longer one of them: recipes and work entries can
-choose independently, and the ledger retains every resulting root
-([§FS-005-dispatch.6.1](FS-005-dispatch.md#61-the-work-root-is-a-template-and-it-may-reach-above-the-project),
-[§FS-005-dispatch.15.1](FS-005-dispatch.md#151-the-board-keeps-itself-current)). Saying what remains costs a
-paragraph; a reader discovering it from behaviour costs more.
+enforced. Saying so costs a paragraph; a reader discovering it from behaviour
+costs more.
 
 - **A mutating verb above a checkout does not yet report by default.** [§3](#3-upper-scopes-decide-the-checkout-scope-executes) says
   upper scopes decide and hand down; nothing refuses a verb that would act at

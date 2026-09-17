@@ -95,6 +95,8 @@ fn repeated_workflow_finds_a_unique_recorded_plan_in_its_prior_root() {
                     at: Utc::now(),
                     plan: Some(plan_id.to_string()),
                     root: None,
+                    checkout: None,
+                    branch: None,
                     snapshot: Snapshot::of(&item),
                 },
                 ledger::Dispatch {
@@ -103,6 +105,8 @@ fn repeated_workflow_finds_a_unique_recorded_plan_in_its_prior_root() {
                     at: Utc::now(),
                     plan: Some("forge-widget-42-other-review".to_string()),
                     root: None,
+                    checkout: None,
+                    branch: None,
                     snapshot: Snapshot::of(&item),
                 },
             ],
@@ -133,6 +137,7 @@ fn repeated_workflow_finds_a_unique_recorded_plan_in_its_prior_root() {
         actions: Vec::new(),
         project_actions: BTreeMap::new(),
         notes: Vec::new(),
+        journal: Journal::default(),
         ledger,
     };
 
@@ -169,6 +174,99 @@ fn repeated_workflow_finds_a_unique_recorded_plan_in_its_prior_root() {
         dispatcher.repeated_workflow(&item, "review"),
         None,
         "a missing selected plan must not fall back to the older same-id plan"
+    );
+}
+
+/// Every committed dispatch root is a bounded discovery seed after reload,
+/// rather than the newest item-level root moving all of a matter's plans
+/// (§FS-005-dispatch.4, §FS-005-dispatch.15.1). This is the shared reading
+/// list/status, due work, runs, repeat detection, cancellation and proposal
+/// lookup consume.
+#[test]
+fn issue_43_every_recorded_dispatch_root_is_enumerated_after_reload() {
+    let tmp = tempfile::tempdir().unwrap();
+    let old_root = tmp.path().join("old/panta");
+    let new_root = tmp.path().join("new/panta");
+    let old_plan = "forge-widget-42-review";
+    let new_plan = "forge-widget-42-fix";
+    plant(&old_root.join(old_plan), "index.rhei.md", "review");
+    plant(&new_root.join(new_plan), "index.rhei.md", "fix");
+
+    let snapshot = Snapshot {
+        updated_at: chrono::DateTime::parse_from_rfc3339("2026-09-16T12:00:00Z")
+            .unwrap()
+            .with_timezone(&Utc),
+        ..Snapshot::default()
+    };
+    let mut ledger = empty_ledger();
+    ledger.entries.insert(
+        "forge:widget/42".to_string(),
+        Entry {
+            project: "widget".to_string(),
+            title: "Fix it".to_string(),
+            url: None,
+            root: new_root.clone(),
+            checkout: tmp.path().join("new"),
+            branch: Some("new".to_string()),
+            plan_id: "forge-widget-42".to_string(),
+            plan: new_root.join("forge-widget-42.rhei.md"),
+            dispatches: vec![
+                ledger::Dispatch {
+                    ticket: String::new(),
+                    recipe: "review".to_string(),
+                    at: Utc::now(),
+                    plan: Some(old_plan.to_string()),
+                    root: Some(old_root.clone()),
+                    checkout: None,
+                    branch: None,
+                    snapshot: snapshot.clone(),
+                },
+                ledger::Dispatch {
+                    ticket: String::new(),
+                    recipe: "fix".to_string(),
+                    at: Utc::now(),
+                    plan: Some(new_plan.to_string()),
+                    root: Some(new_root.clone()),
+                    checkout: None,
+                    branch: None,
+                    snapshot,
+                },
+            ],
+            pool: None,
+        },
+    );
+    let reloaded: Ledger = serde_json::from_value(serde_json::to_value(&ledger).unwrap())
+        .expect("the persisted ledger reloads");
+
+    let groups = enumerate_roots(
+        &WorkConfig::default(),
+        &BTreeMap::new(),
+        &BTreeMap::new(),
+        &[],
+        &reloaded,
+    );
+    let found: BTreeMap<_, _> = groups
+        .iter()
+        .map(|group| {
+            (
+                group.root.clone(),
+                group
+                    .plans
+                    .iter()
+                    .map(|plan| plan.plan_id.clone())
+                    .collect::<Vec<_>>(),
+            )
+        })
+        .collect();
+    assert_eq!(
+        found.get(&fs::canonicalize(&old_root).unwrap()),
+        Some(&vec![old_plan.to_string()]),
+        "the earlier recorded root remains discoverable"
+    );
+    assert_eq!(
+        found.get(&fs::canonicalize(&new_root).unwrap()),
+        Some(&vec![new_plan.to_string()]),
+        "the later recorded root is independently discoverable"
     );
 }
 
@@ -820,6 +918,7 @@ fn work_status(tickets: Vec<TicketStatus>) -> WorkStatus {
         plan_id: "forge-widget-42".to_string(),
         checkout: PathBuf::from("/w/widget"),
         plan: PathBuf::from("/w/widget/panta/forge-widget-42.rhei.md"),
+        plans: Vec::new(),
         missing: false,
         tickets,
         workflows: 0,
@@ -1031,6 +1130,7 @@ fn issue_43_dispatcher(root: &Path, ledger: Ledger) -> Dispatcher {
         actions: Vec::new(),
         project_actions: BTreeMap::new(),
         notes: Vec::new(),
+        journal: Journal::default(),
         ledger,
     }
 }
@@ -1064,6 +1164,8 @@ fn issue_43_recorded_recipe_roots_are_all_enumerated() {
         at: Utc::now(),
         plan: None,
         root: Some(root.to_path_buf()),
+        checkout: Some(root.parent().unwrap().to_path_buf()),
+        branch: None,
         snapshot: Snapshot::of(&item),
     };
     let mut ledger = empty_ledger();
@@ -1126,6 +1228,8 @@ fn issue_43_legacy_dispatch_falls_back_to_the_item_root() {
                 at: Utc::now(),
                 plan: None,
                 root: None,
+                checkout: None,
+                branch: None,
                 snapshot: Snapshot::of(&item),
             }],
             pool: None,
@@ -1198,6 +1302,8 @@ fn issue_43_multi_root_record() -> (tempfile::TempDir, Dispatcher, crate::feed::
                     at: Utc::now(),
                     plan: None,
                     root: Some(root_a.clone()),
+                    checkout: Some(tmp.path().join("checkout")),
+                    branch: Some("fix/issue-42".to_string()),
                     snapshot: Snapshot::of(&item),
                 },
                 ledger::Dispatch {
@@ -1206,6 +1312,8 @@ fn issue_43_multi_root_record() -> (tempfile::TempDir, Dispatcher, crate::feed::
                     at: Utc::now(),
                     plan: None,
                     root: Some(root_b.clone()),
+                    checkout: Some(tmp.path().join("project")),
+                    branch: None,
                     snapshot: Snapshot::of(&item),
                 },
             ],
@@ -1216,14 +1324,12 @@ fn issue_43_multi_root_record() -> (tempfile::TempDir, Dispatcher, crate::feed::
     fs::create_dir_all(reply.parent().unwrap()).unwrap();
     fs::write(reply, "The checkout-local answer.\n").unwrap();
     let dispatcher = issue_43_dispatcher(tmp.path(), ledger);
-    // Keep the path itself alive as executable evidence that the first
-    // dispatch belongs to the first root.
     assert!(plan_a.is_file());
     (tmp, dispatcher, item)
 }
 
-/// Proposal lookup follows the dispatch that owns the proposing ticket rather
-/// than the matter's latest item-level root (§FS-005-dispatch.15.1).
+/// Proposal lookup follows the dispatch root that holds the proposal instead
+/// of the matter's latest item-level root (§FS-005-dispatch.15.1).
 #[test]
 fn issue_43_proposal_lookup_reaches_an_earlier_recorded_root() {
     let (_tmp, dispatcher, item) = issue_43_multi_root_record();
@@ -1245,9 +1351,165 @@ fn issue_43_cancellation_reaches_an_earlier_recorded_root() {
     assert_eq!(cancelled.ticket, "answer-1");
 }
 
-/// A failed ledger commit restores the first pre-image of the whole unsaved
-/// batch, including repeated writes to one plan, and restores the in-memory
-/// ledger (§FS-005-dispatch.4).
+/// Upgrading a recipe record and dispatching elsewhere preserves the old
+/// placement, including when the first attempt is rolled back. A fresh
+/// reader finds both plans and cancellation selects the old plan
+/// (§FS-005-dispatch.4, §FS-005-dispatch.15.1, §FS-005-dispatch.16).
+#[test]
+fn issue_43_legacy_placement_survives_dispatch_and_failed_batch_save() {
+    let tmp = tempfile::tempdir().unwrap();
+    let ledger_path = tmp.path().join("state/work.json");
+    let _ledger_path = ledger::use_test_path(ledger_path.clone());
+    let project = tmp.path().join("widget");
+    fs::create_dir_all(&project).unwrap();
+    let item = issue_43_item();
+    let mut dispatcher = issue_43_dispatcher(&project, empty_ledger());
+    dispatcher
+        .dispatch(&item, &issue_43_recipe("first"), None, false)
+        .unwrap();
+    dispatcher.save().unwrap();
+
+    // Serialize exactly the legacy format: only the item carries placement.
+    let mut legacy = serde_json::to_value(&dispatcher.ledger).unwrap();
+    legacy["entries"][&item.id]["branch"] = serde_json::json!("fix/old");
+    let dispatch = legacy["entries"][&item.id]["dispatches"][0]
+        .as_object_mut()
+        .unwrap();
+    for field in ["root", "checkout", "branch"] {
+        dispatch.remove(field);
+    }
+    fs::write(&ledger_path, serde_json::to_vec_pretty(&legacy).unwrap()).unwrap();
+    let before_ledger = fs::read(&ledger_path).unwrap();
+    let old_root = project.join("panta");
+    let old_plan = old_root.join("forge-widget-42.rhei.md");
+    let before_plan = fs::read(&old_plan).unwrap();
+    let mut dispatcher = issue_43_dispatcher(&project, ledger::load().unwrap());
+    let before_memory = serde_json::to_value(&dispatcher.ledger).unwrap();
+    let mut next = issue_43_recipe("second");
+    let next_root = project.join("new-panta");
+    next.root = Some(next_root.to_string_lossy().into_owned());
+
+    // Multiple unsaved hand-offs share the original, unmaterialized ledger.
+    let temporary = ledger_path.with_extension("json.tmp");
+    fs::create_dir_all(&temporary).unwrap();
+    dispatcher.dispatch(&item, &next, None, false).unwrap();
+    dispatcher.dispatch(&item, &next, None, false).unwrap();
+    let error = dispatcher.save().unwrap_err().to_string();
+    assert!(
+        error.contains(&format!("Cannot write {}:", temporary.display())),
+        "{error}"
+    );
+    assert_eq!(
+        serde_json::to_value(&dispatcher.ledger).unwrap(),
+        before_memory
+    );
+    assert_eq!(fs::read(&ledger_path).unwrap(), before_ledger);
+    assert_eq!(fs::read(&old_plan).unwrap(), before_plan);
+    assert!(!next_root.exists(), "the failed batch left its new root");
+    fs::remove_dir(&temporary).unwrap();
+
+    dispatcher.dispatch(&item, &next, None, false).unwrap();
+    dispatcher.save().unwrap();
+    let fresh = issue_43_dispatcher(&project, ledger::load().unwrap());
+    let entry = &fresh.ledger.entries[&item.id];
+    assert_eq!(entry.root, next_root);
+    let old = &entry.dispatches[0];
+    assert_eq!(old.root.as_ref(), Some(&old_root));
+    assert_eq!(old.checkout.as_ref(), Some(&project));
+    assert_eq!(old.branch.as_deref(), Some("fix/old"));
+    let status = status_of_entry(&fresh.global, entry, Some(&item));
+    assert!(!status.missing);
+    assert_eq!(status.plans.len(), 2);
+    assert_eq!(status.plans[0].path, old_plan);
+    assert_eq!(status.plans[0].checkout, project);
+    assert_eq!(status.plans[0].branch.as_deref(), Some("fix/old"));
+    assert_eq!(
+        status
+            .tickets
+            .iter()
+            .map(|ticket| ticket.id.as_str())
+            .collect::<Vec<_>>(),
+        ["first-1", "second-1"]
+    );
+    let roots = enumerate_roots(
+        &fresh.global,
+        &BTreeMap::new(),
+        &BTreeMap::new(),
+        &[],
+        &fresh.ledger,
+    );
+    assert_eq!(
+        roots
+            .into_iter()
+            .map(|group| group.root)
+            .collect::<BTreeSet<_>>(),
+        BTreeSet::from([canonical(&old_root), canonical(&next_root)])
+    );
+    let cancelled = fresh
+        .cancel(&item.id, "first-1", "no longer needed", true)
+        .unwrap();
+    assert_eq!(cancelled.plan, old_plan);
+    assert_eq!(cancelled.ticket, "first-1");
+}
+
+/// A workflow's old root field is not evidence of complete provenance.
+/// Legacy branches still guard runs, but an explicitly branchless new
+/// dispatch must not inherit a later item-level branch
+/// (§FS-005-dispatch.4, §FS-005-dispatch.30).
+#[test]
+fn issue_43_legacy_workflow_branch_guard_distinguishes_new_branchless_work() {
+    let tmp = tempfile::tempdir().unwrap();
+    let checkout = tmp.path().join("checkout");
+    let root = checkout.join("panta");
+    let group = laid_root(&root, "fix-issue", &[&ticket_at("ticket", "open")]);
+    fs::create_dir_all(checkout.join(".git")).unwrap();
+    fs::write(checkout.join(".git/HEAD"), "ref: refs/heads/main\n").unwrap();
+    let mut value = serde_json::to_value(laid_ledger(&root, "fix-issue")).unwrap();
+    let entry = &mut value["entries"]["forge:widget/42"];
+    entry["branch"] = serde_json::json!("fix/old");
+    entry["dispatches"][0]["root"] = serde_json::json!(root);
+    let mut ledger: Ledger = serde_json::from_value(value).unwrap();
+    let read = |ledger: &Ledger, reach| {
+        due_among(
+            &work_config(),
+            std::slice::from_ref(&group),
+            &asking(&[]),
+            &laying(&["fix-issue"]),
+            ledger,
+            Utc::now(),
+            reach,
+        )
+    };
+    assert_eq!(branch_of(&ledger, &root), Some("fix/old"));
+    assert!(read(&ledger, Reach::Sweep).is_empty());
+    let due = read(&ledger, Reach::Key(Some("forge:widget/42")));
+    assert_eq!(due.len(), 1);
+    let refusal = due[0].refusal.as_deref().unwrap();
+    assert!(
+        refusal.contains("main") && refusal.contains("fix/old"),
+        "{refusal}"
+    );
+
+    // Returning the checkout to the recorded branch removes only that guard.
+    fs::write(checkout.join(".git/HEAD"), "ref: refs/heads/fix/old\n").unwrap();
+    assert_eq!(read(&ledger, Reach::Sweep).len(), 1);
+
+    // The new writer always records a checkout even when branch is None.
+    fs::write(checkout.join(".git/HEAD"), "ref: refs/heads/main\n").unwrap();
+    let entry = ledger.entries.get_mut("forge:widget/42").unwrap();
+    entry.dispatches[0].checkout = Some(checkout);
+    entry.retain_dispatch_placements();
+    assert_eq!(entry.dispatches[0].branch(entry), None);
+    assert_eq!(branch_of(&ledger, &root), None);
+    assert_eq!(read(&ledger, Reach::Sweep).len(), 1);
+    let due = read(&ledger, Reach::Key(Some("forge:widget/42")));
+    assert_eq!(due.len(), 1);
+    assert_eq!(due[0].refusal, None);
+    assert_eq!(due[0].plans, ["forge-widget-42-fix-issue"]);
+}
+
+/// A failed ledger commit restores the first pre-image of a repeated append
+/// batch and the loaded in-memory ledger (§FS-005-dispatch.4).
 #[test]
 fn issue_43_failed_save_rolls_back_append_batch_and_memory() {
     let tmp = tempfile::tempdir().unwrap();
@@ -1263,12 +1525,8 @@ fn issue_43_failed_save_rolls_back_append_batch_and_memory() {
         .unwrap();
     dispatcher.save().unwrap();
     let committed_ledger = serde_json::to_value(&dispatcher.ledger).unwrap();
-    let root = project.join("panta");
-    let plan_path = root.join("forge-widget-42.rhei.md");
+    let plan_path = project.join("panta/forge-widget-42.rhei.md");
     let committed_plan = fs::read(&plan_path).unwrap();
-    let committed_manifest = fs::read(root.join("index.panta.md")).unwrap();
-    let committed_states = fs::read(root.join("states.yaml")).unwrap();
-    let committed_ignore = fs::read(root.join(".gitignore")).unwrap();
 
     fs::create_dir_all(ledger_path.with_extension("json.tmp")).unwrap();
     dispatcher
@@ -1280,38 +1538,17 @@ fn issue_43_failed_save_rolls_back_append_batch_and_memory() {
     let error = dispatcher
         .save()
         .expect_err("the ledger store is forced to fail");
+    assert!(error.to_string().contains("Cannot write"));
+    assert_eq!(fs::read(&plan_path).unwrap(), committed_plan);
     assert_eq!(
-        error.to_string(),
-        format!(
-            "Cannot write {}: Is a directory (os error 21)",
-            ledger_path.with_extension("json.tmp").display()
-        )
-    );
-    assert!(
-        fs::read(&plan_path).unwrap() == committed_plan,
-        "the failed batch changed the existing plan"
-    );
-    assert!(
-        fs::read(root.join("index.panta.md")).unwrap() == committed_manifest,
-        "the failed batch changed the root manifest"
-    );
-    assert!(
-        fs::read(root.join("states.yaml")).unwrap() == committed_states,
-        "the failed batch changed the state machine"
-    );
-    assert!(
-        fs::read(root.join(".gitignore")).unwrap() == committed_ignore,
-        "the failed batch changed the ignore file"
-    );
-    assert!(
-        serde_json::to_value(&dispatcher.ledger).unwrap() == committed_ledger,
+        serde_json::to_value(&dispatcher.ledger).unwrap(),
+        committed_ledger,
         "an unsaved batch must not remain in memory"
     );
 }
 
-/// When rollback itself cannot restore a path, the diagnostic retains the
-/// ledger-store failure and names the exact path cleanup could not restore
-/// (§FS-005-dispatch.4).
+/// A rollback error retains the ledger-store failure and names the exact path
+/// it could not restore (§FS-005-dispatch.4).
 #[cfg(unix)]
 #[test]
 fn issue_43_cleanup_failure_keeps_save_error_and_names_the_path() {
@@ -2727,6 +2964,8 @@ fn the_ledgers_recipe_answers_for_a_ticket_ephor_dispatched() {
                 at: Utc::now(),
                 plan: None,
                 root: None,
+                checkout: None,
+                branch: None,
                 snapshot: Default::default(),
             }],
         },
@@ -2806,6 +3045,8 @@ fn laid_ledger(root: &Path, entry: &str) -> Ledger {
                 at: Utc::now(),
                 plan: Some(format!("forge-widget-42-{entry}")),
                 root: None,
+                checkout: None,
+                branch: None,
                 snapshot: Default::default(),
             }],
         },
