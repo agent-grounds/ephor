@@ -54,6 +54,7 @@
         "state": "fix",
         "needs_checkout": true,
         "autorun": true,
+        "dispatch": "0h",
         "when": { "kinds": ["pr"], "roles": ["author"], "gate": "failing" },
         "brief": "The gate on {title} is red. The failing jobs are named above; find what actually broke and fix the cause. Run `just check` in {workspace} before you call it done."
       }
@@ -92,6 +93,8 @@
             "description": "do the issue on a branch of its own",
             "state": "fix",
             "branch": "fix/issue-{number}",
+            "autorun": true,
+            "dispatch": { "every": "6h", "limit": 3 },
             "when": { "kinds": ["issue"], "roles": ["author"] },
             "brief": "Do {title} on {branch}, in {workspace}. The issue and its comments are above."
           }
