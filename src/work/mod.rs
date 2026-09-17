@@ -15,6 +15,7 @@ mod ranking;
 pub mod recipe;
 pub mod runtime;
 pub mod spend;
+pub mod sweeps;
 pub mod workflow;
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -2735,8 +2736,11 @@ impl Dispatcher {
             // (§FS-005-dispatch.6.1).
             root: None,
             // Typed on the spot by somebody who is right there: the reader
-            // starts it, as they always did (§FS-005-dispatch.24).
+            // starts it, as they always did (§FS-005-dispatch.24), and there
+            // is nothing to sweep for — the matter is the one in front of them
+            // (§FS-005-dispatch.31).
             autorun: false,
+            dispatch: None,
             brief: words.to_string(),
             // What was asked for is what is written down: ephor does not make
             // a move of its own in front of somebody's own words.
