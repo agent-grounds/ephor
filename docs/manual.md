@@ -1967,6 +1967,10 @@ behind `!` is one it must not carry at all.
 
 *labelled `enhancement`, not labelled `GenAI`, and held by `kimeta`.*
 
+Every entry names something: `!` on its own is no filter at all, so it is
+refused rather than quietly matching everything. Write no filter by leaving the
+field out.
+
 **A fact nobody reported refuses, and never matches.** A source that says
 nothing about labels or assignees has not said the matter is unlabelled or
 unheld, so a selector asking either question of it refuses — including the
