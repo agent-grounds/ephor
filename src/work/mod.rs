@@ -3989,7 +3989,11 @@ impl Dispatcher {
         if !root.exists() {
             return self.journal.remember(root);
         }
-        for name in ["index.panta.md", "states.yaml", ".gitignore"] {
+        for name in [
+            runtime::plan::MANIFEST,
+            runtime::plan::STATES,
+            runtime::plan::IGNORE,
+        ] {
             self.journal.remember(&root.join(name))?;
         }
         Ok(())

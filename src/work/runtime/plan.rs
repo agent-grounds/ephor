@@ -47,7 +47,13 @@ pub const PROJECT_DIR: &str = "panta";
 /// own manifest, and so the one thing that answers "is there already a project
 /// here" without asking the runner and reading its prose. Part of the
 /// coupling, and so part of this module (§REQ-001-boundary.5).
-const MANIFEST: &str = "index.panta.md";
+pub const MANIFEST: &str = "index.panta.md";
+
+/// The state machine file a runtime project may provide.
+pub const STATES: &str = "states.yaml";
+
+/// The ignore file ephor writes around its own work root.
+pub const IGNORE: &str = ".gitignore";
 
 /// What a plan file is called: `<plan id>` and this.
 pub(super) const PLAN_SUFFIX: &str = ".rhei.md";
