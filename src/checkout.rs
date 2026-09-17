@@ -80,6 +80,18 @@ pub fn make(
     branch: &str,
     from: Option<&str>,
 ) -> Result<(Made, PathBuf)> {
+    make_at(placement, project, branch, from, None)
+}
+
+/// Make a branch workspace and initialize the hand-off's selected work root,
+/// where a recipe or workflow entry chose one after branch placement.
+pub fn make_at(
+    placement: &Placement,
+    project: &str,
+    branch: &str,
+    from: Option<&str>,
+    selected_root: Option<&Path>,
+) -> Result<(Made, PathBuf)> {
     // Where the workspace goes is settled before the first directory can be
     // created (§FS-004-quick-actions.7.3), and here rather than at the command
     // line alone: this is the implementation every caller shares
@@ -125,7 +137,7 @@ pub fn make(
             // all, or made by the project's own checkout command, holds every
             // repository it should and has nowhere for a plan to land
             // (§FS-004-quick-actions.7.1). Asking again is what repairs it.
-            let store = init_store(&work, placement, project, &target);
+            let store = init_store(&work, placement, project, &target, selected_root);
             return Ok((
                 Made {
                     target: target.clone(),
@@ -180,7 +192,7 @@ pub fn make(
     // workspace is refused by the caller, and a work root inside one would be a
     // place for plans that cannot be worked (§FS-006-project-interface.7).
     let store = (outcome.refused().is_empty() && !outcome.repos.is_empty())
-        .then(|| init_store(&work, placement, project, &target));
+        .then(|| init_store(&work, placement, project, &target, selected_root));
     Ok((
         Made {
             target,
@@ -425,16 +437,21 @@ fn init_store(
     placement: &Placement,
     project: &str,
     workspace: &std::path::Path,
+    selected_root: Option<&std::path::Path>,
 ) -> Store {
-    match crate::work::ensure_store(
-        &work.global(),
-        work.per_organization(),
-        work.per_project(),
-        project,
-        placement.organization.as_ref(),
-        workspace,
-        &placement.root,
-    ) {
+    let result = match selected_root {
+        Some(root) => crate::work::ensure_store_at(&work.global(), work.per_project(), root),
+        None => crate::work::ensure_store(
+            &work.global(),
+            work.per_organization(),
+            work.per_project(),
+            project,
+            placement.organization.as_ref(),
+            workspace,
+            &placement.root,
+        ),
+    };
+    match result {
         Ok(store) => Store {
             dir: Some(store.dir),
             made: store.made,

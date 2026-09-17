@@ -214,14 +214,20 @@ impl Session {
         let mut configured = offers::applicable(&self.actions, project, item, &facts);
         configured.extend(from(crate::work::runtime::workflow::Source::Person));
         let mut menu = offers::merge(vec![recognized, offered, configured]);
-        offers::add_unclaimed(
-            &mut menu,
-            recipes
+        for recipe in recipes.iter().filter(|recipe| recipe.matches(item, &facts)) {
+            let agent = offers::agent_entry(recipe);
+            if let Some(index) = menu
                 .iter()
-                .filter(|recipe| recipe.matches(item, &facts))
-                .map(offers::agent_entry)
-                .collect(),
-        );
+                .position(|entry| entry.id == agent.id && entry.workflow.is_some())
+            {
+                // A configured recipe and a workflow entry may share a name;
+                // the recipe is the more specific hand-off and carries the
+                // selected placement through the same menu key.
+                menu[index] = agent;
+            } else {
+                offers::add_unclaimed(&mut menu, vec![agent]);
+            }
+        }
         // What work is offered on, for every entry that asks for it whoever
         // wrote it: never about an item that is finished
         // (§FS-005-dispatch.6), and — where the work edits the change — only
@@ -1132,7 +1138,10 @@ impl Session {
             .placements
             .get(&item.project)
             .ok_or_else(|| format!("{} has no registry placement", item.project))?;
-        let checkout = crate::branches::placed_through(placement, item, branch);
+        let checkout = match (placement.own_branch(item), branch) {
+            (Some(_), _) | (None, None) => placement.own_checkout(item),
+            (None, Some(template)) => crate::branches::minted(placement, item, template)?,
+        };
         let root = self
             .root(&item.project)
             .ok_or_else(|| format!("{} has no registry root", item.project))?

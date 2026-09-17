@@ -689,6 +689,12 @@ fn dispatch_work(
                     "recipe": recipe.id,
                     "outcome": if dry_run { "would-open" } else { "opened" },
                     "ticket": ticket,
+                    "plan": match &outcome {
+                        Outcome::Opened { plan, .. }
+                        | Outcome::Reopened { plan, .. }
+                        | Outcome::Laid { plan, .. } => Some(plan),
+                        _ => None,
+                    },
                     "says": outcome.describe(),
                 }));
                 if !args.json {
@@ -714,7 +720,7 @@ fn dispatch_work(
         }
     }
 
-    if !dry_run {
+    if !dry_run && (opened > 0 || laid > 0 || settled > 0) {
         dispatcher.save()?;
         // Work that needs nobody to start it gets its run in the same breath
         // as the ticket (§FS-005-dispatch.24). The sweep decides what that
