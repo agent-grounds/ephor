@@ -1127,7 +1127,7 @@ impl Session {
         item: &Item,
         branch: Option<&str>,
         override_root: Option<&str>,
-    ) -> Result<std::path::PathBuf, String> {
+    ) -> std::result::Result<std::path::PathBuf, String> {
         let placement = self
             .placements
             .get(&item.project)

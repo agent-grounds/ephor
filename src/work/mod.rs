@@ -2016,6 +2016,7 @@ impl Dispatcher {
             dispatches: Vec::new(),
             pool: pool.clone(),
         });
+        entry.retain_dispatch_placements();
         entry.title = item.title.clone();
         entry.url = item.url.clone();
         entry.root = root.dir.clone();
@@ -2628,6 +2629,7 @@ impl Dispatcher {
             dispatches: Vec::new(),
             pool: laying.pool.clone(),
         });
+        ledger_entry.retain_dispatch_placements();
         ledger_entry.title = item.title.clone();
         ledger_entry.url = item.url.clone();
         ledger_entry.root = root.dir.clone();
@@ -4574,11 +4576,8 @@ fn branch_of<'a>(ledger: &'a Ledger, root: &std::path::Path) -> Option<&'a str> 
                 .map(move |dispatch| (entry, dispatch))
         })
         .find(|(entry, dispatch)| canonical(dispatch.root.as_ref().unwrap_or(&entry.root)) == root)
-        .and_then(|(entry, dispatch)| match dispatch.root.is_some() {
-            true => dispatch.branch.as_deref(),
-            false => dispatch.branch.as_deref().or(entry.branch.as_deref()),
-        })
-        .or_else(|| {
+        .map(|(entry, dispatch)| dispatch.branch(entry))
+        .unwrap_or_else(|| {
             ledger
                 .entries
                 .values()
@@ -4834,10 +4833,7 @@ pub fn recorded_recipe_plans(entry: &Entry) -> Vec<RecordedPlan> {
             .checkout
             .clone()
             .unwrap_or_else(|| entry.checkout());
-        let branch = match dispatch.root.is_some() {
-            true => dispatch.branch.clone(),
-            false => dispatch.branch.clone().or_else(|| entry.branch.clone()),
-        };
+        let branch = dispatch.branch(entry).map(str::to_string);
         if let Some(existing) = plans
             .iter_mut()
             .find(|have| canonical(&have.root) == canonical(&root))

@@ -296,7 +296,7 @@ fn list_work(
                             "at": dispatch.at,
                             "root": dispatch.root.as_ref().unwrap_or(&entry.root),
                             "checkout": dispatch.checkout.clone().unwrap_or_else(|| entry.checkout()),
-                            "branch": dispatch.branch.as_ref().or(entry.branch.as_ref()),
+                            "branch": dispatch.branch(entry),
                         })))
                     }).collect::<Vec<_>>(),
                 }))

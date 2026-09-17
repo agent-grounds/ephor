@@ -271,13 +271,14 @@ pub struct Dispatch {
     /// field existed reads unchanged (§FS-006-project-interface.11).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub plan: Option<String>,
-    /// The work root this dispatch committed. Absent on records written
-    /// before placement provenance was retained; those records fall back to
-    /// their entry's item-level fields (§FS-005-dispatch.4).
+    /// The work root this dispatch committed. Older workflow records already
+    /// carry this field; older recipe records fall back to their entry's
+    /// item-level root (§FS-005-dispatch.4).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub root: Option<PathBuf>,
-    /// The checkout the runtime uses for this dispatch. Additive and absent
-    /// on legacy records (§FS-005-dispatch.4).
+    /// The checkout the runtime uses for this dispatch. Every new dispatch
+    /// records it, including branchless work. Its presence distinguishes
+    /// complete provenance from legacy records (§FS-005-dispatch.4).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub checkout: Option<PathBuf>,
     /// The branch resolved for this dispatch. Additive and absent on legacy
@@ -289,6 +290,15 @@ pub struct Dispatch {
 }
 
 impl Dispatch {
+    /// A new dispatch may deliberately record no branch. Only legacy records
+    /// without a checkout inherit the item's branch (§FS-005-dispatch.4).
+    pub fn branch<'a>(&'a self, entry: &'a Entry) -> Option<&'a str> {
+        match self.checkout.is_some() {
+            true => self.branch.as_deref(),
+            false => self.branch.as_deref().or(entry.branch.as_deref()),
+        }
+    }
+
     /// Whether this dispatch laid down a plan of its own
     /// (§FS-005-dispatch.19).
     pub fn is_workflow(&self) -> bool {
@@ -430,6 +440,20 @@ fn message_count(item: &Item) -> usize {
 }
 
 impl Entry {
+    /// Freeze the legacy placement before another hand-off replaces the
+    /// item-level fields. This mutation belongs to the hand-off's journalled
+    /// ledger snapshot, so a failed save also undoes it (§FS-005-dispatch.4).
+    pub fn retain_dispatch_placements(&mut self) {
+        let checkout = self.checkout();
+        for dispatch in &mut self.dispatches {
+            if dispatch.checkout.is_none() {
+                dispatch.branch = dispatch.branch.clone().or_else(|| self.branch.clone());
+                dispatch.checkout = Some(checkout.clone());
+            }
+            dispatch.root.get_or_insert_with(|| self.root.clone());
+        }
+    }
+
     /// Where the runtime runs. The recorded checkout, or — for an entry from
     /// before it was recorded — the directory the work root sits in, which is
     /// what the default `{workspace}/panta` root makes it.
