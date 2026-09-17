@@ -2661,3 +2661,209 @@ orders the guards again at its own surface. Thus a root with both an unreadable
 machine or wrong checkout branch and a live run is refused for the root fact
 on every surface. `--force` changes only the live-run answer: it never turns a
 root refusal into a runnable root.
+
+## 31. A recipe can ask for its own sweep, and say how often
+
+[§24](#24-work-nobody-has-to-start-starts-itself) freed the *run* from the
+reader's key. The *sweep that writes the ticket* is still the reader's to
+perform, and the loop is therefore automatic in its second half only: what a
+timer runs reopens matters already dispatched
+([§5](#5-an-item-that-moved-reopens-its-work)) and starts tickets that already
+exist, and neither of those introduces a matter. A newly assigned issue sits in
+the feed until somebody types the sweep, however precisely the recipe describes
+the work it deserves.
+
+So **a recipe may say that its own sweep needs nobody, and how often that sweep
+should happen**. One field says both, and its presence is the opt-in:
+
+```jsonc
+{ "id": "implement",
+  "when": { "kinds": ["issue"], "roles": ["author"] },
+  "autorun": true,
+  "dispatch": "6h" }
+```
+
+| `dispatch` | Means |
+|---|---|
+| omitted | the key stays the reader's, exactly as before |
+| `"0h"` | sweep every time ephor is asked |
+| any other interval | sweep at most that often |
+
+`"0h"` is the always case and needs no second spelling: an interval of zero has
+elapsed by the time anything reads it, so *every tick* falls out of the same
+comparison every other value goes through rather than being a mode beside it.
+
+**Deliberately one field, and not a boolean beside an interval.** An interval
+already says the sweep needs nobody: a separate `unattended: true` restates it,
+and `unattended: false` written beside an interval is a state the schema would
+admit and nothing could mean. Silence is how a recipe declines
+([§24](#24-work-nobody-has-to-start-starts-itself)), and a boolean invites the
+reader to write that silence out loud as a second, disagreeing answer.
+
+### 31.1 The reader adopts the recipe; the recipe does the rest
+
+§24's argument is made here one step earlier and is the same argument.
+Everything a recipe already decides — which matters deserve work, what to ask
+for, whose hand does it, and whether the ticket waits for a key — is one
+decision, made once, at adoption. *And find them yourself* belongs beside *and
+do not wait for me* for the reason *and do not wait for me* belongs beside the
+selector: a reader who has written a selector precise enough to trust
+unattended has already made the decision that the per-sweep key press re-asks,
+and `--dry-run` reports exactly what a sweep would open, so its precision is
+knowable before anything is adopted.
+
+The rules §24 sets for the run carry over unchanged. Silence means the key. The
+setting is written on the thing that hands work over and nowhere else, because
+a reader who trusts one recipe unattended has said nothing about the rest. And
+a dry run still writes nothing, which here includes the sweep's own record of
+having swept.
+
+### 31.2 The rhythm belongs to the work, not to whichever unit calls ephor
+
+Recipes have genuinely different rhythms. A gate that has gone red wants
+reacting to quickly, and an hour of staleness is an hour wasted. A sweep over a
+backlog does not need asking every half hour, and every sweep that dispatches
+spends agents — so the difference between hourly and daily is money rather than
+a preference. One interval for every recipe forces the slow work onto the fast
+recipe's schedule.
+
+The alternative available without this field is a timer unit per recipe, each
+calling the sweep narrowed to one id. That works, and it splits one recipe's
+description across two places: the recipe says what the work is, and a unit file
+somewhere else says how often to look for it. That is the split §24 closed for
+`autorun`, reopened one step earlier.
+
+**This does not duplicate the scheduler, because ephor already works this way.**
+`work run --due` is the precedent: the unit fires often, and ephor decides what
+is genuinely due by reading the world rather than by being woken at the right
+moment ([§24](#24-work-nobody-has-to-start-starts-itself)). A per-recipe
+interval is the same move. The unit keeps firing at whatever rate it likes; a
+recipe whose interval has not elapsed is skipped. **The unit sets the
+resolution and the recipe sets the rhythm**, and neither has to know what the
+other chose.
+
+This is also the whole meaning of `"0h"`. Ephor has no daemon and is only ever
+asked when something calls it, so the unit's own rate is the ceiling on every
+value here: `"0h"` means *whenever you ask me*, never *continuously*. A reader
+whose unit fires twice an hour has said, by writing `"0h"`, that this recipe
+goes at whatever rate that unit was set to — which is why a recipe that wants a
+floor of its own writes the floor rather than the zero.
+
+### 31.3 Where the sweep happens, and what it is
+
+The sweep is **`ephor work sync`**, which is the unattended verb a timer
+already runs against the feed
+([§24](#24-work-nobody-has-to-start-starts-itself)). It needs no unit of its
+own and no new line in anyone's: a recipe that adopts this field is swept by
+the timer that is already installed, which is the point — the reader's act is
+adopting the recipe, and adopting it must not also mean editing a service file.
+
+What changes there is one question, not one job. Sync already walks every
+matter in the feed and asks whether ephor has work about it: a matter it has
+work about is reopened where it moved ([§5](#5-an-item-that-moved-reopens-its-work)),
+and a matter it has no work about is passed over. That second answer stops
+being unconditional. A matter with no work is **opened** when a recipe that
+asked for its own sweep covers it and that recipe's interval has elapsed, and
+passed over otherwise, exactly as before. One walk of the feed, one question
+asked of each matter, two answers instead of one.
+
+**The recipe that sweeps is the recipe the reader's own sweep would have
+chosen.** Recipes are offered in priority order and one matter wants one piece
+of work ([§1](#1-a-recipe-decides-which-items-deserve-work-and-what-to-ask-for)),
+so this asks for the first recipe that applies and acts only where *that* one
+carried an interval. A matter whose best recipe stayed silent is left alone and
+is never quietly handed to a lesser recipe further down the list that happened
+to say `dispatch` — that would be the field deciding which work a matter
+deserves, which is the selector's to decide and the ordering's.
+
+**Everything the reader's own sweep refuses, this refuses.** It is the same
+dispatch ([§6](#6-dispatch-is-offered-where-it-would-work-and-refuses-where-it-would-not)):
+a matter whose prerequisites are still open is withheld, a branch that is not
+checked out refuses, a hand a narrowing will not permit refuses, and a matter
+that already has work is left to sync's other answer. What it opens is a
+ticket like any other, and the run it gets — or does not get — is
+[§24](#24-work-nobody-has-to-start-starts-itself)'s question and not this one:
+a recipe may sweep itself and still wait for a key to run, or say `autorun` and
+not sweep, because the two settings answer two different questions and neither
+implies the other.
+
+**The ordering already made orders this sweep too.** Where `work.ranking`
+names item ids, the unattended sweep walks the feed in that order
+([§26](#26-an-ordering-already-made-can-be-read-and-a-limit-bounds-what-runs)),
+as the reader's own sweep does. It is invisible until a bound stops a sweep
+short, and then it is the whole question: a reader who wrote both a ranking and
+a limit has said which matters the bound should spend itself on.
+
+**An entry that lays a workflow is not swept.** §28 lets such an entry ask for
+what a recipe asks for, and `autorun` is what it was given
+([§28](#28-a-workflow-entry-can-ask-for-the-same-thing-a-recipe-can)). It is
+not given this: a sweep that laid workflows unasked would be opening plans of
+their own about matters nobody has looked at, and silence there means the key
+for the same reason it means the key everywhere else here.
+
+**The `--act` gate is unchanged**, which is what makes this safe to put in the
+verb a timer runs above many projects: a sync that reports rather than acts
+reports what it *would* open beside what it would reopen, and writes neither
+([§FS-011-command-line.10](FS-011-command-line.md#10-a-mutating-verb-above-one-project-reports-and-acts-under---act)).
+
+### 31.4 A sweep of one's own may be bounded
+
+Unattended dispatch makes the selector load-bearing in a way it is not
+otherwise ([§31](#31-a-selector-can-ask-who-holds-a-matter-and-what-it-is-labelled)):
+a mislabelled or newly-labelled matter reaches an agent without anyone having
+looked at it. Two things stand beside the setting rather than after it.
+
+The first is the interval, which is a safety control and not only a cost one: a
+recipe that sweeps daily gives a reader a day to notice a selector that has
+started matching the wrong thing.
+
+The second is a bound on one sweep's own appetite. `--limit` already bounds the
+reader's sweep ([§26](#26-an-ordering-already-made-can-be-read-and-a-limit-bounds-what-runs)),
+and an unattended sweep is the case it was written for — but the reader is not
+there to type it, and the verb that hosts the sweep is not the verb the flag is
+on. So a recipe that sweeps itself may carry one, in a long spelling of the
+same field:
+
+```jsonc
+{ "dispatch": { "every": "6h", "limit": 3 } }
+```
+
+`"6h"` is sugar for `{ "every": "6h" }` and is the spelling to prefer; the map
+is for the recipe that wants the bound. The limit is that recipe's own — it
+counts what this recipe opened in this sweep and nothing else, so two
+self-sweeping recipes do not spend each other's allowance — and it bounds what
+is opened, never what is stepped over, which is the reading `--limit` already
+has. Omitted, the recipe is bounded by the ceilings every start is bounded by
+([§24](#24-work-nobody-has-to-start-starts-itself),
+[§FS-015-spend-ceiling](FS-015-spend-ceiling.md#fs-015-spend-ceiling-what-unattended-work-may-spend-is-the-persons-number-and-the-sweep-stops-at-it))
+and by nothing nearer.
+
+### 31.5 When each recipe last swept is ephor's record of ephor
+
+Deciding whether an interval has elapsed needs one fact nothing here keeps
+today: when this recipe last swept. That is a fact about ephor's own activity
+and never a claim about the work, so it is kept the way ephor's other records
+of its own acts are kept — beside `burn`'s cursors, in ephor's own state
+directory, and not in the ledger. [§4](#4-the-ledger-is-ephors-record-and-never-the-truth-about-the-work)'s
+rule is untouched: nothing here decides what exists, and the ledger goes on
+answering the one question it answers.
+
+It is kept per project and per recipe id, because that is what a recipe is: the
+same id resolves to a different recipe in a project that replaced it
+([§1](#1-a-recipe-decides-which-items-deserve-work-and-what-to-ask-for)), and a
+sweep narrowed to one project must not spend another project's clock.
+
+**A missing or unreadable record means due now.** A reader who deletes this
+state loses a sweep's worth of waiting rather than the sweep itself, and a
+record ephor cannot parse is the same as one that was never written — the
+degrade every reading of ephor's own state owes
+([§REQ-001-boundary.1](../requirements/REQ-001-boundary.md#1-the-anatomy)).
+Erring toward sweeping is the right direction: the cost is one early sweep,
+bounded by everything above, where erring the other way is a queue that
+silently stops being looked at.
+
+**A sweep the reader typed marks the clock too.** `ephor work dispatch` opens
+what a self-sweeping recipe would have opened, because it opens everything, so
+a record that ignored it would send the timer to look again at a queue a person
+had just emptied by hand. The mark is what it always is: this recipe was swept,
+at this moment, in this project.
