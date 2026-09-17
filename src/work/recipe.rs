@@ -632,12 +632,20 @@ pub struct Selector {
     /// The logins that may hold the matter (§FS-005-dispatch.31). A plain name
     /// is one the matter must be held by; `!name` is one it must not. A matter
     /// whose source reported no assignment answers neither form.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[serde(
+        default,
+        deserialize_with = "named",
+        skip_serializing_if = "Vec::is_empty"
+    )]
     pub assignees: Vec<String>,
     /// The labels the matter must and must not carry (§FS-005-dispatch.31),
     /// asked exactly as `assignees` is: `["enhancement", "!GenAI"]` is
     /// labelled `enhancement` and not labelled `GenAI`.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[serde(
+        default,
+        deserialize_with = "named",
+        skip_serializing_if = "Vec::is_empty"
+    )]
     pub labels: Vec<String>,
     /// The item's branch trails its main branch (`true`), or is level with it
     /// (`false`) — measured in the checkout, not asked of a forge
@@ -801,6 +809,26 @@ impl Selector {
         }
         refusals
     }
+}
+
+/// Every entry of an `assignees` or `labels` field, refused where one names
+/// nothing (§FS-005-dispatch.31). `!` alone reads as a filter and excludes
+/// nothing, which is what a templated recipe degrades into when the name it
+/// interpolates is missing; a field that asks for nothing is written by
+/// omitting the field. Read here rather than at either surface, because a
+/// selector is written in a feed config, a project manifest and the runtime's
+/// own recipes alike.
+fn named<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<Vec<String>, D::Error> {
+    let entries = Vec::<String>::deserialize(deserializer)?;
+    if let Some(unnamed) = entries
+        .iter()
+        .find(|entry| entry.trim_start_matches('!').is_empty())
+    {
+        return Err(serde::de::Error::custom(format!(
+            "`{unnamed}` names nothing: write `name` or `!name`, or omit the field to filter on neither"
+        )));
+    }
+    Ok(entries)
 }
 
 /// What the item's source said under `key`, or `None` where it said nothing
@@ -1252,6 +1280,27 @@ mod tests {
         assert!(only_negative.matches(&labelled(json!(["priority"])), &Facts::default()));
         assert!(only_negative.matches(&labelled(json!([])), &Facts::default()));
         assert!(!only_negative.matches(&labelled(json!(["GenAI"])), &Facts::default()));
+    }
+
+    /// §FS-005-dispatch.31: `!` alone reads as a filter and excludes nothing,
+    /// so it is refused where the recipe is read rather than matching every
+    /// matter. Omitting the field is how a reader asks for neither.
+    #[test]
+    fn an_entry_that_names_nothing_is_refused() {
+        for entry in ["!", "", "!!"] {
+            let refused = serde_json::from_value::<Selector>(json!({ "labels": [entry] }))
+                .expect_err("an entry naming nothing is refused");
+            assert!(refused.to_string().contains("names nothing"), "{refused}");
+            assert!(
+                serde_json::from_value::<Selector>(json!({ "assignees": [entry] })).is_err(),
+                "`{entry}` is refused on assignees as it is on labels"
+            );
+        }
+        // A name behind the bang is the whole point, and still parses.
+        assert_eq!(
+            selector(json!({ "labels": ["!GenAI"] })).labels,
+            vec!["!GenAI".to_string()]
+        );
     }
 
     /// §FS-005-dispatch.31: a source that reported nothing has not said the

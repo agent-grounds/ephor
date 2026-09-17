@@ -447,6 +447,21 @@ mod tests {
         );
     }
 
+    /// The schema refuses an entry that names nothing too, so a manifest
+    /// validated by anything but ephor hears the same refusal
+    /// (§FS-005-dispatch.31, §FS-006-project-interface.11).
+    #[test]
+    fn an_offer_may_not_select_on_an_entry_that_names_nothing() {
+        let err = parse(
+            r#"{"actions": [{"id": "mine", "description": "my own queue",
+                             "command": "echo hi",
+                             "when": {"kinds": ["issue"], "labels": ["!"]}}]}"#,
+            "ephor.json",
+        )
+        .expect_err("`!` alone is not a filter");
+        assert!(err.to_string().contains("manifest schema"), "{err}");
+    }
+
     /// A project's own offer that lays a workflow down may say the work needs
     /// nobody to start it, and an offer that runs a command may not — there
     /// is no run to start (§FS-005-dispatch.28). The schema says it too, so a

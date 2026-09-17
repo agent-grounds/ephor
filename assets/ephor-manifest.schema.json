@@ -212,12 +212,12 @@
         "sources": { "type": "array", "items": { "type": "string" } },
         "assignees": {
           "type": "array",
-          "items": { "type": "string" },
+          "items": { "type": "string", "pattern": "[^!]", "description": "An entry names something: `login` or `!login`. A field that asks for nothing is written by omitting the field (FS-005-dispatch.31)." },
           "description": "Logins the matter must be held by — any one of them — and '!login' one it must not be held by at all (FS-005-dispatch.31). A matter whose source reported nothing about assignment answers neither form and is refused."
         },
         "labels": {
           "type": "array",
-          "items": { "type": "string" },
+          "items": { "type": "string", "pattern": "[^!]", "description": "An entry names something: `label` or `!label`. A field that asks for nothing is written by omitting the field (FS-005-dispatch.31)." },
           "description": "Labels the matter must carry — any one of them — and '!label' one it must not carry at all (FS-005-dispatch.31). A matter whose source reported nothing about labels answers neither form and is refused."
         },
         "behind": {
