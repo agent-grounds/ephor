@@ -2699,6 +2699,14 @@ written, must find one. This is the any-of rule `kinds`, `roles` and `sources`
 already follow ([§1](#1-a-recipe-decides-which-items-deserve-work-and-what-to-ask-for)),
 with the refusal the other three have no need of.
 
+**An entry must name something.** `!` on its own names no label and no
+login, so it is not a narrower filter — it is no filter at all, and a selector
+that reads as one while excluding nothing is the shape a templated recipe
+degrades into when the name it interpolates is missing. A field that asks for
+nothing is written by omitting the field, so an entry that is empty or is `!`
+alone is refused where the recipe is read, and the published schema refuses it
+too ([§FS-006-project-interface.11](FS-006-project-interface.md#11-the-interface-is-versioned)).
+
 **A fact nobody reported refuses, and never matches.** A source that says
 nothing about labels or assignees has not said the matter is unlabelled or
 unheld — it has said nothing, and the distinction is the same one `assigned`
