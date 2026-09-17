@@ -5248,7 +5248,7 @@ pub fn enumerate_roots(
         // append can move an entry to a root whose dispatch history predates
         // that placement (and older records only have these fields); retaining
         // it keeps the named matter reachable without widening discovery.
-        if entry.plan.is_file() {
+        if !entry.dispatches.is_empty() && entry.plan.is_file() {
             let root = canon(&entry.root);
             let group = groups.entry(root.clone()).or_insert_with(|| RootPlans {
                 root,
