@@ -3272,7 +3272,7 @@ pub fn due_among(
                 if !key {
                     let asked_for = laid.or_else(|| {
                         dispatched
-                            .get(&(group.root.clone(), ticket.id.clone()))
+                            .get(&(canonical(&group.root), ticket.id.clone()))
                             .map(String::as_str)
                             .or_else(|| recipe_of_ticket(&ticket.id))
                     });
@@ -4583,7 +4583,7 @@ fn root_checkout(root: &std::path::Path) -> PathBuf {
 /// both guard on it and two spellings of "which tree is this" would be two
 /// guards (§AR-009-surfaces.1).
 fn checkout_of(ledger: &Ledger, root: &std::path::Path) -> PathBuf {
-    let root = canonical(root);
+    let identity = canonical(root);
     ledger
         .entries
         .values()
@@ -4594,7 +4594,9 @@ fn checkout_of(ledger: &Ledger, root: &std::path::Path) -> PathBuf {
                 .rev()
                 .map(move |dispatch| (entry, dispatch))
         })
-        .find(|(entry, dispatch)| canonical(dispatch.root.as_ref().unwrap_or(&entry.root)) == root)
+        .find(|(entry, dispatch)| {
+            canonical(dispatch.root.as_ref().unwrap_or(&entry.root)) == identity
+        })
         .map(|(entry, dispatch)| {
             dispatch
                 .checkout
@@ -4605,10 +4607,10 @@ fn checkout_of(ledger: &Ledger, root: &std::path::Path) -> PathBuf {
             ledger
                 .entries
                 .values()
-                .find(|entry| entry.dispatches.is_empty() && canonical(&entry.root) == root)
+                .find(|entry| entry.dispatches.is_empty() && canonical(&entry.root) == identity)
                 .map(Entry::checkout)
         })
-        .unwrap_or_else(|| root_checkout(&root))
+        .unwrap_or_else(|| root_checkout(root))
 }
 
 /// The branch recorded for work in one root, with the old entry-level field
