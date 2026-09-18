@@ -255,7 +255,7 @@ fn directory_workspaces_with_an_unreadable_machine_fail_the_store_read() {
         "### Task work: Must not borrow root semantics\n**State:** root-open\n",
     );
 
-    world.ephor().args(["refresh", PROJECT]).assert().success();
+    world.ephor().args(["refresh", PROJECT]).assert().code(4);
 
     let slot = &world.feed()["providers"]["rhei"];
     assert_eq!(slot["ok"], false, "{slot:#?}");
@@ -265,6 +265,178 @@ fn directory_workspaces_with_an_unreadable_machine_fail_the_store_read() {
     assert!(
         slot["matters"].as_array().is_some_and(Vec::is_empty),
         "{slot:#?}"
+    );
+}
+
+fn directory_workspace(world: &World, name: &str) {
+    world.file(&format!("panta/{name}/index.rhei.md"), "# Rhei: work\n");
+    world.file(
+        &format!("panta/{name}/tasks/01-work.md"),
+        "### Task work: Workspace work\n**State:** pending\n",
+    );
+}
+
+fn failed_task_store(world: &World, path: &str) {
+    let slot = &world.feed()["providers"]["rhei"];
+    assert_eq!(slot["ok"], false, "{slot:#?}");
+    let error = slot["error"].as_str().unwrap_or_default();
+    assert!(error.contains(path), "{error}");
+    assert!(
+        slot["matters"].as_array().is_some_and(Vec::is_empty),
+        "{slot:#?}"
+    );
+}
+
+/// Local authority does not depend on an unused root being readable; a plan
+/// that needs the root still fails the whole source (§FS-006-project-interface.7).
+#[test]
+fn directory_workspaces_only_resolve_an_applicable_root_machine() {
+    for needs_root in ["neither", "flat", "workspace"] {
+        let world = World::new();
+        world.file("panta/states.yaml", "states:\n  pending:\n");
+        directory_workspace(&world, "alpha");
+        world.file(
+            "panta/alpha/states.yaml",
+            "name: alpha\nstates:\n  pending:\n",
+        );
+
+        // Either shape requires root semantics only when no local machine answers.
+        match needs_root {
+            "flat" => {
+                world.file("panta/flat.rhei.md", PLAN);
+            }
+            "workspace" => directory_workspace(&world, "beta"),
+            _ => {
+                world.ephor().args(["refresh", PROJECT]).assert().success();
+                assert_eq!(world.feed()["providers"]["rhei"]["ok"], true);
+                assert_eq!(world.matter("rhei:alpha.work")["state"], "pending");
+                continue;
+            }
+        }
+        world.ephor().args(["refresh", PROJECT]).assert().code(4);
+        failed_task_store(&world, "panta/states.yaml");
+    }
+}
+
+/// A task document that cannot be decoded is a source failure even under a
+/// privileged user who can bypass mode bits (§FS-006-project-interface.7).
+#[test]
+fn directory_workspaces_with_unreadable_task_text_fail_the_store_read() {
+    let world = World::new();
+    directory_workspace(&world, "alpha");
+    let path = world.forest().join("panta/alpha/tasks/01-work.md");
+    std::fs::write(&path, [0xff, 0xfe]).unwrap();
+    assert_eq!(
+        std::fs::read_to_string(&path).unwrap_err().kind(),
+        std::io::ErrorKind::InvalidData
+    );
+
+    world.ephor().args(["refresh", PROJECT]).assert().code(4);
+    failed_task_store(&world, "alpha/tasks/01-work.md");
+}
+
+/// Permission loss must not become a healthy empty store (§FS-006-project-interface.7).
+#[cfg(unix)]
+#[test]
+fn directory_workspaces_with_a_permission_denied_task_fail_the_store_read() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let world = World::new();
+    directory_workspace(&world, "alpha");
+    let path = world.forest().join("panta/alpha/tasks/01-work.md");
+    let original = std::fs::metadata(&path).unwrap().permissions();
+    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o000)).unwrap();
+    let probe = std::fs::read_to_string(&path);
+    let refresh = world.ephor().args(["refresh", PROJECT]).assert();
+    std::fs::set_permissions(&path, original).unwrap();
+
+    assert_eq!(
+        probe
+            .expect_err("run this permission regression as an unprivileged user")
+            .kind(),
+        std::io::ErrorKind::PermissionDenied
+    );
+    refresh.code(4);
+    failed_task_store(&world, "alpha/tasks/01-work.md");
+}
+
+/// An absent or empty task collection is valid; an existing collection that
+/// cannot be enumerated is a source failure (§FS-006-project-interface.7).
+#[test]
+fn directory_workspaces_distinguish_empty_tasks_from_enumeration_failure() {
+    let world = World::new();
+    world.file("panta/absent/index.rhei.md", "# Rhei: absent\n");
+    world.file("panta/empty/index.rhei.md", "# Rhei: empty\n");
+    std::fs::create_dir(world.forest().join("panta/empty/tasks")).unwrap();
+    world.ephor().args(["refresh", PROJECT]).assert().success();
+    let slot = &world.feed()["providers"]["rhei"];
+    assert_eq!(slot["ok"], true, "{slot:#?}");
+    assert!(slot["matters"].as_array().unwrap().is_empty());
+
+    // A file in place of the task directory makes read_dir fail on any user account.
+    world.file("panta/absent/tasks", "not a directory\n");
+    world.ephor().args(["refresh", PROJECT]).assert().code(4);
+    failed_task_store(&world, "absent/tasks");
+}
+
+/// Each task's activity follows its own file, while identity and plan
+/// provenance stay fixed (§FS-006-project-interface.7, §FS-003-feed-categories.2).
+#[test]
+fn directory_workspaces_use_each_task_files_activity() {
+    let world = World::new();
+    directory_workspace(&world, "alpha");
+    world.file(
+        "panta/alpha/tasks/02-next.md",
+        "### Task next: Next work\n**State:** pending\n",
+    );
+    world.file("panta/flat.rhei.md", PLAN);
+    let set_modified = |path: &str, stamp: &str| {
+        let stamp: chrono::DateTime<chrono::Utc> = stamp.parse().unwrap();
+        std::fs::File::options()
+            .write(true)
+            .open(world.forest().join(path))
+            .unwrap()
+            .set_modified(stamp.into())
+            .unwrap();
+    };
+    set_modified("panta/alpha/index.rhei.md", "2020-01-01T00:00:00Z");
+    set_modified("panta/alpha/tasks/01-work.md", "2021-01-01T00:00:00Z");
+    set_modified("panta/alpha/tasks/02-next.md", "2022-01-01T00:00:00Z");
+    set_modified("panta/flat.rhei.md", "2023-01-01T00:00:00Z");
+
+    world.ephor().args(["refresh", PROJECT]).assert().success();
+    let work = world.matter("rhei:alpha.work");
+    assert_eq!(work["updated_at"], "2021-01-01T00:00:00Z");
+    assert_eq!(
+        world.matter("rhei:alpha.next")["updated_at"],
+        "2022-01-01T00:00:00Z"
+    );
+    assert_eq!(
+        world.matter("rhei:flat.1")["updated_at"],
+        "2023-01-01T00:00:00Z"
+    );
+    assert_eq!(
+        work["raw"]["plan"],
+        json!(world
+            .forest()
+            .join("panta/alpha/index.rhei.md")
+            .to_string_lossy())
+    );
+
+    world.file(
+        "panta/alpha/tasks/01-work.md",
+        "### Task work: Updated work\n**State:** pending\n",
+    );
+    set_modified("panta/alpha/tasks/01-work.md", "2024-01-01T00:00:00Z");
+    world.ephor().args(["refresh", PROJECT]).assert().success();
+    let updated = world.matter("rhei:alpha.work");
+    assert_eq!(updated["title"], "Updated work");
+    assert_eq!(updated["updated_at"], "2024-01-01T00:00:00Z");
+    assert_eq!(updated["key"], work["key"]);
+    assert_eq!(updated["raw"], work["raw"]);
+    assert_eq!(
+        world.matter("rhei:alpha.next")["updated_at"],
+        "2022-01-01T00:00:00Z"
     );
 }
 

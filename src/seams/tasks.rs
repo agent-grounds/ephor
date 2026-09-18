@@ -116,16 +116,8 @@ pub fn read(store: &Store, project: &str) -> Result<Vec<Item>, String> {
 fn plans(store: &Store, project: &str) -> Result<Vec<Item>, String> {
     use crate::work::runtime::plan::{self, WorkRoot};
 
-    // The root machine remains applicable to every flat plan and to a
-    // directory workspace that declares none of its own. A declared machine
-    // that cannot be read is never replaced (§FS-005-dispatch.6,
-    // §FS-006-project-interface.7).
-    let root_machine = WorkRoot::in_force(&store.path).map_err(|err| {
-        format!(
-            "cannot read the state machine in {}: {err}",
-            store.path.display()
-        )
-    })?;
+    // Resolve the root only when a plan needs it (§FS-006-project-interface.7).
+    let mut root_machine = None;
     let plans = plan::task_store_plans_in(&store.path)
         .map_err(|err| format!("cannot read {}: {err}", store.path.display()))?;
 
@@ -148,9 +140,19 @@ fn plans(store: &Store, project: &str) -> Result<Vec<Item>, String> {
                 path.display()
             )
         })?;
-        let machine = own_machine.as_ref().unwrap_or(&root_machine);
-        let updated_at = modified(&path);
-        for task in plan.tickets() {
+        let machine = match own_machine.as_ref() {
+            Some(machine) => machine,
+            None => match root_machine {
+                Some(ref machine) => machine,
+                None => root_machine.insert(WorkRoot::in_force(&store.path).map_err(|err| {
+                    format!(
+                        "cannot read the state machine in {}: {err}",
+                        store.path.display()
+                    )
+                })?),
+            },
+        };
+        for (task, task_path) in plan.tickets_with_paths() {
             let state = task.state.clone().unwrap_or_default();
             // A finished task is history the store keeps, not news the feed
             // carries: it has no activity time of its own beyond this file's,
@@ -173,7 +175,8 @@ fn plans(store: &Store, project: &str) -> Result<Vec<Item>, String> {
                 // A task waits on whoever keeps the store; nothing about it
                 // says anyone is waiting on an answer.
                 needs_response: false,
-                updated_at,
+                // Activity follows the task's file (§FS-006-project-interface.7).
+                updated_at: modified(task_path),
                 raw: serde_json::json!({ "plan": path.to_string_lossy() }),
             });
         }

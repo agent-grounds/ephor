@@ -629,7 +629,13 @@ pub struct Plan {
     /// [`tickets`](Plan::tickets) answers for the whole plan whichever shape
     /// the runtime gave it. Empty for a plan written as one file — and for
     /// every plan ephor writes itself, which is always one.
-    parts: Vec<String>,
+    parts: Vec<PlanPart>,
+}
+
+/// A task file retains its origin for file-backed activity (§FS-006-project-interface.7).
+struct PlanPart {
+    path: PathBuf,
+    text: String,
 }
 
 impl Plan {
@@ -640,7 +646,7 @@ impl Plan {
         Ok(Some(Plan {
             path: path.to_path_buf(),
             text: read(path)?,
-            parts: task_files(path),
+            parts: task_files(path)?,
         }))
     }
 
@@ -689,11 +695,26 @@ impl Plan {
     /// is exactly as far as the runtime reads them, so a dossier or a report
     /// quoted into a body cannot pin a ticket it merely mentions.
     pub fn tickets(&self) -> Vec<PlanTicket> {
-        let mut tickets = tickets_in(&self.text);
-        for part in &self.parts {
-            tickets.extend(tickets_in(part));
-        }
-        tickets
+        self.tickets_with_paths()
+            .map(|(ticket, _)| ticket)
+            .collect()
+    }
+
+    /// Tickets with the file containing each one, so task activity follows
+    /// that file while plan provenance stays at the index (§FS-006-project-interface.7).
+    /// Ticket ordering and parsing are the same as [`tickets`](Self::tickets).
+    pub fn tickets_with_paths(&self) -> impl Iterator<Item = (PlanTicket, &Path)> {
+        std::iter::once((self.path.as_path(), self.text.as_str()))
+            .chain(
+                self.parts
+                    .iter()
+                    .map(|part| (part.path.as_path(), part.text.as_str())),
+            )
+            .flat_map(|(path, text)| {
+                tickets_in(text)
+                    .into_iter()
+                    .map(move |ticket| (ticket, path))
+            })
     }
 
     /// The next id for a recipe's tickets on this plan: `answer-1`, then
@@ -944,23 +965,50 @@ pub fn own_machine(plan: &Path) -> Result<Option<WorkRoot>> {
 /// The task files of a plan rendered as a directory: the direct children of
 /// the `tasks/` directory beside its index, in name order, read as they
 /// stand (§FS-005-dispatch.28). Empty for a plan written as one file, which
-/// is every plan ephor writes itself.
-fn task_files(plan: &Path) -> Vec<String> {
+/// is every plan ephor writes itself, or an absent task directory. An existing
+/// collection that cannot be read fails the plan (§FS-006-project-interface.7).
+fn task_files(plan: &Path) -> Result<Vec<PlanPart>> {
     let Some(dir) = own_store(plan) else {
-        return Vec::new();
+        return Ok(Vec::new());
     };
-    let Ok(entries) = fs::read_dir(dir.join(TASKS_DIR)) else {
-        return Vec::new();
-    };
-    let mut files: Vec<PathBuf> = entries
-        .flatten()
-        .map(|entry| entry.path())
-        .filter(|path| path.is_file() && path.extension().is_some_and(|ext| ext == "md"))
-        .collect();
+    let dir = dir.join(TASKS_DIR);
+    match fs::symlink_metadata(&dir) {
+        Ok(_) => {}
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+        Err(err) => {
+            return Err(EphorError::Command(format!(
+                "Cannot inspect {}: {err}",
+                dir.display()
+            )))
+        }
+    }
+    let entries = fs::read_dir(&dir)
+        .map_err(|err| EphorError::Command(format!("Cannot read {}: {err}", dir.display())))?;
+    let mut files = Vec::new();
+    for entry in entries {
+        let entry = entry.map_err(|err| {
+            EphorError::Command(format!("Cannot read an entry in {}: {err}", dir.display()))
+        })?;
+        let path = entry.path();
+        if !path.extension().is_some_and(|ext| ext == "md") {
+            continue;
+        }
+        let metadata = fs::metadata(&path).map_err(|err| {
+            EphorError::Command(format!("Cannot inspect {}: {err}", path.display()))
+        })?;
+        if metadata.is_file() {
+            files.push(path);
+        }
+    }
     files.sort();
     files
-        .iter()
-        .filter_map(|path| fs::read_to_string(path).ok())
+        .into_iter()
+        .map(|path| {
+            Ok(PlanPart {
+                text: read(&path)?,
+                path,
+            })
+        })
         .collect()
 }
 
@@ -1482,6 +1530,67 @@ states:
         // A directory that is not there answers empty, not an error: the
         // enumeration probes places that may hold nothing.
         assert!(plans_in(&dir.join("nowhere")).is_empty());
+    }
+
+    /// Origin tracking preserves the shared reader's index-first, sorted
+    /// task-file order and task metadata (§FS-006-project-interface.7, §FS-005-dispatch.28).
+    #[test]
+    fn directory_task_origins_preserve_ticket_order_and_metadata() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join(INDEX);
+        fs::write(
+            &path,
+            "# Rhei: work\n\n### Task first: In the index\n**State:** pending\n",
+        )
+        .unwrap();
+        let tasks = tmp.path().join(TASKS_DIR);
+        fs::create_dir(&tasks).unwrap();
+        fs::write(
+            tasks.join("02-last.md"),
+            "### Task last: Last task\n**State:** completed\n",
+        )
+        .unwrap();
+        fs::write(
+            tasks.join("01-next.md"),
+            "### Task next: Next task\n**State:** pending\n**Prior:** Task first\n\n\
+             #### Step next.child: Nested task\n**State:** pending\n",
+        )
+        .unwrap();
+        fs::write(tasks.join("notes.txt"), "### Task ignored: Notes\n").unwrap();
+        fs::create_dir(tasks.join("nested.md")).unwrap();
+        fs::write(
+            tasks.join("nested.md/hidden.md"),
+            "### Task hidden: Nested file\n",
+        )
+        .unwrap();
+
+        let plan = Plan::read(&path).unwrap().unwrap();
+        let origins: Vec<_> = plan
+            .tickets_with_paths()
+            .map(|(ticket, path)| (ticket.id, path.to_path_buf()))
+            .collect();
+        assert_eq!(
+            origins,
+            vec![
+                ("first".to_string(), path.clone()),
+                ("next".to_string(), tasks.join("01-next.md")),
+                ("next.child".to_string(), tasks.join("01-next.md")),
+                ("last".to_string(), tasks.join("02-last.md")),
+            ]
+        );
+        let tickets = plan.tickets();
+        assert_eq!(
+            tickets
+                .iter()
+                .map(|ticket| ticket.id.as_str())
+                .collect::<Vec<_>>(),
+            origins
+                .iter()
+                .map(|(id, _)| id.as_str())
+                .collect::<Vec<_>>()
+        );
+        assert_eq!(tickets[1].prior, vec!["first"]);
+        assert_eq!(tickets[3].state.as_deref(), Some("completed"));
     }
 
     /// A plan lends its own heading where nothing dispatched it — a foreign
