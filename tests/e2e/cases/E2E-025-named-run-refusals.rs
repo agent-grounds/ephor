@@ -111,6 +111,61 @@ fn ticketed(max_spend: bool) -> World {
     world
 }
 
+fn historical_ticketed() -> World {
+    let world = World::new();
+    world.stub("ephor-forge-acme", ACME_FORGE);
+    world.stub("acme-runtime", ACME_RUNTIME);
+    let at = |root: &str, max_spend: bool| {
+        let mut work = json!({
+            "root": root,
+            "recipes": [{
+                "id": "fix-gate", "icon": "x", "description": "fix the gate",
+                "state": "fix", "needs_checkout": false,
+                "root": root, "when": { "kinds": ["pr"] },
+                "brief": "Fix {title}."
+            }]
+        });
+        if max_spend {
+            work["max_spend"] = json!({ "amount": 0, "currency": "USD", "per": "24h" });
+        }
+        json!({
+            "projects": { PROJECT: {
+                "providers": [
+                    { "provider": "acme", "user": "you", "repos": ["app"] }
+                ],
+                "work": work
+            } },
+            "work": { "runner": "acme-runtime", "root": "{root}/site-panta" }
+        })
+    };
+
+    world.configure(at("{root}/root-a", false));
+    world.ephor().args(["refresh", PROJECT]).assert().success();
+    world
+        .ephor()
+        .args(["work", "dispatch", "--item", ITEM, "--recipe", "fix-gate"])
+        .assert()
+        .success();
+    world.configure(at("{root}/root-b", false));
+    world
+        .ephor()
+        .args([
+            "work", "dispatch", "--item", ITEM, "--recipe", "fix-gate", "--again",
+        ])
+        .assert()
+        .success();
+
+    let ledger = read_json(&world.path().join("state/ephor/work.json"));
+    let latest = PathBuf::from(
+        ledger["entries"][ITEM]["plan"]
+            .as_str()
+            .expect("the latest item-level plan"),
+    );
+    fs::remove_file(latest).expect("remove only the current plan");
+    world.configure(at("{root}/root-b", true));
+    world
+}
+
 fn root(world: &World) -> PathBuf {
     world.forest().join("panta")
 }
@@ -297,6 +352,44 @@ fn issue_90_named_run_decision_orders_root_live_force_and_warning_eligibility() 
     assert!(
         failures.is_empty(),
         "the named-run decision matrix drifted:\n- {}",
+        failures.join("\n- ")
+    );
+}
+
+/// A plain run attributes an earlier committed placement to the project whose
+/// recorded plan actually contributes runnable work. Moving the item-level
+/// placement does not lose its project budget, while the matrix above keeps
+/// unreadable copied plans out (§FS-005-dispatch.15.1,
+/// §FS-005-dispatch.30, §FS-015-spend-ceiling.6).
+#[test]
+fn issue_43_a_historical_runnable_root_keeps_its_project_spend_warning() {
+    let world = historical_ticketed();
+    let historical = world.forest().join("root-a");
+    let _holder = hold(&historical);
+    let output = run(&world, &["work", "run", "--json"]);
+    let mut failures = Vec::new();
+    check_refusal(
+        &mut failures,
+        "historical root plus live lock",
+        &output,
+        LIVE_REFUSAL,
+        ROOT_REFUSAL,
+    );
+    check_json_reading(&mut failures, "historical root plus live lock", &output, 1);
+    if !stderr(&output).contains("projects.demo.work.max_spend")
+        || !stderr(&output).contains(SPEND_WARNING)
+    {
+        failures.push(format!(
+            "the historical runnable root lost its project spend warning:\n{}",
+            stderr(&output)
+        ));
+    }
+    if marker(&world).exists() {
+        failures.push("the historical live refusal launched the runtime".to_string());
+    }
+    assert!(
+        failures.is_empty(),
+        "historical-root attribution drifted:\n- {}",
         failures.join("\n- ")
     );
 }
