@@ -395,6 +395,9 @@ impl TryFrom<RawAction> for ActionConfig {
             needs_checkout: raw.requires_checkout,
             branch: raw.branch.clone(),
             autorun: ask.autorun,
+            // An entry is a menu entry: a reader opened the menu and chose
+            // it. Nothing on screen sweeps for itself (§FS-005-dispatch.31).
+            dispatch: None,
             brief: ask.brief,
             // Ephor's own deterministic moves belong to the recipes that ship
             // with them (§FS-005-dispatch.12); an entry a person wrote asks
