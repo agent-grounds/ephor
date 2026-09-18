@@ -623,7 +623,10 @@ impl Sweep {
     /// (§FS-005-dispatch.31).
     pub fn due(&self, last: Option<DateTime<Utc>>, now: DateTime<Utc>) -> bool {
         match last {
-            Some(last) => now >= last + self.every,
+            // How long it has been, not when it would next be: `last + every`
+            // is chrono's panicking add, and an interval this side of
+            // `TimeDelta`'s ceiling can still land past the calendar's.
+            Some(last) => now.signed_duration_since(last) >= self.every,
             None => true,
         }
     }
@@ -642,6 +645,14 @@ impl Sweep {
         }
     }
 
+    /// The longest wait that could still come due: the whole span the calendar
+    /// can represent. `TimeDelta` reaches some ten thousand times further than
+    /// a `DateTime` does, so an interval it accepts is not yet one a rhythm can
+    /// be written in — beyond this the recipe would simply never sweep.
+    fn longest() -> chrono::TimeDelta {
+        DateTime::<Utc>::MAX_UTC.signed_duration_since(DateTime::<Utc>::MIN_UTC)
+    }
+
     /// `<n><unit>`, where the unit is `m`, `h` or `d`. Refused rather than
     /// defaulted: a rhythm nobody can read is a recipe that would sweep at a
     /// rate its author never chose, and this is the field that spends agents
@@ -654,21 +665,30 @@ impl Sweep {
                  'm', 'h' or 'd' — '0h' is every sweep"
             )
         };
-        let (count, unit) = text.split_at(text.len().saturating_sub(1));
+        // Stripped by unit rather than sliced at `len() - 1`: the unit is a
+        // character and the length is bytes, so a tail nobody meant — '6µ',
+        // a pasted smart quote — would split mid-character and panic where
+        // this is meant to refuse. Nothing but 'm', 'h' and 'd' is read.
+        let (count, per_minute) = if let Some(count) = text.strip_suffix('m') {
+            (count, 1)
+        } else if let Some(count) = text.strip_suffix('h') {
+            (count, 60)
+        } else if let Some(count) = text.strip_suffix('d') {
+            (count, 60 * 24)
+        } else {
+            return Err(unsaid());
+        };
         let count: i64 = count.parse().map_err(|_| unsaid())?;
         if count < 0 {
             return Err(format!(
                 "interval '{text}' is negative; '0h' is every sweep"
             ));
         }
-        let minutes = match unit {
-            "m" => count,
-            "h" => count.saturating_mul(60),
-            "d" => count.saturating_mul(60 * 24),
-            _ => return Err(unsaid()),
-        };
-        chrono::TimeDelta::try_minutes(minutes)
-            .ok_or_else(|| format!("interval '{text}' is longer than anything can wait"))
+        let minutes = count.saturating_mul(per_minute);
+        let every = chrono::TimeDelta::try_minutes(minutes)
+            .filter(|every| *every <= Self::longest())
+            .ok_or_else(|| format!("interval '{text}' is longer than anything can wait"))?;
+        Ok(every)
     }
 }
 
@@ -2082,6 +2102,25 @@ mod tests {
         assert!(!sweep(json!("1d")).due(Some(moment(0)), moment(1439)));
     }
 
+    /// `due` asks how long it has been rather than when it would next be, so
+    /// even the longest rhythm the parser lets through answers instead of
+    /// running the calendar off its end.
+    #[test]
+    fn the_longest_rhythm_still_answers() {
+        // A fat-fingered interval: it reads, because the calendar can hold it,
+        // and then it is simply never due. Asked the other way round — the
+        // instant it would next be — this walked off the end of the calendar.
+        let typo = sweep(json!("100000000d"));
+        assert!(!typo.due(Some(moment(0)), moment(1)));
+
+        let far = Sweep {
+            every: Sweep::longest(),
+            limit: None,
+        };
+        assert!(!far.due(Some(moment(0)), moment(1)));
+        assert!(far.due(None, moment(1)));
+    }
+
     /// The map is for the recipe that wants the bound; the string is sugar for
     /// it with no bound (§FS-005-dispatch.31.4).
     #[test]
@@ -2108,6 +2147,9 @@ mod tests {
             json!("six hours"), // words
             json!(6),           // a bare number is not an interval
             json!(["6h"]),      // nor a list
+            json!("6µ"),        // a unit whose last character is not one byte
+            json!("6”"),        // nor is a quote a paste picked up
+            json!("6д"),        // nor a letter from another alphabet
         ] {
             assert!(
                 serde_json::from_value::<Recipe>(recipe_with(bad.clone())).is_err(),
