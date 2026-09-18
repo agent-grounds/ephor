@@ -71,7 +71,13 @@ this module's: the recognition of a plan on disk. The plan-file suffix and
 the directory-workspace shape are the binding's grammar, so a surface that
 enumerates a work root's plans ([§FS-005-dispatch.15](../functional-spec/FS-005-dispatch.md#15-every-operation-is-visible-in-one-place)) asks this module what
 the directory holds and gets back plan ids and paths — the suffix is never
-spelled above it ([§REQ-001-boundary.5](../requirements/REQ-001-boundary.md#5-no-product-literal-outside-its-adapter)).
+spelled above it ([§REQ-001-boundary.5](../requirements/REQ-001-boundary.md#5-no-product-literal-outside-its-adapter)). In the shipped Rhei binding a
+directory workspace is a direct, non-hidden child containing
+`index.rhei.md`; its directory name is the plan id, and its `tasks/*.md` files
+belong to that plan. A `states.yaml` beside the index is that workspace's
+machine, while absence there leaves machine resolution to the containing
+project. This is the same shape `instantiate` leaves behind, not arbitrary
+recursive plan discovery.
 
 Instantiating: the binding's own **workflows** — what it offers and what
 each one takes ([§FS-005-dispatch.19](../functional-spec/FS-005-dispatch.md#19-a-workflow-the-runtime-offers-is-an-action-and-its-inputs-are-answered-here)). Enumerating them asks the binding, for
