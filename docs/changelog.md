@@ -42,6 +42,16 @@ ships, the previous "latest" section moves verbatim to
 
 ### Changed
 
+- **Rhei task stores include direct directory workspaces in the Tasks feed**
+  ([§FS-006-project-interface.7](functional-spec/FS-006-project-interface.md#7-the-projects-own-tasks-are-read-where-they-live),
+  [§AR-007-runtime.1](architecture/AR-007-runtime.md#1-what-the-module-owns)).
+  Alongside existing flat `.rhei.md` and `.panta.md` plans, ephor now reads a
+  direct non-hidden workspace's `index.rhei.md` and `tasks/*.md`, keys its
+  matters by the workspace directory, and uses its declared `states.yaml`
+  before the store root or runtime default. An unreadable declared workspace
+  machine fails the source instead of silently borrowing another machine.
+  (PR #103)
+
 - **`ephor rebase` honours a scope selector, and joins the `--act` gate**
   ([§FS-011-command-line.9](functional-spec/FS-011-command-line.md#9-a-scope-selector-is-honoured-or-refused),
   [§FS-011-command-line.10](functional-spec/FS-011-command-line.md#10-a-mutating-verb-above-one-project-reports-and-acts-under---act),

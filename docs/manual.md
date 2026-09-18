@@ -655,7 +655,7 @@ forge reported ([§FS-006-project-interface.7](functional-spec/FS-006-project-in
 
 | Store | Probed | Read as |
 |---|---|---|
-| `rhei` | `panta/` | every open task heading in every plan, keyed `rhei:<plan>.<task>` |
+| `rhei` | `panta/` | every open task in a flat plan or direct directory workspace, keyed `rhei:<plan>.<task>` |
 | `beads` | `.beads/` | recognized; the reader is not written yet, so it reports nothing rather than pretending |
 
 They are **tasks** and not tickets or issues: a ticket is what a remote tracker
@@ -671,13 +671,17 @@ sit in **Tasks** ([§6.1](#61-the-categories)), carrying the state the store gav
 them. Nothing is ever written back — the store is the project's, and ephor only
 reads it.
 
-A task in a **final** state is not read at all — final as the store's own
-`states.yaml` says, or, where it declares none, as the runtime's built-in
-default machine says (`pending`, and `completed` final) — because the store is
-the record of the finished work and the feed shows what is open
+A flat plan is a `*.rhei.md` file (or the compatible `*.panta.md` spelling). A
+direct, non-hidden directory workspace is named by its directory and contains
+`index.rhei.md`, with its tasks under `tasks/*.md`. A task in a **final** state
+is not read at all — final as the workspace's own `states.yaml` says, then the
+store root's where the workspace declares none, or, where neither declares
+one, as the runtime's built-in default machine says (`pending`, and
+`completed` final) — because the store is the record of the finished work and
+the feed shows what is open
 ([§FS-006-project-interface.7](functional-spec/FS-006-project-interface.md#7-the-projects-own-tasks-are-read-where-they-live)).
-A store whose machine cannot be read reports as a source that did not answer,
-exactly like a plan ephor cannot read.
+A declared machine that cannot be read reports the store as a source that did
+not answer, exactly like a plan ephor cannot read.
 
 Finding a store is a capability, never an obligation: it buys the *tasks* rung
 and nothing about a project without one degrades

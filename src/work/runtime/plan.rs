@@ -52,6 +52,11 @@ const MANIFEST: &str = "index.panta.md";
 /// What a plan file is called: `<plan id>` and this.
 pub(super) const PLAN_SUFFIX: &str = ".rhei.md";
 
+/// The older flat-plan spelling accepted by the task-store reader. It lives
+/// here with the rest of the binding's grammar rather than in the caller
+/// (§AR-007-runtime.1).
+const COMPAT_PLAN_SUFFIX: &str = ".panta.md";
+
 /// The one plan file of a plan rendered as a directory: the index that names
 /// it. Part of the coupling, and so part of this module
 /// (§REQ-001-boundary.5).
@@ -311,6 +316,99 @@ pub struct FoundPlan {
     pub path: PathBuf,
 }
 
+/// Discover the plans in a runtime work root. A probing caller deliberately
+/// receives an empty answer when the directory cannot be read; the task-store
+/// reader uses [`task_store_plans_in`] when a recognized source must instead
+/// report that it did not answer (§FS-006-project-interface.7).
+fn discover_plans(dir: &Path, task_store: bool) -> Result<Vec<FoundPlan>> {
+    let entries = fs::read_dir(dir).map_err(|err| {
+        EphorError::Command(format!(
+            "Cannot read plan directory {}: {err}",
+            dir.display()
+        ))
+    })?;
+    let mut found = Vec::new();
+    for entry in entries {
+        let entry = match entry {
+            Ok(entry) => entry,
+            // General runtime discovery is a probe and has always skipped an
+            // unreadable entry. A recognized task store is a source already,
+            // so partial discovery would falsely answer that work is absent
+            // (§FS-006-project-interface.7).
+            Err(err) if task_store => {
+                return Err(EphorError::Command(format!(
+                    "Cannot read an entry in plan directory {}: {err}",
+                    dir.display()
+                )))
+            }
+            Err(_) => continue,
+        };
+        let name = entry.file_name().to_string_lossy().into_owned();
+        if name.starts_with('.') || name == "runtime" {
+            continue;
+        }
+        let primary = name.strip_suffix(PLAN_SUFFIX);
+        let compatible = task_store
+            .then(|| name.strip_suffix(COMPAT_PLAN_SUFFIX))
+            .flatten();
+        if let Some(plan_id) = primary.or(compatible) {
+            // The feed historically used everything before the first dot as
+            // the identity of a flat plan. Keep that identity for task-store
+            // callers while the runtime's ordinary grammar retains the whole
+            // stem (§FS-006-project-interface.7).
+            let plan_id = if task_store {
+                name.split('.').next().unwrap_or(plan_id)
+            } else {
+                plan_id
+            };
+            found.push(FoundPlan {
+                plan_id: plan_id.to_string(),
+                path: entry.path(),
+            });
+            continue;
+        }
+        let index = entry.path().join(INDEX);
+        let is_index = if task_store {
+            let workspace = match fs::metadata(entry.path()) {
+                Ok(metadata) => metadata,
+                // A dangling entry is not a directory workspace. Other
+                // inspection failures keep the recognized source honest.
+                Err(err) if err.kind() == std::io::ErrorKind::NotFound => continue,
+                Err(err) => {
+                    return Err(EphorError::Command(format!(
+                        "Cannot inspect task-store entry {}: {err}",
+                        entry.path().display()
+                    )))
+                }
+            };
+            if !workspace.is_dir() {
+                continue;
+            }
+            match fs::metadata(&index) {
+                Ok(metadata) => metadata.is_file(),
+                Err(err) if err.kind() == std::io::ErrorKind::NotFound => false,
+                Err(err) => {
+                    return Err(EphorError::Command(format!(
+                        "Cannot inspect directory-workspace plan {}: {err}",
+                        index.display()
+                    )))
+                }
+            }
+        } else {
+            index.is_file()
+        };
+        if is_index {
+            found.push(FoundPlan {
+                // A directory workspace's directory is its stable plan id
+                // (§FS-006-project-interface.7, §AR-007-runtime.1).
+                plan_id: name,
+                path: index,
+            });
+        }
+    }
+    Ok(found)
+}
+
 /// Every plan a work root holds, whoever wrote it (§FS-005-dispatch.15): the
 /// `*.rhei.md` files and the directory workspaces among its direct non-hidden
 /// children, exactly where the runtime looks for them. One directory listing,
@@ -318,31 +416,22 @@ pub struct FoundPlan {
 /// grammar (§AR-007-runtime.1), and the callers get ids and paths, never the
 /// suffix.
 pub fn plans_in(dir: &Path) -> Vec<FoundPlan> {
-    let Ok(entries) = fs::read_dir(dir) else {
-        return Vec::new();
-    };
-    let mut found: Vec<FoundPlan> = entries
-        .flatten()
-        .filter_map(|entry| {
-            let name = entry.file_name().to_string_lossy().into_owned();
-            if name.starts_with('.') || name == "runtime" {
-                return None;
-            }
-            if let Some(plan_id) = name.strip_suffix(PLAN_SUFFIX) {
-                return Some(FoundPlan {
-                    plan_id: plan_id.to_string(),
-                    path: entry.path(),
-                });
-            }
-            let index = entry.path().join(INDEX);
-            index.is_file().then(|| FoundPlan {
-                plan_id: name,
-                path: index,
-            })
-        })
-        .collect();
+    let mut found = discover_plans(dir, false).unwrap_or_default();
     found.sort_by(|a, b| a.plan_id.cmp(&b.plan_id));
     found
+}
+
+/// Every plan a recognized Rhei task store contributes to the feed: the
+/// runtime's flat and direct directory-workspace shapes, plus the established
+/// flat compatibility spelling. Unlike probing discovery, failure to list a
+/// recognized store remains a source failure (§FS-006-project-interface.7,
+/// §AR-007-runtime.1).
+pub fn task_store_plans_in(dir: &Path) -> Result<Vec<FoundPlan>> {
+    let mut found = discover_plans(dir, true)?;
+    // This is the flat reader's existing order, retained while directory
+    // workspaces join it.
+    found.sort_by(|a, b| a.path.cmp(&b.path));
+    Ok(found)
 }
 
 /// The `name:` of a states document — the shallowest one, so a state called

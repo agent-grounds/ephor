@@ -112,46 +112,43 @@ pub fn read(store: &Store, project: &str) -> Result<Vec<Item>, String> {
 /// named it and ephor does not get to rename it (§FS-007-matters.1).
 ///
 /// A task in a final state is not read (§FS-006-project-interface.7): the
-/// machine in force says which states those are, and it is asked once for the
-/// store rather than once per plan.
+/// machine applicable to its plan says which states those are.
 fn plans(store: &Store, project: &str) -> Result<Vec<Item>, String> {
-    // What the store's own tasks run under: the machine it declares, or the
-    // runtime's built-in default where it declares none. A machine that cannot
-    // be read is the store failing to answer, like a plan it cannot read
-    // (§FS-001-forge-interface.6).
-    let machine = crate::work::runtime::plan::WorkRoot::in_force(&store.path).map_err(|err| {
+    use crate::work::runtime::plan::{self, WorkRoot};
+
+    // The root machine remains applicable to every flat plan and to a
+    // directory workspace that declares none of its own. A declared machine
+    // that cannot be read is never replaced (§FS-005-dispatch.6,
+    // §FS-006-project-interface.7).
+    let root_machine = WorkRoot::in_force(&store.path).map_err(|err| {
         format!(
             "cannot read the state machine in {}: {err}",
             store.path.display()
         )
     })?;
-    let entries = std::fs::read_dir(&store.path)
+    let plans = plan::task_store_plans_in(&store.path)
         .map_err(|err| format!("cannot read {}: {err}", store.path.display()))?;
-    let mut paths: Vec<PathBuf> = entries
-        .flatten()
-        .map(|entry| entry.path())
-        .filter(|path| {
-            path.file_name()
-                .and_then(|name| name.to_str())
-                .is_some_and(|name| name.ends_with(".rhei.md") || name.ends_with(".panta.md"))
-        })
-        .collect();
-    paths.sort();
 
     let mut items = Vec::new();
-    for path in paths {
+    for found in plans {
+        let path = found.path;
         // A plan the store holds and ephor cannot read is the store failing to
         // answer, not a plan with no tasks in it.
-        let plan = crate::work::runtime::plan::Plan::read(&path)
+        let plan = plan::Plan::read(&path)
             .map_err(|err| format!("cannot read {}: {err}", path.display()))?;
         let Some(plan) = plan else {
             continue;
         };
-        let stem = path
-            .file_name()
-            .and_then(|name| name.to_str())
-            .map(|name| name.split('.').next().unwrap_or(name).to_string())
-            .unwrap_or_default();
+        // A directory workspace is a plan store of its own. Its declared
+        // machine answers for its tasks; only absence permits root/default
+        // fallback (§FS-006-project-interface.7, §FS-005-dispatch.6).
+        let own_machine = plan::own_machine(&path).map_err(|err| {
+            format!(
+                "cannot read the state machine for {}: {err}",
+                path.display()
+            )
+        })?;
+        let machine = own_machine.as_ref().unwrap_or(&root_machine);
         let updated_at = modified(&path);
         for task in plan.tickets() {
             let state = task.state.clone().unwrap_or_default();
@@ -163,7 +160,7 @@ fn plans(store: &Store, project: &str) -> Result<Vec<Item>, String> {
                 continue;
             }
             items.push(Item {
-                id: format!("{}:{stem}.{}", store.kind.name(), task.id),
+                id: format!("{}:{}.{}", store.kind.name(), found.plan_id, task.id),
                 project: project.to_string(),
                 source: store.kind.name().to_string(),
                 // The project's own task, and not an issue a forge filed
