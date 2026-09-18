@@ -3145,6 +3145,7 @@ pub fn due_among(
         let mut plans: Vec<String> = Vec::new();
         let mut tickets: Vec<String> = Vec::new();
         let mut items: Vec<String> = Vec::new();
+        let mut projects: BTreeSet<String> = BTreeSet::new();
         for plan_ref in &group.plans {
             // Which entry laid this plan down, where a workflow did — and so
             // which set of "asked to run itself" answers for what is inside
@@ -3242,6 +3243,7 @@ pub fn due_among(
                 if !plans.contains(&plan_ref.plan_id) {
                     plans.push(plan_ref.plan_id.clone());
                 }
+                projects.insert(plan_ref.project.clone());
                 if let Some(item) = &plan_ref.item {
                     if !items.contains(item) {
                         items.push(item.clone());
@@ -3303,33 +3305,12 @@ pub fn due_among(
                 .first()
                 .map(|plan| plan.project.clone())
                 .unwrap_or_default(),
-            projects: match reach {
-                Reach::Key(named) => group
-                    .plans
-                    .iter()
-                    .filter(|plan| named.is_none_or(|named| plan.item.as_deref() == Some(named)))
-                    .filter(|plan| {
-                        named.is_some()
-                            || plan
-                                .item
-                                .as_ref()
-                                .and_then(|item| ledger.entries.get(item))
-                                .is_some_and(|entry| {
-                                    canonical(&entry.root) == canonical(&group.root)
-                                })
-                    })
-                    .map(|plan| plan.project.clone())
-                    .collect::<BTreeSet<_>>()
-                    .into_iter()
-                    .collect(),
-                Reach::Sweep => group
-                    .plans
-                    .iter()
-                    .map(|plan| plan.project.clone())
-                    .collect::<BTreeSet<_>>()
-                    .into_iter()
-                    .collect(),
-            },
+            // Attribute only plans that contributed a runnable ticket to this
+            // due root. Recorded historical placements therefore retain their
+            // project, while unreadable, stale, gated, or copied plans do not
+            // enter capacity or spend policy (§FS-005-dispatch.15.1,
+            // §FS-005-dispatch.30, §FS-015-spend-ceiling.6).
+            projects: projects.into_iter().collect(),
             root: group.root.clone(),
             checkout,
             plans,
