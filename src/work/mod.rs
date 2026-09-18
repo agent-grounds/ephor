@@ -729,6 +729,11 @@ enum PathImage {
     Missing,
     File(Vec<u8>),
     Directory(Vec<TreeImage>),
+    #[cfg(unix)]
+    Symlink {
+        target: PathBuf,
+        referent: Option<(PathBuf, Vec<u8>)>,
+    },
 }
 
 enum TreeImage {
@@ -747,6 +752,28 @@ impl PathImage {
             }
             Err(err) => return Err(err),
         };
+        if metadata.file_type().is_symlink() {
+            #[cfg(unix)]
+            {
+                let target = std::fs::read_link(path)?;
+                // Keep the exact link text, but separately retain the bytes a
+                // write through that link can change. Canonicalizing only the
+                // referent avoids treating the link itself as a directory and
+                // also follows a relative or chained destination to the file
+                // the hand-off would actually touch (§FS-005-dispatch.4).
+                let referent = match std::fs::canonicalize(path) {
+                    Ok(referent) if std::fs::metadata(&referent)?.is_file() => {
+                        Some((referent.clone(), std::fs::read(referent)?))
+                    }
+                    Ok(_) => None,
+                    Err(err) if err.kind() == std::io::ErrorKind::NotFound => None,
+                    Err(err) => return Err(err),
+                };
+                return Ok(PathImage::Symlink { target, referent });
+            }
+            #[cfg(not(unix))]
+            return std::fs::read(path).map(PathImage::File);
+        }
         if metadata.is_file() {
             return std::fs::read(path).map(PathImage::File);
         }
@@ -764,6 +791,19 @@ impl PathImage {
                     std::fs::create_dir_all(parent)?;
                 }
                 std::fs::write(path, bytes)
+            }
+            #[cfg(unix)]
+            PathImage::Symlink { target, referent } => {
+                if let Some((referent, bytes)) = referent {
+                    if let Some(parent) = referent.parent() {
+                        std::fs::create_dir_all(parent)?;
+                    }
+                    std::fs::write(referent, bytes)?;
+                }
+                if let Some(parent) = path.parent() {
+                    std::fs::create_dir_all(parent)?;
+                }
+                std::os::unix::fs::symlink(target, path)
             }
             PathImage::Directory(entries) => {
                 std::fs::create_dir_all(path)?;
