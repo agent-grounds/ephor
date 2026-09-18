@@ -160,17 +160,33 @@ own name: the ticket ephor writes to dispatch work ([§FS-005-dispatch.3](FS-005
 the ticket keys a forge is asked for ([§FS-001-forge-interface.1](FS-001-forge-interface.md#1-capabilities)) are other
 things and are called what they are.
 
+**Every plan shape the runtime recognizes is read.** In the shipped binding
+that is both a plan file directly in the store (`*.rhei.md`, and the existing
+`*.panta.md` compatibility spelling) and a direct, non-hidden directory
+workspace containing `index.rhei.md`, with its tasks in the Markdown files
+under `tasks/`. The workspace directory is the plan id: two sibling workspaces
+may use the same task id and still produce distinct matter ids, and repeated
+reads produce the same ids and retain the path of the plan each matter came
+from. The shape is the runtime binding's grammar; recognizing it requires no
+ephor-specific manifest or other project artifact.
+
 **A task in a final state is not read.** Final is the store's own word: what
-its state machine declares final, or — where the store declares no machine —
-what the runtime's built-in default machine declares, since that is what the
-store's own tasks actually run under. Such a task is history the store keeps,
-not news the feed carries: it has no activity time of its own beyond its
-file's, so under [§FS-003-feed-categories.2](FS-003-feed-categories.md#2-recent) every finished task in a plan would
-resurface each time the plan was touched, and a store that is the record of a
-project's work would drown the feed in its record. The store keeps the finished
-work and answers for it; the feed shows what is open. A store whose machine
-cannot be read is a store that did not answer, exactly like a plan that cannot
-be read ([§FS-001-forge-interface.6](FS-001-forge-interface.md#6-a-source-that-did-not-answer-says-so-and-says-which-kind-of-not)).
+its applicable state machine declares final. A directory workspace's declared
+machine answers for that workspace; where it declares none, the store root's
+declared machine answers, and where the store root declares none the runtime's
+built-in default answers, since those are the machines the tasks actually run
+under. An existing machine is authoritative
+([§FS-005-dispatch.6](FS-005-dispatch.md#6-dispatch-is-offered-where-it-would-work-and-refuses-where-it-would-not)):
+a state that is final only at the root remains open under a workspace machine,
+and one final only in the workspace is not read. Such a task is history the
+store keeps, not news the feed carries: it has no activity time of its own
+beyond its file's, so under [§FS-003-feed-categories.2](FS-003-feed-categories.md#2-recent) every finished task in a plan would resurface each
+time the plan was touched, and a store that is the record of a project's work
+would drown the feed in its record. The store keeps the finished work and
+answers for it; the feed shows what is open. A declared machine that cannot be
+read is a store that did not answer, never permission to substitute another
+machine, exactly like a plan that cannot be read
+([§FS-001-forge-interface.6](FS-001-forge-interface.md#6-a-source-that-did-not-answer-says-so-and-says-which-kind-of-not)).
 
 **Where they live is per branch, where a project has branch workspaces.**
 Work about a change belongs in that change's working tree

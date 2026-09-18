@@ -110,6 +110,164 @@ A word this machine never heard of.\n",
     assert_eq!(world.matter("rhei:window.3")["title"], "Retire the flag");
 }
 
+/// A store contains both its flat plans and the direct directory workspaces
+/// the runtime renders. Each workspace is a plan of its own, so its directory
+/// supplies the plan id, its `tasks/*.md` supply the tasks, and its local
+/// machine — when it declares one — supplies their state semantics
+/// (§FS-006-project-interface.7, §AR-007-runtime.1).
+#[test]
+fn directory_workspaces_are_read_with_their_own_machines_and_stable_ids() {
+    let world = World::new();
+    world.file(
+        "panta/states.yaml",
+        "name: root\nstates:\n  root-open:\n  local-open:\n    final: true\n  local-final:\n",
+    );
+    // The two existing flat spellings remain controls, under their existing
+    // ids, while directory workspaces are added to the same ordinary feed.
+    world.file(
+        "panta/flat.rhei.md",
+        "# Rhei: flat\n\n## Tasks\n\n### Task 1: Flat Rhei\n**State:** root-open\n",
+    );
+    world.file(
+        "panta/legacy.panta.md",
+        "# Panta: legacy\n\n## Tasks\n\n### Task 1: Flat Panta\n**State:** root-open\n",
+    );
+
+    world.file(
+        "panta/alpha/index.rhei.md",
+        "# Rhei: alpha\n**States:** alpha\n",
+    );
+    world.file(
+        "panta/alpha/states.yaml",
+        "name: alpha\nstates:\n  local-open:\n    gating: true\n  local-final:\n    final: true\n",
+    );
+    world.file(
+        "panta/alpha/tasks/01-shared.md",
+        "### Task shared: Alpha waits locally\n**State:** local-open\n",
+    );
+    world.file(
+        "panta/alpha/tasks/02-finished.md",
+        "### Task finished: Alpha is finished locally\n**State:** local-final\n",
+    );
+
+    // With no local machine beta falls back to the store root. Its task id is
+    // deliberately the same as alpha's: the workspace id keeps them apart.
+    world.file(
+        "panta/beta/index.rhei.md",
+        "# Rhei: beta\n**States:** root\n",
+    );
+    world.file(
+        "panta/beta/tasks/01-shared.md",
+        "### Task shared: Beta uses the root\n**State:** root-open\n",
+    );
+
+    world.ephor().args(["refresh", PROJECT]).assert().success();
+
+    assert_eq!(world.matter("rhei:flat.1")["title"], "Flat Rhei");
+    assert_eq!(world.matter("rhei:legacy.1")["title"], "Flat Panta");
+    let alpha = world.matter("rhei:alpha.shared");
+    let beta = world.matter("rhei:beta.shared");
+    assert_eq!(alpha["title"], "Alpha waits locally");
+    assert_eq!(alpha["state"], "local-open");
+    assert_eq!(beta["title"], "Beta uses the root");
+    assert!(
+        !world.has_matter("rhei:alpha.finished"),
+        "{:#?}",
+        world.matters()
+    );
+    assert_eq!(
+        alpha["raw"]["plan"],
+        json!(world
+            .forest()
+            .join("panta/alpha/index.rhei.md")
+            .to_string_lossy())
+    );
+    assert_eq!(
+        beta["raw"]["plan"],
+        json!(world
+            .forest()
+            .join("panta/beta/index.rhei.md")
+            .to_string_lossy())
+    );
+
+    // IDs and provenance are readings of the layout, not minted per refresh.
+    let first = (
+        alpha["key"].clone(),
+        alpha["raw"].clone(),
+        beta["key"].clone(),
+        beta["raw"].clone(),
+    );
+    world.ephor().args(["refresh", PROJECT]).assert().success();
+    let alpha = world.matter("rhei:alpha.shared");
+    let beta = world.matter("rhei:beta.shared");
+    assert_eq!(
+        first,
+        (
+            alpha["key"].clone(),
+            alpha["raw"].clone(),
+            beta["key"].clone(),
+            beta["raw"].clone()
+        )
+    );
+
+    // And with neither a workspace nor root declaration, the runtime's
+    // default remains applicable: pending is open and completed is final.
+    let defaulted = World::new();
+    defaulted.file(
+        "panta/gamma/index.rhei.md",
+        "# Rhei: gamma\n**States:** rhei\n",
+    );
+    defaulted.file(
+        "panta/gamma/tasks/01-open.md",
+        "### Task open: Gamma is pending\n**State:** pending\n",
+    );
+    defaulted.file(
+        "panta/gamma/tasks/02-finished.md",
+        "### Task finished: Gamma is complete\n**State:** completed\n",
+    );
+    defaulted
+        .ephor()
+        .args(["refresh", PROJECT])
+        .assert()
+        .success();
+    assert_eq!(
+        defaulted.matter("rhei:gamma.open")["title"],
+        "Gamma is pending"
+    );
+    assert!(!defaulted.has_matter("rhei:gamma.finished"));
+}
+
+/// A workspace that declares a machine has made it authoritative. If that
+/// document will not read, the store reports that it did not answer instead
+/// of silently judging the tasks by the readable root machine
+/// (§FS-006-project-interface.7, §FS-005-dispatch.6).
+#[test]
+fn directory_workspaces_with_an_unreadable_machine_fail_the_store_read() {
+    let world = World::new();
+    world.file("panta/states.yaml", "name: root\nstates:\n  root-open:\n");
+    world.file(
+        "panta/broken/index.rhei.md",
+        "# Rhei: broken\n**States:** broken\n",
+    );
+    world.file("panta/broken/states.yaml", "states:\n  root-open:\n");
+    world.file(
+        "panta/broken/tasks/01-work.md",
+        "### Task work: Must not borrow root semantics\n**State:** root-open\n",
+    );
+
+    world.ephor().args(["refresh", PROJECT]).assert().success();
+
+    let slot = &world.feed()["providers"]["rhei"];
+    assert_eq!(slot["ok"], false, "{slot:#?}");
+    let error = slot["error"].as_str().unwrap_or_default();
+    assert!(error.contains("broken/states.yaml"), "{error}");
+    assert!(error.contains("declares no state machine name"), "{error}");
+    assert!(
+        slot["matters"].as_array().is_some_and(Vec::is_empty),
+        "{slot:#?}"
+    );
+}
+
 /// A project that keeps its store somewhere else says so in its manifest under
 /// `tasks`, and declaring one does not hide the other — a project may keep two
 /// (§FS-006-project-interface.7).
