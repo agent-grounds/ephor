@@ -509,7 +509,7 @@ fn issue_43_a_recipe_root_places_issue_work_in_the_minted_checkout() {
                 "work": {
                     "root": "{root}/project-panta",
                     "recipes": [{
-                        "id": "fix-issue", "icon": "⛬", "description": "fix the issue",
+                        "id": "issue-placement", "icon": "⛬", "description": "fix the issue",
                         "when": { "kinds": ["issue"] },
                         "branch": "fix/issue-{number}", "root": root,
                         "brief": "Fix {title}."
@@ -534,7 +534,7 @@ fn issue_43_a_recipe_root_places_issue_work_in_the_minted_checkout() {
         .as_array()
         .unwrap()
         .iter()
-        .find(|offer| offer["id"] == "fix-issue")
+        .find(|offer| offer["id"] == "issue-placement")
         .expect("the configured recipe offer");
     assert_eq!(
         offer["root"],
@@ -551,7 +551,7 @@ fn issue_43_a_recipe_root_places_issue_work_in_the_minted_checkout() {
             "--item",
             ITEM,
             "--recipe",
-            "fix-issue",
+            "issue-placement",
             "--dry-run",
         ])
         .assert()
@@ -563,7 +563,14 @@ fn issue_43_a_recipe_root_places_issue_work_in_the_minted_checkout() {
 
     world
         .ephor()
-        .args(["work", "dispatch", "--item", ITEM, "--recipe", "fix-issue"])
+        .args([
+            "work",
+            "dispatch",
+            "--item",
+            ITEM,
+            "--recipe",
+            "issue-placement",
+        ])
         .assert()
         .success();
     assert!(expected.is_file(), "recipe override did not place the plan");
@@ -582,7 +589,7 @@ fn issue_43_a_recipe_root_places_issue_work_in_the_minted_checkout() {
             "--item",
             ITEM,
             "--recipe",
-            "fix-issue",
+            "issue-placement",
             "--again",
         ])
         .assert()
@@ -601,7 +608,7 @@ fn issue_43_a_recipe_root_places_issue_work_in_the_minted_checkout() {
             "--item",
             ITEM,
             "--recipe",
-            "fix-issue",
+            "issue-placement",
             "--again",
         ])
         .assert()
@@ -609,18 +616,110 @@ fn issue_43_a_recipe_root_places_issue_work_in_the_minted_checkout() {
     let checkout_plan = std::fs::read_to_string(&expected).expect("checkout plan");
     let project_plan = std::fs::read_to_string(&project_plan).expect("project plan");
     assert!(
-        checkout_plan.contains("Task fix-issue-1"),
+        checkout_plan.contains("Task issue-placement-1"),
         "{checkout_plan}"
     );
     assert!(
-        checkout_plan.contains("Task fix-issue-3"),
+        checkout_plan.contains("Task issue-placement-3"),
         "{checkout_plan}"
     );
     assert!(
-        !checkout_plan.contains("Task fix-issue-2"),
+        !checkout_plan.contains("Task issue-placement-2"),
         "{checkout_plan}"
     );
-    assert!(project_plan.contains("Task fix-issue-2"), "{project_plan}");
+    assert!(
+        project_plan.contains("Task issue-placement-2"),
+        "{project_plan}"
+    );
+}
+
+/// A workflow entry that already owns a menu name remains the operation that
+/// name invokes when a recipe uses the same id. Its workflow provenance and
+/// selected root survive offer, dry-run, and write (§FS-005-dispatch.1,
+/// §FS-006-project-interface.9).
+#[test]
+fn issue_43_a_recipe_cannot_replace_a_same_id_workflow_offer() {
+    let world = watching(Some("fix/issue-{number}"), true);
+    let entry_path = workflows(&world)
+        .join("supervised-ticket-fix")
+        .join(".ephor.json");
+    let mut entry = read_json(&entry_path);
+    entry["root"] = json!("{root}/workflow-panta");
+    write_json(&entry_path, &entry);
+    world.configure(json!({
+        "projects": { PROJECT: {
+            "providers": [
+                { "provider": "acmeforge", "user": "you", "repos": ["widget"] }
+            ],
+            "work": { "recipes": [{
+                "id": "fix-issue", "description": "recipe with a claimed name",
+                "state": "fix", "needs_checkout": false,
+                "root": "{root}/recipe-panta",
+                "when": { "kinds": ["issue"] }, "brief": "Fix {title}."
+            }] }
+        } },
+        "work": { "runner": "acme-runtime", "root": "{root}/site-panta" }
+    }));
+
+    let offered = world
+        .ephor()
+        .args(["work", "offers", "--item", ITEM, "--json"])
+        .assert()
+        .success();
+    let offered = json_of(offered.get_output());
+    let same_id: Vec<_> = offered["offers"]
+        .as_array()
+        .expect("offers")
+        .iter()
+        .filter(|offer| offer["id"] == "fix-issue")
+        .collect();
+    assert_eq!(same_id.len(), 1, "the menu must have one claimed name");
+    assert_eq!(
+        same_id[0]["workflow"],
+        json!("supervised-ticket-fix"),
+        "the recipe replaced the workflow entry: {}",
+        same_id[0]
+    );
+    assert_eq!(
+        same_id[0]["root"],
+        json!(world.forest().join("workflow-panta")),
+        "the retained workflow lost its selected root"
+    );
+
+    let expected = world
+        .forest()
+        .join("workflow-panta/acmeforge-acme-widget-95-fix-issue");
+    let preview = world
+        .ephor()
+        .args([
+            "work",
+            "lay",
+            "fix-issue",
+            "--item",
+            ITEM,
+            "--dry-run",
+            "--json",
+        ])
+        .assert()
+        .success();
+    assert_eq!(
+        json_of(preview.get_output())["plan"],
+        json!(expected.to_string_lossy())
+    );
+    assert!(!expected.exists(), "the dry run wrote the workflow");
+    world
+        .ephor()
+        .args(["work", "lay", "fix-issue", "--item", ITEM])
+        .assert()
+        .success();
+    assert!(
+        expected.join("index.rhei.md").is_file(),
+        "the claimed workflow operation was not laid"
+    );
+    assert!(
+        !world.forest().join("recipe-panta").exists(),
+        "the menu collision dispatched the recipe"
+    );
 }
 
 /// A workflow entry's override wins the wider tiers even when its branch

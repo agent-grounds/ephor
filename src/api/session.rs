@@ -214,20 +214,14 @@ impl Session {
         let mut configured = offers::applicable(&self.actions, project, item, &facts);
         configured.extend(from(crate::work::runtime::workflow::Source::Person));
         let mut menu = offers::merge(vec![recognized, offered, configured]);
-        for recipe in recipes.iter().filter(|recipe| recipe.matches(item, &facts)) {
-            let agent = offers::agent_entry(recipe);
-            if let Some(index) = menu
+        offers::add_unclaimed(
+            &mut menu,
+            recipes
                 .iter()
-                .position(|entry| entry.id == agent.id && entry.workflow.is_some())
-            {
-                // A configured recipe and a workflow entry may share a name;
-                // the recipe is the more specific hand-off and carries the
-                // selected placement through the same menu key.
-                menu[index] = agent;
-            } else {
-                offers::add_unclaimed(&mut menu, vec![agent]);
-            }
-        }
+                .filter(|recipe| recipe.matches(item, &facts))
+                .map(offers::agent_entry)
+                .collect(),
+        );
         // What work is offered on, for every entry that asks for it whoever
         // wrote it: never about an item that is finished
         // (§FS-005-dispatch.6), and — where the work edits the change — only
