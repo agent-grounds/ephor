@@ -675,8 +675,14 @@ fn issue_43_a_recipe_cannot_replace_a_same_id_workflow_offer() {
         .collect();
     assert_eq!(same_id.len(), 1, "the menu must have one claimed name");
     assert_eq!(
-        same_id[0]["workflow"],
-        json!("supervised-ticket-fix"),
+        same_id[0]["kind"],
+        json!("workflow"),
+        "the recipe replaced the workflow entry: {}",
+        same_id[0]
+    );
+    assert_eq!(
+        same_id[0]["description"],
+        json!("fix the issue"),
         "the recipe replaced the workflow entry: {}",
         same_id[0]
     );
@@ -793,7 +799,7 @@ fn issue_43_a_root_override_with_an_unknown_placeholder_is_refused_before_writin
         "projects": { PROJECT: {
             "providers": [ { "provider": "acmeforge", "user": "you", "repos": ["widget"] } ],
             "work": { "recipes": [{
-                "id": "fix-issue", "description": "fix the issue",
+                "id": "placeholder-refusal", "description": "fix the issue",
                 "when": { "kinds": ["issue"] }, "branch": "fix/issue-{number}",
                 "root": "{workspace}/{unknown_root_name}", "brief": "Fix {title}."
             }] }
@@ -811,7 +817,7 @@ fn issue_43_a_root_override_with_an_unknown_placeholder_is_refused_before_writin
         .as_array()
         .unwrap()
         .iter()
-        .find(|offer| offer["id"] == "fix-issue")
+        .find(|offer| offer["id"] == "placeholder-refusal")
         .expect("the configured recipe offer");
     assert_eq!(offer["gate"], "blocked");
     assert!(
@@ -823,7 +829,14 @@ fn issue_43_a_root_override_with_an_unknown_placeholder_is_refused_before_writin
 
     world
         .ephor()
-        .args(["work", "dispatch", "--item", ITEM, "--recipe", "fix-issue"])
+        .args([
+            "work",
+            "dispatch",
+            "--item",
+            ITEM,
+            "--recipe",
+            "placeholder-refusal",
+        ])
         .assert()
         .failure()
         .stderr(
