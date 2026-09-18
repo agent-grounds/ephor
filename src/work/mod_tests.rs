@@ -3011,6 +3011,157 @@ fn the_ledgers_recipe_answers_for_a_ticket_ephor_dispatched() {
     .is_empty());
 }
 
+/// Directory aliases do not detach a ticket from the recipe recorded for its
+/// dispatch: provenance follows the directory, not the root's spelling
+/// (§FS-005-dispatch.4, §FS-005-dispatch.24).
+#[test]
+#[cfg(unix)]
+fn a_symlinked_root_keeps_the_ledgers_recorded_recipe() {
+    let tmp = tempfile::tempdir().unwrap();
+    let checkout = tmp.path().join("checkout");
+    fs::create_dir_all(&checkout).unwrap();
+    let alias = tmp.path().join("alias");
+    std::os::unix::fs::symlink(&checkout, &alias).unwrap();
+    let recorded_root = checkout.join("panta");
+    let aliased_root = alias.join("panta");
+    let group = due_root(&aliased_root, &ticket_at("fix-gate-1", "collect"));
+    assert_ne!(recorded_root, aliased_root, "the spellings must differ");
+    assert_eq!(
+        fs::canonicalize(&recorded_root).unwrap(),
+        fs::canonicalize(&aliased_root).unwrap(),
+        "both spellings must name the same directory"
+    );
+
+    let mut ledger = empty_ledger();
+    ledger.entries.insert(
+        "forge:widget/42".to_string(),
+        Entry {
+            project: "widget".to_string(),
+            pool: None,
+            title: "t".to_string(),
+            url: None,
+            root: recorded_root.clone(),
+            checkout: checkout.clone(),
+            branch: None,
+            plan_id: "widget-42".to_string(),
+            plan: recorded_root.join("widget-42.rhei.md"),
+            dispatches: vec![ledger::Dispatch {
+                ticket: "fix-gate-1".to_string(),
+                recipe: "review".to_string(),
+                at: Utc::now(),
+                plan: None,
+                root: Some(recorded_root),
+                checkout: Some(checkout),
+                branch: None,
+                snapshot: Default::default(),
+            }],
+        },
+    );
+
+    let due = due_among(
+        &work_config(),
+        std::slice::from_ref(&group),
+        &asking(&["fix-gate"]),
+        &laying(&[]),
+        &ledger,
+        Utc::now(),
+        Reach::Sweep,
+    );
+    assert!(
+        due.is_empty(),
+        "the recorded review recipe did not ask to autorun: {due:?}"
+    );
+}
+
+/// A root without recorded placement runs from the parent spelling the caller
+/// supplied. Recorded per-dispatch and legacy entry checkouts still take
+/// precedence when the root is reached through an alias
+/// (§FS-005-dispatch.3, §FS-005-dispatch.4).
+#[test]
+#[cfg(unix)]
+fn an_unrecorded_symlinked_root_keeps_the_callers_checkout_spelling() {
+    let tmp = tempfile::tempdir().unwrap();
+    let checkout = tmp.path().join("checkout");
+    fs::create_dir_all(&checkout).unwrap();
+    let alias = tmp.path().join("alias");
+    std::os::unix::fs::symlink(&checkout, &alias).unwrap();
+    let recorded_root = checkout.join("panta");
+    let aliased_root = alias.join("panta");
+    let group = due_root(&aliased_root, &ticket_at("fix-gate-1", "collect"));
+    assert_ne!(recorded_root, aliased_root, "the spellings must differ");
+    assert_eq!(
+        fs::canonicalize(&recorded_root).unwrap(),
+        fs::canonicalize(&aliased_root).unwrap(),
+        "both spellings must name the same directory"
+    );
+
+    let read = |ledger: &Ledger| {
+        due_among(
+            &work_config(),
+            std::slice::from_ref(&group),
+            &asking(&["fix-gate"]),
+            &laying(&[]),
+            ledger,
+            Utc::now(),
+            Reach::Sweep,
+        )
+    };
+    let dispatch_checkout = tmp.path().join("dispatch-checkout");
+    let mut dispatch_ledger = empty_ledger();
+    dispatch_ledger.entries.insert(
+        "forge:widget/42".to_string(),
+        Entry {
+            project: "widget".to_string(),
+            pool: None,
+            title: "t".to_string(),
+            url: None,
+            root: recorded_root.clone(),
+            checkout: tmp.path().join("entry-checkout"),
+            branch: None,
+            plan_id: "widget-42".to_string(),
+            plan: recorded_root.join("widget-42.rhei.md"),
+            dispatches: vec![ledger::Dispatch {
+                ticket: "fix-gate-1".to_string(),
+                recipe: "fix-gate".to_string(),
+                at: Utc::now(),
+                plan: None,
+                root: Some(recorded_root.clone()),
+                checkout: Some(dispatch_checkout.clone()),
+                branch: None,
+                snapshot: Default::default(),
+            }],
+        },
+    );
+    let due = read(&dispatch_ledger);
+    assert_eq!(due.len(), 1);
+    assert_eq!(due[0].checkout, dispatch_checkout);
+
+    let legacy_checkout = tmp.path().join("legacy-checkout");
+    let mut legacy_ledger = empty_ledger();
+    legacy_ledger.entries.insert(
+        "forge:widget/42".to_string(),
+        Entry {
+            project: "widget".to_string(),
+            pool: None,
+            title: "t".to_string(),
+            url: None,
+            root: recorded_root,
+            checkout: legacy_checkout.clone(),
+            branch: None,
+            plan_id: "widget-42".to_string(),
+            plan: aliased_root.join("widget-42.rhei.md"),
+            dispatches: Vec::new(),
+        },
+    );
+    let due = read(&legacy_ledger);
+    assert_eq!(due.len(), 1);
+    assert_eq!(due[0].checkout, legacy_checkout);
+
+    let due = read(&empty_ledger());
+    assert_eq!(due.len(), 1);
+    assert_eq!(due[0].checkout, alias);
+}
+
 /// A work root holding a plan a workflow laid down: the directory
 /// workspace the runtime rendered — an index that names no task, a
 /// machine of its own, and the tasks in files beside it — plus the
