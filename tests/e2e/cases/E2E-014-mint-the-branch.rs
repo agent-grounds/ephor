@@ -2121,3 +2121,349 @@ fn issue_43_recipe_and_workflow_roots_place_one_matter_in_multiple_scopes() {
         .failure()
         .stderr(predicate::str::contains("unanswered"));
 }
+
+#[cfg(unix)]
+#[derive(Debug, PartialEq, Eq)]
+enum SymlinkTreeEntry {
+    Directory(PathBuf),
+    File(PathBuf, Vec<u8>),
+    Symlink(PathBuf, PathBuf),
+}
+
+#[cfg(unix)]
+fn symlink_tree(root: &Path) -> Vec<SymlinkTreeEntry> {
+    fn visit(root: &Path, directory: &Path, entries: &mut Vec<SymlinkTreeEntry>) {
+        let mut children: Vec<_> = std::fs::read_dir(directory)
+            .expect("read the complete work root")
+            .map(|entry| entry.expect("read a work-root entry"))
+            .collect();
+        children.sort_by_key(std::fs::DirEntry::file_name);
+        for child in children {
+            let path = child.path();
+            let relative = path
+                .strip_prefix(root)
+                .expect("the snapshot stays below its root")
+                .to_path_buf();
+            let kind = std::fs::symlink_metadata(&path)
+                .expect("stat a work-root entry")
+                .file_type();
+            if kind.is_symlink() {
+                entries.push(SymlinkTreeEntry::Symlink(
+                    relative,
+                    std::fs::read_link(path).expect("read the exact link destination"),
+                ));
+            } else if kind.is_dir() {
+                entries.push(SymlinkTreeEntry::Directory(relative));
+                visit(root, &path, entries);
+            } else {
+                entries.push(SymlinkTreeEntry::File(
+                    relative,
+                    std::fs::read(path).expect("read a work-root file"),
+                ));
+            }
+        }
+    }
+
+    let mut entries = Vec::new();
+    visit(root, root, &mut entries);
+    entries
+}
+
+#[cfg(unix)]
+fn symlink_handoff_world() -> World {
+    let world = watching(Some("fix/issue-{number}"), true);
+    let entry_path = workflows(&world)
+        .join("supervised-ticket-fix")
+        .join(".ephor.json");
+    let mut entry = read_json(&entry_path);
+    entry
+        .as_object_mut()
+        .expect("workflow entry")
+        .remove("branch");
+    entry["root"] = json!("{root}/symlink-panta");
+    write_json(&entry_path, &entry);
+    world.configure(json!({
+        "projects": { PROJECT: {
+            "providers": [
+                { "provider": "acmeforge", "user": "you", "repos": ["widget"] }
+            ],
+            "work": {
+                "root": "{root}/project-panta",
+                "recipes": [{
+                    "id": "symlink-recipe", "description": "exercise the linked machine",
+                    "state": "fix", "needs_checkout": false,
+                    "root": "{root}/symlink-panta",
+                    "when": { "kinds": ["issue"] }, "brief": "Fix {title}."
+                }]
+            }
+        } },
+        "work": { "runner": "acme-runtime", "root": "{root}/site-panta" }
+    }));
+    world
+}
+
+#[cfg(unix)]
+fn existing_symlink_root(world: &World) -> (PathBuf, PathBuf, Vec<u8>) {
+    let root = world.forest().join("symlink-panta");
+    std::fs::create_dir_all(root.join(".ephor/kept")).expect("the carried directory");
+    std::fs::create_dir_all(root.join(".hidden")).expect("the hidden directory");
+    std::fs::write(root.join("index.panta.md"), "# Panta: existing\n")
+        .expect("the existing manifest");
+    std::fs::write(root.join(".ephor/kept/value"), "carried\n").expect("the carried file");
+    std::fs::write(root.join(".hidden/value"), "hidden\n").expect("the hidden file");
+    let target = world.path().join("regular-states.yaml");
+    let target_bytes = b"name: existing\nstates:\n  fix:\n  done:\n    final: true\n".to_vec();
+    std::fs::write(&target, &target_bytes).expect("the machine target");
+    let destination = PathBuf::from("../../regular-states.yaml");
+    std::os::unix::fs::symlink(&destination, root.join("states.yaml")).expect("the linked machine");
+    (target, destination, target_bytes)
+}
+
+#[cfg(unix)]
+fn replace_with_symlinked_machine(world: &World) -> (PathBuf, PathBuf, Vec<u8>) {
+    let root = world.forest().join("symlink-panta");
+    let states = root.join("states.yaml");
+    let target = world.path().join("regular-states.yaml");
+    let target_bytes = std::fs::read(&states).expect("the committed machine bytes");
+    std::fs::write(&target, &target_bytes).expect("the machine target");
+    std::fs::remove_file(&states).expect("replace the regular machine");
+    let destination = PathBuf::from("../../regular-states.yaml");
+    std::os::unix::fs::symlink(&destination, &states).expect("the linked machine");
+    std::fs::create_dir_all(root.join(".ephor/kept")).expect("the carried directory");
+    std::fs::create_dir_all(root.join(".hidden")).expect("the hidden directory");
+    std::fs::write(root.join(".ephor/kept/value"), "carried\n").expect("the carried file");
+    std::fs::write(root.join(".hidden/value"), "hidden\n").expect("the hidden file");
+    (target, destination, target_bytes)
+}
+
+#[cfg(unix)]
+fn assert_link_and_target(root: &Path, target: &Path, destination: &Path, target_bytes: &[u8]) {
+    let link = root.join("states.yaml");
+    assert!(
+        std::fs::symlink_metadata(&link)
+            .expect("stat the linked machine")
+            .file_type()
+            .is_symlink(),
+        "{} stopped being a symlink",
+        link.display()
+    );
+    assert_eq!(
+        std::fs::read_link(&link).expect("read the linked machine"),
+        destination,
+        "the exact link destination changed"
+    );
+    assert_eq!(
+        std::fs::read(target).expect("read the machine target"),
+        target_bytes,
+        "the linked machine's target bytes changed"
+    );
+}
+
+#[cfg(unix)]
+fn fresh_work_list(world: &World) -> serde_json::Value {
+    let listed = world
+        .ephor()
+        .args(["work", "list", "--json"])
+        .output()
+        .expect("a fresh listing runs");
+    assert!(
+        listed.status.success(),
+        "fresh listing failed: {}",
+        String::from_utf8_lossy(&listed.stderr)
+    );
+    json_of(&listed)
+}
+
+/// Normal recipe dispatch accepts an existing root whose top-level machine is
+/// a symlink and leaves both the link and its referent intact
+/// (§FS-005-dispatch.4, §FS-005-dispatch.6.1).
+#[cfg(unix)]
+#[test]
+fn issue_43_recipe_dispatch_accepts_a_symlinked_existing_machine() {
+    let world = symlink_handoff_world();
+    let root = world.forest().join("symlink-panta");
+    let (target, destination, target_bytes) = existing_symlink_root(&world);
+    world
+        .ephor()
+        .args([
+            "work",
+            "dispatch",
+            "--item",
+            ITEM,
+            "--recipe",
+            "symlink-recipe",
+        ])
+        .assert()
+        .success();
+    assert!(
+        root.join("acmeforge-acme-widget-95.rhei.md").is_file(),
+        "recipe work was not recorded"
+    );
+    assert_link_and_target(&root, &target, &destination, &target_bytes);
+    assert_eq!(
+        std::fs::read(root.join(".hidden/value")).unwrap(),
+        b"hidden\n"
+    );
+    let listed = fresh_work_list(&world);
+    assert_eq!(listed.as_array().expect("work rows").len(), 1, "{listed}");
+    assert_eq!(listed[0]["tickets"].as_array().expect("tickets").len(), 1);
+}
+
+/// Normal workflow laying has the same symlink-safe hand-off behavior as a
+/// recipe and records the laid plan for a fresh reader (§FS-005-dispatch.4,
+/// §FS-005-dispatch.6.1, §FS-005-dispatch.28).
+#[cfg(unix)]
+#[test]
+fn issue_43_workflow_lay_accepts_a_symlinked_existing_machine() {
+    let world = symlink_handoff_world();
+    let root = world.forest().join("symlink-panta");
+    let (target, destination, target_bytes) = existing_symlink_root(&world);
+    world
+        .ephor()
+        .args(["work", "lay", "fix-issue", "--item", ITEM])
+        .assert()
+        .success();
+    assert!(
+        root.join("acmeforge-acme-widget-95-fix-issue/index.rhei.md")
+            .is_file(),
+        "workflow work was not recorded"
+    );
+    assert_link_and_target(&root, &target, &destination, &target_bytes);
+    assert_eq!(
+        std::fs::read(root.join(".ephor/kept/value")).unwrap(),
+        b"carried\n"
+    );
+    let listed = fresh_work_list(&world);
+    assert_eq!(listed.as_array().expect("work rows").len(), 1, "{listed}");
+    assert_eq!(
+        listed[0]["workflows"]
+            .as_array()
+            .expect("workflow plans")
+            .len(),
+        1,
+        "{listed}"
+    );
+}
+
+/// A failed append reaches the ledger commit, then restores the complete
+/// existing recipe root, ledger, link, and linked target. A fresh reader sees
+/// only the committed ticket (§FS-005-dispatch.4).
+#[cfg(unix)]
+#[test]
+fn issue_43_failed_recipe_append_restores_a_symlinked_existing_root() {
+    let world = symlink_handoff_world();
+    let root = world.forest().join("symlink-panta");
+    std::fs::create_dir_all(&root).expect("the existing work root");
+    world
+        .ephor()
+        .args([
+            "work",
+            "dispatch",
+            "--item",
+            ITEM,
+            "--recipe",
+            "symlink-recipe",
+        ])
+        .assert()
+        .success();
+    let (target, destination, target_bytes) = replace_with_symlinked_machine(&world);
+    let before_root = symlink_tree(&root);
+    let ledger = world.path().join("state/ephor/work.json");
+    let before_ledger = std::fs::read(&ledger).expect("the committed ledger");
+    let forced = ledger.with_extension("json.tmp");
+    std::fs::create_dir(&forced).expect("force the ledger save failure");
+
+    let output = world
+        .ephor()
+        .args([
+            "work",
+            "dispatch",
+            "--item",
+            ITEM,
+            "--recipe",
+            "symlink-recipe",
+            "--again",
+        ])
+        .output()
+        .expect("the forced append runs");
+    assert_eq!(output.status.code(), Some(1));
+    assert!(
+        String::from_utf8_lossy(&output.stderr)
+            .contains(&format!("Cannot write {}", forced.display())),
+        "the append did not reach the intended ledger error: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(
+        symlink_tree(&root),
+        before_root,
+        "the complete root changed"
+    );
+    assert_eq!(std::fs::read(&ledger).unwrap(), before_ledger);
+    assert_link_and_target(&root, &target, &destination, &target_bytes);
+    let listed = fresh_work_list(&world);
+    let tickets = listed[0]["tickets"].as_array().expect("committed tickets");
+    assert_eq!(
+        tickets.len(),
+        1,
+        "fresh listing exposed unsaved work: {listed}"
+    );
+    assert_eq!(tickets[0]["id"], json!("symlink-recipe-1"));
+}
+
+/// A failed second workflow hand-off likewise restores every pre-image and a
+/// fresh reader sees only the first committed workflow (§FS-005-dispatch.4,
+/// §FS-005-dispatch.28).
+#[cfg(unix)]
+#[test]
+fn issue_43_failed_second_workflow_lay_restores_a_symlinked_existing_root() {
+    let world = symlink_handoff_world();
+    let root = world.forest().join("symlink-panta");
+    std::fs::create_dir_all(&root).expect("the existing work root");
+    world
+        .ephor()
+        .args(["work", "lay", "fix-issue", "--item", ITEM])
+        .assert()
+        .success();
+    let entry_path = workflows(&world)
+        .join("supervised-ticket-fix")
+        .join(".ephor.json");
+    let mut entry = read_json(&entry_path);
+    entry["id"] = json!("second-sweep");
+    entry["description"] = json!("lay the second sweep");
+    write_json(&entry_path, &entry);
+    let (target, destination, target_bytes) = replace_with_symlinked_machine(&world);
+    let before_root = symlink_tree(&root);
+    let ledger = world.path().join("state/ephor/work.json");
+    let before_ledger = std::fs::read(&ledger).expect("the committed ledger");
+    let forced = ledger.with_extension("json.tmp");
+    std::fs::create_dir(&forced).expect("force the ledger save failure");
+
+    let output = world
+        .ephor()
+        .args(["work", "lay", "second-sweep", "--item", ITEM])
+        .output()
+        .expect("the forced second laying runs");
+    assert_eq!(output.status.code(), Some(1));
+    assert!(
+        String::from_utf8_lossy(&output.stderr)
+            .contains(&format!("Cannot write {}", forced.display())),
+        "the laying did not reach the intended ledger error: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(
+        symlink_tree(&root),
+        before_root,
+        "the complete root changed"
+    );
+    assert_eq!(std::fs::read(&ledger).unwrap(), before_ledger);
+    assert_link_and_target(&root, &target, &destination, &target_bytes);
+    let listed = fresh_work_list(&world);
+    let workflows = listed[0]["workflows"]
+        .as_array()
+        .expect("committed workflows");
+    assert_eq!(
+        workflows.len(),
+        1,
+        "fresh listing exposed the unsaved workflow: {listed}"
+    );
+}

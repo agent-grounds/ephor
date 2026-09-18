@@ -1547,6 +1547,35 @@ fn issue_43_failed_save_rolls_back_append_batch_and_memory() {
     );
 }
 
+/// A top-level symlink is one journal image: rollback restores its exact raw
+/// destination and the bytes a hand-off can change through it, without
+/// treating the link as a directory (§FS-005-dispatch.4).
+#[cfg(unix)]
+#[test]
+fn issue_43_path_image_restores_a_symlink_and_its_file_referent() {
+    let tmp = tempfile::tempdir().unwrap();
+    let root = tmp.path().join("root");
+    fs::create_dir_all(&root).unwrap();
+    let target = tmp.path().join("machine.yaml");
+    fs::write(&target, "name: before\n").unwrap();
+    let destination = PathBuf::from("../machine.yaml");
+    let link = root.join("states.yaml");
+    std::os::unix::fs::symlink(&destination, &link).unwrap();
+
+    let image = PathImage::capture(&link).unwrap();
+    fs::write(&target, "name: damaged\n").unwrap();
+    fs::remove_file(&link).unwrap();
+    fs::write(&link, "not a link\n").unwrap();
+    image.restore(&link).unwrap();
+
+    assert!(fs::symlink_metadata(&link)
+        .unwrap()
+        .file_type()
+        .is_symlink());
+    assert_eq!(fs::read_link(&link).unwrap(), destination);
+    assert_eq!(fs::read(&target).unwrap(), b"name: before\n");
+}
+
 /// A rollback error retains the ledger-store failure and names the exact path
 /// it could not restore (§FS-005-dispatch.4).
 #[cfg(unix)]
