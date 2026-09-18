@@ -155,6 +155,10 @@ where the runtime will put the agent, even when the configured scope records
 its plan in a wider root. Where the branch is not checked out and no branch
 template can mint it, dispatch says so and offers the checkout, because a
 ticket about code that is not on the machine only moves the problem.
+Directory aliases do not select a different recorded checkout: placement is
+matched by the directory the root names. When nothing recorded a placement,
+the checkout is the directory holding the root, under the spelling by which
+the caller supplied it; resolving identity does not rewrite that answer.
 
 **Not all work has an item behind it.** A sweep that replays every idle
 checkout onto its project's main branch
@@ -203,8 +207,10 @@ Every dispatch also records the work root, checkout and branch it used. Those
 per-dispatch facts are the durable index of every place the matter's work was
 committed; a later dispatch cannot replace an earlier placement. A record from
 before those fields existed falls back to the entry's item-level root, checkout
-and branch. Existing ledger fields remain readable and machine readings grow
-only by additive placement fields.
+and branch. A root reached through another directory alias still belongs to
+the recorded dispatch and its recipe; spelling does not sever that provenance.
+Existing ledger fields remain readable and machine readings grow only by
+additive placement fields.
 
 **The ledger save is the commit point for a hand-off.** Before the first
 work-root mutation, ephor journals the first pre-image — prior bytes or absence
