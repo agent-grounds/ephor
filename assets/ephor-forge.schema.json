@@ -99,7 +99,9 @@
         "gate": {
           "$ref": "https://github.com/agent-grounds/ephor/schemas/answer/v1#/$defs/gate",
           "description": "Omitted entirely where the gate has no jobs and no verdict."
-        }
+        },
+        "assignees": { "type": "array", "items": { "type": "string" }, "description": "The logins holding this pull request, where the forge names them (FS-005-dispatch.31). Omit it where the forge does not report assignment: an omitted list and an empty one mean different things, and a selector asking about it refuses on the omission." },
+        "labels": { "type": "array", "items": { "type": "string" }, "description": "The labels the forge carries on this pull request (FS-005-dispatch.31). Omit it where the forge has no notion of labels, for the reason 'assignees' is omitted." }
       }
     },
     "pull_requests_response": {
@@ -118,6 +120,8 @@
         "updated_at": { "type": "string", "format": "date-time" },
         "role": { "enum": ["author", "reviewer"], "description": "Whether the user opened this issue or merely takes part in it (FS-001-forge-interface.1). An implementation with no notion of the difference omits it, and everything it reports counts as the user's own." },
         "assigned": { "type": "boolean", "description": "Whether anyone has taken this issue, where the tracker holds that (FS-001-forge-interface.1). Omit it where the tracker has no notion of assignment: omitted and false mean different things, and what nobody claimed about is never counted as unclaimed work." },
+        "assignees": { "type": "array", "items": { "type": "string" }, "description": "The logins holding this issue, where the tracker names them (FS-005-dispatch.31). 'assigned' says whether anybody has it; this says who. Omit it where the tracker does not report assignment: an omitted list and an empty one mean different things, and a selector asking about it refuses on the omission rather than reading it as unheld." },
+        "labels": { "type": "array", "items": { "type": "string" }, "description": "The labels the tracker carries on this issue (FS-005-dispatch.31). Omit it where the tracker has no notion of labels, for the reason 'assignees' is omitted." },
         "messages": {
           "type": "array",
           "items": { "$ref": "https://github.com/agent-grounds/ephor/schemas/answer/v1#/$defs/message" },

@@ -29,7 +29,9 @@ use crate::feed::provider::{
     command_exists, run_json, Provider, ProviderContext, ProviderError, ProviderResult,
 };
 use crate::feed::providers::github;
-use crate::feed::providers::{gh_command, github_login, parse_config, parse_github_time};
+use crate::feed::providers::{
+    gh_command, github_login, names_under, parse_config, parse_github_time,
+};
 use crate::forge::{policy, Issue, IssueDependency, Message, Role};
 
 #[derive(Debug, Deserialize)]
@@ -102,7 +104,8 @@ reactions(first:50){nodes{content user{login}}}}}}}}";
 /// says whose it is (§FS-001-forge-interface.1).
 const SEARCH_SELECTION: &str = "... on Issue{\
 number title url updatedAt state repository{nameWithOwner} \
-author{login} assignees(first:20){nodes{login}} comments{totalCount} \
+author{login} assignees(first:20){nodes{login}} labels(first:20){nodes{name}} \
+comments{totalCount} \
 blockedBy(first:50){nodes{number title url state repository{nameWithOwner}}}}";
 
 /// One question a search asks of the forge. The two role questions know the
@@ -327,6 +330,10 @@ impl GithubIssues {
         } else {
             Vec::new()
         };
+        // Who holds it, read once: `assigned` is the same fact counted rather
+        // than named (§FS-005-dispatch.31), and deriving it here is what keeps
+        // the two from drifting apart on a later change to either read.
+        let assignees = names_under(found, "/assignees/nodes", "login");
         Some(Issue {
             key: format!("{repo}#{number}"),
             title: found
@@ -346,10 +353,9 @@ impl GithubIssues {
             // is the policy's to decide (§FS-001-forge-interface.3). Absent
             // from the search result is not "nobody has it" — it is a field
             // that did not come back, so it stays unsaid.
-            assigned: found
-                .pointer("/assignees/nodes")
-                .and_then(Value::as_array)
-                .map(|assignees| !assignees.is_empty()),
+            assigned: assignees.as_ref().map(|held| !held.is_empty()),
+            assignees,
+            labels: names_under(found, "/labels/nodes", "name"),
             blocked_by: found
                 .pointer("/blockedBy/nodes")
                 .and_then(Value::as_array)
@@ -576,6 +582,8 @@ mod tests {
             updated_at: Utc::now(),
             role: Role::Author,
             assigned: None,
+            assignees: None,
+            labels: None,
             blocked_by: None,
             messages: Vec::new(),
         };

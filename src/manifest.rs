@@ -417,6 +417,46 @@ mod tests {
         assert!(manifest.checks.check.is_none());
     }
 
+    /// An offer selects in the same language a recipe does
+    /// (§FS-006-project-interface.9), so a field the selector gained is a
+    /// field the published schema takes: the selector is a closed object, and
+    /// one surface knowing a field the other refuses rejects the whole file
+    /// rather than the one offer (§FS-005-dispatch.31).
+    #[test]
+    fn an_offer_selects_on_assignees_and_labels_as_a_recipe_does() {
+        let manifest = parse(
+            r#"{"actions": [{"id": "mine", "description": "my own queue",
+                             "command": "echo hi",
+                             "when": {"kinds": ["issue"],
+                                      "assignees": ["kimeta"],
+                                      "labels": ["enhancement", "!GenAI"]}}]}"#,
+            "ephor.json",
+        )
+        .expect("the manual's own example is a valid manifest");
+        assert_eq!(manifest.offers.len(), 1);
+        let when = &manifest.offers[0].when;
+        assert_eq!(when.assignees, vec!["kimeta".to_string()]);
+        assert_eq!(
+            when.labels,
+            vec!["enhancement".to_string(), "!GenAI".to_string()]
+        );
+    }
+
+    /// The schema refuses an entry that names nothing too, so a manifest
+    /// validated by anything but ephor hears the same refusal
+    /// (§FS-005-dispatch.31, §FS-006-project-interface.11).
+    #[test]
+    fn an_offer_may_not_select_on_an_entry_that_names_nothing() {
+        let err = parse(
+            r#"{"actions": [{"id": "mine", "description": "my own queue",
+                             "command": "echo hi",
+                             "when": {"kinds": ["issue"], "labels": ["!"]}}]}"#,
+            "ephor.json",
+        )
+        .expect_err("`!` alone is not a filter");
+        assert!(err.to_string().contains("manifest schema"), "{err}");
+    }
+
     /// A project's own offer that lays a workflow down may say the work needs
     /// nobody to start it, and an offer that runs a command may not — there
     /// is no run to start (§FS-005-dispatch.28). The schema says it too, so a

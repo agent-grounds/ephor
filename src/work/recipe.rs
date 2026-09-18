@@ -10,6 +10,7 @@
 use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 
 use crate::feed::gate::Gate;
 use crate::feed::model::{Item, ItemKind, ItemRole};
@@ -622,6 +623,24 @@ pub struct Selector {
     /// Provider names, for a recipe that only makes sense on one source.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub sources: Vec<String>,
+    /// The logins that may hold the matter (§FS-005-dispatch.31). A plain name
+    /// is one the matter must be held by; `!name` is one it must not. A matter
+    /// whose source reported no assignment answers neither form.
+    #[serde(
+        default,
+        deserialize_with = "named",
+        skip_serializing_if = "Vec::is_empty"
+    )]
+    pub assignees: Vec<String>,
+    /// The labels the matter must and must not carry (§FS-005-dispatch.31),
+    /// asked exactly as `assignees` is: `["enhancement", "!GenAI"]` is
+    /// labelled `enhancement` and not labelled `GenAI`.
+    #[serde(
+        default,
+        deserialize_with = "named",
+        skip_serializing_if = "Vec::is_empty"
+    )]
+    pub labels: Vec<String>,
     /// The item's branch trails its main branch (`true`), or is level with it
     /// (`false`) — measured in the checkout, not asked of a forge
     /// (§FS-004-quick-actions.6). An item whose checkout cannot be measured —
@@ -766,8 +785,115 @@ impl Selector {
                 ));
             }
         }
+        if let Some(refusal) = held_or_labelled(
+            "assignees",
+            &self.assignees,
+            reported(item, "assignees").as_deref(),
+            "held by",
+        ) {
+            refusals.push(refusal);
+        }
+        if let Some(refusal) = held_or_labelled(
+            "labels",
+            &self.labels,
+            reported(item, "labels").as_deref(),
+            "labelled",
+        ) {
+            refusals.push(refusal);
+        }
         refusals
     }
+}
+
+/// Every entry of an `assignees` or `labels` field, refused where one names
+/// nothing (§FS-005-dispatch.31). `!` alone reads as a filter and excludes
+/// nothing, which is what a templated recipe degrades into when the name it
+/// interpolates is missing; a field that asks for nothing is written by
+/// omitting the field. Read here rather than at either surface, because a
+/// selector is written in a feed config, a project manifest and the runtime's
+/// own recipes alike.
+fn named<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<Vec<String>, D::Error> {
+    let entries = Vec::<String>::deserialize(deserializer)?;
+    if let Some(unnamed) = entries
+        .iter()
+        .find(|entry| entry.trim_start_matches('!').is_empty())
+    {
+        return Err(serde::de::Error::custom(format!(
+            "`{unnamed}` names nothing: write `name` or `!name`, or omit the field to filter on neither"
+        )));
+    }
+    Ok(entries)
+}
+
+/// What the item's source said under `key`, or `None` where it said nothing
+/// (§FS-005-dispatch.31). The absent key and the empty list are different
+/// answers and stay different all the way to the refusal.
+fn reported(item: &Item, key: &str) -> Option<Vec<String>> {
+    let reported = item.raw.get(key)?.as_array()?;
+    Some(
+        reported
+            .iter()
+            .filter_map(Value::as_str)
+            .map(String::from)
+            .collect(),
+    )
+}
+
+/// One `assignees` or `labels` field against what the matter carries. `None`
+/// where it held (§FS-005-dispatch.31): all negatives must hold, and the
+/// positives, where any were written, must find one. A matter whose source
+/// reported nothing refuses both forms rather than answering either, because a
+/// fact nobody stated is not a fact.
+fn held_or_labelled(
+    field: &'static str,
+    selector: &[String],
+    carried: Option<&[String]>,
+    verb: &str,
+) -> Option<Refusal> {
+    if selector.is_empty() {
+        return None;
+    }
+    let Some(carried) = carried else {
+        return Some(Refusal::new(
+            field,
+            format!("the matter's source reported nothing about what it is {verb}"),
+        ));
+    };
+    let (wanted, unwanted): (Vec<&str>, Vec<&str>) = selector
+        .iter()
+        .map(String::as_str)
+        .partition(|entry| !entry.starts_with('!'));
+    let carries = |name: &str| carried.iter().any(|held| held == name);
+
+    let forbidden: Vec<&str> = unwanted
+        .iter()
+        .map(|entry| &entry[1..])
+        .filter(|name| carries(name))
+        .collect();
+    if !forbidden.is_empty() {
+        return Some(Refusal::new(
+            field,
+            format!(
+                "the matter is {verb} {}, which the selector excludes",
+                join_quoted_str(&forbidden)
+            ),
+        ));
+    }
+    if !wanted.is_empty() && !wanted.iter().any(|name| carries(name)) {
+        return Some(Refusal::new(
+            field,
+            format!(
+                "the matter is {}; the selector asks for {}",
+                if carried.is_empty() {
+                    format!("{verb} nothing")
+                } else {
+                    format!("{verb} {}", join_quoted(carried))
+                },
+                join_quoted_str(&wanted)
+            ),
+        ));
+    }
+    None
 }
 
 /// Why a selector refused an item, one per field that asked for something the
@@ -790,6 +916,14 @@ impl Refusal {
 }
 
 fn join_quoted(values: &[String]) -> String {
+    values
+        .iter()
+        .map(|value| format!("`{value}`"))
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+fn join_quoted_str(values: &[&str]) -> String {
     values
         .iter()
         .map(|value| format!("`{value}`"))
@@ -1105,6 +1239,114 @@ mod tests {
     /// every item whose branch is not on this machine.
     fn ids(recipes: &[Recipe], item: &Item) -> Vec<String> {
         ids_with(recipes, item, Facts::default())
+    }
+
+    fn selector(json: Value) -> Selector {
+        serde_json::from_value(json).expect("selector parses")
+    }
+
+    fn labelled(names: Value) -> Item {
+        let mut item = item(ItemKind::Issue, Some(ItemRole::Author));
+        item.raw = json!({ "labels": names });
+        item
+    }
+
+    #[test]
+    fn a_positive_label_asks_for_any_of_them() {
+        let asks = selector(json!({ "labels": ["enhancement", "bug"] }));
+        assert!(asks.matches(&labelled(json!(["enhancement"])), &Facts::default()));
+        assert!(asks.matches(&labelled(json!(["bug", "priority"])), &Facts::default()));
+        assert!(!asks.matches(&labelled(json!(["priority"])), &Facts::default()));
+        assert!(!asks.matches(&labelled(json!([])), &Facts::default()));
+    }
+
+    #[test]
+    fn a_negative_label_forbids_it_however_else_the_matter_qualifies() {
+        let asks = selector(json!({ "labels": ["enhancement", "!GenAI"] }));
+        assert!(asks.matches(&labelled(json!(["enhancement"])), &Facts::default()));
+        assert!(!asks.matches(
+            &labelled(json!(["enhancement", "GenAI"])),
+            &Facts::default()
+        ));
+        // The negative alone still refuses the label, and asks nothing else.
+        let only_negative = selector(json!({ "labels": ["!GenAI"] }));
+        assert!(only_negative.matches(&labelled(json!(["priority"])), &Facts::default()));
+        assert!(only_negative.matches(&labelled(json!([])), &Facts::default()));
+        assert!(!only_negative.matches(&labelled(json!(["GenAI"])), &Facts::default()));
+    }
+
+    /// §FS-005-dispatch.31: `!` alone reads as a filter and excludes nothing,
+    /// so it is refused where the recipe is read rather than matching every
+    /// matter. Omitting the field is how a reader asks for neither.
+    #[test]
+    fn an_entry_that_names_nothing_is_refused() {
+        for entry in ["!", "", "!!"] {
+            let refused = serde_json::from_value::<Selector>(json!({ "labels": [entry] }))
+                .expect_err("an entry naming nothing is refused");
+            assert!(refused.to_string().contains("names nothing"), "{refused}");
+            assert!(
+                serde_json::from_value::<Selector>(json!({ "assignees": [entry] })).is_err(),
+                "`{entry}` is refused on assignees as it is on labels"
+            );
+        }
+        // A name behind the bang is the whole point, and still parses.
+        assert_eq!(
+            selector(json!({ "labels": ["!GenAI"] })).labels,
+            vec!["!GenAI".to_string()]
+        );
+    }
+
+    /// §FS-005-dispatch.31: a source that reported nothing has not said the
+    /// matter is unlabelled, so both forms refuse rather than match.
+    #[test]
+    fn a_fact_nobody_reported_refuses_both_forms() {
+        let unreported = item(ItemKind::Issue, Some(ItemRole::Author));
+        assert!(
+            !selector(json!({ "labels": ["enhancement"] })).matches(&unreported, &Facts::default())
+        );
+        assert!(!selector(json!({ "labels": ["!GenAI"] })).matches(&unreported, &Facts::default()));
+        assert!(
+            !selector(json!({ "assignees": ["kimeta"] })).matches(&unreported, &Facts::default())
+        );
+
+        let refusals =
+            selector(json!({ "labels": ["!GenAI"] })).explain(&unreported, &Facts::default());
+        assert_eq!(refusals.len(), 1);
+        assert_eq!(refusals[0].field, "labels");
+        assert!(refusals[0].reason.contains("reported nothing"));
+    }
+
+    #[test]
+    fn assignees_ask_who_holds_the_matter() {
+        let mut held = item(ItemKind::Issue, Some(ItemRole::Author));
+        held.raw = json!({ "assignees": ["kimeta", "octocat"] });
+        assert!(selector(json!({ "assignees": ["kimeta"] })).matches(&held, &Facts::default()));
+        assert!(
+            !selector(json!({ "assignees": ["someone-else"] })).matches(&held, &Facts::default())
+        );
+        assert!(!selector(json!({ "assignees": ["!octocat"] })).matches(&held, &Facts::default()));
+
+        // Reported and empty is a matter nobody holds, which answers both forms.
+        let mut unheld = item(ItemKind::Issue, Some(ItemRole::Author));
+        unheld.raw = json!({ "assignees": [] });
+        assert!(!selector(json!({ "assignees": ["kimeta"] })).matches(&unheld, &Facts::default()));
+        assert!(selector(json!({ "assignees": ["!kimeta"] })).matches(&unheld, &Facts::default()));
+    }
+
+    /// The refusal names the field a reader would edit (§FS-005-dispatch.27).
+    #[test]
+    fn a_refused_label_says_what_the_matter_carried() {
+        let refusals = selector(json!({ "labels": ["enhancement", "!GenAI"] })).explain(
+            &labelled(json!(["enhancement", "GenAI"])),
+            &Facts::default(),
+        );
+        assert_eq!(refusals.len(), 1);
+        assert_eq!(refusals[0].field, "labels");
+        assert!(
+            refusals[0].reason.contains("`GenAI`"),
+            "{}",
+            refusals[0].reason
+        );
     }
 
     fn ids_with(recipes: &[Recipe], item: &Item, facts: Facts) -> Vec<String> {
