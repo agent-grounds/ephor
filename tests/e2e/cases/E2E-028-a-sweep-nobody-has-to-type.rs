@@ -1,4 +1,4 @@
-//! E2E-027-a-sweep-nobody-has-to-type: a recipe asks for its own sweep, and
+//! E2E-028-a-sweep-nobody-has-to-type: a recipe asks for its own sweep, and
 //! says how often it should happen (§FS-005-dispatch.31).
 //!
 //! The scenario is the loop that was automatic in its second half only. A timer
