@@ -12,16 +12,16 @@
 //! seam's contract in materials, so the other side can always be a shell script
 //! (§REQ-001-boundary.1).
 
-use std::io::Read;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicU32, Ordering};
-use std::time::{Duration, Instant};
-
-use wait_timeout::ChildExt;
+use std::time::Duration;
 
 use crate::error::{EphorError, Result};
 use crate::seams::answer::{self, Normalized};
+
+mod capture;
+use capture::captured;
 
 /// The exit code that means *parked*: not applicable now, ask again later
 /// (§FS-006-project-interface.3). It is `EX_TEMPFAIL`, which is what a shell
@@ -290,6 +290,35 @@ pub fn run(summons: &Summons, site: &Site, mode: Mode) -> Result<Answer> {
     run_with_answer_reader(summons, site, mode, answer::parse)
 }
 
+/// The invocation boundary records errors at their source, never by interpreting
+/// a shell's exit code or diagnostic text (§FS-016-browser-opening.2).
+#[derive(Debug)]
+pub(crate) enum ExecutionError {
+    BeforeSpawn(EphorError),
+    AfterSpawn(EphorError),
+    TimedOut(EphorError),
+}
+
+impl ExecutionError {
+    fn into_error(self) -> EphorError {
+        match self {
+            Self::BeforeSpawn(error) | Self::AfterSpawn(error) | Self::TimedOut(error) => error,
+        }
+    }
+}
+
+/// Observe an arbitrary shell program without preflighting its first word as
+/// an executable. Only the shell can interpret compounds and background jobs;
+/// the browser reports that invocation's outcome (§FS-016-browser-opening.2,
+/// §AR-002-summons.2). Other callers retain their capability recheck.
+pub(crate) fn run_captured_shell(
+    summons: &Summons,
+    site: &Site,
+    timeout: Duration,
+) -> std::result::Result<Answer, ExecutionError> {
+    execute(summons, site, Mode::Captured(timeout), answer::parse, false)
+}
+
 /// Let an adapter retain input presence while reading the same validated
 /// envelope, without extending the public answer types
 /// (§FS-006-project-interface.4).
@@ -299,21 +328,37 @@ pub(crate) fn run_with_answer_reader(
     mode: Mode,
     read_answer: fn(&str, &str, &std::path::Path) -> Result<Normalized>,
 ) -> Result<Answer> {
+    execute(summons, site, mode, read_answer, true).map_err(ExecutionError::into_error)
+}
+
+fn execute(
+    summons: &Summons,
+    site: &Site,
+    mode: Mode,
+    read_answer: fn(&str, &str, &std::path::Path) -> Result<Normalized>,
+    check_binding: bool,
+) -> std::result::Result<Answer, ExecutionError> {
     // The two things a summons leans on are re-checked here, at invocation,
     // however recently a capability table answered about them: a table speaks
     // for the moment it was resolved, and a directory deleted since then has
     // to fail as the world rather than as a lie (§AR-005-capabilities.3).
-    let place = site
-        .resolve(&summons.place)
-        .map_err(|err| EphorError::Command(format!("{}: cannot run — {err}", summons.verb)))?;
-    if let Some(missing) = missing_binding(&summons.binding, &place) {
-        return Err(EphorError::Command(format!(
+    let place = site.resolve(&summons.place).map_err(|err| {
+        ExecutionError::BeforeSpawn(EphorError::Command(format!(
+            "{}: cannot run — {err}",
+            summons.verb
+        )))
+    })?;
+    if let Some(missing) = check_binding
+        .then(|| missing_binding(&summons.binding, &place))
+        .flatten()
+    {
+        return Err(ExecutionError::BeforeSpawn(EphorError::Command(format!(
             "{}: cannot run — {} is not there",
             summons.verb,
             missing.display()
-        )));
+        ))));
     }
-    let answer_file = AnswerFile::reserve()?;
+    let answer_file = AnswerFile::reserve().map_err(ExecutionError::BeforeSpawn)?;
 
     let mut command = Command::new("sh");
     command
@@ -327,8 +372,16 @@ pub(crate) fn run_with_answer_reader(
         .env(ANSWER_VAR, crate::paths::for_shell(&answer_file.path));
 
     let (status, output, errors) = match mode {
-        Mode::Interactive => (interactive(command, &summons.verb, false)?, None, None),
-        Mode::Aside => (interactive(command, &summons.verb, true)?, None, None),
+        Mode::Interactive => (
+            interactive(command, &summons.verb, false).map_err(ExecutionError::BeforeSpawn)?,
+            None,
+            None,
+        ),
+        Mode::Aside => (
+            interactive(command, &summons.verb, true).map_err(ExecutionError::BeforeSpawn)?,
+            None,
+            None,
+        ),
         Mode::Captured(timeout) => {
             let (status, stdout, stderr) = captured(command, &summons.verb, timeout)?;
             (status, Some(stdout), Some(stderr))
@@ -341,8 +394,10 @@ pub(crate) fn run_with_answer_reader(
         Some(PARKED) => Outcome::Parked,
         _ => Outcome::Failed,
     };
-    let answer = match answer_file.read()? {
-        Some(text) => Some(read_answer(&text, &summons.verb, &place)?),
+    let answer = match answer_file.read().map_err(ExecutionError::AfterSpawn)? {
+        Some(text) => {
+            Some(read_answer(&text, &summons.verb, &place).map_err(ExecutionError::AfterSpawn)?)
+        }
         None => None,
     };
 
@@ -399,97 +454,6 @@ fn interactive(mut command: Command, verb: &str, aside: bool) -> Result<std::pro
         .stderr(Stdio::inherit())
         .status()
         .map_err(|err| EphorError::Command(format!("{verb}: failed to run: {err}")))
-}
-
-/// Capture output under a timeout. Both pipes are drained on their own threads:
-/// waiting for exit before reading deadlocks the moment a child fills a pipe
-/// buffer, which a build log does immediately.
-fn captured(
-    mut command: Command,
-    verb: &str,
-    timeout: Duration,
-) -> Result<(std::process::ExitStatus, String, String)> {
-    command
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
-    #[cfg(unix)]
-    {
-        use std::os::unix::process::CommandExt;
-        // Captured commands get one process group so a deadline stops the
-        // opener and everything it started before returning to the reader
-        // (§FS-016-browser-opening.2, §AR-002-summons.2).
-        command.process_group(0);
-    }
-    let deadline = Instant::now() + timeout;
-    let mut child = spawn(&mut command)
-        .map_err(|err| EphorError::Command(format!("{verb}: failed to run: {err}")))?;
-
-    let drain = |stream: Option<Box<dyn Read + Send>>| {
-        std::thread::spawn(move || {
-            let mut buffer = String::new();
-            if let Some(mut stream) = stream {
-                let _ = stream.read_to_string(&mut buffer);
-            }
-            buffer
-        })
-    };
-    let stdout = drain(
-        child
-            .stdout
-            .take()
-            .map(|stream| Box::new(stream) as Box<dyn Read + Send>),
-    );
-    let stderr = drain(
-        child
-            .stderr
-            .take()
-            .map(|stream| Box::new(stream) as Box<dyn Read + Send>),
-    );
-
-    let status = child.wait_timeout(deadline.saturating_duration_since(Instant::now()));
-    // A shell may exit while a descendant still owns a capture pipe. The
-    // same deadline covers both exit and EOF (§FS-016-browser-opening.2).
-    if matches!(status, Ok(Some(_))) {
-        while !stdout.is_finished() || !stderr.is_finished() {
-            let remaining = deadline.saturating_duration_since(Instant::now());
-            if remaining.is_zero() {
-                break;
-            }
-            std::thread::sleep(remaining.min(Duration::from_millis(10)));
-        }
-    }
-    if !matches!(status, Ok(Some(_))) || !stdout.is_finished() || !stderr.is_finished() {
-        #[cfg(unix)]
-        // SAFETY: `process_group(0)` made the child's PID the id of a new
-        // process group. A negative id addresses only that group; failure is
-        // harmless because `child.kill()` below still stops the direct child.
-        unsafe {
-            libc::kill(-(child.id() as i32), libc::SIGKILL);
-        }
-        let _ = child.kill();
-        let _ = child.wait();
-        // The reader threads finish once the pipes close on the child's death.
-        let _ = stdout.join();
-        let _ = stderr.join();
-        if let Err(err) = status {
-            return Err(EphorError::Command(format!(
-                "{verb}: failed waiting: {err}"
-            )));
-        }
-        return Err(EphorError::Command(format!(
-            "{verb}: timed out after {}s",
-            timeout.as_secs()
-        )));
-    }
-    let status = status.expect("wait succeeded").expect("child exited");
-    let captured = stdout.join().unwrap_or_default();
-    // The command's own standard error stays the command's: nothing here parses
-    // it, and an unwatched summons has it in the log where it was streamed. It
-    // is handed back beside the output rather than merged into it, so a seam
-    // reading one line off standard output cannot read a warning instead.
-    let complaint = stderr.join().unwrap_or_default();
-    Ok((status, captured, complaint))
 }
 
 /// The file a command may write its answer to. It is named, never created: an
@@ -554,6 +518,7 @@ impl Drop for AnswerFile {
 mod tests {
     use super::*;
     use std::path::Path;
+    use std::time::Instant;
 
     const SECOND: Duration = Duration::from_secs(10);
 

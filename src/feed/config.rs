@@ -516,7 +516,7 @@ pub struct Defaults {
     /// shipped binding, one command of the reader's own, or the explicit
     /// copyable-address floor. Unset, the reader environment decides
     /// (§FS-016-browser-opening.2).
-    #[serde(default)]
+    #[serde(default, deserialize_with = "deserialize_browser")]
     pub browser: Option<crate::seams::browser::Binding>,
     /// Which window opener fills the seam (§FS-005-dispatch.22): a shipped
     /// binding by name, or a pair of commands of the reader's own. Unset, the
@@ -525,6 +525,17 @@ pub struct Defaults {
     /// always was (§AR-002-summons.6).
     #[serde(default)]
     pub window: Option<crate::seams::window::Binding>,
+}
+
+/// Only omission selects automatically. A present null must reach the strict
+/// binding parser rather than Option's null handling (§FS-016-browser-opening.1).
+fn deserialize_browser<'de, D>(
+    deserializer: D,
+) -> std::result::Result<Option<crate::seams::browser::Binding>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    crate::seams::browser::Binding::deserialize(deserializer).map(Some)
 }
 
 impl Default for Defaults {

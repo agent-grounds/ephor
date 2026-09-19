@@ -895,11 +895,17 @@ eligible; blank values count as absent. The floor restores the terminal,
 prints the reason and complete URL, and waits for Enter, so even an address
 longer than the screen stays copyable in scrollback.
 
-An opener runs for at most five seconds. Exit zero says `Browser opener exited
-successfully`; it does not claim that a page appeared. A missing command,
-nonzero exit, and timeout are reported separately, and every failure leaves the
-complete URL in the terminal. A timed-out process is stopped before the notice
-appears.
+The shell invocation and output capture share a five-second deadline. Exit zero
+says `Browser opener exited successfully`; it does not claim that a page
+appeared. Every nonzero shell exit says `Browser opener failed (<code>)`,
+including 127 for a missing downstream command and 126 for a non-executable
+one. A command choosing those codes receives the same report. `Browser opener
+could not start` means ephor could not prepare or spawn the invocation itself;
+an execution or capture error after spawn says `Browser opener execution
+failed` with diagnostic detail. Every failure leaves the complete URL in the
+terminal until Enter. Timeout stops and waits for the opener and cleans up its
+process group before the notice appears. A descendant that detaches from that
+group may survive, but cannot keep ephor waiting on its output pipes.
 
 Automatic window recognition uses the same SSH rule (§8.16). tmux remains
 eligible remotely because its window belongs to the attached session;

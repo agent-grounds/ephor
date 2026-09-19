@@ -128,6 +128,8 @@ struct TuiRun {
     compact: String,
     waited_for_enter: bool,
     opener_alive_before_enter: Option<bool>,
+    #[cfg(target_os = "linux")]
+    detached_pipes_released_before_enter: Option<bool>,
     outcome_after: Duration,
 }
 
@@ -172,7 +174,8 @@ fn tui(
 ) -> TuiRun {
     let binary = assert_cmd::cargo::cargo_bin("ephor");
     let script_command = format!(
-        "/bin/stty rows 16 cols 48; {} tui",
+        "/bin/stty rows 16 cols 48; printf '%s' \"$$\" > {}; exec {} tui",
+        ephor::seams::summons::quote(&world.path().join("reader.pid").to_string_lossy()),
         ephor::seams::summons::quote(&binary.to_string_lossy())
     );
     let mut command = Command::new("/usr/bin/script");
@@ -239,6 +242,8 @@ fn tui(
 
     let mut waited_for_enter = false;
     let mut opener_alive_before_enter = None;
+    #[cfg(target_os = "linux")]
+    let mut detached_pipes_released_before_enter = None;
     match notice_timeout {
         Some(timeout) => {
             await_terminal(
@@ -254,6 +259,10 @@ fn tui(
             let pid = read_or_empty(world, "opener.pid").trim().to_string();
             if !pid.is_empty() {
                 opener_alive_before_enter = Some(process_alive(&pid));
+            }
+            #[cfg(target_os = "linux")]
+            if world.path().join("escaped.pid").exists() {
+                detached_pipes_released_before_enter = Some(detached_pipes_released(world, &pid));
             }
             // A fallback owns the terminal until Enter. If `q` exits here, it
             // was only a status-line message and the copyable floor was never
@@ -328,6 +337,8 @@ fn tui(
         compact,
         waited_for_enter,
         opener_alive_before_enter,
+        #[cfg(target_os = "linux")]
+        detached_pipes_released_before_enter,
         outcome_after,
     }
 }
@@ -390,6 +401,48 @@ fn process_alive(pid: &str) -> bool {
         .is_ok_and(|status| status.success())
 }
 
+/// The escaped fixture keeps both write ends open. At the Enter floor ephor
+/// must own neither read end, including on a stranded worker
+/// (§FS-016-browser-opening.2).
+#[cfg(target_os = "linux")]
+fn detached_pipes_released(world: &World, escaped: &str) -> bool {
+    let reader = read_or_empty(world, "reader.pid");
+    let pipes: Vec<_> = [1, 2]
+        .into_iter()
+        .filter_map(|fd| fs::read_link(format!("/proc/{escaped}/fd/{fd}")).ok())
+        .filter(|path| path.to_string_lossy().starts_with("pipe:["))
+        .collect();
+    let Ok(descriptors) = fs::read_dir(format!("/proc/{reader}/fd")) else {
+        return false;
+    };
+    pipes.len() == 2
+        && descriptors
+            .filter_map(Result::ok)
+            .all(|entry| fs::read_link(entry.path()).is_ok_and(|target| !pipes.contains(&target)))
+}
+
+/// Only the test owns the detached process. Drop also runs on a PTY readiness
+/// or outcome assertion failure (§FS-016-browser-opening.2).
+#[cfg(target_os = "linux")]
+struct DetachedFixture<'a>(&'a World);
+
+#[cfg(target_os = "linux")]
+impl Drop for DetachedFixture<'_> {
+    fn drop(&mut self) {
+        for file in ["escaped.pid", "opener.pid"] {
+            if let Ok(pid) = read_or_empty(self.0, file).trim().parse::<i32>() {
+                if pid > 0 {
+                    // SAFETY: these are the PIDs recorded by this isolated fixture,
+                    // including its actual session leader if setsid forked.
+                    unsafe {
+                        libc::kill(pid, libc::SIGKILL);
+                    }
+                }
+            }
+        }
+    }
+}
+
 /// The configuration forms are deliberately parsed through today's public
 /// configuration type, so this fails on the missing contract rather than on a
 /// future adapter symbol (§FS-016-browser-opening.1).
@@ -417,6 +470,7 @@ fn browser_configuration_is_strict() {
         (json!({ "open": "my-opener" }), "{url}"),
         (json!({ "open": "my-opener {url}", "extra": true }), "extra"),
         (json!(17), "browser"),
+        (Value::Null, "browser"),
     ] {
         let error =
             serde_json::from_value::<StatusConfig>(json!({ "defaults": { "browser": value } }))
@@ -495,7 +549,7 @@ fn both_browser_entry_paths_keep_a_long_remote_url_and_wait_for_enter() {
         "https://reader.example/{}?token=complete",
         "segment-".repeat(18)
     );
-    for keys in [b"jo".as_slice(), b"j\n".as_slice()] {
+    for keys in [b"jo".as_slice(), b"j\r".as_slice()] {
         let world = remote_world(&long_url, None, None);
         let run = tui(
             &world,
@@ -528,8 +582,8 @@ fn both_browser_entry_paths_keep_a_long_remote_url_and_wait_for_enter() {
     }
 }
 
-/// Start failure, child failure, exit zero, and timeout are four different
-/// observed outcomes. Process creation alone proves none of them
+/// Missing downstream command, nonzero exit, exit zero, and timeout report
+/// the observed shell invocation. Process creation alone proves no success
 /// (§FS-016-browser-opening.2).
 #[test]
 fn opener_outcomes_are_truthful_and_timeout_is_cleaned_up() {
@@ -542,7 +596,7 @@ fn opener_outcomes_are_truthful_and_timeout_is_cleaned_up() {
         &[("DISPLAY", ":1")],
         Some(Duration::from_millis(800)),
     );
-    if !contains(&run, "Browser opener could not start")
+    if !contains(&run, "Browser opener failed (127)")
         || !contains(&run, URL)
         || !run.waited_for_enter
     {
@@ -660,8 +714,55 @@ fn exited_shell_with_inherited_pipes_times_out_before_enter() {
     );
 }
 
+/// Session detachment does not opt out of the capture deadline. The PTY has a
+/// 5.6-second outer bound for the complete notice (600 ms scheduling allowance)
+/// and the fixture stays alive with both pipes until this test drops its guard
+/// (§FS-016-browser-opening.2).
+#[cfg(target_os = "linux")]
+#[test]
+fn detached_pipe_holder_cannot_delay_the_url_floor_or_retain_capture() {
+    let world = remote_world(
+        URL,
+        Some(json!({ "open":
+            "/usr/bin/setsid /bin/sh -c 'printf %s \"$$\" > \"$HOME/opener.pid\"; exec /bin/sleep 30' & printf %s \"$!\" > \"$HOME/escaped.pid\"; exit 0 # {url}"
+        })),
+        None,
+    );
+    let _cleanup = DetachedFixture(&world);
+    let run = tui(
+        &world,
+        b"jo",
+        &[("SSH_CLIENT", "reader")],
+        Some(Duration::from_millis(5_600)),
+    );
+    assert!(run.output.status.success(), "{:?}", run.output);
+    assert!(
+        contains(&run, "Browser opener did not finish within 5 seconds"),
+        "{}",
+        run.compact
+    );
+    assert!(!contains(&run, "Browser opener exited successfully"));
+    let raw = String::from_utf8_lossy(&run.output.stdout);
+    assert!(raw.contains(&format!("\r\n{URL}\r\n")), "{raw:?}");
+    assert!(run.waited_for_enter);
+    assert_eq!(run.opener_alive_before_enter, Some(true));
+    assert_eq!(run.detached_pipes_released_before_enter, Some(true));
+    let pid = read_or_empty(&world, "escaped.pid");
+    assert_eq!(pid, read_or_empty(&world, "opener.pid"));
+    assert!(
+        process_alive(&pid),
+        "the escaped holder must outlive the floor"
+    );
+    // Includes the 250 ms hold probe and redraw, beyond the notice's own bound.
+    assert!(
+        run.outcome_after < Duration::from_secs(6),
+        "{:?}",
+        run.outcome_after
+    );
+}
+
 /// Codes reserved by the shell are also codes a started opener can return;
-/// exec failure is separate evidence (§FS-016-browser-opening.2).
+/// both report the observed shell exit (§FS-016-browser-opening.2).
 #[test]
 fn started_openers_keep_exit_126_and_127() {
     let mut failures = Vec::new();
@@ -696,6 +797,84 @@ fn started_openers_keep_exit_126_and_127() {
         }
     }
     assert!(failures.is_empty(), "{}", failures.join("\n"));
+}
+
+/// Missing/non-executable downstream commands report the shell's exit for both
+/// explicit binding forms, with the same complete URL floor as a started
+/// command choosing that code (§FS-016-browser-opening.2).
+#[test]
+fn downstream_exec_failures_report_the_shell_code() {
+    use std::os::unix::fs::PermissionsExt;
+    for custom in [false, true] {
+        for executable_present in [false, true] {
+            let browser = if custom {
+                json!({ "open": "custom-opener {url}" })
+            } else {
+                json!("xdg-open")
+            };
+            let world = remote_world(URL, Some(browser), None);
+            if executable_present {
+                let name = if custom { "custom-opener" } else { "xdg-open" };
+                let path = world.path().join("fakebin").join(name);
+                fs::write(
+                    &path,
+                    "#!/bin/sh\nprintf unexpected > \"$HOME/browser.log\"\n",
+                )
+                .unwrap();
+                fs::set_permissions(path, fs::Permissions::from_mode(0o644)).unwrap();
+            }
+            let run = tui(
+                &world,
+                b"jo",
+                &[("SSH_CLIENT", "reader")],
+                Some(Duration::from_secs(2)),
+            );
+            let code = if executable_present { 126 } else { 127 };
+            assert!(run.output.status.success(), "{:?}", run.output);
+            assert!(
+                contains(&run, &format!("Browser opener failed ({code})")),
+                "{}",
+                run.compact
+            );
+            assert!(!contains(&run, "Browser opener could not start"));
+            assert!(!contains(&run, "Browser opener exited successfully"));
+            assert!(read_or_empty(&world, "browser.log").is_empty());
+            assert!(String::from_utf8_lossy(&run.output.stdout).contains(&format!("\r\n{URL}\r\n")));
+            assert!(run.waited_for_enter);
+        }
+    }
+}
+
+/// Genuine spawn and post-spawn capture errors keep distinct notices and the
+/// complete address until Enter (§FS-016-browser-opening.2).
+#[test]
+fn invocation_failure_notices_keep_the_url_and_enter_floor() {
+    for (open, reason, started) in [
+        (
+            "printf started > \"$HOME/browser.log\"; \0 # {url}",
+            "Browser opener could not start",
+            false,
+        ),
+        (
+            "printf started > \"$HOME/browser.log\"; printf '\\377' # {url}",
+            "Browser opener execution failed:",
+            true,
+        ),
+    ] {
+        let world = remote_world(URL, Some(json!({ "open": open })), None);
+        let run = tui(
+            &world,
+            b"jo",
+            &[("SSH_CLIENT", "reader")],
+            Some(Duration::from_secs(2)),
+        );
+        assert!(run.output.status.success(), "{:?}", run.output);
+        assert!(contains(&run, reason), "{}", run.compact);
+        assert_eq!(read_or_empty(&world, "browser.log") == "started", started);
+        assert!(!contains(&run, "Browser opener exited successfully"));
+        assert!(String::from_utf8_lossy(&run.output.stdout).contains(&format!("\r\n{URL}\r\n")));
+        assert!(run.waited_for_enter);
+    }
 }
 
 /// A configured binding is deliberate even over SSH, and `{url}` is one

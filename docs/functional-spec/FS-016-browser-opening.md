@@ -41,18 +41,28 @@ never overrides SSH. Browser and window resolution use this one SSH predicate
 ([§FS-005-dispatch.22](FS-005-dispatch.md#22-a-window-of-the-readers-own-where-one-is-bound)).
 
 The adapter invokes the resolved command through the shared summons executor
-in captured mode with a five-second deadline. Exit zero says only `Browser
-opener exited successfully`; it does not say that a browser appeared or loaded
-the URL. A command that cannot start says `Browser opener could not start`; a
-nonzero exit says `Browser opener failed (<code>)`; and a command still running
-at the deadline says `Browser opener did not finish within 5 seconds`. Timeout
-stops and waits for the opener, and a failed configured binding never selects a
-second one.
+in captured mode with a five-second deadline covering exit and capture. The
+observed boundary is the configured shell invocation: exit zero says only
+`Browser opener exited successfully`, not that a browser appeared or loaded
+the URL. Every observed nonzero shell exit, including 126 and 127, says
+`Browser opener failed (<code>)`. A shell reporting a missing or non-executable
+downstream command therefore reports `failed (127)` or `failed (126)`, just as
+a started command choosing those codes does. `Browser opener could not start`
+is reserved for positively identified failure to prepare or spawn the
+invocation itself; shell creation does not prove downstream execution. Exit
+codes, command-controlled stderr and executable preflight checks cannot establish
+that distinction. Execution or capture failure after spawn without a usable
+exit code says `Browser opener execution failed`, with available diagnostic
+detail. Deadline expiry says `Browser opener did not finish within 5 seconds`.
+Timeout stops and waits for the opener and cleans up its process group;
+capture releases its readers even if a detached descendant still holds a pipe.
+A failed configured binding never selects a second one.
 
-Every automatic bypass, explicit `false`, start failure, nonzero exit, or
-timeout restores the terminal and prints its reason followed by the complete
-URL on its own line. It then waits for Enter before the TUI redraws. The URL is
-not shortened to the screen or status-line width, so the terminal's scrollback
+Every automatic bypass, explicit `false`, start failure, nonzero exit,
+execution failure, or timeout restores the terminal and prints its reason
+followed by the complete URL on its own line. It then waits for Enter before
+the TUI redraws. The URL is not shortened to the screen or status-line width,
+so the terminal's scrollback
 retains it byte for byte. Automatic SSH bypass says `Browser opener bypassed:
 SSH session`; automatic headless bypass says `Browser opener bypassed: no
 graphical display`; and `false` says `Browser opener disabled by configuration`.
