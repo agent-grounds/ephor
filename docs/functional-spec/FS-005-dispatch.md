@@ -1553,13 +1553,19 @@ recorded in [§DA-007-window-is-a-bound-opener](../decisions/architectural/DA-00
 has. The contract is in materials: one command that opens a window
 running a given command and prints a handle for the window it made, and one
 that brings a handle forward. The binding is configured — `window` in site
-configuration names which — and ephor ships bindings for the common shapes
-(a terminal multiplexer, and terminals that take remote commands), chosen
-unasked when the environment ephor is running in says which one the reader
-is sitting inside, and never by spawning one to find out. The degrade rule is
-the floor: no binding and no recognized environment means no window, and
-the terminal is handed over as it always was. A window is the reader's: ephor
-opens it and brings it forward, and never closes it or ends what is in it
+configuration names which — and an explicit binding always wins. Ephor ships
+bindings for the common shapes: a terminal multiplexer, and terminals that
+take remote commands. With no configured choice, their nonempty, trimmed
+product markers are read without spawning anything. The multiplexer remains
+eligible in an SSH-marked session because its window belongs to the attached
+session; GUI-terminal bindings are eligible only when the shared SSH predicate
+in [§FS-016-browser-opening.2](FS-016-browser-opening.md#2-automatic-selection-and-truthful-outcomes) says the session is local. Outside SSH the current
+product-marker order is retained, while display variables alone select no
+window. The degrade rule is the floor: no eligible binding means no window,
+and the terminal is handed over as it always was. Where SSH suppressed an
+automatic GUI binding, the line says that SSH permits automatic tmux but not
+an automatic GUI window. A window is the reader's: ephor opens it and brings
+it forward, and never closes it or ends what is in it
 ([§15](#15-every-operation-is-visible-in-one-place)).
 
 **An entry may ask for a window.** An offer or a configured action says

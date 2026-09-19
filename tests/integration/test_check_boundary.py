@@ -146,6 +146,18 @@ class LiteralConfinementTests(unittest.TestCase):
         self.assertEqual(findings, [])
         self.assertEqual(len(stale), 1)
 
+    def test_the_browser_product_is_confined_to_its_adapter(self):
+        """§AR-009-surfaces.4: presentation reaches the browser through one adapter."""
+        browser = next(product for product in check_boundary.PRODUCTS if product.name == "xdg-open")
+        outside = {"src/feed/tui/mod.rs": read('Command::new("xdg-open");\n')}
+        findings, _ = literals(outside, [browser])
+        self.assertEqual(len(findings), 1)
+        self.assertEqual(findings[0].path, "src/feed/tui/mod.rs")
+
+        home = {"src/seams/browser.rs": read('const COMMAND: &str = "xdg-open";\n')}
+        findings, _ = literals(home, [browser])
+        self.assertEqual(findings, [])
+
 
 class CoreIsIoFreeTests(unittest.TestCase):
     def setUp(self):
