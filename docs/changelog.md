@@ -60,9 +60,12 @@ ships, the previous "latest" section moves verbatim to
   opener, a custom `{url}` command, or `false`, with omission selecting the
   local graphical default. Automatic opening is bypassed under SSH and without
   a display; every bypass or failure restores the terminal with the complete
-  URL and waits for Enter. Openers run captured for at most five seconds and
-  report start failure, nonzero exit, timeout, and exit zero truthfully instead
-  of claiming a page opened when only a process started. Automatic window
+  URL and waits for Enter. Invocation and capture share a five-second deadline,
+  even when a detached descendant holds an output pipe. Outcomes describe the
+  shell invocation: every nonzero code, including 126/127 for downstream exec
+  failures, reports `failed (<code>)`; `could not start` is reserved for
+  preparation/spawn failure, and later execution errors say `execution failed`.
+  Exit zero claims only that the opener exited successfully. Automatic window
   recognition now keeps remote tmux but suppresses inherited WezTerm and kitty
   markers under SSH. Explicit browser and window bindings remain authoritative,
   which is how deliberate GUI forwarding is preserved. (PR #105)
