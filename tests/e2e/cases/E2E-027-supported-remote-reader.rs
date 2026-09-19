@@ -804,6 +804,22 @@ fn started_openers_keep_exit_126_and_127() {
     assert!(failures.is_empty(), "{}", failures.join("\n"));
 }
 
+/// The exit a shell gives a downstream command it cannot run, from the shell
+/// the world runs its openers under. A regular file without the execute bit is
+/// 126 to bash and 127 to dash, which skips it during the `PATH` search, so the
+/// code is asked of the shell rather than assumed.
+fn downstream_exit(world: &World, name: &str) -> i32 {
+    Command::new(world.path().join("fakebin/sh"))
+        .args(["-c", &format!("{name} probe")])
+        .env_clear()
+        .env("PATH", world.path().join("fakebin"))
+        .stderr(Stdio::null())
+        .status()
+        .expect("probe the isolated shell")
+        .code()
+        .expect("the probe shell exits rather than being signalled")
+}
+
 /// Missing/non-executable downstream commands report the shell's exit for both
 /// explicit binding forms, with the same complete URL floor as a started
 /// command choosing that code (§FS-016-browser-opening.2).
@@ -818,8 +834,8 @@ fn downstream_exec_failures_report_the_shell_code() {
                 json!("xdg-open")
             };
             let world = remote_world(URL, Some(browser), None);
+            let name = if custom { "custom-opener" } else { "xdg-open" };
             if executable_present {
-                let name = if custom { "custom-opener" } else { "xdg-open" };
                 let path = world.path().join("fakebin").join(name);
                 fs::write(
                     &path,
@@ -834,7 +850,12 @@ fn downstream_exec_failures_report_the_shell_code() {
                 &[("SSH_CLIENT", "reader")],
                 Some(Duration::from_secs(2)),
             );
-            let code = if executable_present { 126 } else { 127 };
+            let code = downstream_exit(&world, name);
+            if executable_present {
+                assert!(matches!(code, 126 | 127), "unexpected shell exit {code}");
+            } else {
+                assert_eq!(code, 127, "a missing command is 127 in every shell");
+            }
             assert!(run.output.status.success(), "{:?}", run.output);
             assert!(
                 contains(&run, &format!("Browser opener failed ({code})")),
