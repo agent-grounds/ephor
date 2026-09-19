@@ -42,6 +42,7 @@ ships, the previous "latest" section moves verbatim to
   already make, and the forge interface carries them on `issue` and
   `pull_request`
   ([§FS-005-dispatch.31](functional-spec/FS-005-dispatch.md#31-a-selector-can-ask-who-holds-a-matter-and-what-it-is-labelled)).
+  (PR #99)
 
 ### Note
 
