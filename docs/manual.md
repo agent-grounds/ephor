@@ -358,6 +358,7 @@ ephor ensure-agents --type monorepo --root ~/tmp/scratch \
     "provider_timeout_seconds": 30,   // per provider call
     "github_user": "you",             // skips one `gh api user` per refresh
     "recent_days": 7,                 // how long finished work stays under Recent
+    "browser": "xdg-open",            // explicit opener; omit for automatic (§4.5)
     "window": "tmux"                  // where a program of its own runs (§8.16)
   },
   "sources": [ /* §4.3 — fetched once, placed by ephor */ ],
@@ -863,6 +864,47 @@ It never substitutes an empty answer, because an empty section has to mean
   rather than for a fix.
 - Every failure is named with its project on stderr and in the interactive
   header, and a run that lost any provider exits non-zero.
+
+### 4.5 Reading the TUI remotely and opening browsers
+
+The TUI is supported over SSH: run `ssh -t dev-box ephor tui`. Refreshes,
+actions, editors, pagers, and attached runs stay on the development machine,
+while terminal handover uses the SSH pty already in front of you. Browser and
+GUI-window automation are more careful, because a display inherited or
+forwarded to that machine is not proof that it is the screen you are reading
+([§FS-016-browser-opening](functional-spec/FS-016-browser-opening.md#fs-016-browser-opening-a-browser-action-reaches-the-reader-or-leaves-the-address-with-them)).
+
+`browser` under `defaults` has exactly three explicit forms:
+
+```jsonc
+{ "defaults": { "browser": "xdg-open" } }
+{ "defaults": { "browser": { "open": "my-opener {url}" } } }
+{ "defaults": { "browser": false } }
+```
+
+The shipped name and a custom command are deliberate overrides: they run even
+over SSH or without a display. `{url}` is required in a custom command and is
+filled as one shell-quoted argument. `false` always chooses the terminal
+floor. Unknown names, keys, types, and a command without `{url}` are errors.
+
+With `browser` omitted, ephor uses the shipped opener only in a local graphical
+session. Any nonblank `SSH_CONNECTION`, `SSH_CLIENT`, or `SSH_TTY` chooses the
+terminal floor, even when `DISPLAY` or `WAYLAND_DISPLAY` was forwarded. With no
+SSH marker, a nonblank value of either display variable makes the opener
+eligible; blank values count as absent. The floor restores the terminal,
+prints the reason and complete URL, and waits for Enter, so even an address
+longer than the screen stays copyable in scrollback.
+
+An opener runs for at most five seconds. Exit zero says `Browser opener exited
+successfully`; it does not claim that a page appeared. A missing command,
+nonzero exit, and timeout are reported separately, and every failure leaves the
+complete URL in the terminal. A timed-out process is stopped before the notice
+appears.
+
+Automatic window recognition uses the same SSH rule (§8.16). tmux remains
+eligible remotely because its window belongs to the attached session;
+automatic WezTerm and kitty recognition is suppressed. If GUI forwarding is
+intentional, configure `defaults.browser` and/or `defaults.window` explicitly.
 
 ---
 
@@ -3507,8 +3549,14 @@ cannot then do is bring it forward.
 **Unset, ephor recognizes where it is running.** Each of the three shipped
 bindings sets a variable for exactly this purpose (`$TMUX`, `$WEZTERM_PANE`,
 `$KITTY_WINDOW_ID`), and ephor reads it — it never spawns one of them to find
-out. Where nothing is bound and nothing is recognized there is no window, and
-the terminal is handed over as it always was, with the outcome line saying so.
+out. Over SSH, tmux remains eligible while automatic WezTerm and kitty
+recognition is suppressed, even with a forwarded display; the terminal-floor
+line says why. Outside SSH the existing tmux, WezTerm, kitty order remains.
+Display variables alone never select a window. An explicit `window` binding
+always wins, so deliberate GUI forwarding is configured rather than inferred
+(§4.5). Where nothing is bound and nothing is recognized there is no window,
+and the terminal is handed over as it always was, with the outcome line saying
+so.
 
 **An entry may ask for a window.** Write `"window": true` on an action or an
 offer whose program is something you type into — an editor, a pager, a coding

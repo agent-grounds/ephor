@@ -395,7 +395,11 @@ impl Session {
                 // a change to [`Session::how`] — would have made it a
                 // falsehood printed with confidence.
                 ..views::Outcome::ok(match run.entry.action.window && self.opener().is_none() {
-                    true => format!("{says} · nothing bound a window, so it took the terminal"),
+                    true => format!(
+                        "{says} · {}",
+                        self.window_floor_reason()
+                            .unwrap_or("nothing bound a window, so it took the terminal")
+                    ),
                     false => says,
                 })
             },

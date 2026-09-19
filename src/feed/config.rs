@@ -512,11 +512,17 @@ pub struct Defaults {
     /// (§FS-003-feed-categories.3). Zero drops it as soon as it finishes.
     #[serde(default = "default_recent_days")]
     pub recent_days: u64,
+    /// Which browser opener fills the seam (§FS-016-browser-opening.1): the
+    /// shipped binding, one command of the reader's own, or the explicit
+    /// copyable-address floor. Unset, the reader environment decides
+    /// (§FS-016-browser-opening.2).
+    #[serde(default)]
+    pub browser: Option<crate::seams::browser::Binding>,
     /// Which window opener fills the seam (§FS-005-dispatch.22): a shipped
     /// binding by name, or a pair of commands of the reader's own. Unset, the
-    /// environment ephor was started in is recognized; where nothing is bound
-    /// and nothing is recognized the terminal is handed over as it always was
-    /// (§AR-002-summons.6).
+    /// environment ephor was started in is recognized through the shared SSH
+    /// rule; where nothing is eligible the terminal is handed over as it
+    /// always was (§AR-002-summons.6).
     #[serde(default)]
     pub window: Option<crate::seams::window::Binding>,
 }
@@ -528,6 +534,7 @@ impl Default for Defaults {
             provider_timeout_seconds: default_timeout(),
             github_user: None,
             recent_days: default_recent_days(),
+            browser: None,
             window: None,
         }
     }

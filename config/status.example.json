@@ -3,7 +3,9 @@
     "ttl_seconds": 600,
     "provider_timeout_seconds": 30,
     "github_user": "you",
-    "recent_days": 7
+    "recent_days": 7,
+    "browser": "xdg-open",
+    "window": "tmux"
   },
   "sources": [
     {

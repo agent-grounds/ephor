@@ -28,6 +28,7 @@ use std::time::Duration;
 use serde::Deserialize;
 
 use crate::error::{EphorError, Result};
+use crate::seams::browser::ReaderEnvironment;
 use crate::seams::summons::{self, quote, Mode, Site, Summons};
 
 /// Which binding fills the seam: a shipped one by name, or a pair of commands
@@ -55,9 +56,10 @@ pub struct Opener {
 
 /// The bindings ephor ships (§DA-007-window-is-a-bound-opener): a terminal
 /// multiplexer's new window, and the remote-control spawn of two terminals that
-/// offer one. Each carries the environment variable its product sets for
-/// exactly this purpose — read to recognize where ephor is running, never
-/// spawned to find out (§AR-002-summons.4).
+/// offer one. Each carries an environment variable that makes it eligible for
+/// automatic local recognition; it is never spawned to probe, and GUI markers
+/// are not evidence that an SSH reader sees that display
+/// (§FS-005-dispatch.22, §AR-002-summons.4).
 ///
 /// `{title}` and `{command}` in the open template and `{handle}` in the focus
 /// template are substituted shell-quoted; every other brace is the product's
@@ -99,10 +101,10 @@ pub fn shipped() -> Vec<&'static str> {
 /// (§DA-007-window-is-a-bound-opener).
 ///
 /// Configuration first, because a person who wrote one down meant it. With
-/// nothing configured the environment ephor was *started in* is read: each
-/// product sets a variable for exactly this, and reading one is free. Nothing
-/// is ever spawned to find out which terminal this is — discovery by failure is
-/// what §AR-002-summons.4 rules out.
+/// nothing configured the environment ephor was *started in* is read: the
+/// multiplexer remains eligible over SSH, while GUI-product markers are local
+/// only (§FS-005-dispatch.22). Nothing is ever spawned to find out which
+/// terminal this is — discovery by failure is what §AR-002-summons.4 rules out.
 pub fn bound(configured: Option<&Binding>) -> Option<Opener> {
     match configured {
         Some(Binding::Pair { open, focus }) => Some(Opener {
@@ -111,8 +113,26 @@ pub fn bound(configured: Option<&Binding>) -> Option<Opener> {
             focus: focus.clone(),
         }),
         Some(Binding::Named(name)) => shipped_named(name),
-        None => recognized(),
+        None => {
+            automatic(ReaderEnvironment::current(), |name| {
+                std::env::var(name).ok()
+            })
+            .opener
+        }
     }
+}
+
+/// The visible reason for the terminal floor when SSH suppressed an otherwise
+/// recognized GUI-terminal binding (§FS-005-dispatch.22).
+pub fn floor_reason(configured: Option<&Binding>) -> Option<&'static str> {
+    if configured.is_some() {
+        return None;
+    }
+    let resolution = automatic(ReaderEnvironment::current(), |name| {
+        std::env::var(name).ok()
+    });
+    (resolution.opener.is_none() && resolution.gui_suppressed)
+        .then_some("SSH permits automatic tmux but not an automatic GUI window")
 }
 
 /// Why a configured binding is not one, or None where it is. Returned rather
@@ -160,21 +180,42 @@ fn shipped_named(name: &str) -> Option<Opener> {
         })
 }
 
-/// The binding for the environment ephor was started in, where it is one of the
-/// shipped ones. A variable set to nothing is not being inside the product.
-fn recognized() -> Option<Opener> {
-    SHIPPED
-        .iter()
-        .find(|(_, variable, ..)| {
-            std::env::var(variable)
-                .map(|value| !value.trim().is_empty())
-                .unwrap_or(false)
-        })
-        .map(|(name, _, open, focus)| Opener {
-            name: (*name).to_string(),
-            open: (*open).to_string(),
-            focus: (*focus).to_string(),
-        })
+struct Automatic {
+    opener: Option<Opener>,
+    gui_suppressed: bool,
+}
+
+/// Resolve product markers in shipped order. The first binding is the remote
+/// multiplexer; every later binding opens a GUI window and is therefore
+/// suppressed by the shared SSH predicate (§FS-005-dispatch.22,
+/// §FS-016-browser-opening.2).
+fn automatic(
+    environment: ReaderEnvironment,
+    mut value: impl FnMut(&str) -> Option<String>,
+) -> Automatic {
+    let mut gui_suppressed = false;
+    for (position, (name, variable, open, focus)) in SHIPPED.iter().enumerate() {
+        let marked = value(variable).is_some_and(|value| !value.trim().is_empty());
+        if !marked {
+            continue;
+        }
+        if position > 0 && environment.ssh {
+            gui_suppressed = true;
+            continue;
+        }
+        return Automatic {
+            opener: Some(Opener {
+                name: (*name).to_string(),
+                open: (*open).to_string(),
+                focus: (*focus).to_string(),
+            }),
+            gui_suppressed,
+        };
+    }
+    Automatic {
+        opener: None,
+        gui_suppressed,
+    }
 }
 
 /// The verbs these fill, for messages.
@@ -314,6 +355,8 @@ pub fn site(at: &Path) -> Site {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::BTreeMap;
+
     use super::*;
 
     /// A shipped binding is chosen by name, and a name nothing ships is refused
@@ -381,59 +424,81 @@ mod tests {
         assert_eq!(titled, 2, "exactly one shipped spawn takes no title");
     }
 
-    /// The environment ephor was *started in* picks the binding where nothing
-    /// is configured, read and never spawned (§FS-005-dispatch.22,
-    /// §AR-002-summons.4). The order of [`SHIPPED`] is the precedence: a reader
-    /// inside a multiplexer inside a terminal is inside the multiplexer, which
-    /// is what their `open` would have to go through anyway. A variable set to
-    /// whitespace is not being inside the product, and none of them set means
-    /// the terminal, which is the floor.
-    ///
-    /// Held under [`ENVIRONMENT`] while it runs: the variables it sets belong to
-    /// the whole process, and the test harness runs its cases on threads.
+    fn from(environment: ReaderEnvironment, values: &[(&str, &str)]) -> Automatic {
+        let values: BTreeMap<&str, &str> = values.iter().copied().collect();
+        automatic(environment, |name| {
+            values.get(name).map(|value| (*value).to_string())
+        })
+    }
+
+    /// Automatic recognition keeps shipped order locally, keeps tmux over
+    /// SSH, suppresses each remote GUI binding, and treats blank markers as
+    /// absent (§FS-005-dispatch.22, §AR-002-summons.4).
     #[test]
-    fn the_environment_picks_the_binding_and_nothing_is_spawned_to_find_out() {
-        let _guard = ENVIRONMENT.lock().unwrap_or_else(|held| held.into_inner());
-        let clear = || {
-            for (_, variable, ..) in SHIPPED {
-                std::env::remove_var(variable);
-            }
+    fn automatic_recognition_is_local_except_for_tmux() {
+        let local = ReaderEnvironment {
+            ssh: false,
+            graphical: false,
+        };
+        let remote = ReaderEnvironment {
+            ssh: true,
+            graphical: true,
         };
 
-        clear();
-        assert!(bound(None).is_none(), "nothing set is the terminal");
-
+        assert!(
+            from(local, &[]).opener.is_none(),
+            "nothing set is the terminal"
+        );
         for (name, variable, ..) in SHIPPED {
-            clear();
-            std::env::set_var(variable, "something");
-            assert_eq!(bound(None).expect("it recognizes one").name, *name);
+            assert_eq!(
+                from(local, &[(variable, "something")])
+                    .opener
+                    .expect("local marker is eligible")
+                    .name,
+                *name
+            );
         }
 
         // Two at once: the first shipped binding wins, and the order is the
         // table's rather than the environment's.
-        clear();
-        for (_, variable, ..) in SHIPPED {
-            std::env::set_var(variable, "something");
-        }
-        assert_eq!(bound(None).expect("one of them").name, SHIPPED[0].0);
+        let all = SHIPPED
+            .iter()
+            .map(|(_, variable, ..)| (*variable, "something"))
+            .collect::<Vec<_>>();
+        assert_eq!(
+            from(local, &all).opener.expect("one of them").name,
+            SHIPPED[0].0
+        );
 
         // Set to whitespace is not being inside it.
-        clear();
-        std::env::set_var(SHIPPED[0].1, "   ");
-        assert!(bound(None).is_none(), "a blank variable is nothing");
+        assert!(
+            from(local, &[(SHIPPED[0].1, "   ")]).opener.is_none(),
+            "a blank variable is nothing"
+        );
+        let display_only = ReaderEnvironment {
+            ssh: false,
+            graphical: true,
+        };
+        assert!(
+            from(display_only, &[]).opener.is_none(),
+            "a display alone names no window product"
+        );
 
-        // And configuration beats the environment, because a person who wrote
-        // one down meant it.
-        clear();
-        std::env::set_var(SHIPPED[0].1, "something");
+        let tmux = from(remote, &[(SHIPPED[0].1, "session")]);
+        assert_eq!(
+            tmux.opener.expect("remote tmux stays eligible").name,
+            "tmux"
+        );
+        for (_, variable, ..) in &SHIPPED[1..] {
+            let suppressed = from(remote, &[(variable, "inherited")]);
+            assert!(suppressed.opener.is_none(), "remote {variable}");
+            assert!(suppressed.gui_suppressed, "remote {variable} says why");
+        }
+
+        // An explicit GUI choice never consults automatic recognition.
         let named = Binding::Named(SHIPPED[2].0.to_string());
         assert_eq!(bound(Some(&named)).expect("configured").name, SHIPPED[2].0);
-        clear();
     }
-
-    /// The lock any test that sets these process-wide variables takes, so that
-    /// two of them can never be inside the environment at once.
-    static ENVIRONMENT: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
     /// Three answers, and they are three different facts (§AR-002-summons.6):
     /// the opener refused and nothing ran, it ran and named no window, or it

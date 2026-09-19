@@ -116,6 +116,11 @@ ephor feed [--project P] [--unread] [--kind pr|ci|message|status] [--json]
 ephor mark-read widget | mark-read --all | mark-read --id ITEM_ID
 ```
 
+The TUI is supported over SSH. Automatic browser and GUI-window opening stays
+on the copyable terminal floor remotely, while tmux and terminal handover keep
+working; deliberate forwarding is available through explicit bindings. See
+[remote reading and browser opening](docs/manual.md#45-reading-the-tui-remotely-and-opening-browsers).
+
 - Cache lives in `~/.local/state/ephor/` (`feed/<project>.json`, `seen.json`).
   An item is unread until `mark-read`, and resurfaces when it changes again.
 - A failing provider keeps its last-good items marked `(stale)`; one flaky

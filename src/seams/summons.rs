@@ -413,6 +413,14 @@ fn captured(
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt;
+        // Captured commands get one process group so a deadline stops the
+        // opener and everything it started before returning to the reader
+        // (§FS-016-browser-opening.2, §AR-002-summons.2).
+        command.process_group(0);
+    }
     let mut child = spawn(&mut command)
         .map_err(|err| EphorError::Command(format!("{verb}: failed to run: {err}")))?;
 
@@ -442,6 +450,13 @@ fn captured(
         .wait_timeout(timeout)
         .map_err(|err| EphorError::Command(format!("{verb}: failed waiting: {err}")))?;
     let Some(status) = status else {
+        #[cfg(unix)]
+        // SAFETY: `process_group(0)` made the child's PID the id of a new
+        // process group. A negative id addresses only that group; failure is
+        // harmless because `child.kill()` below still stops the direct child.
+        unsafe {
+            libc::kill(-(child.id() as i32), libc::SIGKILL);
+        }
         let _ = child.kill();
         let _ = child.wait();
         // The reader threads finish once the pipes close on the child's death.
