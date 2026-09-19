@@ -416,9 +416,14 @@ fn detached_pipes_released(world: &World, escaped: &str) -> bool {
         return false;
     };
     pipes.len() == 2
-        && descriptors
-            .filter_map(Result::ok)
-            .all(|entry| fs::read_link(entry.path()).is_ok_and(|target| !pipes.contains(&target)))
+        && descriptors.filter_map(Result::ok).all(|entry| {
+            match fs::read_link(entry.path()) {
+                Ok(target) => !pipes.contains(&target),
+                // An unrelated descriptor closed during the snapshot cannot
+                // still retain either capture pipe.
+                Err(error) => error.kind() == std::io::ErrorKind::NotFound,
+            }
+        })
 }
 
 /// Only the test owns the detached process. Drop also runs on a PTY readiness
