@@ -1833,7 +1833,12 @@ impl App {
             }
         };
         match outcome {
-            Ok(message) => self.message = message,
+            Ok(message) => {
+                self.message = message;
+                terminal
+                    .clear()
+                    .map_err(|err| EphorError::Command(format!("terminal clear failed: {err}")))?;
+            }
             Err(reason) => {
                 ratatui::restore();
                 print!("\n{}", crate::seams::browser::notice(&reason, &url));
@@ -2238,8 +2243,13 @@ impl App {
     }
 
     fn draw(&mut self, frame: &mut ratatui::Frame) {
-        let [header_area, body_area, footer_area] = Layout::vertical([
+        // The browser outcome gets its own full-width line, without taking
+        // away the title or refresh progress (§FS-016-browser-opening.2).
+        let browser_success =
+            self.message == crate::seams::browser::Outcome::ExitedSuccessfully.message();
+        let [header_area, message_area, body_area, footer_area] = Layout::vertical([
             Constraint::Length(1),
+            Constraint::Length(u16::from(browser_success)),
             Constraint::Min(1),
             Constraint::Length(1),
         ])
@@ -2267,11 +2277,23 @@ impl App {
             Some(refresh) => format!("{}   ", refresh.progress()),
             None => String::new(),
         };
+        let message = if browser_success {
+            ""
+        } else {
+            self.message.as_str()
+        };
         frame.render_widget(
-            Paragraph::new(format!("{title}   {progress}{}", self.message))
+            Paragraph::new(format!("{title}   {progress}{message}"))
                 .style(Style::default().add_modifier(Modifier::BOLD)),
             header_area,
         );
+        if browser_success {
+            frame.render_widget(
+                Paragraph::new(self.message.as_str())
+                    .style(Style::default().add_modifier(Modifier::BOLD)),
+                message_area,
+            );
+        }
 
         match &mut self.screen {
             Screen::Navigator => self.navigator.draw(&self.ctx, frame, body_area),
