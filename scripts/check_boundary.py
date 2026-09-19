@@ -120,6 +120,15 @@ PRODUCTS = (
         homes=("src/seams/window.rs",),
         kind="terminal",
     ),
+    # A browser is the same kind of product boundary: presentation asks its
+    # adapter to open one URL and no caller spells the shipped product
+    # (§FS-016-browser-opening.1).
+    Product(
+        "xdg-open",
+        r"\bxdg-open\b",
+        homes=("src/seams/browser.rs",),
+        kind="browser opener",
+    ),
 )
 
 
