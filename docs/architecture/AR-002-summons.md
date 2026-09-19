@@ -97,15 +97,19 @@ streams: here, a terminal the reader can see beside ephor's.
 prints a handle on its standard output and exits when the window exists, not
 when the program ends; `focus <handle>` brings it forward. Which binding fills
 the seam is `window` in site configuration ([§REQ-001-boundary.2](../requirements/REQ-001-boundary.md#2-three-homes-one-resolution-order)); unset, the
-executor recognizes the environment it was started in — the multiplexer's or
-the terminal's own variable, which each of them sets for exactly this — and
-binds the matching shipped one, never spawning anything to find out. ephor
-ships three bindings and names none of them in core ([§REQ-001-boundary.5](../requirements/REQ-001-boundary.md#5-no-product-literal-outside-its-adapter)): a
-terminal multiplexer's new window, and two terminals' remote-control spawn,
-each with its own focus verb. A fourth is a pair of commands in configuration.
-Where nothing is bound and nothing is recognized, the executor falls back to
-§2 and says so in the outcome line: the terminal is the floor, and the floor
-is never removed.
+executor reads the multiplexer's or terminal's own nonempty, trimmed marker,
+never spawning anything to find out. The same SSH predicate used for browser
+selection ([§FS-016-browser-opening.2](../functional-spec/FS-016-browser-opening.md#2-automatic-selection-and-truthful-outcomes)) keeps the multiplexer eligible in a
+remote session and suppresses automatic GUI-terminal bindings there; outside
+SSH the existing marker order remains. Display variables alone bind no window.
+ephor ships three bindings and names none of them in core
+([§REQ-001-boundary.5](../requirements/REQ-001-boundary.md#5-no-product-literal-outside-its-adapter)): a terminal multiplexer's new window, and two terminals'
+remote-control spawn, each with its own focus verb. A fourth is a pair of
+commands in configuration, which remains authoritative under SSH. Where
+nothing is eligible, the executor falls back to §2 and says so in the outcome
+line: the terminal is the floor, and the floor is never removed. A remote
+fallback explains that SSH permits automatic tmux but not an automatic GUI
+window.
 
 **A windowed summons is a job with a window instead of a log.** It is
 written down as a job (§5) — the record, the lock, the `outcome.json` — and
