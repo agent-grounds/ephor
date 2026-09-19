@@ -15,10 +15,16 @@ ephor cannot make for the reader. This record fixes it as a seam
 A window is opened and brought forward by a **bound opener**: two commands
 — `open`, printing a handle; `focus`, taking one — selected by `window` in
 site configuration, or recognized from the environment ephor was started in
-when nothing is configured, and never discovered by spawning. Three bindings
-ship: a terminal multiplexer's new window, and the remote-control spawn of two
-terminals that offer one; the person this was designed with works in one of
-the terminals, and all three are supported because the next person will not.
+when nothing is configured, and never discovered by spawning. Explicit
+configuration is authoritative. Automatic recognition uses the shared SSH
+predicate ([§FS-016-browser-opening.2](../../functional-spec/FS-016-browser-opening.md#2-automatic-selection-and-truthful-outcomes)): a multiplexer remains eligible over SSH
+because its window belongs to the attached session, while GUI-terminal markers
+do not select a window on the machine the remote reader cannot see. Outside
+SSH, the existing nonempty-marker order remains, and display variables alone
+prove no window product. Three bindings ship: a terminal multiplexer's new
+window, and the remote-control spawn of two terminals that offer one; the
+person this was designed with works in one of the terminals, and all three are
+supported because the next person will not.
 Each binding's focus verb is the product's own, since "bring this window
 forward" is a different command in every one of them and the handle `open`
 printed is whatever that product calls a window.
@@ -68,6 +74,10 @@ as the command's output rather than as ephor's. A windowed program leaves no
 log in the job directory, so a window closed before it was read is gone —
 accepted, because duplicating a screen the reader was watching into a file
 is a recording, and the reader asked for a window precisely to watch. And
-the environment recognition reads a handful of variables the products set
-for this purpose; a reader who unsets them, or starts ephor from a shell
-that never had them, gets the floor and the line that says why.
+environment recognition reads a handful of variables the products set for
+this purpose. Empty markers, a local shell without them, or an SSH session
+whose only eligible markers belong to GUI terminals gets the floor and the
+line that says why; that remote line explains that automatic tmux is permitted
+while an automatic GUI window is not. A deliberate configured GUI binding
+still wins. Product markers are eligibility signals, never proof that a remote
+reader can see the product's display.
