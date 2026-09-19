@@ -16,7 +16,7 @@ use std::io::Read;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicU32, Ordering};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use wait_timeout::ChildExt;
 
@@ -421,6 +421,7 @@ fn captured(
         // (§FS-016-browser-opening.2, §AR-002-summons.2).
         command.process_group(0);
     }
+    let deadline = Instant::now() + timeout;
     let mut child = spawn(&mut command)
         .map_err(|err| EphorError::Command(format!("{verb}: failed to run: {err}")))?;
 
@@ -446,10 +447,19 @@ fn captured(
             .map(|stream| Box::new(stream) as Box<dyn Read + Send>),
     );
 
-    let status = child
-        .wait_timeout(timeout)
-        .map_err(|err| EphorError::Command(format!("{verb}: failed waiting: {err}")))?;
-    let Some(status) = status else {
+    let status = child.wait_timeout(deadline.saturating_duration_since(Instant::now()));
+    // A shell may exit while a descendant still owns a capture pipe. The
+    // same deadline covers both exit and EOF (§FS-016-browser-opening.2).
+    if matches!(status, Ok(Some(_))) {
+        while !stdout.is_finished() || !stderr.is_finished() {
+            let remaining = deadline.saturating_duration_since(Instant::now());
+            if remaining.is_zero() {
+                break;
+            }
+            std::thread::sleep(remaining.min(Duration::from_millis(10)));
+        }
+    }
+    if !matches!(status, Ok(Some(_))) || !stdout.is_finished() || !stderr.is_finished() {
         #[cfg(unix)]
         // SAFETY: `process_group(0)` made the child's PID the id of a new
         // process group. A negative id addresses only that group; failure is
@@ -462,11 +472,17 @@ fn captured(
         // The reader threads finish once the pipes close on the child's death.
         let _ = stdout.join();
         let _ = stderr.join();
+        if let Err(err) = status {
+            return Err(EphorError::Command(format!(
+                "{verb}: failed waiting: {err}"
+            )));
+        }
         return Err(EphorError::Command(format!(
             "{verb}: timed out after {}s",
             timeout.as_secs()
         )));
-    };
+    }
+    let status = status.expect("wait succeeded").expect("child exited");
     let captured = stdout.join().unwrap_or_default();
     // The command's own standard error stays the command's: nothing here parses
     // it, and an unwatched summons has it in the log where it was streamed. It
@@ -778,6 +794,83 @@ mod tests {
         )
         .unwrap_err();
         assert!(err.to_string().contains("timed out"), "{err}");
+    }
+
+    /// Exit and pipe EOF share a deadline even when the direct shell finishes
+    /// first (§FS-016-browser-opening.2, §AR-002-summons.2).
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn exited_shell_cannot_leave_capture_waiting_on_a_descendant() {
+        let tmp = tempfile::tempdir().unwrap();
+        let summons = Summons::new(
+            "check",
+            "printf '%s' \"$$\" > shell.pid; sleep 30 & printf '%s' \"$!\" > descendant.pid; exit 0",
+        );
+        let started = Instant::now();
+        let error = std::thread::scope(|scope| {
+            let execution = scope.spawn(|| {
+                run(
+                    &summons,
+                    &site(tmp.path()),
+                    Mode::Captured(Duration::from_secs(1)),
+                )
+            });
+            let mut exited_before_deadline = false;
+            while started.elapsed() < Duration::from_millis(750) {
+                if let Some(pid) = std::fs::read_to_string(tmp.path().join("shell.pid"))
+                    .ok()
+                    .and_then(|text| text.parse::<u32>().ok())
+                {
+                    if !Path::new(&format!("/proc/{pid}")).exists() {
+                        exited_before_deadline = true;
+                        break;
+                    }
+                }
+                std::thread::sleep(Duration::from_millis(5));
+            }
+            let result = execution.join().unwrap();
+            assert!(
+                exited_before_deadline,
+                "the fixture must exercise an already-exited shell"
+            );
+            result.unwrap_err()
+        });
+        assert!(started.elapsed() < Duration::from_secs(3), "{error}");
+        assert!(error.to_string().contains("timed out"), "{error}");
+        let pid = std::fs::read_to_string(tmp.path().join("descendant.pid")).unwrap();
+        if let Ok(stat) = std::fs::read_to_string(format!("/proc/{pid}/stat")) {
+            assert!(
+                stat.rsplit_once(") ").unwrap().1.starts_with("Z "),
+                "descendant still running: {stat}"
+            );
+        }
+    }
+
+    /// A descendant finishing before the deadline still contributes both
+    /// streams; EOF alone is not permission to stop a running command either
+    /// (§AR-002-summons.2).
+    #[test]
+    fn capture_waits_for_exit_and_both_streams() {
+        let tmp = tempfile::tempdir().unwrap();
+        let answer = run(
+            &Summons::new(
+                "check",
+                "(sleep 0.05; printf late; printf warning >&2) & exit 0",
+            ),
+            &site(tmp.path()),
+            Mode::Captured(SECOND),
+        )
+        .unwrap();
+        assert!(answer.is_done());
+        assert_eq!(answer.output.as_deref(), Some("late"));
+        assert_eq!(answer.errors.as_deref(), Some("warning"));
+        let error = run(
+            &Summons::new("check", "exec >/dev/null 2>&1; sleep 30"),
+            &site(tmp.path()),
+            Mode::Captured(Duration::from_millis(150)),
+        )
+        .unwrap_err();
+        assert!(error.to_string().contains("timed out"), "{error}");
     }
 
     #[test]

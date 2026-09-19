@@ -12,14 +12,16 @@
 mod support;
 
 use std::fs;
-use std::io::Write;
+use std::io::{Read, Write};
 use std::path::Path;
-use std::process::{Command, Output, Stdio};
+use std::process::{Child, Command, Output, Stdio};
+use std::sync::mpsc::{self, Receiver};
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use ephor::feed::config::StatusConfig;
 use serde_json::{json, Value};
+use wait_timeout::ChildExt;
 
 use support::*;
 
@@ -126,13 +128,47 @@ struct TuiRun {
     compact: String,
     waited_for_enter: bool,
     opener_alive_before_enter: Option<bool>,
+    outcome_after: Duration,
+}
+
+/// Wait for evidence from the PTY, retaining the raw transcript on a timeout
+/// rather than sending an action to a screen that is not ready
+/// (§FS-016-browser-opening.1, §FS-016-browser-opening.2).
+fn await_terminal(
+    child: &mut Child,
+    receiver: &Receiver<Vec<u8>>,
+    transcript: &mut Vec<u8>,
+    phase: &str,
+    timeout: Duration,
+    ready: impl Fn(&[u8]) -> bool,
+) {
+    let deadline = Instant::now() + timeout;
+    loop {
+        if ready(transcript) {
+            return;
+        }
+        let remaining = deadline.saturating_duration_since(Instant::now());
+        if remaining.is_zero() {
+            break;
+        }
+        match receiver.recv_timeout(remaining) {
+            Ok(bytes) => transcript.extend(bytes),
+            Err(_) => break,
+        }
+    }
+    let _ = child.kill();
+    let _ = child.wait();
+    panic!(
+        "PTY never reached {phase} within {timeout:?}; raw transcript: {:?}",
+        String::from_utf8_lossy(transcript)
+    );
 }
 
 fn tui(
     world: &World,
     keys: &[u8],
     environment: &[(&str, &str)],
-    notice_after: Option<Duration>,
+    notice_timeout: Option<Duration>,
 ) -> TuiRun {
     let binary = assert_cmd::cargo::cargo_bin("ephor");
     let script_command = format!(
@@ -148,14 +184,73 @@ fn tui(
     isolated(&mut command, world, environment);
     let mut child = command.spawn().expect("start the TUI under a pty");
     let mut input = child.stdin.take().expect("the pty input");
-    thread::sleep(Duration::from_millis(500));
-    input.write_all(keys).ok();
+    let mut stdout = child.stdout.take().expect("the pty output");
+    let mut stderr = child.stderr.take().expect("script errors");
+    let (sender, receiver) = mpsc::channel();
+    let reader = thread::spawn(move || {
+        let mut bytes = [0; 4096];
+        while let Ok(count) = stdout.read(&mut bytes) {
+            if count == 0 || sender.send(bytes[..count].to_vec()).is_err() {
+                break;
+            }
+        }
+    });
+    let errors = thread::spawn(move || {
+        let mut bytes = Vec::new();
+        let _ = stderr.read_to_end(&mut bytes);
+        bytes
+    });
+    let mut transcript = Vec::new();
+    let readiness_timeout = Duration::from_secs(10);
+    await_terminal(
+        &mut child,
+        &receiver,
+        &mut transcript,
+        "loaded row and footer",
+        readiness_timeout,
+        |bytes| {
+            let text = compact_terminal(bytes);
+            text.contains("Remotebrowser[waiting]") && text.contains("j/kmoveenterthread")
+        },
+    );
+    assert_eq!(
+        keys.first(),
+        Some(&b'j'),
+        "select the fixture's sole matter"
+    );
+    let selection_at = transcript.len();
+    input.write_all(b"j").expect("select the matter");
+    await_terminal(
+        &mut child,
+        &receiver,
+        &mut transcript,
+        "selected matter",
+        readiness_timeout,
+        |bytes| {
+            let text = compact_terminal(&bytes[selection_at..]);
+            text.contains('▸') && text.contains("Remotebrowser[waiting]")
+        },
+    );
+    let action_at = transcript.len();
+    let action_started = Instant::now();
+    input
+        .write_all(&keys[1..])
+        .expect("act on the selected matter");
 
     let mut waited_for_enter = false;
     let mut opener_alive_before_enter = None;
-    match notice_after {
-        Some(delay) => {
-            thread::sleep(delay);
+    match notice_timeout {
+        Some(timeout) => {
+            await_terminal(
+                &mut child,
+                &receiver,
+                &mut transcript,
+                "Enter handoff",
+                timeout.max(Duration::from_secs(2)),
+                |bytes| {
+                    compact_terminal(&bytes[action_at..]).contains("PressEntertoreturntoephor…")
+                },
+            );
             let pid = read_or_empty(world, "opener.pid").trim().to_string();
             if !pid.is_empty() {
                 opener_alive_before_enter = Some(process_alive(&pid));
@@ -163,26 +258,77 @@ fn tui(
             // A fallback owns the terminal until Enter. If `q` exits here, it
             // was only a status-line message and the copyable floor was never
             // shown.
-            input.write_all(b"q").ok();
+            input.write_all(b"q").expect("probe the Enter handoff");
             thread::sleep(Duration::from_millis(250));
             waited_for_enter = child.try_wait().expect("probe the TUI").is_none();
-            input.write_all(b"\n").ok();
-            thread::sleep(Duration::from_millis(250));
-            input.write_all(b"q").ok();
+            for bytes in receiver.try_iter() {
+                transcript.extend(bytes);
+            }
+            assert!(
+                !transcript[action_at..]
+                    .windows(8)
+                    .any(|bytes| bytes == b"\x1b[?1049h"),
+                "redrew before Enter: {:?}",
+                String::from_utf8_lossy(&transcript)
+            );
+            let resumed_at = transcript.len();
+            input.write_all(b"\n").expect("acknowledge the notice");
+            await_terminal(
+                &mut child,
+                &receiver,
+                &mut transcript,
+                "redraw after Enter",
+                readiness_timeout,
+                |bytes| compact_terminal(&bytes[resumed_at..]).contains("j/kmoveenterthread"),
+            );
         }
         None => {
-            thread::sleep(Duration::from_millis(700));
-            input.write_all(b"q").ok();
+            await_terminal(
+                &mut child,
+                &receiver,
+                &mut transcript,
+                "successful opener outcome",
+                Duration::from_secs(7),
+                |bytes| {
+                    compact_terminal(&bytes[action_at..])
+                        .contains("Browseropenerexitedsuccessfully")
+                },
+            );
         }
     }
+    let outcome_after = action_started.elapsed();
+    input.write_all(b"q").expect("quit after the action");
     drop(input);
-    let output = child.wait_with_output().expect("finish the TUI");
+    let status = match child
+        .wait_timeout(Duration::from_secs(3))
+        .expect("wait for the TUI")
+    {
+        Some(status) => status,
+        None => {
+            let _ = child.kill();
+            let _ = child.wait();
+            panic!(
+                "TUI did not quit: {:?}",
+                String::from_utf8_lossy(&transcript)
+            );
+        }
+    };
+    reader.join().expect("finish capture");
+    for bytes in receiver.try_iter() {
+        transcript.extend(bytes);
+    }
+    let output = Output {
+        status,
+        stdout: transcript,
+        stderr: errors.join().expect("finish stderr"),
+    };
     let compact = compact_terminal(&output.stdout);
     TuiRun {
         output,
         compact,
         waited_for_enter,
         opener_alive_before_enter,
+        outcome_after,
     }
 }
 
@@ -223,6 +369,19 @@ fn read_or_empty(world: &World, name: &str) -> String {
 }
 
 fn process_alive(pid: &str) -> bool {
+    // An orphan may await init's reaping after SIGKILL. A zombie has stopped
+    // executing and owns no capture pipes (§FS-016-browser-opening.2).
+    #[cfg(target_os = "linux")]
+    if fs::read_to_string(format!("/proc/{pid}/stat"))
+        .ok()
+        .and_then(|stat| {
+            stat.rsplit_once(") ")
+                .map(|(_, tail)| tail.starts_with("Z "))
+        })
+        == Some(true)
+    {
+        return false;
+    }
     Command::new("/bin/kill")
         .args(["-0", pid])
         .stdout(Stdio::null())
@@ -355,6 +514,11 @@ fn both_browser_entry_paths_keep_a_long_remote_url_and_wait_for_enter() {
             "complete URL missing from {}",
             run.compact
         );
+        let raw = String::from_utf8_lossy(&run.output.stdout);
+        assert!(
+            raw.contains(&format!("\r\n{long_url}\r\n")),
+            "the notice must retain the exact URL on its own line: {raw:?}"
+        );
         assert!(run.waited_for_enter, "the fallback did not wait for Enter");
         assert!(
             !contains(&run, "Opened"),
@@ -443,6 +607,94 @@ fn opener_outcomes_are_truthful_and_timeout_is_cleaned_up() {
         let _ = Command::new("/bin/kill").args(["-TERM", &pid]).status();
     }
 
+    assert!(failures.is_empty(), "{}", failures.join("\n"));
+}
+
+/// A shell's successful exit is not completion when its descendant still
+/// owns the output pipes. Cleanup precedes the Enter handoff
+/// (§FS-016-browser-opening.2).
+#[test]
+fn exited_shell_with_inherited_pipes_times_out_before_enter() {
+    let world = remote_world(
+        URL,
+        Some(json!({ "open":
+            "printf '%s\\n' \"$$\" > \"$HOME/shell.pid\"; /bin/sleep 30 & printf '%s\\n' \"$!\" > \"$HOME/opener.pid\"; exit 0 # {url}"
+        })),
+        None,
+    );
+    let run = tui(
+        &world,
+        b"jo",
+        &[("SSH_CLIENT", "reader")],
+        Some(Duration::from_secs(7)),
+    );
+    let pid = read_or_empty(&world, "opener.pid").trim().to_string();
+    let shell = read_or_empty(&world, "shell.pid").trim().to_string();
+    let alive = !pid.is_empty() && process_alive(&pid);
+    if alive {
+        let _ = Command::new("/bin/kill").args(["-KILL", &pid]).status();
+    }
+    assert!(run.output.status.success(), "{:?}", run.output);
+    assert!(
+        !shell.is_empty() && !process_alive(&shell),
+        "direct shell did not exit"
+    );
+    assert!(!pid.is_empty(), "the descendant never started");
+    assert!(
+        contains(&run, "Browser opener did not finish within 5 seconds"),
+        "{}",
+        run.compact
+    );
+    assert!(contains(&run, URL), "{}", run.compact);
+    assert_eq!(
+        run.opener_alive_before_enter,
+        Some(false),
+        "descendant still ran before Enter"
+    );
+    assert!(!alive, "descendant still ran after Enter");
+    assert!(run.waited_for_enter);
+    assert!(
+        run.outcome_after < Duration::from_secs(7),
+        "unbounded capture: {:?}",
+        run.outcome_after
+    );
+}
+
+/// Codes reserved by the shell are also codes a started opener can return;
+/// exec failure is separate evidence (§FS-016-browser-opening.2).
+#[test]
+fn started_openers_keep_exit_126_and_127() {
+    let mut failures = Vec::new();
+    for code in [126, 127] {
+        for custom in [false, true] {
+            let browser = custom.then(|| {
+                json!({ "open": format!(
+                "sh -c 'printf started > \"$HOME/browser.log\"; exit {code}' ignored {{url}}"
+            ) })
+            });
+            let world = remote_world(URL, browser, None);
+            opener(
+                &world,
+                "xdg-open",
+                &format!("#!/bin/sh\nprintf started > \"$HOME/browser.log\"\nexit {code}\n"),
+            );
+            let run = tui(
+                &world,
+                b"jo",
+                &[("DISPLAY", ":1")],
+                Some(Duration::from_secs(2)),
+            );
+            assert!(run.output.status.success(), "{:?}", run.output);
+            assert_eq!(read_or_empty(&world, "browser.log"), "started");
+            if !contains(&run, &format!("Browser opener failed ({code})"))
+                || contains(&run, "Browser opener could not start")
+            {
+                failures.push(format!("exit={code}, custom={custom}: {}", run.compact));
+            }
+            assert!(contains(&run, URL));
+            assert!(run.waited_for_enter);
+        }
+    }
     assert!(failures.is_empty(), "{}", failures.join("\n"));
 }
 
