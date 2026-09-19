@@ -2738,7 +2738,7 @@ impl Dispatcher {
             // Typed on the spot by somebody who is right there: the reader
             // starts it, as they always did (§FS-005-dispatch.24), and there
             // is nothing to sweep for — the matter is the one in front of them
-            // (§FS-005-dispatch.31).
+            // (§FS-005-dispatch.32).
             autorun: false,
             dispatch: None,
             brief: words.to_string(),

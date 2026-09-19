@@ -1,4 +1,4 @@
-//! When each recipe last swept for its own matters (§FS-005-dispatch.31).
+//! When each recipe last swept for its own matters (§FS-005-dispatch.32).
 //!
 //! Ephor's record of ephor's own activity, and never a claim about the work.
 //! It is kept the way `burn`'s cursors are kept — a small file under ephor's
@@ -95,7 +95,7 @@ impl Sweeps {
     /// reader typed: `ephor work dispatch` opens what a self-sweeping recipe
     /// would have opened, so a record that ignored it would send the timer to
     /// look again at a queue a person had just emptied by hand
-    /// (§FS-005-dispatch.31).
+    /// (§FS-005-dispatch.32).
     pub fn mark(&mut self, project: &str, recipe: &str, at: DateTime<Utc>) {
         self.swept.insert(key(project, recipe), at);
     }
@@ -120,7 +120,7 @@ mod tests {
         let mut sweeps = Sweeps::default();
         sweeps.mark("widget", "implement", at(0));
         // The same id in another project is another recipe, and keeps its own
-        // clock (§FS-005-dispatch.31).
+        // clock (§FS-005-dispatch.32).
         assert_eq!(sweeps.last("widget", "implement"), Some(at(0)));
         assert_eq!(sweeps.last("gadget", "implement"), None);
         assert_eq!(sweeps.last("widget", "fix-gate"), None);
@@ -145,7 +145,7 @@ mod tests {
     }
 
     /// A record that is not there, and one that cannot be parsed, are the same
-    /// thing and both mean *due now* (§FS-005-dispatch.31).
+    /// thing and both mean *due now* (§FS-005-dispatch.32).
     #[test]
     fn a_missing_or_unreadable_record_is_an_empty_one() {
         let dir = tempfile::tempdir().unwrap();

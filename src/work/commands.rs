@@ -472,7 +472,7 @@ fn kind_filter(kind: &Option<String>) -> Result<Option<ItemKind>> {
 /// `asked` is the ordering one invocation named for itself, where the verb has
 /// a flag for it; the configured ranking answers otherwise. Read by both
 /// sweeps, because an unattended one bounded by a recipe's own limit
-/// (§FS-005-dispatch.31.4) is exactly where the order decides which matters get
+/// (§FS-005-dispatch.32.4) is exactly where the order decides which matters get
 /// opened at all.
 fn order_by_ranking(
     dispatcher: &mut Dispatcher,
@@ -541,7 +541,7 @@ fn dispatch_work(
     // dispatch (§FS-005-dispatch.12).
     let mut settled = 0usize;
     let mut asked_for_one = false;
-    // Which self-sweeping recipes this walk covered (§FS-005-dispatch.31).
+    // Which self-sweeping recipes this walk covered (§FS-005-dispatch.32).
     let mut swept: std::collections::BTreeSet<String> = Default::default();
     for item in &items {
         // The bound is on what actually gets dispatched — opened, or
@@ -667,7 +667,7 @@ fn dispatch_work(
         // A sweep the reader typed marks the clock too: this opens what a
         // self-sweeping recipe would have opened, so a record that ignored it
         // would send the timer to look again at a queue a person had just
-        // emptied by hand (§FS-005-dispatch.31).
+        // emptied by hand (§FS-005-dispatch.32).
         if recipe.dispatch.is_some() {
             swept.insert(crate::work::sweeps::key(&item.project, &recipe.id));
         }
@@ -1481,13 +1481,13 @@ fn sync_work(
     let items = selected_items(config, projects)?;
     // The configured ranking orders this walk too: `sync` names no ordering of
     // its own, and a sweep a recipe's limit bounds is where the order decides
-    // which matters are opened at all (§FS-005-dispatch.31.4).
+    // which matters are opened at all (§FS-005-dispatch.32.4).
     let items = order_by_ranking(&mut dispatcher, config, None, items);
     let mut reopened = 0usize;
     let mut landed: Vec<serde_json::Value> = Vec::new();
     // The sweep's own record, and what this walk opened per recipe — read once
     // here rather than per matter, because one walk asks the same handful of
-    // recipes over and over (§FS-005-dispatch.31).
+    // recipes over and over (§FS-005-dispatch.32).
     let now = Utc::now();
     let mut sweeps = crate::work::sweeps::load();
     let mut swept: std::collections::BTreeSet<String> = Default::default();
@@ -1499,7 +1499,7 @@ fn sync_work(
             // A matter ephor has no work about. That answer stops being
             // unconditional: it is opened where a recipe asked for its own
             // sweep and that recipe's interval has elapsed, and passed over
-            // otherwise, exactly as before (§FS-005-dispatch.31).
+            // otherwise, exactly as before (§FS-005-dispatch.32).
             opening(
                 &mut dispatcher,
                 item,
@@ -1561,7 +1561,7 @@ fn sync_work(
     if !dry_run {
         dispatcher.save()?;
         // A dry run writes nothing, and that includes the sweep's own record
-        // of having swept (§FS-005-dispatch.31).
+        // of having swept (§FS-005-dispatch.32).
         for key in &swept {
             sweeps.swept.insert(key.clone(), now);
         }
@@ -1573,7 +1573,7 @@ fn sync_work(
         // nobody has to (§FS-005-dispatch.24, §FS-005-dispatch.5). Work this
         // walk *opened* is in the same position and is reached by the same
         // call, which is why the sweep sits in front of it rather than after
-        // (§FS-005-dispatch.31).
+        // (§FS-005-dispatch.32).
         // Nobody typed this one: `work sync` is what a timer runs before
         // `work run --due`, and a budget that bound only the second would let
         // the first start the night's work unbound
@@ -1611,7 +1611,7 @@ fn sync_work(
             "reopened"
         },
         // Said only where a recipe asked for its own sweep, so a site that
-        // adopted none reads exactly as it did before (§FS-005-dispatch.31).
+        // adopted none reads exactly as it did before (§FS-005-dispatch.32).
         match opened {
             0 => String::new(),
             opened => format!(
@@ -1635,7 +1635,7 @@ fn sync_work(
 }
 
 /// Open a matter ephor has no work about, where a recipe asked for its own
-/// sweep and its interval has elapsed (§FS-005-dispatch.31).
+/// sweep and its interval has elapsed (§FS-005-dispatch.32).
 ///
 /// The recipe asked for is the one the reader's own sweep would have chosen —
 /// the first that applies, because recipes are offered in priority order and
@@ -1685,7 +1685,7 @@ fn opening(
     swept.insert(key.clone());
     // This recipe's own bound, counting what it opened in this sweep and
     // nothing else, so two self-sweeping recipes do not spend each other's
-    // allowance (§FS-005-dispatch.31.4). It bounds what is opened and never
+    // allowance (§FS-005-dispatch.32.4). It bounds what is opened and never
     // what is stepped over, which is the reading `--limit` already has.
     let mine = opened_by.entry(key).or_insert(0);
     if sweep.limit.is_some_and(|limit| *mine >= limit) {
@@ -1734,7 +1734,7 @@ fn opening(
         // that is not checked out, a hand a narrowing will not permit. Named
         // and stepped over, with the walk going on to the next matter: nobody
         // is here to be stopped, and one matter ephor cannot reach is not a
-        // reason to abandon the rest (§FS-005-dispatch.31.3).
+        // reason to abandon the rest (§FS-005-dispatch.32.3).
         Err(err) => {
             landed.push(serde_json::json!({
                 "item": item.id,

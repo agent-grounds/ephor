@@ -415,7 +415,7 @@ impl TryFrom<RawAction> for ActionConfig {
             root: raw.root.clone(),
             autorun: ask.autorun,
             // An entry is a menu entry: a reader opened the menu and chose
-            // it. Nothing on screen sweeps for itself (§FS-005-dispatch.31).
+            // it. Nothing on screen sweeps for itself (§FS-005-dispatch.32).
             dispatch: None,
             brief: ask.brief,
             // Ephor's own deterministic moves belong to the recipes that ship

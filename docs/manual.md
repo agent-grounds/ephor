@@ -1939,7 +1939,7 @@ working tree standing on another branch. Arguments after `--` on `ephor work dis
 
 **`dispatch`** is the same shape one step earlier: it says that the sweep which
 *finds* the matters needs nobody either, and how often that sweep should happen
-([§FS-005-dispatch.31](functional-spec/FS-005-dispatch.md#31-a-recipe-can-ask-for-its-own-sweep-and-say-how-often)).
+([§FS-005-dispatch.32](functional-spec/FS-005-dispatch.md#32-a-recipe-can-ask-for-its-own-sweep-and-say-how-often)).
 Without it, `ephor work dispatch` stays yours to type — which is what a stock
 install does, since no shipped unit runs that verb.
 

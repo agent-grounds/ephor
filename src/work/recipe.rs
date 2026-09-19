@@ -553,7 +553,7 @@ pub struct Recipe {
     #[serde(default)]
     pub autorun: bool,
     /// This recipe's own sweep needs nobody either, and goes at this rhythm
-    /// (§FS-005-dispatch.31). One step earlier than [`Recipe::autorun`] and
+    /// (§FS-005-dispatch.32). One step earlier than [`Recipe::autorun`] and
     /// the same shape: its presence is the opt-in, and silence leaves the
     /// sweep the reader's to type. The two settings answer two different
     /// questions — *find them yourself* and *do not wait for me to start it* —
@@ -593,7 +593,7 @@ pub struct Recipe {
 }
 
 /// A recipe's own sweep: how often it looks for its matters, and how much one
-/// look may open (§FS-005-dispatch.31).
+/// look may open (§FS-005-dispatch.32).
 ///
 /// Written as the interval alone — `"6h"` — which is the spelling to prefer,
 /// or as `{ "every": "6h", "limit": 3 }` where the recipe wants the bound. One
@@ -620,7 +620,7 @@ impl Sweep {
     /// Whether this recipe is due, given when it last swept. A recipe nothing
     /// was recorded about is due now: the record is ephor's own and a missing
     /// one costs a sweep's worth of waiting rather than the sweep itself
-    /// (§FS-005-dispatch.31).
+    /// (§FS-005-dispatch.32).
     pub fn due(&self, last: Option<DateTime<Utc>>, now: DateTime<Utc>) -> bool {
         match last {
             // How long it has been, not when it would next be: `last + every`
@@ -1205,7 +1205,7 @@ pub fn shipped() -> Vec<Recipe> {
         // saying otherwise is a thing configuration does (§FS-005-dispatch.24).
         autorun: false,
         // And nothing that ships sweeps for itself, for the same reason one
-        // step earlier (§FS-005-dispatch.31).
+        // step earlier (§FS-005-dispatch.32).
         dispatch: None,
         brief: brief.to_string(),
         opens_with: None,
@@ -2040,7 +2040,7 @@ mod tests {
         .is_err());
     }
 
-    // ---- a recipe's own sweep (§FS-005-dispatch.31) ----
+    // ---- a recipe's own sweep (§FS-005-dispatch.32) ----
 
     fn recipe_with(dispatch: serde_json::Value) -> serde_json::Value {
         json!({ "id": "implement", "description": "d", "brief": "b", "dispatch": dispatch })
@@ -2058,7 +2058,7 @@ mod tests {
     }
 
     /// Silence is how a recipe declines, one step earlier than `autorun`
-    /// (§FS-005-dispatch.31).
+    /// (§FS-005-dispatch.32).
     #[test]
     fn a_recipe_that_says_nothing_sweeps_for_nobody() {
         let quiet: Recipe =
@@ -2078,7 +2078,7 @@ mod tests {
 
     /// Zero has elapsed by the time anything reads it, so it falls out of the
     /// same comparison rather than being a mode beside it
-    /// (§FS-005-dispatch.31).
+    /// (§FS-005-dispatch.32).
     #[test]
     fn zero_is_due_every_time_it_is_asked() {
         let always = sweep(json!("0h"));
@@ -2122,7 +2122,7 @@ mod tests {
     }
 
     /// The map is for the recipe that wants the bound; the string is sugar for
-    /// it with no bound (§FS-005-dispatch.31.4).
+    /// it with no bound (§FS-005-dispatch.32.4).
     #[test]
     fn the_long_spelling_carries_a_limit() {
         let bounded = sweep(json!({ "every": "6h", "limit": 3 }));
