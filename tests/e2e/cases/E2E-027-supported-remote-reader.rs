@@ -102,6 +102,19 @@ fn symlink(target: impl AsRef<Path>, link: impl AsRef<Path>) {
     std::os::unix::fs::symlink(target, link).expect("install the isolated shell");
 }
 
+/// `/usr/bin/script` running a shell command line under a pty. util-linux takes
+/// the line as `-c <line>`; the BSD `script` macOS ships takes the command
+/// after the typescript file and has no `-c` or `-f`.
+fn under_pty(command_line: &str) -> Command {
+    let mut command = Command::new("/usr/bin/script");
+    if cfg!(target_os = "linux") {
+        command.args(["-qefc", command_line, "/dev/null"]);
+    } else {
+        command.args(["-qe", "/dev/null", "/bin/sh", "-c", command_line]);
+    }
+    command
+}
+
 fn clean(mut command: assert_cmd::Command) -> assert_cmd::Command {
     for signal in SIGNALS {
         command.env_remove(signal);
@@ -178,9 +191,8 @@ fn tui(
         ephor::seams::summons::quote(&world.path().join("reader.pid").to_string_lossy()),
         ephor::seams::summons::quote(&binary.to_string_lossy())
     );
-    let mut command = Command::new("/usr/bin/script");
+    let mut command = under_pty(&script_command);
     command
-        .args(["-qefc", &script_command, "/dev/null"])
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
@@ -1066,8 +1078,7 @@ fn explicit_gui_window_and_attached_terminal_controls_remain_available() {
         ephor::seams::summons::quote(&binary.to_string_lossy()),
         ITEM
     );
-    let mut command = Command::new("/usr/bin/script");
-    command.args(["-qefc", &script_command, "/dev/null"]);
+    let mut command = under_pty(&script_command);
     isolated(&mut command, &world, &[("SSH_TTY", "/dev/pts/7")]);
     let output = command.output().expect("run attached action in a pty");
     let text = String::from_utf8_lossy(&output.stdout);
