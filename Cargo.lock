@@ -377,6 +377,7 @@ dependencies = [
  "chrono",
  "clap",
  "jsonschema",
+ "libc",
  "predicates",
  "ratatui",
  "serde",

@@ -52,6 +52,21 @@ ships, the previous "latest" section moves verbatim to
   machine fails the source instead of silently borrowing another machine.
   (PR #103)
 
+- **The TUI is supported over SSH, with browser and window actions kept in
+  front of the remote reader**
+  ([§FS-016-browser-opening](functional-spec/FS-016-browser-opening.md#fs-016-browser-opening-a-browser-action-reaches-the-reader-or-leaves-the-address-with-them),
+  [§FS-005-dispatch.22](functional-spec/FS-005-dispatch.md#22-a-window-of-the-readers-own-where-one-is-bound)).
+  Browser opening is now a bound seam: `defaults.browser` accepts the shipped
+  opener, a custom `{url}` command, or `false`, with omission selecting the
+  local graphical default. Automatic opening is bypassed under SSH and without
+  a display; every bypass or failure restores the terminal with the complete
+  URL and waits for Enter. Openers run captured for at most five seconds and
+  report start failure, nonzero exit, timeout, and exit zero truthfully instead
+  of claiming a page opened when only a process started. Automatic window
+  recognition now keeps remote tmux but suppresses inherited WezTerm and kitty
+  markers under SSH. Explicit browser and window bindings remain authoritative,
+  which is how deliberate GUI forwarding is preserved. (PR #105)
+
 - **`ephor rebase` honours a scope selector, and joins the `--act` gate**
   ([§FS-011-command-line.9](functional-spec/FS-011-command-line.md#9-a-scope-selector-is-honoured-or-refused),
   [§FS-011-command-line.10](functional-spec/FS-011-command-line.md#10-a-mutating-verb-above-one-project-reports-and-acts-under---act),

@@ -511,14 +511,14 @@ impl App {
             Action::None => {}
             Action::Quit => return Ok(true),
             Action::SetMessage(message) => self.message = message,
-            Action::OpenUrl(url) => self.open_url(url),
+            Action::OpenUrl(url) => self.open_url(terminal, config, url)?,
             Action::OpenThread { item, or_url } => {
                 // What a run drafted about this matter, read from the work
                 // root every time it is shown (§FS-005-dispatch.13).
                 let proposal = self.proposal(&item);
                 match ThreadScreen::open(item.clone(), proposal) {
                     Some(screen) => self.screen = Screen::Thread(screen),
-                    None if or_url => self.open_url(item.url),
+                    None if or_url => self.open_url(terminal, config, item.url)?,
                     None => self.message = "No messages recorded for this item".to_string(),
                 }
             }
@@ -1808,21 +1808,46 @@ impl App {
         )
     }
 
-    fn open_url(&mut self, url: Option<String>) {
-        match url {
-            Some(url) => {
-                let result = std::process::Command::new("xdg-open")
-                    .arg(&url)
-                    .stdout(std::process::Stdio::null())
-                    .stderr(std::process::Stdio::null())
-                    .spawn();
-                self.message = match result {
-                    Ok(_) => format!("Opened {url}"),
-                    Err(err) => format!("xdg-open failed: {err}"),
-                };
+    /// Open the reading's address through the browser seam. Every bypass or
+    /// failure gives the terminal to the complete copyable address and waits
+    /// for Enter before redraw (§FS-016-browser-opening).
+    fn open_url(
+        &mut self,
+        terminal: &mut DefaultTerminal,
+        config: &StatusConfig,
+        url: Option<String>,
+    ) -> Result<()> {
+        let Some(url) = url else {
+            self.message = "Nothing to open here".to_string();
+            return Ok(());
+        };
+        let outcome = match crate::seams::browser::bound(config.defaults.browser.as_ref()) {
+            crate::seams::browser::Resolution::Floor(floor) => Err(floor.reason().to_string()),
+            crate::seams::browser::Resolution::Open(opener) => {
+                let here = std::env::current_dir()?;
+                let outcome = opener.open(&url, &Site::root(&here));
+                match outcome.succeeded() {
+                    true => Ok(outcome.message()),
+                    false => Err(outcome.message()),
+                }
             }
-            None => self.message = "Nothing to open here".to_string(),
+        };
+        match outcome {
+            Ok(message) => self.message = message,
+            Err(reason) => {
+                ratatui::restore();
+                print!("\n{}", crate::seams::browser::notice(&reason, &url));
+                print!("\nPress Enter to return to ephor… ");
+                let _ = std::io::stdout().flush();
+                let _ = std::io::stdin().lock().read_line(&mut String::new());
+                self.message = reason;
+                *terminal = ratatui::init();
+                terminal
+                    .clear()
+                    .map_err(|err| EphorError::Command(format!("terminal clear failed: {err}")))?;
+            }
         }
+        Ok(())
     }
 
     /// Rebuild the view, having first settled everything a row shows that
