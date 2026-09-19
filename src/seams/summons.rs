@@ -518,6 +518,7 @@ impl Drop for AnswerFile {
 mod tests {
     use super::*;
     use std::path::Path;
+    #[cfg(target_os = "linux")]
     use std::time::Instant;
 
     const SECOND: Duration = Duration::from_secs(10);
