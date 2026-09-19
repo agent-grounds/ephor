@@ -1,5 +1,5 @@
 //! E2E-028-a-sweep-nobody-has-to-type: a recipe asks for its own sweep, and
-//! says how often it should happen (§FS-005-dispatch.31).
+//! says how often it should happen (§FS-005-dispatch.32).
 //!
 //! The scenario is the loop that was automatic in its second half only. A timer
 //! runs `refresh`, then `work sync`, then `work run --due`: sync reopens matters
@@ -112,7 +112,7 @@ fn opened(synced: &serde_json::Value) -> Vec<String> {
 
 /// Where ephor keeps its own record of when each recipe last swept: beside the
 /// feed cache and the burn store, and never in the ledger
-/// (§FS-005-dispatch.31).
+/// (§FS-005-dispatch.32).
 fn record(world: &World) -> std::path::PathBuf {
     world.path().join("state").join("ephor").join("sweeps.json")
 }
@@ -219,7 +219,7 @@ fn an_interval_that_has_not_elapsed_is_skipped_and_the_timer_keeps_firing() {
 
 /// A recipe may bound its own sweep, because the reader is not there to type
 /// `--limit` and the verb hosting the sweep is not the verb that flag is on
-/// (§FS-005-dispatch.31.4).
+/// (§FS-005-dispatch.32.4).
 #[test]
 fn a_recipe_may_bound_what_one_sweep_of_its_own_opens() {
     let world = world_with(Some(json!({ "every": "0h", "limit": 2 })));

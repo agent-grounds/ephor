@@ -60,7 +60,7 @@ ships, the previous "latest" section moves verbatim to
   `$XDG_STATE_HOME/ephor/sweeps.json` beside the feed cache rather than in the
   ledger; missing or unreadable means *due now*, and a sweep the reader typed
   marks the same clock
-  ([§FS-005-dispatch.31](functional-spec/FS-005-dispatch.md#31-a-recipe-can-ask-for-its-own-sweep-and-say-how-often)).
+  ([§FS-005-dispatch.32](functional-spec/FS-005-dispatch.md#32-a-recipe-can-ask-for-its-own-sweep-and-say-how-often)).
   (PR #104)
 
 ### Note
