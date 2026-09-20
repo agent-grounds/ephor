@@ -763,7 +763,11 @@ mod tests {
     }
 
     /// Exit and pipe EOF share a deadline even when the direct shell finishes
-    /// first (§FS-016-browser-opening.2, §AR-002-summons.2).
+    /// first (§FS-016-browser-opening.2, §AR-002-summons.2). The Linux proof
+    /// separates direct-shell exit, timeout, capture release, and eventual
+    /// descendant termination; the one-shot final observation below is the
+    /// issue-106 seam the implementation step must replace with a generously
+    /// bounded wait.
     #[cfg(target_os = "linux")]
     #[test]
     fn exited_shell_cannot_leave_capture_waiting_on_a_descendant() {
@@ -797,12 +801,18 @@ mod tests {
             let result = execution.join().unwrap();
             assert!(
                 exited_before_deadline,
-                "the fixture must exercise an already-exited shell"
+                "the fixture did not observe direct-shell exit before the capture deadline"
             );
             result.unwrap_err()
         });
-        assert!(started.elapsed() < Duration::from_secs(3), "{error}");
-        assert!(error.to_string().contains("timed out"), "{error}");
+        assert!(
+            started.elapsed() < Duration::from_secs(3),
+            "capture did not release within the operation bound: {error}"
+        );
+        assert!(
+            error.to_string().contains("timed out"),
+            "capture did not report its deadline: {error}"
+        );
         let pid = std::fs::read_to_string(tmp.path().join("descendant.pid")).unwrap();
         if let Ok(stat) = std::fs::read_to_string(format!("/proc/{pid}/stat")) {
             assert!(
