@@ -668,3 +668,10 @@ just test      # the Rust suite alone
 just e2e       # the end-to-end scenarios alone (tests/e2e/cases)
 just lint      # clippy -D warnings, deliberately not part of the gate
 ```
+
+The parity part of `just check` follows Cargo's effective target directory,
+including `CARGO_TARGET_DIR` and Cargo configuration. A standalone
+`python3 scripts/check_parity.py` checks the debug binary there first, then the
+release binary, and performs one locked debug build in that same target when
+neither exists
+([§AR-009-surfaces.5.1](docs/architecture/AR-009-surfaces.md#51-cargo-chooses-the-executable-the-parity-gate-inspects)).

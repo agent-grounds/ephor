@@ -31,9 +31,13 @@ the command and did not find one. That is the same reasoning that makes
 §REQ-001-boundary.5 a build failure instead of a review comment.
 
 Run it directly (``python3 scripts/check_parity.py``) or through ``just
-check``; CI runs it too, beside the boundary and grund checks. It needs the
-binary, which both of those build first; run alone in a fresh tree it builds
-one itself.
+check``; CI runs it too, beside the boundary and grund checks. Before inspecting
+the binary it asks ``cargo metadata --no-deps --format-version 1 --locked`` for
+Cargo's effective target directory, then tries the debug and release binaries
+there in that order. Run alone in a fresh tree it performs one locked debug
+build in the same target directory when neither exists (§AR-009-surfaces.5.1).
+An inability to resolve, build, find, or launch that binary is an operational
+error on stderr with exit status 2; parity findings remain 1 and success 0.
 
 Adding a key: give it an entry in ``ABILITIES`` with the command that carries
 it, or — if it only moves a cursor, changes a mode, or hands the reader's own
@@ -44,7 +48,9 @@ one a reviewer should argue with, which is the point of writing it down.
 
 from __future__ import annotations
 
+import json
 import re
+import shlex
 import subprocess
 import sys
 from pathlib import Path
@@ -69,6 +75,55 @@ NUMBERED_ROWS = {str(row) for row in range(1, 10)}
 # STRUCTURAL already covers as `1-9`. Anything else guarding a bound character
 # is a key this script cannot read, and it says so rather than passing it.
 DIGIT_GUARDS = ("is_ascii_digit", "is_numeric", "is_digit")
+
+
+class ParityOperationalError(Exception):
+    """An actionable executable setup failure (§AR-009-surfaces.5.1)."""
+
+    def __init__(
+        self,
+        action: str,
+        reason: str,
+        *,
+        target: Path | None = None,
+        selected: Path | None = None,
+    ) -> None:
+        super().__init__(reason)
+        self.action = action
+        self.reason = reason
+        self.target = target
+        self.selected = selected
+
+    def __str__(self) -> str:
+        lines = [f"parity: cannot {self.action} ephor", f"reason: {self.reason}"]
+        if self.selected is not None:
+            lines.append(f"selected executable: {self.selected}")
+        if self.target is None:
+            lines.extend(
+                (
+                    f"working directory: {ROOT}",
+                    "resolve the effective target directory with: "
+                    "cargo metadata --no-deps --format-version 1 --locked",
+                    "fix the Cargo configuration or metadata error, then rerun "
+                    "the parity check",
+                )
+            )
+        else:
+            debug = self.target / "debug" / "ephor"
+            release = self.target / "release" / "ephor"
+            target = shlex.quote(str(self.target))
+            lines.extend(
+                (
+                    "candidate executables:",
+                    f"  {debug}",
+                    f"  {release}",
+                    f"working directory: {ROOT}",
+                    "build the required executable with: "
+                    f"CARGO_TARGET_DIR={target} cargo build --locked",
+                    "then rerun the parity check",
+                )
+            )
+        return "\n".join(lines)
 
 
 def strip_noise(text: str, keep_chars: bool = True) -> str:
@@ -413,40 +468,113 @@ def commands(source: str) -> list[tuple[str, str]]:
     return found
 
 
-def binary() -> Path:
-    """The built binary, whose own `--help` is asked what flags exist.
+def binary() -> tuple[Path, Path]:
+    """The Cargo-selected binary and its effective target directory.
 
-    Read from the command tree rather than from `src/cli.rs`, because what the
-    check has to hold is what a reader can actually type.
+    Cargo resolves target configuration and path bases; within that one target,
+    debug precedes release and then one verified debug build
+    (§AR-009-surfaces.5.1).
     """
-    for build in ("debug", "release"):
-        path = ROOT / "target" / build / "ephor"
-        if path.is_file():
-            return path
-    subprocess.run(
-        ["cargo", "build", "--quiet", "--locked"], cwd=ROOT, check=True
+    metadata_command = [
+        "cargo",
+        "metadata",
+        "--no-deps",
+        "--format-version",
+        "1",
+        "--locked",
+    ]
+    try:
+        metadata = subprocess.run(
+            metadata_command,
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+        )
+    except OSError as error:
+        raise ParityOperationalError("resolve", str(error)) from None
+    if metadata.returncode != 0:
+        reason = metadata.stderr.strip() or metadata.stdout.strip()
+        if reason:
+            reason = f"cargo metadata exited {metadata.returncode}: {reason}"
+        else:
+            reason = f"cargo metadata exited {metadata.returncode} without output"
+        raise ParityOperationalError("resolve", reason)
+    try:
+        answer = json.loads(metadata.stdout)
+    except json.JSONDecodeError as error:
+        raise ParityOperationalError(
+            "resolve", f"cargo metadata returned invalid JSON: {error}"
+        ) from None
+    target_value = (
+        answer.get("target_directory") if isinstance(answer, dict) else None
     )
-    return ROOT / "target" / "debug" / "ephor"
+    if not isinstance(target_value, str) or not target_value:
+        raise ParityOperationalError(
+            "resolve", "cargo metadata did not return a target_directory"
+        )
+    target = Path(target_value)
+    if not target.is_absolute():
+        raise ParityOperationalError(
+            "resolve",
+            f"cargo metadata returned a non-absolute target_directory: {target}",
+        )
+
+    for build in ("debug", "release"):
+        path = target / build / "ephor"
+        if path.is_file():
+            return path, target
+    try:
+        build = subprocess.run(
+            ["cargo", "build", "--quiet", "--locked"],
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+        )
+    except OSError as error:
+        raise ParityOperationalError("build", str(error), target=target) from None
+    if build.returncode != 0:
+        reason = build.stderr.strip() or build.stdout.strip()
+        if reason:
+            reason = f"cargo build exited {build.returncode}: {reason}"
+        else:
+            reason = f"cargo build exited {build.returncode} without output"
+        raise ParityOperationalError("build", reason, target=target)
+    debug = target / "debug" / "ephor"
+    if not debug.is_file():
+        raise ParityOperationalError(
+            "build",
+            f"cargo build succeeded but did not produce {debug}",
+            target=target,
+        )
+    return debug, target
 
 
-def machine_forms(ephor: Path, listed_commands: list[tuple[str, str]]) -> list[str]:
+def machine_forms(
+    ephor: Path, target: Path, listed_commands: list[tuple[str, str]]
+) -> list[str]:
     """Abilities whose command does not take `--json` (§REQ-002-parity.3).
 
     Every reading a command prints is also available as JSON, and a move
     prints what it changed the same way. An ability that reached the command
     line without one is the degraded surface §GRUND-001-overseer.2 says a
     script must never be — and it is invisible to the key check, which only
-    ever asked whether *a* command existed.
+    ever asked whether *a* command existed. The Cargo-selected executable is
+    launched directly and OS failures are operational (§AR-009-surfaces.5.1).
     """
     problems = []
     for what, command in listed_commands:
         path = [word for word in command.split() if not word.startswith("-")]
-        help_text = subprocess.run(
-            [str(ephor), *path, "--help"],
-            cwd=ROOT,
-            capture_output=True,
-            text=True,
-        )
+        try:
+            help_text = subprocess.run(
+                [str(ephor), *path, "--help"],
+                cwd=ROOT,
+                capture_output=True,
+                text=True,
+            )
+        except OSError as error:
+            raise ParityOperationalError(
+                "launch", str(error), target=target, selected=ephor
+            ) from None
         if help_text.returncode != 0:
             problems.append(
                 f"  `ephor {' '.join(path)}` does not resolve: {help_text.stderr.strip()}"
@@ -495,7 +623,13 @@ def main() -> int:
             "that it can be.",
             file=sys.stderr,
         )
-    missing = machine_forms(binary(), commands(source))
+    try:
+        ephor, target = binary()
+        missing = machine_forms(ephor, target, commands(source))
+    except ParityOperationalError as error:
+        # Executable setup is not a parity finding (§AR-009-surfaces.5.1).
+        print(error, file=sys.stderr)
+        return 2
     if missing:
         failed = True
         print(
