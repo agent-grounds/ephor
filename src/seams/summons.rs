@@ -519,6 +519,8 @@ mod tests {
     use super::*;
     use std::path::Path;
     #[cfg(target_os = "linux")]
+    use std::sync::mpsc;
+    #[cfg(target_os = "linux")]
     use std::time::Instant;
 
     const SECOND: Duration = Duration::from_secs(10);
@@ -762,64 +764,187 @@ mod tests {
         assert!(err.to_string().contains("timed out"), "{err}");
     }
 
+    /// Read a fixture PID by its event deadline; malformed or unreadable
+    /// markers remain failures (§FS-016-browser-opening.2, §AR-002-summons.2).
+    #[cfg(target_os = "linux")]
+    fn await_fixture_pid(path: &Path, deadline: Instant) -> Result<i32, String> {
+        loop {
+            let diagnostic = match std::fs::read_to_string(path) {
+                Ok(text) => match text.trim().parse::<i32>() {
+                    Ok(pid) if pid > 0 => return Ok(pid),
+                    _ => format!("{} contained {text:?}", path.display()),
+                },
+                Err(error) => format!("cannot read {}: {error}", path.display()),
+            };
+            let remaining = deadline.saturating_duration_since(Instant::now());
+            if remaining.is_zero() {
+                return Err(diagnostic);
+            }
+            std::thread::sleep(remaining.min(Duration::from_millis(10)));
+        }
+    }
+
+    /// Return a Linux process's state and full diagnostic, distinguishing true
+    /// absence from every `/proc` read error (§AR-002-summons.2).
+    #[cfg(target_os = "linux")]
+    fn linux_process_state(pid: i32) -> Result<Option<(char, String)>, String> {
+        let path = format!("/proc/{pid}/stat");
+        match std::fs::read_to_string(&path) {
+            Ok(stat) => {
+                let tail = stat
+                    .rsplit_once(") ")
+                    .map(|(_, tail)| tail)
+                    .ok_or_else(|| format!("malformed process state at {path}: {stat}"))?;
+                let state = tail
+                    .chars()
+                    .next()
+                    .ok_or_else(|| format!("empty process state at {path}: {stat}"))?;
+                Ok(Some((state, stat)))
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
+            Err(error) => Err(format!("cannot read {path}: {error}")),
+        }
+    }
+
+    /// Wait for the kernel to expose process termination, accepting a zombie
+    /// because it cannot retain capture streams (§FS-016-browser-opening.2,
+    /// §AR-002-summons.2).
+    #[cfg(target_os = "linux")]
+    fn await_linux_process_stop(pid: i32, deadline: Instant) -> Result<(), String> {
+        loop {
+            let diagnostic = match linux_process_state(pid) {
+                Ok(None) => return Ok(()),
+                Ok(Some(('Z', _))) => return Ok(()),
+                Ok(Some((_, stat))) => stat,
+                Err(error) => error,
+            };
+            let remaining = deadline.saturating_duration_since(Instant::now());
+            if remaining.is_zero() {
+                return Err(diagnostic);
+            }
+            std::thread::sleep(remaining.min(Duration::from_millis(10)));
+        }
+    }
+
+    /// Kill only the test fixture after a failed assertion. It is disarmed
+    /// before a successful return, so cleanup cannot become evidence for the
+    /// process-group behavior under test (§AR-002-summons.2).
+    #[cfg(target_os = "linux")]
+    struct LinuxFixtureCleanup {
+        root: PathBuf,
+        armed: bool,
+    }
+
+    #[cfg(target_os = "linux")]
+    impl LinuxFixtureCleanup {
+        fn new(root: &Path) -> Self {
+            Self {
+                root: root.to_path_buf(),
+                armed: true,
+            }
+        }
+
+        fn pid(&self, name: &str) -> Option<i32> {
+            std::fs::read_to_string(self.root.join(name))
+                .ok()
+                .and_then(|text| text.trim().parse::<i32>().ok())
+                .filter(|pid| *pid > 0)
+        }
+
+        fn disarm(&mut self) {
+            self.armed = false;
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    impl Drop for LinuxFixtureCleanup {
+        fn drop(&mut self) {
+            if !self.armed {
+                return;
+            }
+            if let Some(shell) = self.pid("shell.pid") {
+                // SAFETY: captured execution puts the fixture shell in a new
+                // process group whose id is the shell's pid.
+                unsafe {
+                    libc::kill(-shell, libc::SIGKILL);
+                    libc::kill(shell, libc::SIGKILL);
+                }
+            }
+            if let Some(descendant) = self.pid("descendant.pid") {
+                // SAFETY: this pid was written by this test's live fixture.
+                unsafe {
+                    libc::kill(descendant, libc::SIGKILL);
+                }
+            }
+        }
+    }
+
     /// Exit and pipe EOF share a deadline even when the direct shell finishes
     /// first (§FS-016-browser-opening.2, §AR-002-summons.2). The Linux proof
-    /// separates direct-shell exit, timeout, capture release, and eventual
-    /// descendant termination; the one-shot final observation below is the
-    /// issue-106 seam the implementation step must replace with a generously
-    /// bounded wait.
+    /// separately observes direct-shell exit, timeout, bounded capture release,
+    /// and eventual descendant termination.
     #[cfg(target_os = "linux")]
     #[test]
     fn exited_shell_cannot_leave_capture_waiting_on_a_descendant() {
+        const CAPTURE_TIMEOUT: Duration = Duration::from_secs(5);
+        const SHELL_EXIT_BOUND: Duration = Duration::from_secs(4);
+        const CAPTURE_RETURN_BOUND: Duration = Duration::from_secs(8);
+        const DESCENDANT_STOP_BOUND: Duration = Duration::from_secs(12);
+
         let tmp = tempfile::tempdir().unwrap();
+        let mut cleanup = LinuxFixtureCleanup::new(tmp.path());
         let summons = Summons::new(
             "check",
             "printf '%s' \"$$\" > shell.pid; sleep 30 & printf '%s' \"$!\" > descendant.pid; exit 0",
         );
         let started = Instant::now();
-        let error = std::thread::scope(|scope| {
-            let execution = scope.spawn(|| {
-                run(
-                    &summons,
-                    &site(tmp.path()),
-                    Mode::Captured(Duration::from_secs(1)),
-                )
-            });
-            let mut exited_before_deadline = false;
-            while started.elapsed() < Duration::from_millis(750) {
-                if let Some(pid) = std::fs::read_to_string(tmp.path().join("shell.pid"))
-                    .ok()
-                    .and_then(|text| text.parse::<u32>().ok())
-                {
-                    if !Path::new(&format!("/proc/{pid}")).exists() {
-                        exited_before_deadline = true;
-                        break;
-                    }
-                }
-                std::thread::sleep(Duration::from_millis(5));
-            }
-            let result = execution.join().unwrap();
-            assert!(
-                exited_before_deadline,
-                "the fixture did not observe direct-shell exit before the capture deadline"
-            );
-            result.unwrap_err()
+        let root = tmp.path().to_path_buf();
+        let (finished, completion) = mpsc::channel();
+        let _execution = std::thread::spawn(move || {
+            let result = run(&summons, &site(&root), Mode::Captured(CAPTURE_TIMEOUT));
+            let _ = finished.send(result);
         });
-        assert!(
-            started.elapsed() < Duration::from_secs(3),
-            "capture did not release within the operation bound: {error}"
-        );
+
+        let shell_deadline = started + SHELL_EXIT_BOUND;
+        let shell = await_fixture_pid(&tmp.path().join("shell.pid"), shell_deadline)
+            .unwrap_or_else(|diagnostic| panic!("fixture did not report its shell: {diagnostic}"));
+        let descendant = await_fixture_pid(&tmp.path().join("descendant.pid"), shell_deadline)
+            .unwrap_or_else(|diagnostic| {
+                panic!("fixture did not report its descendant: {diagnostic}")
+            });
+        await_linux_process_stop(shell, shell_deadline).unwrap_or_else(|diagnostic| {
+            panic!(
+                "direct shell did not exit before the capture deadline; last observation: {diagnostic}"
+            )
+        });
+        match linux_process_state(descendant) {
+            Ok(Some((state, _))) if state != 'Z' => {}
+            Ok(Some((_, stat))) => {
+                panic!("descendant stopped before retaining the capture streams: {stat}")
+            }
+            Ok(None) => panic!("descendant disappeared before retaining the capture streams"),
+            Err(diagnostic) => panic!("cannot observe the live descendant: {diagnostic}"),
+        }
+
+        let capture_deadline = started + CAPTURE_RETURN_BOUND;
+        let result = completion
+            .recv_timeout(capture_deadline.saturating_duration_since(Instant::now()))
+            .unwrap_or_else(|failure| {
+                panic!("capture did not release within the operation bound: {failure}")
+            });
+        let error = result.unwrap_err();
         assert!(
             error.to_string().contains("timed out"),
             "capture did not report its deadline: {error}"
         );
-        let pid = std::fs::read_to_string(tmp.path().join("descendant.pid")).unwrap();
-        if let Ok(stat) = std::fs::read_to_string(format!("/proc/{pid}/stat")) {
-            assert!(
-                stat.rsplit_once(") ").unwrap().1.starts_with("Z "),
-                "descendant still running: {stat}"
-            );
-        }
+        await_linux_process_stop(descendant, started + DESCENDANT_STOP_BOUND).unwrap_or_else(
+            |diagnostic| {
+                panic!(
+                    "descendant did not stop within the observation bound; last observation: {diagnostic}"
+                )
+            },
+        );
+        cleanup.disarm();
     }
 
     /// A descendant finishing before the deadline still contributes both

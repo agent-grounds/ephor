@@ -335,6 +335,13 @@ ships, the previous "latest" section moves verbatim to
 
 ### Fixed
 
+- **Captured summons cleanup is observed without a scheduler race on Linux**
+  ([§AR-002-summons.2](architecture/AR-002-summons.md#2-the-invocation),
+  [§FS-016-browser-opening.2](functional-spec/FS-016-browser-opening.md#2-automatic-selection-and-truthful-outcomes)).
+  The regression proof now waits under explicit bounds for direct-shell exit,
+  capture release, and eventual descendant termination instead of sampling the
+  descendant once as soon as capture returns. (PR #109)
+
 - **Symlinked work roots keep their recorded placement provenance**
   ([§FS-005-dispatch.3](functional-spec/FS-005-dispatch.md#3-one-rhei-per-item-one-ticket-per-dispatch),
   [§FS-005-dispatch.4](functional-spec/FS-005-dispatch.md#4-the-ledger-is-ephors-record-and-never-the-truth-about-the-work),
