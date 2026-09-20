@@ -159,6 +159,33 @@ nothing behind it shipping green. It runs in `just check` and in CI, beside
 `scripts/check_boundary.py`, and for the same reason — parity observed as a
 convention is parity that has already drifted.
 
+### 5.1 Cargo chooses the executable the parity gate inspects
+
+Before it asks the command tree for help, `scripts/check_parity.py` resolves
+Cargo's effective target directory by running `cargo metadata --no-deps
+--format-version 1 --locked` from the repository root. The absolute
+`target_directory` in that answer is authoritative: Cargo therefore owns the
+precedence and relative-path semantics of `CARGO_TARGET_DIR`, configuration,
+and the ordinary checkout-local `target/`, and an executable in some other
+target directory cannot mask the configured one.
+
+Within that directory the debug executable is first, then the release
+executable. If neither exists, the check runs one `cargo build --quiet
+--locked` from the same root and environment, and proceeds only when the
+debug executable then exists. It launches the selected path directly. This
+keeps selection and the standalone build on the same Cargo configuration and
+makes the executable itself, rather than source or memory, the evidence for
+the parity law ([§REQ-002-parity.5](../requirements/REQ-002-parity.md#5-the-parity-list-is-checked-not-remembered)).
+
+Failure to resolve the target, build or find the executable, or ask the
+selected executable for help is an operational failure, distinct from a
+parity finding. It exits 2 with a `parity: cannot resolve/build/launch ephor`
+diagnostic on stderr, the Cargo or operating-system reason, every candidate
+path known at that point, and a command that rebuilds in the resolved target
+directory from the repository root. It never exposes a Python traceback.
+Once an executable launches, missing machine forms — including a nonzero
+help response — remain parity findings and exit 1; a clean check remains 0.
+
 What is not yet mechanical is the direction of the dependency: that no surface
 reaches past `crate::api` to a provider, a binding, or the executor. It is the
 rule this page states, and it is **not yet true of the tree**. It holds for
