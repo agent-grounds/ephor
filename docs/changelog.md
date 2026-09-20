@@ -340,7 +340,9 @@ ships, the previous "latest" section moves verbatim to
   [§FS-016-browser-opening.2](functional-spec/FS-016-browser-opening.md#2-automatic-selection-and-truthful-outcomes)).
   The regression proof now waits under explicit bounds for direct-shell exit,
   capture release, and eventual descendant termination instead of sampling the
-  descendant once as soon as capture returns. (PR #109)
+  descendant once as soon as capture returns. It validates process observations
+  after each read and timestamps capture completion before queuing the result,
+  so delayed observation cannot hide an expired bound. (PR #109)
 
 - **Symlinked work roots keep their recorded placement provenance**
   ([§FS-005-dispatch.3](functional-spec/FS-005-dispatch.md#3-one-rhei-per-item-one-ticket-per-dispatch),

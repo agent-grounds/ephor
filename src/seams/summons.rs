@@ -766,10 +766,23 @@ mod tests {
 
     /// Read a fixture PID by its event deadline; malformed or unreadable
     /// markers remain failures (§FS-016-browser-opening.2, §AR-002-summons.2).
+    /// Check after the read too: preemption during it must not turn a late
+    /// sample into evidence that the fixture was ready before the deadline.
     #[cfg(target_os = "linux")]
-    fn await_fixture_pid(path: &Path, deadline: Instant) -> Result<i32, String> {
+    fn await_fixture_pid(path: &Path, deadline: Instant) -> std::result::Result<i32, String> {
         loop {
-            let diagnostic = match std::fs::read_to_string(path) {
+            if Instant::now() >= deadline {
+                return Err(format!(
+                    "deadline expired before reading {}",
+                    path.display()
+                ));
+            }
+            let observation = std::fs::read_to_string(path);
+            let observed_at = Instant::now();
+            if observed_at >= deadline {
+                return Err(format!("deadline expired while reading {}", path.display()));
+            }
+            let diagnostic = match observation {
                 Ok(text) => match text.trim().parse::<i32>() {
                     Ok(pid) if pid > 0 => return Ok(pid),
                     _ => format!("{} contained {text:?}", path.display()),
@@ -785,11 +798,24 @@ mod tests {
     }
 
     /// Return a Linux process's state and full diagnostic, distinguishing true
-    /// absence from every `/proc` read error (§AR-002-summons.2).
+    /// absence from every `/proc` read error (§AR-002-summons.2). The timestamp
+    /// after the read bounds when the snapshot was sampled, even if this
+    /// thread is descheduled while reading; late samples are never evidence.
     #[cfg(target_os = "linux")]
-    fn linux_process_state(pid: i32) -> Result<Option<(char, String)>, String> {
+    fn linux_process_state(
+        pid: i32,
+        deadline: Instant,
+    ) -> std::result::Result<Option<(char, String)>, String> {
         let path = format!("/proc/{pid}/stat");
-        match std::fs::read_to_string(&path) {
+        if Instant::now() >= deadline {
+            return Err(format!("deadline expired before reading {path}"));
+        }
+        let observation = std::fs::read_to_string(&path);
+        let observed_at = Instant::now();
+        if observed_at >= deadline {
+            return Err(format!("deadline expired while reading {path}"));
+        }
+        match observation {
             Ok(stat) => {
                 let tail = stat
                     .rsplit_once(") ")
@@ -808,11 +834,12 @@ mod tests {
 
     /// Wait for the kernel to expose process termination, accepting a zombie
     /// because it cannot retain capture streams (§FS-016-browser-opening.2,
-    /// §AR-002-summons.2).
+    /// §AR-002-summons.2). Every accepted snapshot has already passed the
+    /// deadline checks in `linux_process_state`.
     #[cfg(target_os = "linux")]
-    fn await_linux_process_stop(pid: i32, deadline: Instant) -> Result<(), String> {
+    fn await_linux_process_stop(pid: i32, deadline: Instant) -> std::result::Result<(), String> {
         loop {
-            let diagnostic = match linux_process_state(pid) {
+            let diagnostic = match linux_process_state(pid, deadline) {
                 Ok(None) => return Ok(()),
                 Ok(Some(('Z', _))) => return Ok(()),
                 Ok(Some((_, stat))) => stat,
@@ -902,7 +929,8 @@ mod tests {
         let (finished, completion) = mpsc::channel();
         let _execution = std::thread::spawn(move || {
             let result = run(&summons, &site(&root), Mode::Captured(CAPTURE_TIMEOUT));
-            let _ = finished.send(result);
+            let completed_at = Instant::now();
+            let _ = finished.send((completed_at, result));
         });
 
         let shell_deadline = started + SHELL_EXIT_BOUND;
@@ -917,7 +945,9 @@ mod tests {
                 "direct shell did not exit before the capture deadline; last observation: {diagnostic}"
             )
         });
-        match linux_process_state(descendant) {
+        // Both snapshots must precede the earliest capture timeout, since
+        // timeout cleanup could otherwise establish shell exit (§AR-002-summons.2).
+        match linux_process_state(descendant, shell_deadline) {
             Ok(Some((state, _))) if state != 'Z' => {}
             Ok(Some((_, stat))) => {
                 panic!("descendant stopped before retaining the capture streams: {stat}")
@@ -927,7 +957,9 @@ mod tests {
         }
 
         let capture_deadline = started + CAPTURE_RETURN_BOUND;
-        let result = completion
+        // A late consumer may accept timely evidence already queued, but the
+        // producer's timestamp must prove bounded release (§AR-002-summons.2).
+        let (completed_at, result) = completion
             .recv_timeout(capture_deadline.saturating_duration_since(Instant::now()))
             .unwrap_or_else(|failure| {
                 panic!("capture did not release within the operation bound: {failure}")
@@ -937,6 +969,13 @@ mod tests {
             error.to_string().contains("timed out"),
             "capture did not report its deadline: {error}"
         );
+        assert!(
+            completed_at < capture_deadline,
+            "capture did not release within the operation bound: completed after {:?}",
+            completed_at.duration_since(started)
+        );
+        // This absolute bound is before sleep 30 can finish naturally, even
+        // when the observer wakes late (§AR-002-summons.2).
         await_linux_process_stop(descendant, started + DESCENDANT_STOP_BOUND).unwrap_or_else(
             |diagnostic| {
                 panic!(
