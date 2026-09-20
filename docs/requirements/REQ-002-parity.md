@@ -93,3 +93,11 @@ rather than passes: a binding whose key is decided by a constant, a screen
 region it does not know how to scan. A check that skips what it does not
 understand is worse than no check, because it reports green over exactly the
 cases nobody looked at.
+
+That honesty includes the executable the check inspects. If the check cannot
+resolve, build, find, or launch it, the check fails as an operational error
+distinct from a parity finding. It names every executable path it could
+determine, carries through the relevant tool or operating-system error, and
+gives the command and working directory that can produce the missing
+evidence. An implementation traceback is neither evidence nor recovery
+guidance, and is never the report.
