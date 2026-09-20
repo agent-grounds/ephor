@@ -36,6 +36,9 @@ against.
 line CI and the pre-commit hook run.
 
 - `test_check_boundary.py` — the boundary check itself ([§REQ-001-boundary.5](../../docs/requirements/REQ-001-boundary.md#5-no-product-literal-outside-its-adapter)).
+- `test_check_parity.py` — Cargo-aware parity executable selection, standalone
+  build fallback, and actionable operational failures
+  ([§AR-009-surfaces.5.1](../../docs/architecture/AR-009-surfaces.md#51-cargo-chooses-the-executable-the-parity-gate-inspects)).
 - `test_check_changelog_pr_entry.py`, `test_prepare_changelog_release.py` —
   the pull-request changelog gate and the release script
   ([§FS-002-release.1](../../docs/functional-spec/FS-002-release.md#1-changelog), [§FS-002-release](../../docs/functional-spec/FS-002-release.md#fs-002-release-ephor-releases-from-a-tag-with-a-changelog-entry-per-change)).
