@@ -28,6 +28,21 @@ uniform: `0` done, non-zero failed, `75` parked. The whole crossing is
 environment, exit code, and answer file — the seam's contract in materials
 ([§REQ-001-boundary.1](../requirements/REQ-001-boundary.md#1-the-anatomy)), so the other side can always be a shell script.
 
+Captured execution treats direct-child completion and both stream EOFs as one
+bounded operation. If its deadline wins, cleanup signals the command's process
+group and waits for the direct shell; it does not promise that the operating
+system will already expose every descendant as terminated at the instant that
+wait returns. The Linux proof therefore observes four events separately: the
+direct shell exits before the capture deadline, capture answers with timeout,
+the capture call releases, and the descendant eventually becomes absent or a
+zombie within a separate generous observation bound. That last observation
+waits on process state — a fixed sleep or one `/proc` snapshot is not evidence
+— and no thread join may sit outside the test's overall bound. Its companion
+case retains stdout and stderr written late by a descendant that finishes
+before the deadline. This is a proof of bounded capture and process-group
+cleanup, not a new guarantee that ephor synchronously reaps descendant
+processes.
+
 ## 3. The answer
 
 Before spawning, the executor names a fresh file in `$EPHOR_ANSWER`; after

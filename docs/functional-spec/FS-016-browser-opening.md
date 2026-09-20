@@ -58,6 +58,16 @@ Timeout stops and waits for the opener and cleans up its process group;
 capture releases its readers even if a detached descendant still holds a pipe.
 A failed configured binding never selects a second one.
 
+The Linux regression proof does not turn scheduler timing into part of this
+contract. It first establishes that the direct shell exited while a descendant
+retained the streams, then requires the shared deadline to report timeout and
+the capture call to return. Process-group cleanup is observed by waiting, under
+a separate generous overall bound, until that descendant is absent or a
+zombie. A one-shot process-state sample, a short fixed delay, or an unbounded
+join proves none of those events. The successful path separately retains both
+late stdout and late stderr when the descendant releases them before the
+deadline.
+
 Every automatic bypass, explicit `false`, start failure, nonzero exit,
 execution failure, or timeout restores the terminal and prints its reason
 followed by the complete URL on its own line. It then waits for Enter before
