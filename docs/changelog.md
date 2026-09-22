@@ -335,6 +335,10 @@ ships, the previous "latest" section moves verbatim to
 
 ### Fixed
 
+- Resolve each action's hand picker at that entry's branch and work root,
+  expose its choices as `offers[].roster`, and keep choices and pins from
+  carrying between entries. (PR #112)
+
 - **Captured summons cleanup is observed without a scheduler race on Linux**
   ([§AR-002-summons.2](architecture/AR-002-summons.md#2-the-invocation),
   [§FS-016-browser-opening.2](functional-spec/FS-016-browser-opening.md#2-automatic-selection-and-truthful-outcomes)).
