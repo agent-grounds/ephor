@@ -1652,6 +1652,14 @@ dispatches as it always did. The pick is for that one dispatch alone — the
 first of §8.4's seven steps — and nothing remembers it: the next dispatch of
 the same action resolves from the tables again.
 
+The picker reads the selected entry's branch and work root, so a checkout
+fix and a project sweep can offer different hands in the same menu
+([§FS-005-dispatch.6.1](functional-spec/FS-005-dispatch.md#61-the-work-root-is-a-template-and-it-may-reach-above-the-project)).
+Moving to another row and opening `t` uses that row's choices, including an
+empty list. In `actions --json` and `work offers --json`, each agent offer's
+`roster` carries this authoritative list. The top-level `actions` roster
+remains for compatibility; it does not supply choices for another root.
+
 Where two entries share an `id`, the later one wins **in the place the earlier
 one held**: yours beats the project's beats the shipped one, and the key that
 ran a thing goes on running that thing. An entry with no `id` overrides nothing

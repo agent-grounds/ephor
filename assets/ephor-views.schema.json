@@ -51,6 +51,11 @@
         },
         "refusal": { "type": "string", "description": "Why it cannot run — the ladder's own sentence, the same one a greyed row shows (FS-006-project-interface.10)." },
         "hand": { "type": "string", "description": "Who the work would go to, on an entry that hands work over (FS-005-dispatch.14)." },
+        "roster": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/hand" },
+          "description": "Authoritative picker choices at this agent entry's branch and selected root (FS-005-dispatch.6.1, FS-005-dispatch.25). Present even when empty on agent entries; absent on other entries. An empty list never falls back to the top-level roster."
+        },
         "command": { "type": "string", "description": "What it would run, where it runs one." },
         "branch": { "type": "string", "description": "The branch this entry's work would be made on, where its own `branch` template named one the matter has not got (FS-005-dispatch.25). Absent on every entry that resolves through the matter's own branch." },
         "workspace": { "type": "string", "description": "The workspace that branch belongs in: already there where `gate` is `ready`, made by the dispatch where it is `needs-checkout` (FS-005-dispatch.25)." },
@@ -562,7 +567,7 @@
         "roster": {
           "type": "array",
           "items": { "$ref": "#/$defs/hand" },
-          "description": "Who --hand may name here. Empty where there is no work to hand over, or nobody to pick."
+          "description": "Legacy menu-wide roster, retained for compatibility. Each agent offer's roster is authoritative for its selected dispatch root (FS-005-dispatch.6.1)."
         }
       }
     },

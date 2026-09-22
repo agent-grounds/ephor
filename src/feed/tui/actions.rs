@@ -73,11 +73,8 @@ pub(crate) struct ActionMenu {
     /// An entry that asked to be confirmed and has been chosen once
     /// (§FS-006-project-interface.9): the next Enter on it runs it.
     confirming: Option<usize>,
-    /// The hands `t` may offer on this menu's agent entries
-    /// (§FS-005-dispatch.14): the roster's, already without what the
-    /// project's narrowing excludes. Empty where there is nobody to pick
-    /// from, which is what withholds the picker entirely — the entry still
-    /// dispatches as if nothing had been picked.
+    /// The open picker's hands, copied from the selected entry each time it
+    /// opens (§FS-005-dispatch.6.1). Never used to decide another row's choices.
     roster: Vec<Hand>,
     /// The picker, open over the selected entry — the menu's second level,
     /// like `confirming`.
@@ -169,11 +166,13 @@ impl ActionMenu {
         self.entries.iter().find(|entry| entry.is_checkout)
     }
 
-    /// The hands `t` may offer here (§FS-005-dispatch.14). Separate from the
-    /// constructor because most menus — a branch row's, a project with no
-    /// recipes — carry no agent entry to pick for and need no roster read.
-    pub fn with_roster(mut self, roster: Vec<Hand>) -> Self {
-        self.roster = roster;
+    /// Give test entries the same roster; production receives each entry's
+    /// own reading from the session (§FS-005-dispatch.6.1).
+    #[cfg(test)]
+    fn with_roster(mut self, roster: Vec<Hand>) -> Self {
+        for entry in &mut self.entries {
+            entry.roster = roster.clone();
+        }
         self
     }
 
@@ -269,7 +268,7 @@ impl ActionMenu {
         entry.action.agent.is_some()
             && entry.running.is_none()
             && !matches!(entry.gate, Gate::Blocked(_))
-            && !self.roster.is_empty()
+            && !entry.roster.is_empty()
     }
 
     pub fn handle_key(&mut self, code: KeyCode) -> MenuOutcome {
@@ -310,6 +309,7 @@ impl ActionMenu {
                     .get(self.selected)
                     .is_some_and(|entry| self.picker_offered(entry));
                 if offered {
+                    self.roster = self.entries[self.selected].roster.clone();
                     self.confirming = None;
                     self.picker = Some(HandPicker {
                         selected: 0,
@@ -1476,6 +1476,116 @@ mod tests {
             roster_hand("pi-alone", &[], None),
             roster_hand("away", &[], Some("nowhere is not on PATH")),
         ]
+    }
+
+    /// Switching roots and reopening the picker uses the selected entry's
+    /// authoritative reading, including an empty one (§FS-005-dispatch.6.1,
+    /// §FS-005-dispatch.25). A dismissed or submitted pin belongs to no later ask.
+    #[test]
+    fn issue_43_picker_switches_entry_rosters_and_submits_only_the_selected_hand() {
+        let mut menu = menu(
+            WorkspaceState::Ready,
+            None,
+            ["checkout", "project", "empty"]
+                .into_iter()
+                .map(|id| {
+                    let mut recipe = crate::work::recipe::shipped()[0].clone();
+                    recipe.id = id.to_string();
+                    agent_entry(&recipe)
+                })
+                .collect(),
+        );
+        menu.entries[0].roster = vec![
+            roster_hand("checkout-hand", &["high", "yolo"], None),
+            roster_hand("checkout-alternate", &[], None),
+        ];
+        menu.entries[1].roster = vec![roster_hand("project-hand", &[], None)];
+        // The machine offer and picker receive the very same entry reading.
+        for (index, ids) in [
+            vec!["checkout-hand", "checkout-alternate"],
+            vec!["project-hand"],
+            vec![],
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            let offer = serde_json::to_value(crate::api::read::offer_of(&menu.entries[index]))
+                .expect("a machine offer");
+            assert_eq!(
+                offer["roster"]
+                    .as_array()
+                    .expect("an explicit roster")
+                    .iter()
+                    .map(|hand| hand["id"].as_str().unwrap())
+                    .collect::<Vec<_>>(),
+                ids,
+            );
+        }
+
+        menu.handle_key(KeyCode::Char('t'));
+        menu.handle_key(KeyCode::Right);
+        menu.handle_key(KeyCode::Down);
+        assert!(menu.footer().contains("checkout-hand at yolo"));
+        menu.handle_key(KeyCode::Left);
+        menu.handle_key(KeyCode::Down);
+        assert!(menu.footer().contains("checkout-alternate"));
+        menu.handle_key(KeyCode::Esc);
+        menu.handle_key(KeyCode::Down);
+        menu.handle_key(KeyCode::Char('t'));
+        assert!(menu.footer().contains("enter hand over to project-hand"));
+        assert_eq!(menu.roster.len(), 1);
+        match menu.handle_key(KeyCode::Enter) {
+            MenuOutcome::Run(entry) => {
+                assert_eq!(entry.action.id, "project");
+                assert_eq!(
+                    entry.picked,
+                    Some(HandList::one(HandPin::Named {
+                        id: "project-hand".to_string(),
+                        effort: None,
+                    }))
+                );
+            }
+            _ => panic!("the project entry dispatches with its own hand"),
+        }
+
+        menu.handle_key(KeyCode::Down);
+        assert!(!menu.footer().contains("t pick"));
+        menu.handle_key(KeyCode::Char('t'));
+        assert!(
+            menu.picker.is_none(),
+            "an empty entry borrowed the last roster"
+        );
+        match menu.handle_key(KeyCode::Enter) {
+            MenuOutcome::Run(entry) => {
+                assert_eq!(entry.action.id, "empty");
+                assert_eq!(entry.picked, None);
+            }
+            _ => panic!("the empty entry dispatches without a pick"),
+        }
+
+        menu.handle_key(KeyCode::Up);
+        menu.handle_key(KeyCode::Up);
+        menu.handle_key(KeyCode::Char('t'));
+        assert!(menu.footer().contains("checkout-hand at high"));
+        assert_eq!(menu.roster.len(), 2);
+        match menu.handle_key(KeyCode::Enter) {
+            MenuOutcome::Run(entry) => {
+                assert_eq!(entry.action.id, "checkout");
+                assert_eq!(
+                    entry.picked,
+                    Some(HandList::one(HandPin::Named {
+                        id: "checkout-hand".to_string(),
+                        effort: Some("high".to_string()),
+                    }))
+                );
+            }
+            _ => panic!("the checkout entry dispatches with its own hand"),
+        }
+        assert!(menu.entries.iter().all(|entry| entry.picked.is_none()));
+        match menu.handle_key(KeyCode::Enter) {
+            MenuOutcome::Run(entry) => assert_eq!(entry.picked, None),
+            _ => panic!("a later ask resolves without the previous pick"),
+        }
     }
 
     /// `t` on an entry that hands work over opens the picker, and Enter runs

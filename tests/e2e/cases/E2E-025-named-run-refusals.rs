@@ -673,6 +673,20 @@ fn add_root_refused_project(world: &World) {
     copied["root"] = json!(second_root);
     copied["checkout"] = json!(world.path().join("broken"));
     copied["branch"] = Value::Null;
+    // This is a current dispatch in the destination project, not an item-level
+    // legacy seed hiding source provenance (§FS-005-dispatch.30).
+    let dispatches = copied["dispatches"]
+        .as_array_mut()
+        .expect("current dispatches");
+    assert!(
+        !dispatches.is_empty(),
+        "the copied matter has current dispatches"
+    );
+    for dispatch in dispatches {
+        dispatch["root"] = json!(second_root);
+        dispatch["checkout"] = json!(world.path().join("broken"));
+        dispatch["branch"] = Value::Null;
+    }
     copied["plan_id"] = json!("acme-app-2");
     copied["plan"] = json!(second_plan);
     ledger["entries"][OTHER_ITEM] = copied;

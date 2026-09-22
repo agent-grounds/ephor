@@ -980,6 +980,7 @@ impl App {
                     is_freehand: false,
                     is_workflows: false,
                     picked: None,
+                    roster: Vec::new(),
                     gate: actions::Gate::Ready,
                     running: None,
                 };
@@ -1379,6 +1380,7 @@ impl App {
             is_freehand: false,
             is_workflows: false,
             picked: screen.picked.clone(),
+            roster: Vec::new(),
             gate: actions::Gate::Ready,
             running: None,
         };
@@ -1602,17 +1604,6 @@ impl App {
         let subject = crate::api::read::Subject::Item(&item);
         let placed = self.ctx.place(&subject)?;
         let entries = self.ctx.menu(&subject)?;
-        // The hands `t` may offer, read once at menu open against the work
-        // root the dispatch will use (§FS-005-dispatch.14) — empty where there
-        // is no agent entry to pick for or nobody to pick, which is what
-        // withholds the picker entirely.
-        let roster = match (
-            self.ctx.roster_root(&item, &entries),
-            &mut self.ctx.dispatcher,
-        ) {
-            (Some(root), Some(dispatcher)) => dispatcher.pickable(&item.project, &root),
-            _ => Vec::new(),
-        };
         let checkout = self.ctx.checkouts.get(&item.project).cloned();
         Ok(ActionMenu::over(
             actions::Subject::Item(Box::new(item)),
@@ -1622,8 +1613,7 @@ impl App {
             placed.state,
             checkout,
             entries,
-        )
-        .with_roster(roster))
+        ))
     }
 
     /// One branch's menu, the same way (§FS-004-quick-actions.6). The row's own

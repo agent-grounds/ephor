@@ -169,6 +169,9 @@ impl Session {
             has_workflows,
             &mut self.naming(about.as_ref()),
         );
+        if let Some(item) = &about {
+            self.name_the_rosters(item, &mut entries);
+        }
         self.mark_running(subject, &mut entries);
         Ok(entries)
     }
@@ -344,10 +347,8 @@ impl Session {
         let placed = self.place(subject)?;
         let entries = self.menu(subject)?;
         let project = subject.project().to_string();
-        // The hands `--hand` may name, read against the work root the dispatch
-        // would use (§FS-005-dispatch.14) — empty where there is no agent
-        // entry to pick for or nobody to pick, which is what withholds the
-        // choice entirely.
+        // Preserve the top-level compatibility roster; an offer's own roster
+        // answers for its selected dispatch root (§FS-005-dispatch.6.1).
         let roster = match subject {
             Subject::Item(item) => match (self.roster_root(item, &entries), &mut self.dispatcher) {
                 (Some(root), Some(dispatcher)) => dispatcher.pickable(&project, &root),
@@ -584,6 +585,17 @@ pub fn offer_of(entry: &offers::MenuEntry) -> views::Offer {
         gate: entry.gate.name(),
         refusal: entry.gate.refusal().map(str::to_string),
         hand: entry.action.hand.as_ref().map(|hand| hand.says.clone()),
+        roster: entry.action.agent.as_ref().map(|_| {
+            entry
+                .roster
+                .iter()
+                .map(|hand| views::HandOffer {
+                    id: hand.id.clone(),
+                    efforts: hand.efforts.clone(),
+                    unavailable: hand.available.clone(),
+                })
+                .collect()
+        }),
         command: (!entry.action.command.is_empty()).then(|| entry.action.command.clone()),
         // Filled in by the reading that has a dispatcher to resolve it
         // against, which is the one that answers about work
