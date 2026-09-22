@@ -1130,6 +1130,7 @@ mod tests {
             is_freehand: false,
             is_workflows: false,
             picked: None,
+            roster: Vec::new(),
             gate,
             running: None,
         }

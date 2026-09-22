@@ -33,6 +33,11 @@ pub struct Offer {
     /// (§FS-005-dispatch.14).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub hand: Option<String>,
+    /// The authoritative picker choices at this agent entry's branch and
+    /// selected root (§FS-005-dispatch.6.1, §FS-005-dispatch.25). Some(empty)
+    /// means nobody can be picked; None means this is not an agent entry.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub roster: Option<Vec<HandOffer>>,
     /// What it would run, where it runs a command. Printed because a person
     /// deciding whether to run an entry is deciding about this line.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -156,8 +161,8 @@ pub struct Actions {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub branch: Option<String>,
     pub offers: Vec<Offer>,
-    /// Who `--hand` may name here (§FS-005-dispatch.14). Empty where there is
-    /// no work to hand over, or nobody to pick.
+    /// Legacy menu-wide roster, retained for compatibility. Each agent
+    /// offer's roster answers for its own dispatch (§FS-005-dispatch.6.1).
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub roster: Vec<HandOffer>,
 }

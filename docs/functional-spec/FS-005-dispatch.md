@@ -328,6 +328,13 @@ runs, and real writes use the same selection and rendering; a dry run or a
 refusal writes no checkout, root, ledger or workflow file. The existing named
 placeholder refusals apply equally to recipe and entry templates.
 
+Each agent offer carries its own `roster` in the machine reading, resolved at
+that entry's branch and selected root, including an empty list when nobody can
+be picked. The picker uses this same reading when it opens on the selected
+entry; changing rows or dismissing it carries neither choices nor a pin to
+another entry. The existing top-level `roster` remains a compatibility reading
+and does not answer for an entry whose root differs from it.
+
 **Which scope a plan belongs in is a different question from which tier may
 answer it**, and [§FS-014-work-root-scopes](FS-014-work-root-scopes.md#fs-014-work-root-scopes-a-plan-lives-in-the-smallest-scope-that-can-see-everything-it-touches) is the rule for it.
 

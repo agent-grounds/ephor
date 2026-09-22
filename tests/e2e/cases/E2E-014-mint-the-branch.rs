@@ -1856,6 +1856,161 @@ fn actions_json_agrees_with_itself_about_the_main_attributed_matter() {
     );
 }
 
+/// The machine offers resolve distinguishable rosters at each entry's branch
+/// and root, and the offered hand is accepted by that entry's dispatch preview
+/// and pinned on its actual ticket (§FS-005-dispatch.6.1, §FS-005-dispatch.25).
+#[test]
+fn issue_43_entry_rosters_agree_with_selected_dispatch_roots_and_hands() {
+    let world = watching(Some("fix/issue-{number}"), true);
+    world
+        .ephor()
+        .args(["checkout", "--project", PROJECT, "--branch", "fix/issue-95"])
+        .assert()
+        .success();
+
+    let checkout_root = workspace(&world).join("recipe-panta");
+    let project_root = world.forest().join("project-panta");
+    let compatibility_root = world.forest().join("compatibility-panta");
+    let empty_root = world.forest().join("empty-panta");
+    for (root, hand, model) in [
+        (&checkout_root, "checkout-hand", "checkout-model"),
+        (&project_root, "project-hand", "project-model"),
+        (
+            &compatibility_root,
+            "compatibility-hand",
+            "compatibility-model",
+        ),
+    ] {
+        let settings = root.join(".agent-grounds/rhei/settings.json");
+        std::fs::create_dir_all(settings.parent().unwrap()).expect("a root overlay");
+        write_json(
+            &settings,
+            &json!({
+                "agents": { "local-agent": { "command": ["sh"] } },
+                "models": { hand: { "model": model, "default_agent": "local-agent" } }
+            }),
+        );
+    }
+    world.configure(json!({
+        "projects": { PROJECT: {
+            "providers": [{ "provider": "acmeforge", "user": "you", "repos": ["widget"] }],
+            "work": {
+                "root": "{root}/compatibility-panta",
+                "permitted_hands": ["checkout-hand", "project-hand", "compatibility-hand"],
+                "recipes": [
+                    {
+                        "id": "checkout-fix", "description": "fix in its checkout",
+                        "state": "fix", "needs_checkout": true,
+                        "branch": "fix/issue-{number}", "root": "{workspace}/recipe-panta",
+                        "hand": "checkout-hand",
+                        "when": { "kinds": ["issue"] }, "brief": "Fix {title}."
+                    },
+                    {
+                        "id": "project-sweep", "description": "sweep the project",
+                        "state": "fix", "needs_checkout": false, "root": "{root}/project-panta",
+                        "hand": "project-hand",
+                        "when": { "kinds": ["issue"] }, "brief": "Inspect {title}."
+                    },
+                    {
+                        "id": "empty-scope", "description": "no selectable hands",
+                        "state": "fix", "needs_checkout": false, "root": "{root}/empty-panta",
+                        "when": { "kinds": ["issue"] }, "brief": "Inspect {title}."
+                    }
+                ]
+            }
+        } },
+        "work": { "runner": "acme-runtime" }
+    }));
+
+    for (shape, reading) in [
+        ("actions", vec!["actions", "--item", ITEM, "--json"]),
+        ("work", vec!["work", "offers", "--item", ITEM, "--json"]),
+    ] {
+        let said = world.ephor().args(reading).assert().success();
+        let view = shaped(shape, said.get_output());
+        let offer = |id| {
+            view["offers"]
+                .as_array()
+                .expect("offers")
+                .iter()
+                .find(|offer| offer["id"] == id)
+                .unwrap_or_else(|| panic!("missing {id}: {view}"))
+        };
+        for (id, root, hand) in [
+            ("checkout-fix", &checkout_root, "checkout-hand"),
+            ("project-sweep", &project_root, "project-hand"),
+        ] {
+            let entry = offer(id);
+            assert_eq!(entry["root"], json!(root), "{entry}");
+            assert_eq!(entry["hand"], json!(hand), "{entry}");
+            assert_eq!(entry["roster"], json!([{ "id": hand }]), "{entry}");
+            let preview = world
+                .ephor()
+                .args([
+                    "work",
+                    "dispatch",
+                    "--item",
+                    ITEM,
+                    "--recipe",
+                    id,
+                    "--hand",
+                    hand,
+                    "--dry-run",
+                    "--json",
+                ])
+                .assert()
+                .success();
+            assert_eq!(
+                json_of(preview.get_output())["items"][0]["plan"],
+                json!(root.join("acmeforge-acme-widget-95.rhei.md"))
+            );
+            assert!(!root.join("acmeforge-acme-widget-95.rhei.md").exists());
+        }
+        assert_eq!(offer("checkout-fix")["branch"], json!("fix/issue-95"));
+        assert_eq!(offer("checkout-fix")["workspace"], json!(workspace(&world)));
+        assert_eq!(offer("empty-scope")["root"], json!(empty_root));
+        assert_eq!(offer("empty-scope")["roster"], json!([]));
+        if shape == "actions" {
+            assert_eq!(view["roster"], json!([{ "id": "compatibility-hand" }]));
+            assert!(offer("@command").get("roster").is_none());
+        }
+    }
+    assert!(
+        !world.path().join("state/ephor/work.json").exists(),
+        "previews saved a ledger"
+    );
+    assert!(!empty_root.exists(), "the empty reading created its root");
+
+    for (id, root, hand, model) in [
+        (
+            "checkout-fix",
+            &checkout_root,
+            "checkout-hand",
+            "checkout-model",
+        ),
+        (
+            "project-sweep",
+            &project_root,
+            "project-hand",
+            "project-model",
+        ),
+    ] {
+        world
+            .ephor()
+            .args([
+                "work", "dispatch", "--item", ITEM, "--recipe", id, "--hand", hand,
+            ])
+            .assert()
+            .success();
+        let plan = std::fs::read_to_string(root.join("acmeforge-acme-widget-95.rhei.md"))
+            .expect("the selected entry's ticket");
+        assert!(
+            plan.contains(&format!("**Target:** local-agent:{model}")),
+            "{plan}"
+        );
+    }
+}
+
 /// A recipe root is rendered after branch minting, and later placement of the
 /// same recipe may use the project root without losing the checkout-local
 /// plan. A workflow entry can choose the checkout independently; dry run and

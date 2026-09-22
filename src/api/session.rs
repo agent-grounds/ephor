@@ -1173,14 +1173,25 @@ impl Session {
         subject.work_root(&template)
     }
 
-    /// The work root the picker over one matter's menu reads its roster at
-    /// (§FS-005-dispatch.14). The picker stands over the whole list rather
-    /// than one row, so it is the root every entry that could use it would be
-    /// dispatched into — where they agree, which is every menu whose entries
-    /// say the same thing about the branch their work belongs on. Where they
-    /// do not, the matter's own root answers for all of them rather than one
-    /// entry's answer standing for the rest (§FS-005-dispatch.25). None where
-    /// nothing on the menu hands work over: there is nobody to pick for.
+    /// Fill each agent entry's picker roster at the same branch and root used
+    /// to name its hand and dispatch its work (§FS-005-dispatch.6.1,
+    /// §FS-005-dispatch.25). Both surfaces consume this one reading.
+    pub(super) fn name_the_rosters(&mut self, item: &Item, entries: &mut [offers::MenuEntry]) {
+        for entry in entries {
+            let Some(recipe) = &entry.action.agent else {
+                continue;
+            };
+            let root = self.work_root_for(item, recipe.branch.as_deref(), recipe.root.as_deref());
+            entry.roster = match (root, &mut self.dispatcher) {
+                (Some(root), Some(dispatcher)) => dispatcher.pickable(&item.project, &root),
+                _ => Vec::new(),
+            };
+        }
+    }
+
+    /// The root for the legacy top-level roster in `actions`. Preserve its
+    /// common-root or matter-default answer for compatibility; each offer's
+    /// own roster is authoritative for picking (§FS-005-dispatch.6.1).
     pub fn roster_root(
         &self,
         item: &Item,

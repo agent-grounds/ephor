@@ -506,6 +506,10 @@ pub struct MenuEntry {
     /// to the dispatch and dies there: nothing records it, and the next
     /// dispatch resolves from the second step down.
     pub picked: Option<HandList>,
+    /// Hands available at this entry's selected dispatch root, shared by the
+    /// machine reading and picker (§FS-005-dispatch.6.1, §FS-005-dispatch.25).
+    /// Empty is authoritative: no other entry supplies its choices.
+    pub roster: Vec<crate::work::runtime::roster::Hand>,
     pub gate: Gate,
     /// What is already going about this entry's subject, where anything is
     /// (§FS-005-dispatch.21). Filled in by the session that assembles the
@@ -568,6 +572,7 @@ pub fn entries(
             is_freehand: false,
             is_workflows: false,
             picked: None,
+            roster: Vec::new(),
             gate: Gate::NeedsCheckout,
             running: None,
         });
@@ -599,6 +604,7 @@ pub fn entries(
             is_freehand: false,
             is_workflows: false,
             picked: None,
+            roster: Vec::new(),
             gate,
             running: None,
         });
@@ -620,6 +626,7 @@ pub fn entries(
             is_freehand: false,
             is_workflows: true,
             picked: None,
+            roster: Vec::new(),
             gate: Gate::Ready,
             running: None,
         });
@@ -638,6 +645,7 @@ pub fn entries(
         is_freehand: true,
         is_workflows: false,
         picked: None,
+        roster: Vec::new(),
         gate: Gate::Ready,
         running: None,
     });
