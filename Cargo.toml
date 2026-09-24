@@ -134,6 +134,10 @@ name = "e2e_027_supported_remote_reader"
 path = "tests/e2e/cases/E2E-027-supported-remote-reader.rs"
 
 [[test]]
+name = "e2e_029_work_that_needs_two_pools"
+path = "tests/e2e/cases/E2E-029-work-that-needs-two-pools.rs"
+
+[[test]]
 name = "e2e_028_a_sweep_nobody_has_to_type"
 path = "tests/e2e/cases/E2E-028-a-sweep-nobody-has-to-type.rs"
 

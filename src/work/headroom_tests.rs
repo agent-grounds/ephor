@@ -55,6 +55,117 @@ fn reporting(pool: &str, remaining: Option<f64>, resets_at: Option<&str>) -> Sta
     }
 }
 
+/// A pool with a refusal in the ledger, standing until `until`.
+fn refusing(pool: &str, until: &str) -> Standing {
+    Standing {
+        pool: pool.to_string(),
+        remaining: None,
+        why: Some(format!("{pool} refused a start ephor made")),
+        refused_until: Some(at(until)),
+        resets_at: Some(at(until)),
+        spawns: 0,
+    }
+}
+
+fn needing(pools: &[&str]) -> Vec<String> {
+    pools.iter().map(|pool| pool.to_string()).collect()
+}
+
+// ---- work that needs several pools at once (§FS-005-dispatch.33) ----
+
+/// The load-bearing one, and it is first because it is the rejection
+/// everything else is measured against. Two pools are required and neither has
+/// a refusal or a number: nothing is held. Absent is the *ordinary* case on the
+/// credentials that reach these providers, so a rule that read silence as
+/// exhaustion would hold every cross-family workflow on the machine and stop
+/// the loop this rule exists to protect (§FS-005-dispatch.29,
+/// §REQ-001-boundary.1).
+#[test]
+fn a_pool_that_is_unknown_does_not_hold() {
+    // Nothing recorded about either.
+    let nothing = evidence(&[], "2026-09-05T09:00:00Z");
+    assert_eq!(nothing.held(&needing(&["north", "south"])), None);
+
+    // One reported healthy, the other silent: still nothing to hold on.
+    let half = evidence(
+        &[
+            reporting("north", Some(0.9), Some("2026-09-05T18:30:00Z")),
+            reporting("south", None, Some("2026-09-05T18:30:00Z")),
+        ],
+        "2026-09-05T09:00:00Z",
+    );
+    assert_eq!(half.held(&needing(&["north", "south"])), None);
+}
+
+/// One of two required pools is known spent, so the work is held — and the
+/// clause says which pools it needs together, which of them is unavailable and
+/// when that one lifts, because one sentence has to serve the laying, the menu
+/// row and the sweep (§FS-005-dispatch.33).
+#[test]
+fn one_spent_among_two_holds_and_the_clause_names_which_and_when() {
+    let evidence = evidence(
+        &[
+            reporting("north", Some(0.0), Some("2026-09-05T18:30:00Z")),
+            reporting("south", Some(0.42), Some("2026-09-05T18:30:00Z")),
+        ],
+        "2026-09-05T09:00:00Z",
+    );
+
+    let held = evidence
+        .held(&needing(&["north", "south"]))
+        .expect("work needing a spent pool and a healthy one is held");
+    assert_eq!(held.required, needing(&["north", "south"]));
+    assert_eq!(held.pool, "north");
+    assert_eq!(held.until, Some(at("2026-09-05T18:30:00Z")));
+    assert!(
+        held.clause.contains("north and south pools at once"),
+        "the clause does not name the pools the work needs together: {}",
+        held.clause
+    );
+    assert!(
+        held.clause.contains("north") && held.clause.contains("2026-09-05T18:30:00Z"),
+        "the clause does not name the spent pool and when it lifts: {}",
+        held.clause
+    );
+}
+
+/// A set of one is never held, even when that pool is spent. That case belongs
+/// to the veto and keeps the veto's answer — the first hand takes the ticket
+/// and it waits — because a list has a survivor and a person can start it by
+/// hand (§FS-005-dispatch.29).
+#[test]
+fn a_set_of_one_is_never_held() {
+    let evidence = evidence(
+        &[reporting("north", Some(0.0), Some("2026-09-05T18:30:00Z"))],
+        "2026-09-05T09:00:00Z",
+    );
+    assert_eq!(evidence.held(&needing(&["north"])), None);
+    // And a set of one is a set of one however it was spelled: the same pool
+    // named by two targets is still one allowance.
+    assert_eq!(evidence.held(&needing(&["north", "north"])), None);
+}
+
+/// A refusal is evidence only while the instant it names is still ahead, and
+/// this rule reads it through the same `spent` the veto reads — so a window
+/// that has reopened holds nothing, with no second notion of *spent* anywhere
+/// in the program (§FS-005-dispatch.29).
+#[test]
+fn a_refusal_that_has_lifted_does_not_hold() {
+    let pools = [
+        refusing("north", "2026-09-05T18:30:00Z"),
+        reporting("south", Some(0.42), Some("2026-09-05T18:30:00Z")),
+    ];
+    // Before it lifts: held.
+    assert!(evidence(&pools, "2026-09-05T09:00:00Z")
+        .held(&needing(&["north", "south"]))
+        .is_some());
+    // After: nothing is known about north again, and unknown holds nothing.
+    assert_eq!(
+        evidence(&pools, "2026-09-05T19:00:00Z").held(&needing(&["north", "south"])),
+        None
+    );
+}
+
 /// A pool is the provider that serves the model, and the agent that carries it
 /// only where the profile names no provider: two hands behind one provider
 /// spend one allowance, so evidence about either is evidence about both.
