@@ -23,7 +23,11 @@ the list of rungs it needs. Offering is filtering on the table; refusing is
 rendering the first missing rung's sentence. This gives [§REQ-001-boundary.1](../requirements/REQ-001-boundary.md#1-the-anatomy)'s
 degrade rule one implementation: the sentence a person sees on a gated menu
 entry, the reason `work dispatch` prints, and the log line a shipped step
-emits are the same text from the same place.
+emits are the same text from the same place. A pool a piece of work requires is
+a need like any other and refuses like one: the clause naming which pools it
+needs together and which of them cannot be had is rendered here, so the menu
+row, the command line and the log carry one text rather than three
+([§FS-005-dispatch.33](../functional-spec/FS-005-dispatch.md#33-work-that-needs-several-pools-at-once-is-admitted-whole)).
 
 ## 3. The table is honest about time
 

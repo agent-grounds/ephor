@@ -1329,6 +1329,11 @@ resolves to nobody: it passes to the workflow as written, no hand is rendered
 into it, and no narrowing binds it because nothing was chosen. The workflow's
 own fallback can therefore stand. This is the input-side spelling of the
 roster's `Choice::Unasked`, which keeps nobody choosing apart from a refusal.
+Each of those resolutions carries the pool its work would be bought against,
+so **which pools a laying needs is a fact about the laying** — computed from
+the answers rather than declared anywhere, recorded with the laying, and read
+back from that record by whatever decides later
+([§33](#33-work-that-needs-several-pools-at-once-is-admitted-whole)).
 
 **What it writes is a plan beside the item's, not a ticket inside it.** A
 workflow lays down a plan of its own; it cannot be appended to the item's
@@ -2087,7 +2092,10 @@ spent.** They are said in the same words and the same kind of row as a root
 another run's tree holds, with a reason naming which of them it was: the last
 run there having advanced nothing, and when the root is tried again or that it is
 now somebody's turn — or the exclusion the reader asked for. Passing a root over
-is not a failed launch and does not raise the reading's `failed` count. A rested
+is not a failed launch and does not raise the reading's `failed` count. A root whose plan needs
+pools this site cannot have together right now is passed over in that same kind
+of row and for the same kind of reason, before any capacity is spent on it
+([§33](#33-work-that-needs-several-pools-at-once-is-admitted-whole)). A rested
 or excluded root is never a candidate, so it consumes no slot, frees none, and
 counts toward no ceiling; an excluded root whose own run is **live** still counts
 live, because capacity is live work and not attempts. And a root two of these
@@ -2441,7 +2449,11 @@ the record of it, and not the files a real laying would put beside it. An
 entry that cannot be laid down — a required input nobody answered, a hand a
 narrowing refuses — is reported as a refusal with nothing written, the way a
 dispatch that could not open a ticket already is, and the sweep goes on to
-the next matter. Both forms of the reading carry it in the same words
+the next matter. An entry held because the work it would lay needs several
+pools at once and one of them cannot be had is reported the same way, by the
+same rule and in the same kind of row
+([§33](#33-work-that-needs-several-pools-at-once-is-admitted-whole)). Both
+forms of the reading carry it in the same words
 ([§REQ-002-parity.3](../requirements/REQ-002-parity.md#3-every-reading-answers-a-program)).
 
 **And what it laid is due like anything else.** A plan a workflow wrote is
@@ -2605,6 +2617,17 @@ grows: `status --json` prints the matters a source reported, somebody else's
 document rather than ephor's, with nowhere site-wide a pool belongs
 ([§FS-011-command-line.7](FS-011-command-line.md#7---json-is-the-same-answer-not-a-second-one)). Nothing already printed changes, which is what the
 interface's own versioning asks of any growth ([§FS-006-project-interface.11](FS-006-project-interface.md#11-the-interface-is-versioned)).
+
+**What this rule is about is one target, and it has not changed.** Everything
+above governs the choice *among alternates for a single target*: the veto still
+only strikes a member out, it still never reorders, unknown is still not zero,
+and where every member is vetoed the first still takes the ticket and waits.
+None of that is narrowed by what follows it. A separate question — whether a
+piece of work whose several targets are bought against *several pools* can be
+had at all — is not a question about a member and has no answer inside a list,
+so it is answered on its own in
+[§33](#33-work-that-needs-several-pools-at-once-is-admitted-whole), which runs
+after this rule and over the members this rule left standing.
 
 ## 30. A run asked for by name reaches the whole of that matter's work
 
@@ -3024,3 +3047,141 @@ what a self-sweeping recipe would have opened, because it opens everything, so
 a record that ignored it would send the timer to look again at a queue a person
 had just emptied by hand. The mark is what it always is: this recipe was swept,
 at this moment, in this project.
+
+## 33. Work that needs several pools at once is admitted whole
+
+[§29](#29-headroom-is-reported-to-ephor-and-vetoes-a-member-it-never-reorders)
+answers one question about one step: given an ordered list of alternates for a
+single target, which of them can be had right now. A workflow asks a different
+question. Its execution targets are answered one at a time
+([§19](#19-a-workflow-the-runtime-offers-is-an-action-and-its-inputs-are-answered-here)),
+and a plan whose moderator is bought against one provider while its second
+participant is bought against another needs **both** windows open to reach its
+end. No list can say that, because a list has a survivor and this has none: a
+rule that selected one member would be answering a question nobody asked. So
+this is a question about the *work*, asked once, after the members have been
+chosen — and its only two answers are *admitted* and *held*.
+
+**The requirement is derived, and nothing declares it.** The pools a piece of
+work needs are the distinct pools of the hands ephor itself resolved for it:
+every input that names who does the work, together with the hand the entry's
+own pin chose. A pool is what
+[§29](#29-headroom-is-reported-to-ephor-and-vetoes-a-member-it-never-reorders)
+says it is, and every one of these hands already carries the pool its work
+would be bought against, because resolving it is what produced the pool. No
+configuration key carries the requirement and no site writes one: it follows
+the targets, so answering a target with a hand on another pool changes what the
+work needs along with it. Because it is derived, **no site opts in** — work
+that already resolves to several pools acquires the requirement with nobody
+writing anything, which is the behaviour change this point makes and the one
+worth saying out loud.
+
+**A set of one is never held.** Where every resolved hand is bought against a
+single pool there is nothing here to ask, and
+[§29](#29-headroom-is-reported-to-ephor-and-vetoes-a-member-it-never-reorders)'s
+answer is kept entire — including its own hardest case, where every alternate
+for the one target is spent and the first still takes the ticket and waits. One
+pool spent is a question that point already answered, and this one does not
+reopen it.
+
+**The rule: two or more pools, and every one of them must be had.** Work whose
+resolved hands are bought against two or more distinct pools is admitted only
+when none of those pools is known spent and none of them is a pool this site
+cannot reach at all. Otherwise it is **held**: nothing is written — no plan, no
+record of one, none of the files a laying puts beside it — and the matter stays
+in the feed exactly as it was, unclaimed and available to a machine that has
+what it needs
+([§GOAL-003-nothing-lost](../goals.md#goal-003-nothing-lost-the-watch-is-trusted-enough-to-retire-the-sweep)).
+Holding is not an error: it is a refusal with a reason, the kind
+[§28](#28-a-workflow-entry-can-ask-for-the-same-thing-a-recipe-can) already
+reports for an entry nothing answered, and the sweep goes on to the next
+matter. An unattended start that cannot finish is not a handover
+([§GOAL-004-handover](../goals.md#goal-004-handover-routine-moves-leave-the-persons-hands)),
+and half of one costs twice: the attempts spent against the shut window, and
+the claim that keeps the matter away from whoever could have finished it.
+
+**Absent holds as spent does, and says something else.** A required pool this
+site does not reach holds the work exactly as a spent one does, because the
+work cannot be finished either way; the two are told apart in the sentence
+rather than in the outcome. Since the pools are derived from hands the roster
+answered, a pool that is on the roster is reachable by construction, so this
+case surfaces as exactly one thing: a required target that resolves to no hand
+at all, which already refuses and already writes nothing. What this adds there
+is the sentence. Such work parks and nothing lifts it — there is no window to
+reopen — and the way out is to answer the target with a hand this site has.
+
+**Unknown is not spent here either.** A pool nobody reported a number for
+holds nothing. This rule asks only what
+[§29](#29-headroom-is-reported-to-ephor-and-vetoes-a-member-it-never-reorders)'s
+veto asks — is this pool *known* spent — and there is no branch in it for a
+missing number, because absent is the ordinary case and a rule that read
+silence as exhaustion would hold every workflow on the machine and stop the
+loop it exists to protect. That is also this rule's degrade under
+[§REQ-001-boundary.1](../requirements/REQ-001-boundary.md#1-the-anatomy): with
+nothing reporting, nothing is held, and the pool line already says why it has
+no number.
+
+**It runs after the veto, and over what the veto left.** Selection happens
+first and is untouched: a target that named alternates still passes over what
+is known spent and keeps the survivors in the author's order. Only what
+survives is counted into the required set. Where a target's every alternate is
+spent the veto still returns the first, and this rule then sees that pool spent
+— so multi-pool work in that state is held while single-pool work is written
+and waits, which is the one place the two dispositions visibly differ and is
+the difference this rule exists to make. That the two answers differ is a decision with a cost
+of its own, and it is recorded as one
+([§DA-010-work-is-admitted-whole](../decisions/architectural/DA-010-work-is-admitted-whole.md#da-010-work-is-admitted-whole-work-that-needs-several-pools-at-once-is-admitted-whole-or-nothing-is-written-at-all)).
+
+**One clause, and the verb belongs to the surface.** The reason is rendered
+once — which pools the work needs together, which of them is unavailable, and
+whether it is spent until a named instant or simply not reached here — and each
+surface puts its own verb in front of it, so a reader meets the same sentence
+wherever they meet it. Admission reports it as a refusal with nothing laid, the
+menu row carries it as the reason that entry is blocked, and the unattended
+sweep reports it as a root it passed over. Every one of those is a shape these
+surfaces already have, and both readings of each carry the same words
+([§REQ-002-parity.3](../requirements/REQ-002-parity.md#3-every-reading-answers-a-program)).
+
+**Admission is one place, and it covers every door that writes.** What is held
+is the *admission* of the work, which every writing path already goes through:
+the sweep that lays a workflow entry
+([§28](#28-a-workflow-entry-can-ask-for-the-same-thing-a-recipe-can)), a
+laying the reader asked for by name, and an entry that asked to run itself. A
+dry run reports the hold and writes nothing, as it already does for every other
+refusal, and there is no flag that overrides it — the escape is to answer a
+target with a hand this site can have, because the requirement follows the
+target.
+
+**A plan already laid is held at the start, and says so differently.** The
+unattended sweep decides about plan roots found on disk and never sees the
+entry that laid them, so it reads what the work needs from ephor's own record
+of the laying
+([§4](#4-the-ledger-is-ephors-record-and-never-the-truth-about-the-work)),
+which already names the plan, its root, its checkout and its branch. The hold
+is a `passed-over` row — the shape a ceiling and a busy tree already take
+there, a successful non-launch with its reason in the row rather than a failure
+([§24](#24-work-nobody-has-to-start-starts-itself)) — and it is checked before
+capacity is spent. It reads differently from the admission's: that one is
+*held, and still anybody's*, this one is *not started, and still yours*. A
+record written before ephor knew to write this carries no requirement and
+starts as it always did, which is what growing an interface by addition means
+([§FS-006-project-interface.11](FS-006-project-interface.md#11-the-interface-is-versioned)),
+and a plan nothing in the record laid carries none either, which is
+[§28](#28-a-workflow-entry-can-ask-for-the-same-thing-a-recipe-can)'s silence
+again.
+
+**A run asked for by name is warned, never held.** A reader who names a plan or
+a matter keeps the key
+([§30](#30-a-run-asked-for-by-name-reaches-the-whole-of-that-matters-work)):
+the plan is in front of them, it is already laid, and holding it would leave no
+way to run such a plan at all. It carries the same clause as a warning and
+starts. Only the sweep nobody typed is held, which is where the attempts this
+point exists to stop were being spent.
+
+**Recipes and single-target work are untouched.** A recipe hands over a ticket
+rather than a plan with targets of its own, so it has one pool and nothing here
+to be held on; a workflow whose hands all land on one pool is a set of one; and
+an ordered list of alternates anywhere keeps
+[§29](#29-headroom-is-reported-to-ephor-and-vetoes-a-member-it-never-reorders)'s
+behaviour exactly. Nothing already written is read differently, no file format
+changes, and no configuration becomes invalid.

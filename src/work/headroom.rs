@@ -194,6 +194,29 @@ impl Evidence {
             until: standing.resets_at,
         })
     }
+
+    /// Whether a piece of work that needs **every one** of these pools at the
+    /// same time can be had (§FS-005-dispatch.33). None is go; Some is the one
+    /// clause every surface prints.
+    ///
+    /// It sits beside [`choose`] rather than inside it because it is a
+    /// different kind of question: `choose` selects a survivor from an ordered
+    /// list and always returns one, and this answers yes or no about a piece of
+    /// work and selects nothing. It reads the same [`Evidence::spent`] the veto
+    /// reads, so there is exactly one place in the program that decides what
+    /// *spent* means — and therefore **unknown is untouched**: `spent` has no
+    /// branch for a missing number, so a pool with no verb bound and no refusal
+    /// in the ledger never holds anything (§REQ-001-boundary.1).
+    ///
+    /// A set of one is never held: one pool spent is the case
+    /// §FS-005-dispatch.29 already answers, and its answer is kept.
+    pub fn held(&self, required: &[String]) -> Option<Held> {
+        // Unimplemented: today nothing is ever held, which is what
+        // §FS-005-dispatch.33 exists to change. The signature and the clause
+        // are the contract; the rule is the implementer's.
+        let _ = required;
+        None
+    }
 }
 
 /// One pool's record, read into what a decision and a report both need.
@@ -244,6 +267,23 @@ fn standing(pool: &str, record: &PoolRecord, now: DateTime<Utc>) -> Standing {
         resets_at: resets.into_iter().min(),
         spawns: record.spawns,
     }
+}
+
+/// Why a piece of work that needs several pools at once cannot be had, and
+/// until when (§FS-005-dispatch.33). One clause, rendered once, which each
+/// surface wears its own verb in front of: the laying that held it, the menu
+/// row that greys it, and the sweep that passed its root over
+/// (§AR-005-capabilities.2).
+#[derive(Debug, Clone, PartialEq)]
+pub struct Held {
+    /// Every pool the work needs at once, in the order the clause names them.
+    pub required: Vec<String>,
+    /// The one of them that cannot be had.
+    pub pool: String,
+    /// The clause itself, with no verb in front of it.
+    pub clause: String,
+    /// When that pool lifts, where anything named an instant.
+    pub until: Option<DateTime<Utc>>,
 }
 
 /// One member of a pin, settled against the roster and carrying the pool its
