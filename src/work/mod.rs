@@ -2080,6 +2080,7 @@ impl Dispatcher {
             root: Some(root.dir.clone()),
             checkout: Some(site.checkout.workspace.clone()),
             branch: site.checkout.branch.clone(),
+            pools: Vec::new(),
             snapshot: Snapshot::of(item),
         });
         Ok(outcome)
@@ -2402,6 +2403,12 @@ impl Dispatcher {
         let pool = choice.pool().map(str::to_string);
         let hand = choice.pin().0;
         let named = self.named_hands(item, entry, &ask, &workflow, typed, file_values, &site.dir);
+        // What this work needs, and whether this site can have all of it at
+        // once. Asked *after* the veto has chosen among whatever alternates
+        // each target named, and over what it left standing
+        // (§FS-005-dispatch.29, §FS-005-dispatch.33).
+        let pools = Self::required_pools(pool.as_deref(), &named);
+        let held = headroom::Evidence::read(&self.global, &self.ledger, Utc::now()).held(&pools);
         let answered = crate::work::workflow::answer_with_values(
             &workflow,
             &ask,
@@ -2412,7 +2419,7 @@ impl Dispatcher {
             &|name: &str| {
                 named
                     .get(name)
-                    .cloned()
+                    .map(|named| named.target.clone())
                     .unwrap_or_else(|| Err(format!("'{name}' is not a hand this runtime knows")))
             },
         );
@@ -2426,7 +2433,47 @@ impl Dispatcher {
             site,
             said,
             pool,
+            pools,
+            held,
         })
+    }
+
+    /// Why this entry's work cannot be had here at all right now, where it
+    /// cannot (§FS-005-dispatch.33). The requirement a laying would derive,
+    /// asked without resolving the rest of the laying, so the menu row is
+    /// gated on the clause the door itself would refuse with
+    /// (§AR-005-capabilities.2).
+    ///
+    /// None for anything it cannot resolve: a row that guessed would be a row
+    /// the dispatch disagrees with, and a workflow this runtime does not offer
+    /// already has a refusal of its own.
+    pub fn held_for_entry(
+        &mut self,
+        item: &Item,
+        entry: &ActionConfig,
+        root: &std::path::Path,
+    ) -> Option<headroom::Held> {
+        let ask = entry.workflow.clone()?;
+        let workflow = self
+            .workflows(&item.project)
+            .ok()?
+            .find(&ask.name)
+            .cloned()?;
+        let pool = self
+            .hand(&item.project, &entry.id, None, None, root)
+            .pool()
+            .map(str::to_string);
+        let named = self.named_hands(
+            item,
+            entry,
+            &ask,
+            &workflow,
+            &BTreeMap::new(),
+            &serde_json::Map::new(),
+            root,
+        );
+        let pools = Self::required_pools(pool.as_deref(), &named);
+        headroom::Evidence::read(&self.global, &self.ledger, Utc::now()).held(&pools)
     }
 
     /// Every hand the entry or the reader named for this workflow, resolved
@@ -2443,7 +2490,7 @@ impl Dispatcher {
         typed: &BTreeMap<String, String>,
         file_values: &serde_json::Map<String, Value>,
         root: &std::path::Path,
-    ) -> BTreeMap<String, std::result::Result<Option<String>, String>> {
+    ) -> BTreeMap<String, NamedHand> {
         let is_hand = |name: &str| {
             workflow
                 .input(name)
@@ -2486,12 +2533,28 @@ impl Dispatcher {
                 // One name per input here, never a list: an execution
                 // target is one line and a workflow's input has no place to
                 // put an alternate (§DA-006-hands-fill-a-workflows-targets).
-                let rendered = match recipe::HandPin::parse(&name) {
-                    Err(why) => Err(why),
+                let (target, pool) = match recipe::HandPin::parse(&name) {
+                    Err(why) => (Err(why), None),
                     Ok(pin) => {
                         let pin = HandList::one(pin);
-                        match self.hand(&item.project, &entry.id, None, Some(&pin), root) {
-                            runtime::roster::Choice::Refused(why) => Err(why),
+                        let choice = self.hand(&item.project, &entry.id, None, Some(&pin), root);
+                        // The pool this target's work would be bought
+                        // against, kept beside the answer because what the
+                        // work needs is derived from the hands ephor itself
+                        // resolved and never declared (§FS-005-dispatch.33).
+                        let pool = choice.pool().map(str::to_string);
+                        let target = match &choice {
+                            // A required target nothing here reaches already
+                            // refuses and already writes nothing; what
+                            // §FS-005-dispatch.33 adds is the sentence, which
+                            // names the target, says nothing here reaches it,
+                            // and names no instant — there is no window to
+                            // reopen.
+                            runtime::roster::Choice::Refused(why) => Err(format!(
+                                "{why}; nothing here reaches '{name}', so work that needs it \
+                                 cannot be done here at all — answer that target with a hand \
+                                 this site has"
+                            )),
                             runtime::roster::Choice::Unasked { .. } => Ok(None),
                             chosen => match chosen.pin().0 {
                                 Some(target) => Ok(Some(target)),
@@ -2503,11 +2566,33 @@ impl Dispatcher {
                                      an input naming who does the work needs the full spelling"
                                 )),
                             },
-                        }
+                        };
+                        (target, pool)
                     }
                 };
-                (name, rendered)
+                (name, NamedHand { target, pool })
             })
+            .collect()
+    }
+
+    /// Every pool one laying's work would be bought against, at once
+    /// (§FS-005-dispatch.33): the hands answering the inputs that name who
+    /// does the work, together with the hand the entry's own pin chose.
+    ///
+    /// Derived, never declared — no configuration key carries it, so
+    /// answering a target with a hand on another pool changes what the work
+    /// needs along with it (§DA-010-work-is-admitted-whole). Sorted and
+    /// distinct, so one requirement reads one way wherever it is printed.
+    fn required_pools(
+        entry_pool: Option<&str>,
+        named: &BTreeMap<String, NamedHand>,
+    ) -> Vec<String> {
+        named
+            .values()
+            .filter_map(|hand| hand.pool.clone())
+            .chain(entry_pool.map(str::to_string))
+            .collect::<BTreeSet<String>>()
+            .into_iter()
             .collect()
     }
 
@@ -2689,6 +2774,10 @@ impl Dispatcher {
             root: Some(root.dir.clone()),
             checkout: Some(laying.site.checkout.workspace.clone()),
             branch: laying.site.checkout.branch.clone(),
+            // What this plan needs to reach its end, written with it: the
+            // unattended sweep decides about roots on disk and never sees the
+            // entry that laid them (§FS-005-dispatch.33).
+            pools: laying.pools.clone(),
             snapshot: Snapshot::of(item),
         });
         Ok(Laid {
@@ -3647,6 +3736,62 @@ fn autorun_lock() -> Result<fs::File> {
 }
 
 impl Dispatcher {
+    /// Which of this root's laid plans need several pools at once that this
+    /// site cannot have together, by plan id, with the entry that laid each
+    /// (§FS-005-dispatch.33).
+    ///
+    /// Read from ephor's own record of the laying rather than from the entry:
+    /// a sweep decides about plan roots found on disk and never sees what laid
+    /// them (§FS-005-dispatch.4). A record written before ephor knew to write
+    /// the requirement carries none and starts as it always did, which is what
+    /// growing an interface by addition means
+    /// (§FS-006-project-interface.11).
+    fn held_plans(
+        &self,
+        root: &Due,
+        evidence: &headroom::Evidence,
+    ) -> BTreeMap<String, (String, headroom::Held)> {
+        let mut held = BTreeMap::new();
+        for entry in self.ledger.entries.values() {
+            for dispatch in &entry.dispatches {
+                let Some(plan) = dispatch.plan.as_deref() else {
+                    continue;
+                };
+                if !root.plans.iter().any(|named| named == plan) {
+                    continue;
+                }
+                if canonical(dispatch.root.as_ref().unwrap_or(&entry.root)) != canonical(&root.root)
+                {
+                    continue;
+                }
+                if let Some(why) = evidence.held(&dispatch.pools) {
+                    held.insert(plan.to_string(), (dispatch.recipe.clone(), why));
+                }
+            }
+        }
+        held
+    }
+
+    /// What a reader who named this work should be told about the pools it
+    /// needs, where one of them cannot be had (§FS-005-dispatch.33).
+    ///
+    /// A warning and never a hold: the plan is in front of them and already
+    /// laid, so holding it would leave no way to run such a plan at all, and
+    /// the key reaches the whole of the matter's work
+    /// (§FS-005-dispatch.30). Only the sweep nobody typed is held.
+    pub fn held_warnings(&self, due: &[Due], now: DateTime<Utc>) -> Vec<String> {
+        let evidence = headroom::Evidence::read(&self.global, &self.ledger, now);
+        due.iter()
+            .flat_map(|root| self.held_plans(root, &evidence).into_values())
+            .map(|(entry, held)| {
+                format!(
+                    "the plan '{entry}' laid {} — it is being started all the same",
+                    held.clause
+                )
+            })
+            .collect()
+    }
+
     /// Start a run on every root the sweep says is due, and say what each
     /// came to (§FS-005-dispatch.24).
     ///
@@ -3754,9 +3899,12 @@ impl Dispatcher {
                 None => {}
             }
         }
+        // What the pools have been reported to be, read once for the whole
+        // sweep (§FS-005-dispatch.29).
+        let evidence = headroom::Evidence::read(&self.global, &self.ledger, now);
         let runs = due
             .into_iter()
-            .map(|root| {
+            .map(|mut root| {
                 // The reader's own instruction, then the rest ephor decided
                 // on: both are successful non-launch outcomes, both happen
                 // before capacity is spent, and both are said in the row
@@ -3778,6 +3926,48 @@ impl Dispatcher {
                 {
                     let why = live_in_this_checkout(&self.global, held_by);
                     return Launched::passed_over(&root, why);
+                }
+                // A plan whose work needs several pools at once that this
+                // site cannot have together is passed over *before* capacity
+                // is spent, and the plan stays exactly where it is: this row
+                // reads *not started, and still yours*, where the admission's
+                // reads *held, and still anybody's*
+                // (§FS-005-dispatch.33, §FS-005-dispatch.24).
+                let held = self.held_plans(&root, &evidence);
+                if !held.is_empty() {
+                    let runnable: Vec<String> = root
+                        .plans
+                        .iter()
+                        .filter(|plan| !held.contains_key(*plan))
+                        .cloned()
+                        .collect();
+                    match runnable.is_empty() {
+                        true => {
+                            let (entry, why) = held
+                                .into_values()
+                                .next()
+                                .expect("a held plan, since the map is not empty");
+                            return Launched::passed_over(
+                                &root,
+                                format!(
+                                    "the plan '{entry}' laid {}. The plan stays where it is.",
+                                    why.clause
+                                ),
+                            );
+                        }
+                        // Some other plan in this root is runnable, so the run
+                        // is narrowed to it rather than the root passed over:
+                        // what is held is the held plan's work, not its
+                        // neighbour's (§FS-005-dispatch.24).
+                        false => {
+                            root.tickets.retain(|ticket| {
+                                runnable
+                                    .iter()
+                                    .any(|plan| ticket.starts_with(&format!("{plan}.")))
+                            });
+                            root.plans = runnable;
+                        }
+                    }
                 }
                 if let Some(said) = capacity
                     .warning(&root.projects)
@@ -5592,6 +5782,15 @@ pub struct Laying {
     pub said: Option<String>,
     /// The pool the chosen hand's work is bought against.
     pub pool: Option<String>,
+    /// Every pool this laying's work is bought against, at once — derived
+    /// from the hands ephor resolved for it and recorded with the laying,
+    /// because the sweep that starts the plan never sees the entry that laid
+    /// it (§FS-005-dispatch.19, §FS-005-dispatch.33).
+    pub pools: Vec<String>,
+    /// Why this site cannot have all of them at once, where it cannot: the
+    /// one clause every surface wears its own verb in front of
+    /// (§FS-005-dispatch.33).
+    pub held: Option<headroom::Held>,
 }
 
 impl Laying {
@@ -5613,6 +5812,15 @@ impl Laying {
         if !self.answered.refusals.is_empty() {
             return Some(self.answered.refusals.join("; "));
         }
+        // Held is a refusal with a reason rather than an error: nothing is
+        // written, the matter stays in the feed unclaimed, and the sweep goes
+        // on to the next one (§FS-005-dispatch.33).
+        if let Some(held) = &self.held {
+            return Some(format!(
+                "'{}' {}. Nothing was laid, and the matter is still anybody's.",
+                self.entry, held.clause
+            ));
+        }
         if !self.answered.missing.is_empty() {
             return Some(format!(
                 "'{}' cannot be laid down: nothing answers {}. Answer them with --set \
@@ -5623,6 +5831,18 @@ impl Laying {
         }
         None
     }
+}
+
+/// One execution-target input's name, resolved once before any of it is used
+/// (§DA-006-hands-fill-a-workflows-targets): the target the answering writes,
+/// and the pool that hand's work would be bought against
+/// (§FS-005-dispatch.33). The pool travels beside the answer because what a
+/// piece of work needs is derived from the hands ephor resolved for it and
+/// nothing declares it.
+#[derive(Debug, Clone)]
+struct NamedHand {
+    target: std::result::Result<Option<String>, String>,
+    pool: Option<String>,
 }
 
 /// A workflow's plan, written (§FS-005-dispatch.19).

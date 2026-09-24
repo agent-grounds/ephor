@@ -248,6 +248,7 @@ impl Offer {
             branch: self.branch.clone(),
             root: self.root.clone(),
             minted: None,
+            held: None,
             confirm: self.confirm,
             background: self.background,
             window: self.window,

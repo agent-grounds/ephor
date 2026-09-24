@@ -3919,6 +3919,66 @@ that exits non-zero, output that will not parse, and an answer holding no
 readable window are all unknown, with the reason shown beside the pool. None of
 them is an error that stops a dispatch, and none is silent.
 
+**A workflow that needs two pools at once is held.** A workflow's targets are
+answered one at a time, so a cross-family discussion whose moderator is bought
+against one provider and whose second voice is bought against another needs
+**both** windows open to reach its end. No ordered list can say that, because a
+list has a survivor and this work has none. So after the veto above has chosen
+among whatever alternates each target named, ephor asks one further question
+about the *work*: are all of the pools it resolved to available at once. Where
+one of them is not, nothing is written at all — no plan, no record of one, no
+claim on the matter — and the matter stays in the feed for a machine that has
+what it needs
+([§FS-005-dispatch.33](functional-spec/FS-005-dispatch.md#33-work-that-needs-several-pools-at-once-is-admitted-whole)).
+
+The requirement is **derived**, not declared: it is the set of pools of the
+hands ephor itself resolved for the work, so there is no key to write and
+answering a target with a hand on another provider changes what the work needs
+along with it. One clause is rendered once and each surface puts its own verb in
+front of it:
+
+```text
+lay     ↷ acmeforge:acme/widget#42: 'two-family-review' needs the north and
+          south pools at once; north is spent until 2026-09-05T18:30:00Z.
+          Nothing was laid, and the matter is still anybody's.
+menu    ⛬ two-family-review   blocked: needs the north and south pools at once;
+          north is spent until 2026-09-05T18:30:00Z
+start   ↷ /w/panta passed over: the plan 'two-family-review' laid needs the
+          north and south pools at once; north is spent until
+          2026-09-05T18:30:00Z. The plan stays where it is.
+```
+
+Four bounds on it, and they matter more than the rule:
+
+- **A set of one is never held.** Work whose hands all land on one pool is the
+  case the veto above already answers, and it keeps that answer entirely —
+  including where every alternate is spent, which still writes the ticket and
+  waits.
+- **Unknown still holds nothing.** A pool nobody reported a number for holds no
+  work at all, for the same reason it vetoes no member: absent is the ordinary
+  case, and a rule that read silence as exhaustion would hold every
+  cross-family workflow on the machine.
+- **A run you ask for by name is warned, never held.** `ephor work run --item`
+  prints the clause as a note and starts: the plan is in front of you and
+  already laid. Only the unattended `--due` sweep is held.
+- **There is no flag that overrides it.** The escape is to answer a target with
+  a hand this site can have — `--set moderator=south-fast`, or an entry that
+  names one — because the requirement follows the targets.
+
+**A single-family site holds such work for good, and says so differently.** A
+required target that resolves to no hand here at all has no window to wait for,
+so the work parks until somebody answers it with a hand this machine has. Tell
+that line from the spent one by what it names: the spent clause names a pool
+and the instant it lifts, and this one names the *target* and says *nothing
+here reaches* it, with no instant in it at all.
+
+```text
+↷ acmeforge:acme/widget#42: the hand pinned on 'two-family-review' names
+  'east-fast', which is not a hand here (the roster has: south-fast, …);
+  nothing here reaches 'east-fast', so work that needs it cannot be done here
+  at all — answer that target with a hand this site has
+```
+
 **The choice is recorded where the work is.** Selection runs at every write
 ephor makes — a dispatch and a laying — and the member it chose, with whatever
 the choosing had to say, is written onto the ticket in ephor's own words beside

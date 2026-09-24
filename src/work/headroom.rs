@@ -67,6 +67,17 @@ pub fn pools_of(roster: &Roster) -> Vec<String> {
         .collect()
 }
 
+/// The pools a piece of work needs, as a clause names them: `a and b`, or
+/// `a, b and c`. One rendering, because one sentence is worn by the laying,
+/// the menu row and the sweep (§AR-005-capabilities.2).
+fn together(pools: &[String]) -> String {
+    match pools.split_last() {
+        Some((last, [])) => last.clone(),
+        Some((last, rest)) => format!("{} and {last}", rest.join(", ")),
+        None => String::new(),
+    }
+}
+
 /// What is known about one pool right now: the two channels folded into the
 /// three things a decision and a report both need — how much is left, when
 /// something about it lifts, and why a number is missing.
@@ -211,11 +222,43 @@ impl Evidence {
     /// A set of one is never held: one pool spent is the case
     /// §FS-005-dispatch.29 already answers, and its answer is kept.
     pub fn held(&self, required: &[String]) -> Option<Held> {
-        // Unimplemented: today nothing is ever held, which is what
-        // §FS-005-dispatch.33 exists to change. The signature and the clause
-        // are the contract; the rule is the implementer's.
-        let _ = required;
-        None
+        // A set of one is never held, and the same pool named twice is still
+        // one allowance: what the rule counts is *distinct* pools, in the
+        // order it was given them (§FS-005-dispatch.33).
+        let mut seen = BTreeSet::new();
+        let required: Vec<String> = required
+            .iter()
+            .filter(|pool| seen.insert((*pool).clone()))
+            .cloned()
+            .collect();
+        if required.len() < 2 {
+            return None;
+        }
+        // The first of them that cannot be had. Nothing is ranked and nothing
+        // is reordered: this only ever refuses (§DA-010-work-is-admitted-whole).
+        let (pool, spent) = required
+            .iter()
+            .find_map(|pool| self.spent(pool).map(|spent| (pool.clone(), spent)))?;
+        let clause = match spent.until {
+            Some(until) => format!(
+                "needs the {} pools at once; {pool} is spent until {}",
+                together(&required),
+                instant(&until)
+            ),
+            // Nothing named an instant, so the clause carries the report
+            // itself rather than promising a moment that was never said.
+            None => format!(
+                "needs the {} pools at once; {}",
+                together(&required),
+                spent.why
+            ),
+        };
+        Some(Held {
+            required,
+            pool,
+            clause,
+            until: spent.until,
+        })
     }
 }
 

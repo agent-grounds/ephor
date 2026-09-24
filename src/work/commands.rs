@@ -1845,6 +1845,15 @@ fn run_work(
             refusal: root.refusal.clone(),
         });
     }
+    // A reader who names the work keeps the key: a plan whose pools cannot
+    // all be had right now carries the same clause as a *warning* and starts,
+    // because the plan is in front of them and already laid
+    // (§FS-005-dispatch.33, §FS-005-dispatch.30). Only the sweep nobody typed
+    // is held. Said on the error stream, where standard output is the
+    // reading's alone (§FS-011-command-line.7).
+    for said in dispatcher.held_warnings(&due, Utc::now()) {
+        eprintln!("note: {said}");
+    }
     // What the reader should know about who gets this run — a hand that went
     // unbound, a name nothing resolves — said once, before the terminal is
     // handed over (§FS-006-project-interface.9).

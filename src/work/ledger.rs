@@ -285,6 +285,14 @@ pub struct Dispatch {
     /// records or work about no branch (§FS-005-dispatch.4).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub branch: Option<String>,
+    /// Every pool this dispatch's plan needs at the same time, where it needs
+    /// more than one (§FS-005-dispatch.33). What the unattended sweep reads to
+    /// decide about a plan root, since it never sees the entry that laid it.
+    /// An addition, so a record written before ephor knew to write this reads
+    /// unchanged and starts as it always did
+    /// (§FS-006-project-interface.11).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub pools: Vec<String>,
     /// The item as it was when this was asked for.
     pub snapshot: Snapshot,
 }
