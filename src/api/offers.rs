@@ -712,6 +712,12 @@ pub fn gate_of(action: &ActionConfig, state: &WorkspaceState, can: &CapabilitySe
     if let Some(refusal) = action.hand.as_ref().and_then(|hand| hand.refusal.clone()) {
         return Gate::Blocked(refusal);
     }
+    // Work needing several pools at once that this site cannot have together
+    // is blocked in the clause the laying itself would refuse with: one text,
+    // worn by the row and by the door (§FS-005-dispatch.33).
+    if let Some(held) = &action.held {
+        return Gate::Blocked(held.clone());
+    }
     // Naming also resolves a hand-off's selected work root. Its refusal wins
     // before checkout gating, including entries that need no checkout
     // (§FS-005-dispatch.6.1, §FS-005-dispatch.25).

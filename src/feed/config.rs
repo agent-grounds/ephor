@@ -148,6 +148,14 @@ pub struct ActionConfig {
     /// here — so it is resolved beside [`ActionConfig::hand`] and read by the
     /// same gate.
     pub minted: Option<Minted>,
+    /// Why this entry's work cannot be had here at all right now — it needs
+    /// several pools at the same time and one of them is spent or is not
+    /// reached here (§FS-005-dispatch.33). Never configuration: nobody
+    /// declares it, ephor derives it from the hands it resolved, and the row
+    /// is gated on it in the same words the laying would refuse with, so the
+    /// menu and the command line cannot disagree
+    /// (§AR-005-capabilities.2).
+    pub held: Option<String>,
     /// Ask before running it.
     pub confirm: bool,
     /// It runs beneath the screen as a job rather than taking the terminal
@@ -442,6 +450,7 @@ impl TryFrom<RawAction> for ActionConfig {
             branch: raw.branch,
             root: raw.root,
             minted: None,
+            held: None,
             confirm: raw.confirm,
             background: raw.background,
             window: raw.window,

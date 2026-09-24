@@ -1284,6 +1284,9 @@ impl offers::Naming for Filling<'_> {
             return;
         };
         self.session.name_the_hands(item, actions);
+        // And which pools the work it lays down would need at once, for an
+        // entry that lays a workflow (§FS-005-dispatch.33).
+        self.session.name_the_pools(item, actions);
         // And where the workspace would be, for an entry that says which
         // branch its work belongs on (§FS-005-dispatch.25).
         self.session.name_the_branches(item, actions);
@@ -1421,6 +1424,41 @@ impl Session {
             let pinned = recipe.hand.clone();
             let choice = dispatcher.hand(&item.project, &recipe.id, None, pinned.as_ref(), &root);
             entry.hand = Some(who_gets_it(&choice, unbound.as_deref()));
+        }
+    }
+
+    /// Which pools each workflow entry's work would need at the same time,
+    /// and why this site cannot have all of them (§FS-005-dispatch.33).
+    ///
+    /// The requirement is derived from the hands ephor would resolve for the
+    /// entry, so the row is gated on the clause the laying itself would refuse
+    /// with — one text, worn by the row and by the door
+    /// (§AR-005-capabilities.2). Entries that lay no workflow have no targets
+    /// of their own and nothing here to be held on.
+    fn name_the_pools(&mut self, item: &Item, menu: &mut [ActionConfig]) {
+        if !menu.iter().any(|entry| entry.workflow.is_some()) {
+            return;
+        }
+        // One root per entry, read before the dispatcher is borrowed — the
+        // same root the laying would resolve the hands against
+        // (§FS-005-dispatch.25).
+        let roots: Vec<Option<std::path::PathBuf>> = menu
+            .iter()
+            .map(|entry| {
+                entry.workflow.as_ref()?;
+                self.work_root_for(item, entry.branch.as_deref(), entry.root.as_deref())
+            })
+            .collect();
+        let Some(dispatcher) = &mut self.dispatcher else {
+            return;
+        };
+        for (entry, root) in menu.iter_mut().zip(roots) {
+            let Some(root) = root else {
+                continue;
+            };
+            if let Some(held) = dispatcher.held_for_entry(item, entry, &root) {
+                entry.held = Some(held.clause);
+            }
         }
     }
 }
