@@ -45,6 +45,45 @@ a problem ephor already recognizes should not need to be described to it
 before anything can be done about it. Configuration adds recipes, and a
 configured recipe that reuses a shipped one's name replaces it.
 
+**Where a recipe may be written, and what happens when two of them share a
+name.** Configuration writes recipes at three scopes: the site's own
+`work.recipes`; `organizations.<org-id>.work.recipes`, over every project the
+registry places in that organization; and that project's
+`projects.<id>.work.recipes`. The middle scope is not there for symmetry with
+the other two. It is the scope whose membership already decides which projects
+share a work root
+([§6.1](#61-the-work-root-is-a-template-and-it-may-reach-above-the-project))
+and what they may spend
+([§FS-015-spend-ceiling.1](FS-015-spend-ceiling.md#1-two-ceilings-in-the-three-scopes-the-registry-already-nests)),
+and a way of being worked is the third thing those same projects share — so it
+is read by the same membership, the `organization` field on a project's
+registry row and nothing else
+([§REQ-001-boundary.2](../requirements/REQ-001-boundary.md#2-three-homes-one-resolution-order)).
+A project the registry places in no organization reads the site's recipes and
+its own, and is told nothing about it: an absent membership is an omitted
+tier, exactly as it is for the root and for the ceilings.
+
+**Recipes accumulate outward in** — shipped, then the site's, then the
+organization's, then the project's — and a recipe reusing an earlier one's id
+replaces it *where it already stands* rather than moving to the end. The later
+writer decides what the recipe says; the first writer decided where it sits in
+the menu, and position is the order dispatch offers in
+([§32.3](#323-where-the-sweep-happens-and-what-it-is)). The rule is one rule at
+every tier, not a rule about the tier that was added last: it is what a
+configured recipe replacing a shipped one has always done, and saying it once
+here is what keeps a third scope from being a fourth answer.
+
+**This is not ephor deciding for a repository.** What this section says above —
+that what to do about a red gate in one repository is not what to do about it
+in another, and neither is ephor's to decide — is an argument for difference
+*between* repositories, and it still holds. Every recipe at every one of the
+three scopes is the person's own, written in their own configuration, about an
+organization they themselves declared in their own registry; writing one recipe
+over four repositories they have said are one organization is that person
+deciding once instead of four times, and the project scope is there for the
+repository that genuinely differs. What is forbidden is ephor choosing the
+brief, not a reader choosing it at the width they meant.
+
 A recipe may also carry `root`, the whole work-root template for work handed
 over through that recipe. The same flat key may be written on an entry that
 asks an agent or lays down a workflow, in each of the three entry homes: site
@@ -298,6 +337,19 @@ written answers and the others are not consulted; none merges with another,
 because a path is one answer and a half-overridden one is nobody's. Ad-hoc
 `work ask` has no entry or recipe override and continues through the three
 configuration tiers.
+
+**Narrowest-wins is the root's own reading and does not carry across the block
+it is written in.** `organizations.<org-id>.work.recipes` sits beside
+`organizations.<org-id>.work.root` and is read in the opposite direction: a
+root is one answer, so the innermost scope that writes one ends the question,
+while a recipe list is an ordered menu that accumulates outward in and is read
+at every scope ([§1](#1-a-recipe-decides-which-items-deserve-work-and-what-to-ask-for)).
+The ladder above is also why a *recipe's* own `root` is not a fourth tier of
+the ladder: it is read at the recipe rung wherever the recipe was written, so
+an organization recipe carrying `root` beats `projects.<id>.work.root` in the
+same way a site recipe carrying one does today. That reads like an inversion of
+the scopes and is not: it is the second rung of a ladder whose rungs were never
+the scopes.
 
 **Two of the names reach above the project.** `{org}` is the organization the
 project's registry row places it in and `{org_root}` is where that organization
@@ -1836,11 +1888,18 @@ command-line ceiling.
 **The organization tier carries more than a ceiling.** `work.root` is read at
 these same three scopes and by the same registry membership
 ([§6.1](#61-the-work-root-is-a-template-and-it-may-reach-above-the-project)),
-so an organization block is where both the budget its projects share and the
-place their work goes are written. The two are read differently and have to
-be: every ceiling is evaluated and the outermost full one refuses, while a
-root is a single answer, so the innermost scope that writes one is the whole
-answer and nothing above it is asked.
+and so is `work.recipes`
+([§1](#1-a-recipe-decides-which-items-deserve-work-and-what-to-ask-for)), so an
+organization block is where the budget its projects share, the place their work
+goes, and the way they are worked are all written. The three are read
+differently and have to be. Every ceiling is evaluated and the outermost full
+one refuses. A root is a single answer, so the innermost scope that writes one
+is the whole answer and nothing above it is asked. A recipe list is neither a
+bound nor an answer but an ordered menu: every scope is read, outward in, and a
+later scope reusing an earlier scope's id replaces that recipe where it already
+stands. Three readings in one block is not an untidiness to be reconciled — a
+ceiling is a bound, a root is a place, and a menu is a list, and each is read
+the way its own kind of answer is read.
 
 **Every ceiling is evaluated, and the outermost full one is the reason.** A
 start is refused by whichever is full first, asked outermost scope inward —
@@ -1875,8 +1934,8 @@ the numbers beneath a paused site or organization are said nothing about
 either — a configuration that pauses the site and leaves its project numbers
 where they were is not thereby a configuration that contradicts itself.
 
-**A ceiling over nobody is said out loud.** An `organizations.<org-id>` key
-bounds nothing exactly when no registry row places a project inside that
+**A block over nobody is said out loud.** An `organizations.<org-id>` key
+reaches nothing exactly when no registry row places a project inside that
 organization — the same reading the ceiling itself binds through, so a key
 that is refusing starts is never announced as bounding nobody. Two
 configurations arrive at that emptiness: an id no registry row names at all,
@@ -1884,12 +1943,16 @@ which is the typo removing the bound its author believes they set, and an
 organization the registry declares that no project has yet joined. They are
 one condition and are named the same way, because membership is the
 `organization` field on a project's registry row and nothing else. Bounding
-nothing is the one thing a ceiling may never quietly be, so it is named — by
+nothing is the one thing a ceiling may never quietly be, and a recipe nobody is
+ever offered is that same silence one key over, so the block is named — by
 `ephor doctor`, in the words an unknown project id is named in, and at the
-sweep where the missing bound would have been read. It is not an error and
-nothing is refused for it: the runs that would have happened without the key
-still happen, and the reader is told why the key they wrote is not the one
-biting.
+sweep where the missing bound would have been read. It is named for reaching
+nobody rather than for bounding nobody, because what is written in it may be a
+ceiling, a root, a list of recipes, or any two of the three, and a block
+carrying only recipes must not be announced as a ceiling its author never
+wrote. It is not an error and nothing is refused for it: the runs that would
+have happened without the key still happen, and the reader is told why the key
+they wrote is not the one biting.
 
 **A second ceiling bounds the work an agent is actually doing.** The three
 above bound roots in flight — worktrees, processes, and the burst when several

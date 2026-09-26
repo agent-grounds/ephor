@@ -393,7 +393,48 @@ fn a_ceiling_an_organizations_own_row_joins_is_not_called_empty() {
         .output()
         .unwrap();
     let narration = String::from_utf8_lossy(&out.stderr);
-    assert!(!narration.contains("bounds nobody"), "{narration}");
+    assert!(!narration.contains("reaches nobody"), "{narration}");
+    assert!(out.status.success(), "{narration}");
+}
+
+/// §FS-005-dispatch.24, §FS-005-dispatch.1: an organization block carries the
+/// recipes its projects share as well as their ceiling and their work root, so
+/// what `doctor` says about a block no registry row reaches is about the block
+/// rather than about a ceiling. A block that writes only recipes is named for
+/// reaching nobody — naming it a ceiling would report a bound its author never
+/// wrote.
+#[test]
+fn issue_119_a_block_that_writes_only_recipes_is_named_for_reaching_nobody() {
+    let tmp = tempdir();
+    fixture(tmp.path(), json!([{ "provider": "demo" }]));
+    let path = tmp.path().join("status.json");
+    let mut config: Value = serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
+    config["organizations"] = json!({
+        "nosuchorg": { "work": { "recipes": [{
+            "id": "sweep-pins",
+            "description": "sweep the pins",
+            "brief": "Sweep the pins on {title}.",
+            "when": { "kinds": ["pr"] }
+        }] } }
+    });
+    fs::write(&path, serde_json::to_string_pretty(&config).unwrap()).unwrap();
+
+    let out = ephor(tmp.path())
+        .args(["doctor", "--skip-self", "--project", "widget"])
+        .output()
+        .unwrap();
+    let narration = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        narration.contains("nosuchorg (an organization work block)"),
+        "{narration}"
+    );
+    assert!(
+        narration.contains(
+            "reaches nobody — Feed config references organization 'nosuchorg' \
+             (no registry row places a project in it)."
+        ),
+        "{narration}"
+    );
     assert!(out.status.success(), "{narration}");
 }
 

@@ -798,13 +798,56 @@ fn a_ceiling_over_an_organization_holding_no_project_is_noted() {
     assert_eq!(
         reading["notes"],
         json!([
-            "organizations.emptyguild: no registry row places a project in it, so the ceiling written there bounds nothing",
-            "organizations.nosuchorg: no registry row places a project in it, so the ceiling written there bounds nothing"
+            "organizations.emptyguild: no registry row places a project in it, so what is written there reaches nothing",
+            "organizations.nosuchorg: no registry row places a project in it, so what is written there reaches nothing"
         ]),
         "{reading}"
     );
     assert_eq!(reading["runs"][0]["outcome"], "started", "{reading}");
     assert_eq!(starts(&log), 1, "a ceiling over nobody refuses nobody");
+}
+
+/// §FS-005-dispatch.24, §FS-005-dispatch.1: an organization block holds the
+/// recipes its projects share as well as their ceiling and their work root, so
+/// the note about a block no registry row reaches is about what is written
+/// there rather than about a ceiling. A block carrying only recipes reaches
+/// nobody exactly as a ceiling does, and must not be announced as a bound its
+/// author never wrote.
+#[test]
+fn issue_119_a_block_that_writes_only_recipes_over_an_empty_organization_is_noted() {
+    let tmp = tempdir();
+    let log = tmp.path().join("runner.log");
+    dispatched_but_unstarted(tmp.path(), &log);
+    reconfigure(tmp.path(), |config| {
+        config["work"]["max_concurrent"] = Value::Null;
+        config["organizations"] = json!({
+            "nosuchorg": { "work": { "recipes": [{
+                "id": "sweep-pins",
+                "description": "sweep the pins",
+                "brief": "Sweep the pins on {title}.",
+                "when": { "kinds": ["pr"] }
+            }] } }
+        });
+    });
+
+    let output = ephor(tmp.path())
+        .args(["work", "run", "--due", "--json"])
+        .output()
+        .unwrap();
+    let reading: Value = serde_json::from_slice(&output.stdout).unwrap_or_else(|error| {
+        panic!(
+            "a block writing only recipes was not read: {error}\n{}",
+            String::from_utf8_lossy(&output.stderr)
+        )
+    });
+    assert_eq!(
+        reading["notes"],
+        json!([
+            "organizations.nosuchorg: no registry row places a project in it, so what is written there reaches nothing"
+        ]),
+        "{reading}"
+    );
+    assert_eq!(starts(&log), 1, "a block over nobody refuses nobody");
 }
 
 /// §FS-005-dispatch.24: membership is the project row's `organization` field
