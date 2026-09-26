@@ -1856,6 +1856,29 @@ mod tests {
             .all(|recipe| recipe.branch.is_none()));
     }
 
+    /// §FS-005-dispatch.1: the block an organization's projects share takes
+    /// the recipes they share, beside the work root and the ceilings that are
+    /// already written there. The block is `deny_unknown_fields`, so until it
+    /// does, a site configuration carrying the key is not partly read — it is
+    /// refused whole, and with it every other thing that file says.
+    #[test]
+    fn issue_119_an_organization_block_takes_the_recipes_its_projects_share() {
+        let block = serde_json::from_value::<OrganizationWorkConfig>(json!({
+            "root": "{org_root}/panta",
+            "recipes": [{
+                "id": "fix-gate",
+                "description": "Fix a failing gate",
+                "brief": "A gate is red on a branch you authored. Make it green.",
+                "when": { "kinds": ["ci"] }
+            }]
+        }));
+        assert!(
+            block.is_ok(),
+            "the organization block refused the recipes its projects share: {:?}",
+            block.err()
+        );
+    }
+
     /// A recipe may select a whole work-root template of its own; omission is
     /// the compatibility path through project, organization and site
     /// placement (§FS-005-dispatch.1, §FS-005-dispatch.6.1).

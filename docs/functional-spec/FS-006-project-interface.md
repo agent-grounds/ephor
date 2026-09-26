@@ -246,7 +246,13 @@ occupy, in the same shape, selected by the same `when` language recipes use,
 and gated by the same capability requirements. Provenance orders the menu —
 what ephor itself recognized first ([§FS-004-quick-actions.3](FS-004-quick-actions.md#3-quick-actions-come-first-and-configuration-adds-to-them)), then the
 project's offers, then the person's own — and where two entries share an id,
-the person's beats the project's beats the shipped one. An offer is invoked
+the person's beats the project's beats the shipped one. The person's own rung
+has scopes inside it: their site configuration, the organization a project's
+registry row places it in, and that project, settled among themselves outward
+in before the rung answers here
+([§FS-005-dispatch.1](FS-005-dispatch.md#1-a-recipe-decides-which-items-deserve-work-and-what-to-ask-for)).
+Nothing in the menu says which of the three an entry was written at — the rung
+is what orders it, and where it was written is read in the files. An offer is invoked
 by a person, runs as a summons (§3), and is refused with its reason where
 its requirements do not hold ([§FS-004-quick-actions.2](FS-004-quick-actions.md#2-offered-only-where-it-would-work)). It takes the reader's
 terminal while it runs, which is what lets an offer be a pager or an editor —
