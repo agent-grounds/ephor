@@ -756,6 +756,42 @@ mod tests {
         );
     }
 
+    /// An entry that asks for work says where its brief is exactly as a recipe
+    /// does — it is a recipe under another name, and the asymmetry
+    /// §FS-005-dispatch.28 exists to close is the one where it cannot
+    /// (§FS-005-dispatch.34).
+    #[test]
+    fn an_entry_that_asks_for_work_may_keep_its_brief_in_a_file() {
+        let named: ActionConfig = serde_json::from_value(serde_json::json!({
+            "id": "desires", "icon": "📜", "description": "d",
+            "agent": { "brief_file": "{org_root}/DESIRES.md" }
+        }))
+        .expect("an entry may name the file its brief is kept in");
+        let recipe = named.agent.expect("it asks for work");
+        assert_eq!(recipe.brief_file.as_deref(), Some("{org_root}/DESIRES.md"));
+        assert!(recipe.brief.is_none());
+
+        let both: ActionConfig = serde_json::from_value(serde_json::json!({
+            "id": "desires", "icon": "📜", "description": "d",
+            "agent": { "brief_file": "{org_root}/DESIRES.md", "brief": "Work {title}." }
+        }))
+        .expect("both keys compose here too");
+        let recipe = both.agent.expect("it asks for work");
+        assert_eq!(recipe.brief.as_deref(), Some("Work {title}."));
+        assert_eq!(recipe.brief_file.as_deref(), Some("{org_root}/DESIRES.md"));
+
+        // And neither is refused where the configuration loads, naming the
+        // entry, rather than at the dispatch that would have used it
+        // (§FS-005-dispatch.34.1).
+        let silent = serde_json::from_value::<ActionConfig>(serde_json::json!({
+            "id": "desires", "icon": "📜", "description": "d", "agent": {}
+        }))
+        .unwrap_err()
+        .to_string();
+        assert!(silent.contains("desires"), "{silent}");
+        assert!(silent.contains("brief_file"), "{silent}");
+    }
+
     /// An entry runs a command, asks for work, or lays down a workflow —
     /// exactly one, refused where the person can still see what they wrote
     /// (§FS-005-dispatch.1, §FS-005-dispatch.19). And work needs a name: the

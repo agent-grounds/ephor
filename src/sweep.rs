@@ -1014,3 +1014,110 @@ mod tests {
         assert!(!counted_from(&format!("{stem}-"), &stem));
     }
 }
+
+#[cfg(test)]
+mod brief_file_tests {
+    use super::*;
+
+    fn placement(
+        root: &std::path::Path,
+        organization: Option<crate::branches::Organization>,
+    ) -> Placement {
+        Placement {
+            project: "widget".to_string(),
+            root: root.to_path_buf(),
+            template: None,
+            branches: Vec::new(),
+            main_branch: None,
+            repos: Vec::new(),
+            aliases: Vec::new(),
+            territory: Vec::new(),
+            trust: Default::default(),
+            organization,
+        }
+    }
+
+    fn row(root: &std::path::Path) -> Swept {
+        Swept {
+            project: "widget".to_string(),
+            branch: "clash/here".to_string(),
+            checkout: root.join("clash/here"),
+            outcome: Outcome::Would,
+            ticket: None,
+            note: None,
+        }
+    }
+
+    fn recipe(brief_file: &str) -> crate::work::recipe::Recipe {
+        serde_json::from_value(json!({
+            "id": RECIPE,
+            "description": "resolve the sweep conflict",
+            "state": "fix",
+            "needs_checkout": false,
+            "brief_file": brief_file,
+        }))
+        .expect("the sweep's recipe")
+    }
+
+    /// The sweep reads the file its recipe names like every other writer of a
+    /// brief (§FS-005-dispatch.34.3), and its path renders from the names a
+    /// checkout can answer (§FS-005-dispatch.6.1).
+    #[test]
+    fn the_sweep_reads_the_file_its_recipe_names() {
+        let tmp = tempfile::tempdir().expect("a scratch root");
+        std::fs::write(tmp.path().join("DESIRES.md"), "# Standing\n\nResolve it.\n")
+            .expect("the instruction");
+        let asked = work::dossier::brief(
+            &recipe("{root}/DESIRES.md"),
+            &checkout_values(&placement(tmp.path(), None), &row(tmp.path())),
+        )
+        .expect("the file is there");
+        assert!(asked.text.contains("**Standing**"), "{}", asked.text);
+        assert!(asked.text.contains("Resolve it."), "{}", asked.text);
+
+        // The checkout's own names answer too, which is what a path about one
+        // branch's tree rather than about a matter is written from.
+        let organization = crate::branches::Organization {
+            id: "foundation".to_string(),
+            root: Some(tmp.path().to_path_buf()),
+        };
+        let values = checkout_values(&placement(tmp.path(), Some(organization)), &row(tmp.path()));
+        for (name, answer) in [
+            ("project", "widget".to_string()),
+            ("branch", "clash/here".to_string()),
+            ("org", "foundation".to_string()),
+            ("org_root", tmp.path().to_string_lossy().into_owned()),
+            (
+                "workspace",
+                tmp.path().join("clash/here").to_string_lossy().into_owned(),
+            ),
+        ] {
+            assert_eq!(values.get(name), Some(&answer), "{name}");
+        }
+        let asked = work::dossier::brief(&recipe("{org_root}/DESIRES.md"), &values)
+            .expect("the organization's root answers");
+        assert!(asked.text.contains("Resolve it."), "{}", asked.text);
+    }
+
+    /// A sweep has a checkout and no matter (§FS-005-dispatch.3), so a name
+    /// only an item could answer is refused **by name** rather than written
+    /// into a path with a segment missing — and a file it cannot read gives
+    /// the reason the caller leaves on the row, with no ticket opened
+    /// (§FS-005-dispatch.34.3).
+    #[test]
+    fn a_name_no_checkout_can_answer_is_refused_by_name() {
+        let tmp = tempfile::tempdir().expect("a scratch root");
+        let values = checkout_values(&placement(tmp.path(), None), &row(tmp.path()));
+        let why = work::dossier::brief(&recipe("{root}/{title}.md"), &values)
+            .expect_err("there is no matter on a sweep");
+        assert!(why.contains("{title}"), "{why}");
+        assert!(why.contains(RECIPE), "{why}");
+
+        let why = work::dossier::brief(&recipe("{root}/DESIRES.md"), &values)
+            .expect_err("nothing is there to read");
+        assert!(
+            why.contains(&tmp.path().join("DESIRES.md").display().to_string()),
+            "{why}"
+        );
+    }
+}

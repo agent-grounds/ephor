@@ -1092,6 +1092,222 @@ mod tests {
         assert_eq!(render("for {org}{org_root}!", &values), "for !");
     }
 
+    /// A recipe that keeps its brief in a file, with everything else at its
+    /// default. Written here rather than reached for from `shipped()`: what
+    /// these cases are about is the two brief keys and nothing else.
+    fn keeping(brief: Option<&str>, brief_file: Option<&str>) -> Recipe {
+        Recipe {
+            id: "desires".to_string(),
+            icon: "📜".to_string(),
+            description: "work it under the standing instruction".to_string(),
+            state: crate::work::recipe::default_state(),
+            when: Default::default(),
+            needs_checkout: false,
+            branch: None,
+            root: None,
+            autorun: false,
+            dispatch: None,
+            brief: brief.map(str::to_string),
+            brief_file: brief_file.map(str::to_string),
+            based_in: None,
+            opens_with: None,
+            hand: None,
+            target: None,
+            model: None,
+        }
+    }
+
+    /// The vocabulary a brief and its path are rendered from, with `{reply}`
+    /// in it as a dispatch puts it there.
+    fn values(root: &Path) -> BTreeMap<&'static str, String> {
+        let item = item(json!({}));
+        let checkout = checkout();
+        let subject = Subject {
+            item: &item,
+            checkout: &checkout,
+            root,
+            organization: None,
+        };
+        let mut values = subject.placeholders();
+        values.insert("reply", "/w/panta/answer.md".to_string());
+        values
+    }
+
+    /// The published test vectors (FIPS 180-4 and RFC 6234): the hash goes
+    /// into a ticket for a reader to check with `sha256sum`, so what it has to
+    /// agree with is the standard and not this implementation
+    /// (§FS-005-dispatch.34.2).
+    #[test]
+    fn the_hash_a_ticket_records_is_the_one_sha256sum_prints() {
+        assert_eq!(
+            sha256(b""),
+            "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        );
+        assert_eq!(
+            sha256(b"abc"),
+            "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+        );
+        assert_eq!(
+            sha256(b"abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq"),
+            "248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1"
+        );
+        // Longer than one block and longer than a length that fits beside the
+        // padding, which is where a hand-written round loop goes wrong.
+        assert_eq!(
+            sha256(&vec![b'a'; 1_000_000]),
+            "cdc76e5c9914fb9281a1c7e284d73e67f1809a48a497200e046d39ccc7112cd0"
+        );
+        // A file's own trailing newline changes the answer, which is the whole
+        // reason the hash is of the bytes as read.
+        assert_ne!(sha256(b"abc"), sha256(b"abc\n"));
+    }
+
+    /// The path is a template over the vocabulary a work root is rendered
+    /// from, and the file's text is the brief (§FS-005-dispatch.34).
+    #[test]
+    fn the_path_renders_and_the_files_words_are_the_brief() {
+        let tmp = tempfile::tempdir().expect("a scratch root");
+        std::fs::create_dir_all(tmp.path().join("widget")).expect("the project's directory");
+        std::fs::write(
+            tmp.path().join("widget/DESIRES.md"),
+            "Read the spec before the code.\n",
+        )
+        .expect("the instruction");
+        let recipe = keeping(None, Some("{root}/{project}/DESIRES.md"));
+        let asked = brief(&recipe, &values(tmp.path())).expect("the file is there");
+        assert_eq!(asked.text, "Read the spec before the code.");
+        assert_eq!(
+            asked.instruction.expect("it read a file").path,
+            tmp.path().join("widget/DESIRES.md")
+        );
+    }
+
+    /// A name the vocabulary cannot answer is refused by name, because what it
+    /// would otherwise write is a path with a segment missing
+    /// (§FS-005-dispatch.34, §FS-005-dispatch.6.1). `{reply}` is one of them
+    /// wherever it is written: it is where ephor puts an answer, not a fact
+    /// about the matter — and the prose beside it carries the gap as prose
+    /// always has.
+    #[test]
+    fn a_name_a_path_cannot_answer_is_refused_by_name() {
+        let values = values(Path::new("/w"));
+        for (template, named) in [
+            ("{root}/{nope}/DESIRES.md", "{nope}"),
+            ("{reply}.md", "{reply}"),
+        ] {
+            let why = brief(&keeping(None, Some(template)), &values)
+                .expect_err("a path with no answer cannot be written");
+            assert!(why.contains(named), "{why}");
+            assert!(why.contains("desires"), "{why}");
+        }
+        // The same name in `brief` is prose, and prose keeps it as written.
+        let asked = brief(&keeping(Some("answer in {reply}"), None), &values).expect("prose");
+        assert_eq!(asked.text, "answer in /w/panta/answer.md");
+    }
+
+    /// `~` and `$VAR` are expanded, and a relative path resolves against the
+    /// directory holding the configuration file that named it — never the
+    /// working directory, which is wherever the unit that called ephor
+    /// happened to stand (§FS-005-dispatch.34).
+    #[test]
+    fn a_relative_path_is_relative_to_the_configuration_that_named_it() {
+        let tmp = tempfile::tempdir().expect("a scratch root");
+        let config = tmp.path().join("ephor/status.json");
+        std::fs::create_dir_all(config.parent().expect("its directory")).expect("the config dir");
+        std::fs::write(config.parent().unwrap().join("DESIRES.md"), "Standing.\n")
+            .expect("the instruction beside it");
+
+        let mut recipe = keeping(None, Some("DESIRES.md"));
+        recipe.written_in(&config);
+        let asked = brief(&recipe, &values(Path::new("/w"))).expect("beside the configuration");
+        assert_eq!(asked.text, "Standing.");
+        assert_eq!(
+            asked.instruction.expect("it read a file").path,
+            config.parent().unwrap().join("DESIRES.md")
+        );
+
+        // An absolute path is untouched by that, and `$VAR` is expanded first
+        // so what is resolved is a path rather than a name.
+        // SAFETY: single-threaded test, and the variable is this test's own.
+        unsafe { std::env::set_var("EPHOR_TEST_DESIRES", tmp.path().to_string_lossy().as_ref()) };
+        std::fs::write(tmp.path().join("OTHER.md"), "Elsewhere.\n").expect("the other one");
+        let mut recipe = keeping(None, Some("$EPHOR_TEST_DESIRES/OTHER.md"));
+        recipe.written_in(&config);
+        let asked = brief(&recipe, &values(Path::new("/w"))).expect("an absolute path");
+        assert_eq!(asked.text, "Elsewhere.");
+    }
+
+    /// Nothing inside the file is substituted and its headings arrive as
+    /// emphasis: a version-controlled document is not a template, and a
+    /// heading inside a plan is a node the runtime reads as a task
+    /// (§FS-005-dispatch.34, §FS-005-dispatch.3).
+    #[test]
+    fn the_file_is_a_document_and_not_a_template() {
+        let tmp = tempfile::tempdir().expect("a scratch root");
+        std::fs::write(
+            tmp.path().join("DESIRES.md"),
+            "# How we work\n\nAn example naming `{title}` stays as written.\n\n\
+             ```text\n# not a heading\n```\n",
+        )
+        .expect("the instruction");
+        let recipe = keeping(Some("Work {title}."), Some("{root}/DESIRES.md"));
+        let asked = brief(&recipe, &values(tmp.path())).expect("the file is there");
+        assert!(asked.text.contains("**How we work**"), "{}", asked.text);
+        assert!(!asked.text.contains("\n# How we work"), "{}", asked.text);
+        assert!(
+            asked.text.contains("naming `{title}` stays as written"),
+            "{}",
+            asked.text
+        );
+        // Fenced content is what its author wrote, heading or not.
+        assert!(asked.text.contains("\n# not a heading\n"), "{}", asked.text);
+        // And the rendered `brief` after the file's words, with the matter's
+        // own title in it (§FS-005-dispatch.34.1).
+        assert!(asked.text.ends_with("Work Retry window."), "{}", asked.text);
+        assert!(
+            asked.text.find("**How we work**") < asked.text.find("Work Retry window."),
+            "{}",
+            asked.text
+        );
+    }
+
+    /// A rendered path with nothing readable behind it refuses, naming the
+    /// path — and an empty file is the same hole arriving later, because the
+    /// ticket would ask for nothing (§FS-005-dispatch.34).
+    #[test]
+    fn a_path_with_nothing_behind_it_refuses_naming_it() {
+        let tmp = tempfile::tempdir().expect("a scratch root");
+        let missing = tmp.path().join("DESIRES.md");
+        let why = brief(
+            &keeping(Some("Work it."), Some("{root}/DESIRES.md")),
+            &values(tmp.path()),
+        )
+        .expect_err("there is no file there");
+        assert!(why.contains(&missing.display().to_string()), "{why}");
+
+        std::fs::write(&missing, "   \n\n").expect("an empty instruction");
+        let why = brief(
+            &keeping(None, Some("{root}/DESIRES.md")),
+            &values(tmp.path()),
+        )
+        .expect_err("a file with no words in it asks for nothing");
+        assert!(why.contains(&missing.display().to_string()), "{why}");
+        assert!(why.contains("empty"), "{why}");
+    }
+
+    /// A recipe with no file named is the brief it always was, and records
+    /// nothing about an instruction it never read.
+    #[test]
+    fn a_recipe_with_no_file_is_the_brief_it_always_was() {
+        let asked = brief(
+            &keeping(Some("Work {title}."), None),
+            &values(Path::new("/w")),
+        )
+        .expect("prose needs nothing on disk");
+        assert_eq!(asked.text, "Work Retry window.");
+        assert!(asked.instruction.is_none());
+    }
+
     #[test]
     fn a_brief_is_rendered_with_the_items_own_words() {
         let item = item(json!({}));
