@@ -69,7 +69,7 @@
           "items": { "type": "string" },
           "description": "The capability rungs it named (FS-006-project-interface.10)."
         },
-        "brief": { "type": "string", "description": "What the ticket would ask for, on an entry that hands work over (FS-005-dispatch.7) — the same words the work screen shows under the row. The `command` of an entry that asks somebody rather than running something." },
+        "brief": { "type": "string", "description": "What the ticket would ask for, on an entry that hands work over (FS-005-dispatch.7) — the same words the work screen shows under the row. The `command` of an entry that asks somebody rather than running something. Where the recipe keeps its brief in a file (FS-005-dispatch.34), this is that file's text with the rendered `brief` after it, as the hand-over would carry it; a file this reading cannot open falls back to whatever can be rendered rather than leaving the slot empty (FS-005-dispatch.34.3)." },
         "running": { "$ref": "#/$defs/running" }
       }
     },

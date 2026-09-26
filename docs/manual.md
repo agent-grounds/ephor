@@ -1496,7 +1496,7 @@ difference is only whether anyone expects to want their own.
 | `id` | what an entry of the same name overrides (§7.6); empty is anonymous |
 | `icon`, `description` | the menu row |
 | `command` | run with `sh -c` in the item's checkout |
-| `agent` | ask for work instead of running a command — see below |
+| `agent` | ask for work instead of running a command — a `brief`, or the `brief_file` it is kept in; see below |
 | `cwd` | where it runs: `workspace` (default), `root`, or `repo:<name>` |
 | `kinds` | restrict to item kinds; empty offers it everywhere |
 | `when` | which items it is offered on, in the language recipes use (§8.3) |
@@ -1528,6 +1528,7 @@ block and no `command`, and the entry becomes a ticket rather than a process
 | Field | Meaning |
 |---|---|
 | `brief` | what the ticket asks for, with `{placeholders}` filled from the item (§8.2) |
+| `brief_file` | the file those words are kept in, read when the ticket is written (§8.3) |
 | `state` | the state a fresh ticket starts in; the shipped machine's working state unwritten |
 | `hand` | who does it — the second of the seven steps in §8.4 |
 
@@ -1537,7 +1538,9 @@ plan and the same ledger. It takes its id, icon, description and `when` from
 the entry, which is why an agent entry needs an `id` — the id names its ticket
 and is the key a `work.hands` table answers by. `command` and `agent` are
 mutually exclusive and one of them is required: an entry that has both, or
-neither, is refused when the file is read.
+neither, is refused when the file is read. Inside `agent`, `brief` and
+`brief_file` are the two doors the words may come through and they compose, but
+an entry writing neither is refused there too, naming it.
 
 **The checkout dependency.** A project may define one `checkout` command whose
 contract is to make `$EPHOR_WORKSPACE` exist — ephor verifies the directory
@@ -2127,6 +2130,43 @@ in, named absolutely ([§8.12](#812-an-answer-comes-back-as-a-proposal)). An
 unknown name is left as written, so a typo is visible in the ticket instead of
 becoming a blank.
 
+**`brief_file`** is the other door the words may come through: the file they
+are kept in, so a standing instruction — how work is done under this
+organization, a house review checklist — stays in the document that owns it
+instead of being pasted here and re-pasted whenever it changes
+([§FS-005-dispatch.34](functional-spec/FS-005-dispatch.md#34-a-brief-may-be-kept-in-the-file-that-owns-it)).
+
+```json
+{ "id": "desires",
+  "description": "work an issue under the organization's standing instruction",
+  "when": { "kinds": ["issue"] },
+  "brief_file": "{org_root}/DESIRES.md",
+  "brief": "Work {title} — {url}." }
+```
+
+It is a path template over the same names a work root takes (§8.4) — every
+name above except `{reply}`, which is a place ephor writes to rather than a
+fact about the matter. A name the path cannot answer is refused by name, as it
+is for a work root. A relative path is relative to the directory holding the
+configuration file that wrote it, with `~` and `$VAR` expanded first, and never
+to the working directory: a recipe with a `dispatch` sweep of its own (above)
+runs from wherever the thing that called ephor happened to stand.
+
+The file is read when the ticket is written and its text is the brief, so the
+plan carries the instruction rather than a path to it. Write both keys and they
+compose, in that order: the file's words first, the rendered `brief` after
+them. **Nothing inside the file is substituted** — a version-controlled
+document is not a template, so an instruction whose own example names `{title}`
+reaches the ticket as those seven characters — and its headings arrive as
+emphasis, because a heading inside a plan is a node the runtime would read as a
+task (§8.2). A recipe that writes neither key is refused when the configuration
+loads, naming it. A rendered path with no readable file behind it refuses at
+dispatch, naming the path, before a workspace, a work root or a plan is made.
+
+Where the path may point is yours to say: it may resolve inside a watched
+checkout, because the person who wrote the template is the person who pays. No
+recipe ephor ships names a file of its own.
+
 **`branch`** is the other template a recipe may carry: which branch its work
 belongs on, for an item that has none of its own — an issue. ephor makes that
 workspace before writing the ticket, and `{branch}` and `{workspace}` render
@@ -2392,6 +2432,14 @@ metadata:
       title: "…"
 ---
 ```
+
+Where the recipe kept its brief in a file (§8.3), two more keys join them on
+that ticket — `instruction`, the path as it was rendered, and
+`instruction_sha256`, a hash of the bytes as read, which `sha256sum` over the
+file on disk matches. They are the one thing here that identifies the *ask*
+rather than the item, so they are per ticket and never in the dossier: a hash
+above tickets that were given older words would name somebody else's text
+([§FS-005-dispatch.34.2](functional-spec/FS-005-dispatch.md#342-which-text-a-ticket-was-given-is-recorded-on-the-ticket)).
 
 A state reads those as `{meta.<key>}`, names its output with
 `{output.<name>.path}`, and the next state declares the same file as an
@@ -3166,6 +3214,14 @@ tree. So it is never offered as an action on an item, whatever its `when` says,
 and `ephor work offers` names it among the recipes it excluded with that as the
 reason. Its `state` has to be one the work root's machine declares, or the
 write-up refuses and says so on the row.
+
+Having no matter is also what its `brief_file` may name (§8.3). The sweep reads
+the file like every other writer of a brief, but the path renders only from the
+names a *checkout* can answer — `{project}`, `{root}`, `{workspace}`,
+`{branch}`, `{org}`, `{org_root}` — and one it cannot, a `{title}` where there
+is no item, is refused by name. A file it cannot read is the case above: the
+conflict is still reported, the reason is on the row, and no ticket is opened
+([§FS-005-dispatch.34.3](functional-spec/FS-005-dispatch.md#343-every-writer-of-a-brief-reads-the-file-the-sweep-included)).
 
 **Forty checkouts become one exit code**, and conflict wins, which is the
 precedence one rebase already has.
