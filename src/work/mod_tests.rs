@@ -3977,3 +3977,156 @@ fn a_parked_ticket_leads_even_while_a_run_is_live_on_its_root() {
     assert!(lines[0].said.contains("waiting on you"), "{lines:?}");
     assert_eq!(lines[1].tone, Tone::Running);
 }
+
+// ---- a brief kept in the file that owns it (§FS-005-dispatch.34) ----
+
+/// A recipe that keeps its brief in a file beside the project, with the
+/// matter's own ask still written inline: both keys compose, and the order
+/// they compose in is what these cases are about (§FS-005-dispatch.34.1).
+fn instructed_recipe(brief: Option<&str>, brief_file: Option<&str>) -> Recipe {
+    let mut recipe = issue_43_recipe("desires");
+    recipe.brief = brief.map(str::to_string);
+    recipe.brief_file = brief_file.map(str::to_string);
+    recipe
+}
+
+/// The plan a dispatch wrote, whole.
+fn plan_text(project: &Path) -> String {
+    fs::read_to_string(project.join("panta/forge-widget-42.rhei.md")).expect("the plan is on disk")
+}
+
+/// The file's text first and the rendered `brief` after it, with the ticket
+/// recording which words it was given — on the ticket rather than in the
+/// dossier a reopen rewrites (§FS-005-dispatch.34.1, §FS-005-dispatch.34.2).
+#[test]
+fn a_ticket_carries_the_instruction_first_and_says_which_version_it_got() {
+    let tmp = tempfile::tempdir().unwrap();
+    let _ledger_path = ledger::use_test_path(tmp.path().join("state/work.json"));
+    let project = tmp.path().join("widget");
+    fs::create_dir_all(&project).unwrap();
+    let instruction = project.join("DESIRES.md");
+    fs::write(&instruction, "# How we work\n\nSpec before code.\n").unwrap();
+
+    let item = issue_43_item();
+    let mut dispatcher = issue_43_dispatcher(&project, empty_ledger());
+    dispatcher
+        .dispatch(
+            &item,
+            &instructed_recipe(Some("Work {title}."), Some("{root}/DESIRES.md")),
+            None,
+            false,
+        )
+        .unwrap();
+
+    let plan = plan_text(&project);
+    // Flattened, because a heading inside a plan is a node the runtime would
+    // read as a task (§FS-005-dispatch.3).
+    assert!(plan.contains("**How we work**"), "{plan}");
+    assert!(
+        plan.find("Spec before code.") < plan.find("Work Place the work."),
+        "{plan}"
+    );
+    // The bytes as read, so `sha256sum` over the file agrees.
+    assert!(
+        plan.contains(&format!("instruction: \"{}\"", instruction.display())),
+        "{plan}"
+    );
+    assert!(plan.contains("instruction_sha256: \""), "{plan}");
+}
+
+/// The second ticket carries the new words and its own hash, and the first
+/// keeps the answer it was given: a hash naming another ticket's text would be
+/// worse than none (§FS-005-dispatch.34.2).
+#[test]
+fn an_edited_instruction_does_not_correct_the_ticket_that_came_before_it() {
+    let tmp = tempfile::tempdir().unwrap();
+    let _ledger_path = ledger::use_test_path(tmp.path().join("state/work.json"));
+    let project = tmp.path().join("widget");
+    fs::create_dir_all(&project).unwrap();
+    fs::write(project.join("DESIRES.md"), "First words.\n").unwrap();
+
+    let item = issue_43_item();
+    let recipe = instructed_recipe(None, Some("{root}/DESIRES.md"));
+    let mut dispatcher = issue_43_dispatcher(&project, empty_ledger());
+    dispatcher.dispatch(&item, &recipe, None, false).unwrap();
+    let first = plan_text(&project);
+    let first_hash = first
+        .lines()
+        .find(|line| line.trim_start().starts_with("instruction_sha256:"))
+        .expect("the first ticket recorded a hash")
+        .trim()
+        .to_string();
+
+    fs::write(project.join("DESIRES.md"), "Second words.\n").unwrap();
+    dispatcher.dispatch(&item, &recipe, None, false).unwrap();
+    let plan = plan_text(&project);
+    assert!(plan.contains("First words."), "{plan}");
+    assert!(plan.contains("Second words."), "{plan}");
+    assert!(plan.contains(&first_hash), "{plan}");
+    assert_eq!(
+        plan.matches("instruction_sha256:").count(),
+        2,
+        "each ticket keeps its own: {plan}"
+    );
+}
+
+/// A rendered path with nothing readable behind it refuses naming the path,
+/// and on this side of the mint — no work root and no plan
+/// (§FS-005-dispatch.34). The dry run refuses with it, because it promises
+/// what the real dispatch would do (§FS-005-dispatch.34.3).
+#[test]
+fn a_path_with_no_file_behind_it_refuses_before_anything_is_written() {
+    let tmp = tempfile::tempdir().unwrap();
+    let _ledger_path = ledger::use_test_path(tmp.path().join("state/work.json"));
+    let project = tmp.path().join("widget");
+    fs::create_dir_all(&project).unwrap();
+    let missing = project.join("DESIRES.md");
+
+    let item = issue_43_item();
+    let recipe = instructed_recipe(Some("Work {title}."), Some("{root}/DESIRES.md"));
+    let mut dispatcher = issue_43_dispatcher(&project, empty_ledger());
+    for dry_run in [true, false] {
+        let why = dispatcher
+            .dispatch(&item, &recipe, None, dry_run)
+            .unwrap_err()
+            .to_string();
+        assert!(why.contains(&missing.display().to_string()), "{why}");
+    }
+    assert!(
+        !project.join("panta").exists(),
+        "a refused dispatch left a work root behind"
+    );
+
+    // An empty file is the same hole arriving later: the ticket would ask for
+    // nothing at all.
+    fs::write(&missing, "\n").unwrap();
+    let why = dispatcher
+        .dispatch(&item, &recipe, None, false)
+        .unwrap_err()
+        .to_string();
+    assert!(why.contains("empty"), "{why}");
+    assert!(!project.join("panta").exists(), "it wrote anyway");
+}
+
+/// The menu preview shows what the hand-over would actually carry, and falls
+/// back to whatever can be rendered where the file cannot be read: a menu row
+/// is a row, and a refusal where the words go is worse than words that are out
+/// of date (§FS-005-dispatch.34.3).
+#[test]
+fn the_preview_shows_the_files_words_and_falls_back_without_them() {
+    let tmp = tempfile::tempdir().unwrap();
+    let _ledger_path = ledger::use_test_path(tmp.path().join("state/work.json"));
+    let project = tmp.path().join("widget");
+    fs::create_dir_all(&project).unwrap();
+    let item = issue_43_item();
+    let recipe = instructed_recipe(Some("Work {title}."), Some("{root}/DESIRES.md"));
+    let mut dispatcher = issue_43_dispatcher(&project, empty_ledger());
+
+    assert_eq!(dispatcher.brief(&item, &recipe), "Work Place the work.");
+
+    fs::write(project.join("DESIRES.md"), "Spec before code.\n").unwrap();
+    assert_eq!(
+        dispatcher.brief(&item, &recipe),
+        "Spec before code.\n\nWork Place the work."
+    );
+}

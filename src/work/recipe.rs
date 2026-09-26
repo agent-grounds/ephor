@@ -2139,6 +2139,56 @@ mod tests {
         .is_err());
     }
 
+    // ---- where a brief is kept (§FS-005-dispatch.34) ----
+
+    /// A recipe may keep its words in the file that owns them, may write them
+    /// inline, and may do both — which is not an error, because the two mean
+    /// different things (§FS-005-dispatch.34, §FS-005-dispatch.34.1).
+    #[test]
+    fn a_recipe_may_name_the_file_its_brief_is_kept_in() {
+        let named: Recipe = serde_json::from_value(json!({
+            "id": "desires", "description": "d", "brief_file": "{org_root}/DESIRES.md"
+        }))
+        .expect("a recipe may keep its brief in a file");
+        assert_eq!(named.brief_file.as_deref(), Some("{org_root}/DESIRES.md"));
+        assert!(named.brief.is_none());
+        assert!(named.without_a_brief().is_none());
+
+        let both: Recipe = serde_json::from_value(json!({
+            "id": "desires", "description": "d",
+            "brief_file": "{org_root}/DESIRES.md", "brief": "Work {title}."
+        }))
+        .expect("both keys compose");
+        assert_eq!(both.brief.as_deref(), Some("Work {title}."));
+        assert_eq!(both.brief_file.as_deref(), Some("{org_root}/DESIRES.md"));
+        assert!(both.without_a_brief().is_none());
+    }
+
+    /// One of the two doors has to be open: a recipe is a selector and a
+    /// brief, and a ticket carrying no words is work nobody can do
+    /// (§FS-005-dispatch.34.1). The refusal names the recipe, because the
+    /// person reading it is looking at a file with several.
+    #[test]
+    fn a_recipe_that_asks_for_nothing_is_refused_by_name() {
+        let silent: Recipe = serde_json::from_value(json!({ "id": "desires", "description": "d" }))
+            .expect("the shape parses; the rule is not the shape's to carry");
+        let why = silent.without_a_brief().expect("it asks for nothing");
+        assert!(why.contains("desires"), "{why}");
+        assert!(why.contains("brief_file"), "{why}");
+    }
+
+    /// Nothing ephor ships names a file of its own: a project that gained a
+    /// voice in what is asked for merely by containing a well-known filename
+    /// would be an artifact required of it (§REQ-001-boundary.3,
+    /// §FS-005-dispatch.34).
+    #[test]
+    fn no_shipped_recipe_defaults_a_brief_file() {
+        for recipe in shipped() {
+            assert!(recipe.brief_file.is_none(), "{} names a file", recipe.id);
+            assert!(recipe.without_a_brief().is_none(), "{}", recipe.id);
+        }
+    }
+
     // ---- a recipe's own sweep (§FS-005-dispatch.32) ----
 
     fn recipe_with(dispatch: serde_json::Value) -> serde_json::Value {
