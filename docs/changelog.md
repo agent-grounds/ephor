@@ -827,7 +827,7 @@ ships, the previous "latest" section moves verbatim to
   numbers under it are not noted. Omission is unchanged in both directions: a
   configuration with no `organizations` map, or a project whose registry row
   names no organization, starts exactly what it started before. An
-  `organizations` id no registry row places a project in bounds nobody and is
+  `organizations` id no registry row places a project in reaches nobody and is
   named for it — by `ephor doctor`, in the words an unknown project id gets,
   and in a note at the sweep — rather than quietly ignored. That covers an id
   the registry never declared and one it declares that no project has joined
