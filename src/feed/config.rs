@@ -971,6 +971,13 @@ pub fn load_config() -> Result<StatusConfig> {
         .recipes
         .iter()
         .map(|recipe| ("work.recipes".to_string(), recipe))
+        .chain(config.organizations.iter().flat_map(|(id, organization)| {
+            organization
+                .work
+                .recipes
+                .iter()
+                .map(move |recipe| (format!("organizations.{id}.work.recipes"), recipe))
+        }))
         .chain(config.projects.iter().flat_map(|(id, project)| {
             project
                 .work

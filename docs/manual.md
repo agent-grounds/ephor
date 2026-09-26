@@ -1827,8 +1827,13 @@ Add your own, or replace a shipped one by reusing its id:
 ```
 
 Per project, `projects.<id>.work` takes the same `root`, `states`, `recipes`,
-`max_concurrent` and `max_active` keys, and its recipes are appended to the
-global ones. A project's `root` displaces its organization's, and an
+`max_concurrent` and `max_active` keys. Recipes accumulate outward in —
+shipped, then the site's, then the organization's (below), then the project's —
+and one reusing an earlier id replaces that recipe *where it already stands*
+rather than moving to the end. The later writer decides what the recipe says;
+the first writer decided where it sits in the menu, and position is the order
+dispatch offers in, so a project recipe displacing a site one keeps the site
+one's priority (§8.15.1). A project's `root` displaces its organization's, and an
 organization's displaces the site's (§8.4). A project ceiling is additional to the site's aggregate ceiling of
 the same name, not a replacement for it. The two ceilings count different
 things: `max_concurrent` counts every live root, and `max_active` counts only
@@ -1858,7 +1863,15 @@ machine:
     "acme": {
       "work": {
         "max_concurrent": 3,             // the budget acme's projects share
-        "root": "{org_root}/panta"       // and where their work goes (§8.4)
+        "root": "{org_root}/panta",      // where their work goes (§8.4)
+        "recipes": [                     // and how they are worked, written once
+          {
+            "id": "fix-gate",
+            "description": "fix the red gate",
+            "brief": "A gate is red on a branch you authored. Make it green.",
+            "when": { "kinds": ["ci"] }
+          }
+        ]
       }
     }
   }
@@ -1870,13 +1883,35 @@ every project whose registry row carries that `organization` id (§3), inside
 the site's aggregate ceiling and outside each project's own. Membership is the
 registry's and is written nowhere else; a project whose row names no
 organization is under no organization ceiling, and a configuration with no
-`organizations` block behaves exactly as it did before the key existed. An id
-no registry row places a project in — one the registry never declared, or one
-it declares that no project has joined — is a ceiling over nobody, so it is
+`organizations` block behaves exactly as it did before the key existed.
+
+`organizations.<org-id>.work.recipes` is read by that same membership: the
+recipes written there are offered on every project the registry places in the
+organization, between the site's and each project's own. It is how the way a
+person works the repositories they have said are one organization is written
+once instead of once per repository, and a project that genuinely differs still
+displaces a recipe by reusing its id. A project whose registry row names no
+organization is offered the site's recipes and its own, and is told nothing
+about it — an absent membership is an omitted tier, exactly as it is for the
+root and for the ceilings. A recipe written here may not squat ephor's own
+namespace, and is refused by name (`organizations.<org-id>.work.recipes has a
+recipe that is refused: …`) the way the other two scopes are.
+
+An id no registry row places a project in — one the registry never declared, or
+one it declares that no project has joined — is a block over nobody, so it is
 named rather than ignored: `ephor doctor` says `Feed config references
 organization '<id>' (no registry row places a project in it).`, in the words
-an unknown project id gets, and the sweep carries a `note:` of its own.
-Nothing is refused for it — the key simply is not the one biting.
+an unknown project id gets, and the sweep carries a `note:` of its own. It is
+named for *reaching* nobody rather than for bounding nobody, because what is
+written there may be a ceiling, a root, a list of recipes, or any two of the
+three, and a block carrying only recipes must not be announced as a ceiling its
+author never wrote. Nothing is refused for it — the key simply is not the one
+biting.
+
+`states`, `hands`, `max_active` and `runner` are deliberately not read at this
+scope. Each work key's tiers were chosen for that key rather than for symmetry,
+and only the three above are things an organization's projects were already
+established to share.
 
 **And none of those is money.** Beside them, `max_spend` and `max_tokens` bound
 what unattended work may *spend* in a trailing window, at the same three scopes
@@ -2107,6 +2142,20 @@ it is read at three scopes: `projects.<id>.work.root` first, then
 `organizations.<org-id>.work.root`, then the site's `work.root`. The innermost
 one written is the whole answer — a root is one path, so nothing above it is
 consulted and nothing merges.
+
+That direction is the root's own and does not carry across the block it sits in.
+`organizations.<org-id>.work.recipes` is beside `organizations.<org-id>.work.root`
+and is read the opposite way: a root is one answer, so the innermost scope ends
+the question, while a menu is a list, so every scope is read outward in and
+accumulates (§8.3). Two opposite senses of "narrower" in one block is not an
+untidiness — a bound, a place and a list are each read the way their own kind of
+answer is read.
+
+A *recipe's* own `root` is the other thing that looks inverted and is not. It is
+read at the **recipe** rung of entry → recipe → project → organization → site
+wherever the recipe was written, so an organization recipe carrying `root` beats
+`projects.<id>.work.root` — exactly what a site recipe carrying one does today.
+The rungs of that ladder were never the configuration scopes.
 
 Two of the names reach above the project. `{org}` is the organization the
 project's registry row places it in and `{org_root}` is where that organization
@@ -2830,8 +2879,9 @@ ephor work states
   still bounds its total, and the site number a pair is measured against is
   the configured one. A ceiling of `0` above is a pause rather than a budget,
   so the numbers under a paused site or organization are not noted. An
-  `organizations` id no registry row places a project in is a `note:` too: it
-  bounds nobody, and a ceiling may not quietly be nothing. Beside those,
+  `organizations` id no registry row places a project in is a `note:` too:
+  whatever is written there reaches nobody, and a ceiling may not quietly be
+  nothing. Beside those,
   `work.max_active` and `projects.<id>.work.max_active` bound only the live
   roots that are *working*: a root whose only open tickets wait on a person —
   gating, or a poll declaring `waiting_on` — is parked and costs a

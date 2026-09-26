@@ -67,7 +67,16 @@
     "acme": {
       "work": {
         "max_concurrent": 3,
-        "max_spend": { "amount": 20, "currency": "USD", "per": "24h" }
+        "max_spend": { "amount": 20, "currency": "USD", "per": "24h" },
+        "recipes": [
+          {
+            "id": "sweep-pins",
+            "icon": "\ud83d\udccc",
+            "description": "check the toolchain pins across acme",
+            "when": { "kinds": ["issue"], "labels": ["pins"] },
+            "brief": "Every project in acme pins the same toolchain. Say which pins have drifted and what moving them would change."
+          }
+        ]
       }
     }
   },

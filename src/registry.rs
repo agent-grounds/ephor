@@ -880,12 +880,13 @@ pub fn organization_of(registry: &Value, project: &str) -> Option<(String, Optio
 
 /// The organization ids named here that no registry row places a project
 /// inside (§FS-005-dispatch.24). A binding written against an organization —
-/// an autorun ceiling, say — reaches the projects whose rows join it, so an
-/// id no row joins is a binding over nobody and the caller says so rather
-/// than shrugging. This asks the membership the binding itself is resolved
-/// through, so an id that is bounding somebody is never announced as
-/// bounding nobody; an id the registry declares but no project has joined is
-/// as empty as one it never declared, and is named the same way.
+/// an autorun ceiling, a work root, a recipe its projects share — reaches the
+/// projects whose rows join it, so an id no row joins is a binding over nobody
+/// and the caller says so rather than shrugging. This asks the membership the
+/// binding itself is resolved through, so an id that is reaching somebody is
+/// never announced as reaching nobody; an id the registry declares but no
+/// project has joined is as empty as one it never declared, and is named the
+/// same way.
 pub fn organizations_over_nobody<'a>(
     registry: &Value,
     named: impl Iterator<Item = &'a String>,

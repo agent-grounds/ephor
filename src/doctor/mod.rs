@@ -618,18 +618,20 @@ fn site(args: &DoctorArgs, style: &Style, say: &Narrator) -> Result<(Health, Opt
             Err(err) => format!("could not be asked — {err}"),
         });
     }
-    // A ceiling written over an organization no registry row places a project
-    // inside bounds nothing, and is named here in the same words an unknown
-    // project id is named in — a bound that reaches nobody is not a shrug. The
-    // membership asked is the one the ceiling itself binds through, so an id
-    // the registry declares but no project has joined is named too
-    // (§FS-005-dispatch.24).
+    // A work block written over an organization no registry row places a
+    // project inside reaches nothing, and is named here in the same words an
+    // unknown project id is named in — a binding that reaches nobody is not a
+    // shrug. It is named for reaching nobody rather than for bounding nobody,
+    // because what is written there may be a ceiling, a root, a list of
+    // recipes, or any two of the three. The membership asked is the one the
+    // block itself binds through, so an id the registry declares but no project
+    // has joined is named too (§FS-005-dispatch.24).
     for organization in
         crate::registry::organizations_over_nobody(&registry_doc, config.organizations.keys())
     {
-        say.starting(&format!("{organization} (an autorun ceiling)"));
+        say.starting(&format!("{organization} (an organization work block)"));
         say.done(&format!(
-            "bounds nobody — Feed config references organization '{organization}' \
+            "reaches nobody — Feed config references organization '{organization}' \
              (no registry row places a project in it)."
         ));
     }

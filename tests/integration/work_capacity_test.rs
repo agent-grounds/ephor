@@ -767,8 +767,10 @@ fn an_absent_organizations_map_leaves_every_organization_unbounded() {
 
 /// §FS-005-dispatch.24: a ceiling keyed on an organization no registry row
 /// places a project inside bounds nobody, so the sweep that would have read it
-/// says so by name — a key may not quietly remove the bound its author meant
-/// to set — and starts exactly what it would have started without the key. An
+/// says so by name — in the widened words that name the block for reaching
+/// nothing, because what is written there may be a ceiling, a root or a recipe
+/// — a key may not quietly remove the bound its author meant to set, and it
+/// starts exactly what it would have started without the key. An
 /// organization the registry declares that no project has joined is as empty
 /// as one it never declared, and is named the same way.
 #[test]

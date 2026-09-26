@@ -984,15 +984,23 @@ impl Dispatcher {
         &self.notes
     }
 
-    /// The recipes offered on a project: shipped, then configured
-    /// (§FS-005-dispatch.1).
+    /// The recipes offered on a project: shipped, then configuration's three
+    /// scopes outward in — the site's, the organization the registry places
+    /// this project in, then the project's own (§FS-005-dispatch.1). The
+    /// membership is read where the ceilings and the root read it, so a project
+    /// no registry row places in an organization is simply offered the tier
+    /// above and its own (§REQ-001-boundary.2).
     pub fn recipes(&self, project: &str) -> Vec<Recipe> {
+        let per_organization = self
+            .organization_work(project)
+            .map(|work| work.recipes.as_slice())
+            .unwrap_or_default();
         let per_project = self
             .projects
             .get(project)
             .map(|work| work.recipes.as_slice())
             .unwrap_or_default();
-        recipe::resolve(&self.global.recipes, per_project)
+        recipe::resolve(&self.global.recipes, per_organization, per_project)
     }
 
     /// The recipes that apply to one item. A branch template requiring a field
@@ -1204,21 +1212,24 @@ impl Dispatcher {
         subject.work_root(&template).ok()
     }
 
-    /// Every autorun ceiling written over an organization no registry row
-    /// places a project inside, said in the note the sweep carries
-    /// (§FS-005-dispatch.24). Such a key bounds nothing at all, which is the
-    /// one thing a ceiling may never quietly be, so the reader hears it where
-    /// the bound they meant to set would have been read. It asks the same
-    /// membership [`Dispatcher::organization_of_each_project`] resolves the
-    /// ceilings through, so a key that is refusing starts is never announced
-    /// here.
+    /// Every organization work block written over an organization no registry
+    /// row places a project inside, said in the note the sweep carries
+    /// (§FS-005-dispatch.24). Such a key reaches nothing at all — the ceiling
+    /// bounds nobody, the root places nothing, and a recipe written there is
+    /// offered to no project — so the reader hears it where the thing they
+    /// meant to write would have been read. It is said for reaching nobody
+    /// rather than for bounding nobody, because a block carrying only recipes
+    /// must not be announced as a ceiling its author never wrote. It asks the
+    /// same membership [`Dispatcher::organization_of_each_project`] resolves
+    /// the ceilings through, so a key that is refusing starts is never
+    /// announced here.
     fn ceilings_over_nobody(&self) -> Vec<String> {
         crate::registry::organizations_over_nobody(&self.registry_doc, self.organizations.keys())
             .into_iter()
             .map(|organization| {
                 format!(
                     "organizations.{organization}: no registry row places a project in it, \
-                     so the ceiling written there bounds nothing"
+                     so what is written there reaches nothing"
                 )
             })
             .collect()

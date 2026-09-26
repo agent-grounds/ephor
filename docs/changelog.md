@@ -30,6 +30,45 @@ ships, the previous "latest" section moves verbatim to
 
 ### Added
 
+- **A recipe the projects of one organization share.**
+  `organizations.<org-id>.work.recipes` is read on every project the registry
+  places in that organization, between the site's `work.recipes` and the
+  project's own, so the way a person works four repositories they have said are
+  one organization is written once instead of once per repository. Membership is
+  the `organization` field on a project's registry row and nothing else — the
+  same reading the work root and the ceilings already resolve through — so a
+  project the registry places in no organization is offered the site's recipes
+  and its own, silently, and a configuration with no
+  `organizations.<org-id>.work.recipes` resolves exactly as it did. Recipes
+  accumulate outward in — shipped, then the site's, then the organization's,
+  then the project's — and one reusing an earlier id replaces that recipe
+  *where it already stands* rather than moving to the end: the later writer
+  decides what the recipe says, the first writer decided where it sits in the
+  menu, and position is the order dispatch offers in. That rule held between the
+  two scopes that already existed and is now written down, because with three
+  scopes it stopped being inferable from two. A recipe written there may not
+  squat ephor's own namespace and is refused by name, which is *narrower* than
+  the refusal before this: the organization work block refuses unknown keys, so
+  until now a `recipes` key under an organization refused the whole site
+  configuration and everything else it said. An organization *recipe* carrying
+  its own `root` still sits at the recipe rung of entry → recipe → project →
+  organization → site, so it beats `projects.<id>.work.root` the way a site
+  recipe's does — the rungs of that ladder were never the configuration scopes
+  ([§FS-005-dispatch.1](functional-spec/FS-005-dispatch.md#1-a-recipe-decides-which-items-deserve-work-and-what-to-ask-for),
+  [§FS-005-dispatch.24](functional-spec/FS-005-dispatch.md#24-work-nobody-has-to-start-starts-itself),
+  [§FS-005-dispatch.6.1](functional-spec/FS-005-dispatch.md#61-the-work-root-is-a-template-and-it-may-reach-above-the-project)).
+  (PR #123)
+
+- **`states`, `hands`, `max_active` and `runner` stay off the organization
+  block, on purpose.** Recipes are not the beginning of making every work key
+  available at all three scopes. Each key's tiers were chosen for that key with
+  a reason — `ranking` is site-only because the sweep it orders already spans
+  every configured project — and recipes moved because the organization's
+  membership is already what decides which projects share a work root and a
+  budget, which is the same fact a shared recipe is about. A recipe laid at the
+  organization whose hand can still only be defaulted per project is a known
+  asymmetry, left for its own change rather than folded into this one. (PR #123)
+
 - Recipes and action entries select on `assignees` and `labels`: a plain name
   is one the matter must carry, and `!name` one it must not, so
   `{"labels": ["enhancement", "!GenAI"], "assignees": ["kimeta"]}` takes a
@@ -80,6 +119,18 @@ ships, the previous "latest" section moves verbatim to
   registered its own 027 in the same slot while this was open. (PR #104)
 
 ### Changed
+
+- **An organization block over nobody is named for reaching nobody, not for
+  bounding nobody.** `ephor doctor` and the sweep note already said that an
+  `organizations` id no registry row places a project in is a binding over
+  nobody; the words they said it in were a ceiling's. `doctor` now heads the
+  check `<id> (an organization work block)` and says `reaches nobody — …`, and
+  the sweep note reads `organizations.<id>: no registry row places a project in
+  it, so what is written there reaches nothing`. Nothing changed about when it
+  is said or what is refused for it — nothing is — but a block carrying only
+  recipes must not be announced as a ceiling its author never wrote
+  ([§FS-005-dispatch.24](functional-spec/FS-005-dispatch.md#24-work-nobody-has-to-start-starts-itself)).
+  (PR #123)
 
 - **Work that needs several pools at once is admitted whole, or nothing is
   written at all**

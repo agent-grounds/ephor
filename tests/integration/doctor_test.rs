@@ -309,10 +309,12 @@ fn it_says_what_it_is_doing_while_it_does_it_without_saying_it_to_a_parser() {
 }
 
 /// §FS-005-dispatch.24: an autorun ceiling written over an organization no
-/// registry row places a project inside bounds nothing, so `doctor` names it
-/// in the same words an unknown project id is named in. It is not an error —
-/// the site is as healthy as it was — but the bound its author believes they
-/// set is not there, and a ceiling may never quietly be nothing. An id the
+/// registry row places a project inside reaches nothing, so `doctor` names the
+/// block it sits in in the same words an unknown project id is named in — for
+/// reaching nobody rather than for bounding nobody, since the key beside it may
+/// be a root or a recipe. It is not an error — the site is as healthy as it was
+/// — but the bound its author believes they set is not there, and a ceiling may
+/// never quietly be nothing. An id the
 /// registry declares that no project has joined is the same emptiness by
 /// another route and is named the same way; the report itself is unchanged,
 /// because this is narration and not a project's health.
