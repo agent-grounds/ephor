@@ -1,4 +1,4 @@
-//! E2E-030-a-standing-instruction-kept-in-its-file: a recipe names the file its
+//! E2E-031-a-standing-instruction-kept-in-its-file: a recipe names the file its
 //! brief is kept in, and every ticket opens with that file's current words.
 //!
 //! The scenario is a site that has one standing instruction — how work is done
