@@ -167,10 +167,12 @@ pub struct ProjectWorkConfig {
 
 /// Work for every project of one organization: the ceiling they share, inside
 /// the site's aggregate one and outside each project's own
-/// (§FS-005-dispatch.24), and the work root they share, outside the site's and
-/// inside each project's own (§FS-005-dispatch.6.1). Which projects that is
-/// comes from the registry's `organization` field, never from here — both keys
-/// are bindings, the membership is identity (§REQ-001-boundary.2).
+/// (§FS-005-dispatch.24), the work root they share, outside the site's and
+/// inside each project's own (§FS-005-dispatch.6.1), and the recipes they
+/// share, accumulated between the site's and each project's own
+/// (§FS-005-dispatch.1). Which projects that is comes from the registry's
+/// `organization` field, never from here — every key here is a binding, the
+/// membership is identity (§REQ-001-boundary.2).
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct OrganizationWorkConfig {
@@ -196,6 +198,14 @@ pub struct OrganizationWorkConfig {
     /// The same, on tokens (§FS-015-spend-ceiling.2).
     #[serde(default)]
     pub max_tokens: Option<crate::work::spend::TokenBudget>,
+    /// The recipes offered on every project of this organization, read between
+    /// the site's and the project's own: how the projects a person has said are
+    /// one organization are worked, written once (§FS-005-dispatch.1). Unlike
+    /// the root beside it this is not one answer but an ordered menu, so every
+    /// scope is read outward in, and one written here reusing a site recipe's
+    /// id replaces it where it already stands (§FS-005-dispatch.24).
+    #[serde(default)]
+    pub recipes: Vec<Recipe>,
 }
 
 /// The key a hands table answers every unnamed action with
@@ -1366,11 +1376,15 @@ pub fn shipped() -> Vec<Recipe> {
     ]
 }
 
-/// The recipes offered on a project: the shipped ones, then configuration,
-/// with a configured recipe replacing a shipped one of the same id.
-pub fn resolve(global: &[Recipe], project: &[Recipe]) -> Vec<Recipe> {
+/// The recipes offered on a project: the shipped ones, then configuration's
+/// three scopes accumulated outward in — the site's, the organization the
+/// registry places the project in, then the project's own — with a later scope
+/// reusing an earlier id replacing that recipe *where it already stands*
+/// rather than moving it to the end, because position is the order dispatch
+/// offers in (§FS-005-dispatch.1).
+pub fn resolve(global: &[Recipe], organization: &[Recipe], project: &[Recipe]) -> Vec<Recipe> {
     let mut resolved = shipped();
-    for recipe in global.iter().chain(project) {
+    for recipe in global.iter().chain(organization).chain(project) {
         match resolved
             .iter()
             .position(|existing| existing.id == recipe.id)
@@ -1831,7 +1845,7 @@ mod tests {
               "when": { "kinds": ["pr"] }, "state": "fix" }
         ]))
         .unwrap();
-        let resolved = resolve(&configured, &[]);
+        let resolved = resolve(&configured, &[], &[]);
         let fix = resolved.iter().find(|r| r.id == "fix-gate").unwrap();
         assert_eq!(fix.description, "our own gate fix");
         let implement = resolved.iter().find(|r| r.id == "implement").unwrap();
