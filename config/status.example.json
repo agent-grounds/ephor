@@ -73,6 +73,8 @@
             "id": "sweep-pins",
             "icon": "\ud83d\udccc",
             "description": "check the toolchain pins across acme",
+            "state": "fix",
+            "needs_checkout": false,
             "when": { "kinds": ["issue"], "labels": ["pins"] },
             "brief": "Every project in acme pins the same toolchain. Say which pins have drifted and what moving them would change."
           }

@@ -206,8 +206,10 @@ fn the_recipe_an_organization_writes_once_is_offered_to_every_project_it_holds()
 }
 
 /// The companion the ticket names: the same recipe object, byte for byte,
-/// under the project's own key. That loads today and must go on loading — the
-/// change adds a scope and moves nothing between the two that already exist.
+/// under the project's own key. That loads today and must go on loading, and
+/// it still reaches exactly the project it was written under and no sibling.
+/// Which scope wins where several write one id is pinned by the two cases
+/// below, not here.
 #[test]
 fn the_same_recipe_under_the_project_loads_exactly_as_it_did() {
     let world = three_projects();
