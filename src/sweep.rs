@@ -614,6 +614,19 @@ fn write_up(
     else {
         return Ok(None);
     };
+    // The sweep reads the file its recipe names, like every other writer of a
+    // brief (§FS-005-dispatch.34.3). It has a checkout and no matter
+    // (§FS-005-dispatch.3), so the path renders from the names a checkout can
+    // answer and one it cannot — a `{title}` where there is no item — is
+    // refused by name. Where the file cannot be read, this returns the reason
+    // and the caller leaves it on the row: the conflict is still reported and
+    // no ticket is opened, which is the failure this exists to prevent.
+    //
+    // Read before the store is ensured, so a path with nothing behind it
+    // leaves no work root and no plan, as the dispatch's own read does
+    // (§FS-005-dispatch.34). Nothing below feeds it.
+    let asked = work::dossier::brief(&recipe, &checkout_values(placement, row))
+        .map_err(EphorError::Command)?;
     let (organization, own) = tiers(config, placement, &row.project);
     let store = work::ensure_store(
         &config.work,
@@ -645,15 +658,16 @@ fn write_up(
         .as_ref()
         .map(|plan| plan.next_ticket_id(&stem))
         .unwrap_or_else(|| format!("{stem}-1"));
-    // The sweep reads the file its recipe names, like every other writer of a
-    // brief (§FS-005-dispatch.34.3). It has a checkout and no matter
-    // (§FS-005-dispatch.3), so the path renders from the names a checkout can
-    // answer and one it cannot — a `{title}` where there is no item — is
-    // refused by name. Where the file cannot be read, this returns the reason
-    // and the caller leaves it on the row: the conflict is still reported and
-    // no ticket is opened, which is the failure this exists to prevent.
-    let asked = work::dossier::brief(&recipe, &checkout_values(placement, row))
-        .map_err(EphorError::Command)?;
+    // Which words this ticket got: the rendered path and a hash of the bytes
+    // as read, on the ticket and not on the plan, because a later sweep
+    // appends its own ticket to this plan and neither corrects the other
+    // (§FS-005-dispatch.34.2). A recipe that keeps no brief in a file records
+    // nothing rather than an empty block.
+    let metadata: Vec<(&'static str, String)> = asked
+        .instruction
+        .iter()
+        .flat_map(work::dossier::Instruction::metadata)
+        .collect();
     let body = format!(
         "{}\n\n{}\n{}\n",
         asked.text,
@@ -675,10 +689,13 @@ fn write_up(
     match existing {
         Some(mut plan) => {
             plan.append(&ticket);
+            if !metadata.is_empty() {
+                plan.set_metadata(&id, &metadata);
+            }
             plan.save()?;
         }
         None => {
-            let plan = work::runtime::plan::Plan::create(
+            let mut plan = work::runtime::plan::Plan::create(
                 &path,
                 &root.machine,
                 "the rebase sweep's conflicts",
@@ -689,6 +706,9 @@ fn write_up(
                 ),
                 &ticket,
             );
+            if !metadata.is_empty() {
+                plan.set_metadata(&id, &metadata);
+            }
             plan.save()?;
         }
     }

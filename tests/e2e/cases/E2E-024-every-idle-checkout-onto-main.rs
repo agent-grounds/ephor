@@ -112,6 +112,31 @@ fn a_sweep_recipe(state: &str) -> serde_json::Value {
     } ] })
 }
 
+/// The same recipe, keeping its brief in a file rather than inline
+/// (§FS-005-dispatch.34.3): the unattended sweep is the caller that key exists
+/// for, so what it writes up has to carry the words the file said and say which
+/// version of them it got.
+fn a_sweep_recipe_keeping_its_brief_in(file: &str) -> serde_json::Value {
+    json!({ "recipes": [ {
+        "id": "rebase-sweep",
+        "description": "resolve the sweep conflict",
+        "state": "fix",
+        "needs_checkout": false,
+        "brief_file": format!("{{root}}/{file}")
+    } ] })
+}
+
+/// The standing instruction a sweep's recipe would point at, and `sha256sum`
+/// of exactly those bytes — written out rather than computed here, so the case
+/// pins the algorithm the specification names rather than whatever the
+/// implementation happens to do (§FS-005-dispatch.34.2).
+const SWEEP_INSTRUCTION: &str =
+    "# How a conflict is resolved here\n\nReplay it by hand, keep both \
+                                 sides, and cite the point the fix realizes.\n";
+
+const SWEEP_INSTRUCTION_SHA256: &str =
+    "8bbca019ee72181d0bcba9a92babef25c54f32679246a6232ac2e5ec7bec4e13";
+
 fn git(dir: &Path, args: &[&str]) {
     let status = Command::new("git")
         .arg("-C")
@@ -916,6 +941,108 @@ fn a_write_up_that_could_not_be_opened_is_carried_on_the_row() {
             .unwrap_or_default()
             .contains("conflict"),
         "{reading:#}"
+    );
+}
+
+/// The unattended sweep is the caller `brief_file` exists for
+/// (§FS-005-dispatch.34.3), so the ticket it writes carries the file's words
+/// *and* records which version of them it got — the rendered path and a sha256
+/// of the bytes as read, in that ticket's own metadata
+/// (§FS-005-dispatch.34.2). A ticket nobody watched being written is the one
+/// whose provenance matters most: without it, a conflict report says what to do
+/// and nothing says where the words came from.
+#[test]
+fn the_sweeps_own_ticket_records_the_instruction_it_was_given() {
+    let world = a_machine_left_alone();
+    let instruction = world.file("SWEEP.md", SWEEP_INSTRUCTION);
+    configured(&world, a_sweep_recipe_keeping_its_brief_in("SWEEP.md"), 600);
+
+    let acted = world
+        .ephor_raw()
+        .args(["rebase", "--org", "foundation", "--act", "--json"])
+        .output()
+        .expect("ran");
+    assert_eq!(
+        acted.status.code(),
+        Some(3),
+        "one checkout conflicted: {}",
+        String::from_utf8_lossy(&acted.stderr)
+    );
+    let reading = shaped("rebase", &acted);
+    let written = row(&reading, CLASH)["ticket"]
+        .as_str()
+        .unwrap_or_else(|| panic!("the conflict was not written up: {reading:#}"))
+        .to_string();
+    let (path, id) = written
+        .rsplit_once('#')
+        .unwrap_or_else(|| panic!("a ticket names its plan and its id: {written}"));
+    let plan = fs::read_to_string(path).expect("the plan the sweep wrote");
+
+    // The words the file said reached the ticket, flattened, so the plan is
+    // still one the runtime can load (§FS-005-dispatch.3).
+    let body = ticket_body(&plan, id);
+    assert!(
+        body.contains("**How a conflict is resolved here**"),
+        "the sweep's ticket does not carry the file's words:\n{body}"
+    );
+    assert_eq!(
+        stray_headings(&plan),
+        Vec::<String>::new(),
+        "the instruction's headings reached the plan as headings:\n{plan}"
+    );
+
+    // And which words they were, on this ticket rather than on the plan.
+    assert!(
+        plan.contains(&format!("    {id}:")),
+        "the ticket has no metadata of its own:\n{plan}"
+    );
+    assert!(
+        plan.contains(&format!("instruction: \"{}\"", instruction.display())),
+        "the ticket does not record the path it read:\n{plan}"
+    );
+    assert!(
+        plan.contains(&format!(
+            "instruction_sha256: \"{SWEEP_INSTRUCTION_SHA256}\""
+        )),
+        "the ticket does not record a sha256 of the bytes as read:\n{plan}"
+    );
+}
+
+/// A rendered `brief_file` with nothing readable behind it refuses before
+/// anything is written — no work root, no plan — exactly as the dispatch's own
+/// read does (§FS-005-dispatch.34). The conflict is still reported and the
+/// reason is on the row (§FS-004-quick-actions.6.1): what must not happen is a
+/// work root left standing for a ticket that was never opened.
+#[test]
+fn a_brief_file_the_sweep_cannot_read_leaves_no_work_root_behind() {
+    let world = a_machine_left_alone();
+    configured(&world, a_sweep_recipe_keeping_its_brief_in("SWEEP.md"), 600);
+    let missing = world.forest().join("SWEEP.md");
+
+    let acted = world
+        .ephor_raw()
+        .args(["rebase", "--org", "foundation", "--act", "--json"])
+        .output()
+        .expect("ran");
+    assert_eq!(
+        acted.status.code(),
+        Some(3),
+        "the conflict is still the exit, whatever became of its ticket"
+    );
+    let reading = shaped("rebase", &acted);
+    let stopped = row(&reading, CLASH);
+    assert_eq!(stopped["outcome"], json!("conflicted"), "{reading:#}");
+    assert_eq!(stopped["ticket"], json!(null), "{reading:#}");
+    let note = stopped["note"]
+        .as_str()
+        .unwrap_or_else(|| panic!("nothing on the row says the write-up failed: {reading:#}"));
+    assert!(
+        note.contains(&missing.display().to_string()),
+        "the note does not name the path it could not read: {note}"
+    );
+    assert!(
+        !world.forest().join("panta").exists(),
+        "a refused write-up left the project's work root behind"
     );
 }
 
