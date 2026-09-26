@@ -563,6 +563,33 @@ fn became_of(row: &Swept, rebase: &git::Rebase) -> String {
     )
 }
 
+/// What a path template may name on a sweep that has no matter
+/// (§FS-005-dispatch.34.3): the checkout, the branch, the project and its
+/// root, and the organization the registry places it in
+/// (§FS-005-dispatch.6.1). Every other name a brief knows is the item's, and
+/// there is no item here — so `brief_file` refuses on one by name rather than
+/// writing a path with a segment missing.
+fn checkout_values(placement: &Placement, row: &Swept) -> BTreeMap<&'static str, String> {
+    let organization = placement.organization.as_ref();
+    BTreeMap::from([
+        ("project", row.project.clone()),
+        ("branch", row.branch.clone()),
+        ("workspace", row.checkout.to_string_lossy().into_owned()),
+        ("root", placement.root.to_string_lossy().into_owned()),
+        (
+            "org",
+            organization.map(|org| org.id.clone()).unwrap_or_default(),
+        ),
+        (
+            "org_root",
+            organization
+                .and_then(|org| org.root.as_ref())
+                .map(|root| root.to_string_lossy().into_owned())
+                .unwrap_or_default(),
+        ),
+    ])
+}
+
 /// The conflict as a ticket, where the project's work configuration names a
 /// recipe for it (§FS-004-quick-actions.6.1).
 ///
@@ -618,9 +645,18 @@ fn write_up(
         .as_ref()
         .map(|plan| plan.next_ticket_id(&stem))
         .unwrap_or_else(|| format!("{stem}-1"));
+    // The sweep reads the file its recipe names, like every other writer of a
+    // brief (§FS-005-dispatch.34.3). It has a checkout and no matter
+    // (§FS-005-dispatch.3), so the path renders from the names a checkout can
+    // answer and one it cannot — a `{title}` where there is no item — is
+    // refused by name. Where the file cannot be read, this returns the reason
+    // and the caller leaves it on the row: the conflict is still reported and
+    // no ticket is opened, which is the failure this exists to prevent.
+    let asked = work::dossier::brief(&recipe, &checkout_values(placement, row))
+        .map_err(EphorError::Command)?;
     let body = format!(
         "{}\n\n{}\n{}\n",
-        recipe.brief,
+        asked.text,
         rebase.in_a_body(),
         became_of(row, rebase)
     );

@@ -575,7 +575,35 @@ pub struct Recipe {
     /// plus `{reply}` — where a proposed answer for this matter belongs, which
     /// ephor reads back and offers beside the conversation
     /// (§FS-005-dispatch.13).
-    pub brief: String,
+    ///
+    /// Optional because a recipe may keep its words in the file that owns them
+    /// instead ([`Recipe::brief_file`], §FS-005-dispatch.34.1). Writing both is
+    /// not an error and they are not two spellings of one fact: the file says
+    /// how work is done here, and this still says what to do with this matter.
+    /// Writing neither is, and it is refused where the configuration loads.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub brief: Option<String>,
+    /// The file the brief is kept in, as a path template rendered from the
+    /// vocabulary a work root is rendered from (§FS-005-dispatch.34). It is
+    /// read when the ticket is written and its text is the brief, so the plan
+    /// carries the instruction rather than a path to it
+    /// (§FS-005-dispatch.2) — and a standing instruction stays in the document
+    /// that owns it rather than being pasted into site configuration.
+    ///
+    /// `{reply}` is not among the names a path may take: it is a place ephor
+    /// writes to rather than a fact about the matter. Nothing inside the file
+    /// is substituted — a version-controlled document is not a template, and
+    /// its braces are the characters they are.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub brief_file: Option<String>,
+    /// The configuration file this recipe was written in, stamped after the
+    /// parse rather than written by anybody: a relative
+    /// [`Recipe::brief_file`] resolves against the directory holding it and
+    /// never against the working directory, because a recipe that sweeps on a
+    /// timer (§FS-005-dispatch.32) runs from wherever the unit that called
+    /// ephor happened to stand (§FS-005-dispatch.34).
+    #[serde(skip)]
+    pub based_in: Option<std::path::PathBuf>,
     /// A deterministic opening move ephor makes itself, before the ticket
     /// costs a model (§FS-005-dispatch.12). Where the move finishes, nothing
     /// is dispatched at all; where it stops, what it reached is written into
@@ -1186,6 +1214,34 @@ impl Recipe {
             )
         })
     }
+
+    /// Why this recipe asks for nothing at all (§FS-005-dispatch.34.1). A
+    /// recipe is a selector and a brief, and the brief may arrive by either
+    /// door — but one of the doors has to be open, and a ticket carrying no
+    /// words is work nobody can do.
+    ///
+    /// Answered here and asked where the configuration loads rather than at
+    /// the dispatch that would have used it: a recipe can run from a timer
+    /// with nobody watching (§FS-005-dispatch.24), so a dispatch-time refusal
+    /// lands in a log while a load-time one stops the next reading of anything
+    /// in front of the person who has just edited the file.
+    pub fn without_a_brief(&self) -> Option<String> {
+        (self.brief.is_none() && self.brief_file.is_none()).then(|| {
+            format!(
+                "recipe '{}' says neither 'brief' nor 'brief_file': a recipe is a selector and \
+                 a brief, so write the words inline as 'brief', or name the file they are kept \
+                 in as 'brief_file'",
+                self.id
+            )
+        })
+    }
+
+    /// Record which configuration file wrote this recipe, so a relative
+    /// `brief_file` has something to be relative *to* (§FS-005-dispatch.34).
+    /// Stamped once, after the parse, by whoever read the file.
+    pub fn written_in(&mut self, config: &std::path::Path) {
+        self.based_in = Some(config.to_path_buf());
+    }
 }
 
 /// The recipes ephor knows without being told (§FS-005-dispatch.1). They ask
@@ -1217,7 +1273,13 @@ pub fn shipped() -> Vec<Recipe> {
         // And nothing that ships sweeps for itself, for the same reason one
         // step earlier (§FS-005-dispatch.32).
         dispatch: None,
-        brief: brief.to_string(),
+        brief: Some(brief.to_string()),
+        // Nothing ephor ships names a file of its own: a project that gained a
+        // voice in what is asked for merely by containing a well-known
+        // filename would be an artifact required of it
+        // (§REQ-001-boundary.3, §FS-005-dispatch.34).
+        brief_file: None,
+        based_in: None,
         opens_with: None,
         // The shipped recipes name nobody: who does them is the reader's
         // table to write, and unwritten is the runtime's to pick

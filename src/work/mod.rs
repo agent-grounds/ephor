@@ -1071,10 +1071,19 @@ impl Dispatcher {
     /// pressing the key, not the template it came from. Falls back to the
     /// template where the item cannot be placed; the refusal that follows
     /// says why better than a blank line would.
+    ///
+    /// And falls back the same way where the file a recipe keeps its brief in
+    /// cannot be read (§FS-005-dispatch.34.3): a menu row is a row, and a
+    /// refusal in the slot where the words go is worse than words that are out
+    /// of date. The dry run is not this — it promises what the real dispatch
+    /// would do, and refuses where that would refuse.
     pub fn brief(&mut self, item: &Item, recipe: &Recipe) -> String {
-        match self.site(item, recipe) {
-            Ok(site) => dossier::render(&recipe.brief, &site.values),
-            Err(_) => recipe.brief.clone(),
+        let Ok(site) = self.site(item, recipe) else {
+            return recipe.brief.clone().unwrap_or_default();
+        };
+        match dossier::brief(recipe, &site.values) {
+            Ok(brief) => brief.text,
+            Err(_) => dossier::render(recipe.brief.as_deref().unwrap_or_default(), &site.values),
         }
     }
 
@@ -1832,6 +1841,12 @@ impl Dispatcher {
         } = self.pin(item, recipe, picked, &site.dir)?;
         let states = self.states_yaml(&item.project)?;
         let plan_id = plan::plan_id(&item.id);
+        // What the ticket will actually ask for, read here: beside the hand
+        // and the machine, and on this side of the mint, so a rendered path
+        // with no file behind it leaves no workspace, no work root and no plan
+        // (§FS-005-dispatch.34). The dry run reaches this too, because it
+        // promises what the real dispatch would do (§FS-005-dispatch.34.3).
+        let asked = dossier::brief(recipe, &site.values).map_err(EphorError::Command)?;
 
         // Where a machine is already in force, it answers before anything is
         // written: a recipe naming a state it does not have is refused, and a
@@ -1976,7 +1991,21 @@ impl Dispatcher {
         })?;
         let path = root.plan_path(&plan_id);
         self.journal.remember(&path)?;
-        let mut brief = dossier::render(&recipe.brief, &site.values);
+        let mut brief = asked.text;
+        // Which words this ticket got: the rendered path and a hash of the
+        // bytes as read, on the ticket rather than in the dossier the next
+        // reopen rewrites (§FS-005-dispatch.34.2, §FS-005-dispatch.8).
+        let metadata: Vec<(&'static str, String)> = site
+            .metadata
+            .iter()
+            .cloned()
+            .chain(
+                asked
+                    .instruction
+                    .iter()
+                    .flat_map(dossier::Instruction::metadata),
+            )
+            .collect();
         // What is handed over is the situation rather than the request to
         // reproduce it: the repository is standing in what this report
         // describes (§FS-005-dispatch.12).
@@ -2010,7 +2039,7 @@ impl Dispatcher {
                 };
                 let mut plan =
                     Plan::create(&path, &root.machine, &item.title, &site.dossier, &ticket);
-                plan.set_metadata(&ticket_id, &site.metadata);
+                plan.set_metadata(&ticket_id, &metadata);
                 plan.save()?;
                 (
                     Outcome::Opened {
@@ -2047,7 +2076,7 @@ impl Dispatcher {
                     model: model.clone(),
                     body,
                 });
-                existing.set_metadata(&ticket_id, &site.metadata);
+                existing.set_metadata(&ticket_id, &metadata);
                 existing.save()?;
                 (
                     Outcome::Reopened {
@@ -2841,7 +2870,12 @@ impl Dispatcher {
             // (§FS-005-dispatch.32).
             autorun: false,
             dispatch: None,
-            brief: words.to_string(),
+            brief: Some(words.to_string()),
+            // Typed on the spot, so the words are right here: there is no file
+            // to go and read, and nothing to record about which version of one
+            // this was (§FS-005-dispatch.34).
+            brief_file: None,
+            based_in: None,
             // What was asked for is what is written down: ephor does not make
             // a move of its own in front of somebody's own words.
             opens_with: None,

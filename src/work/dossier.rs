@@ -8,13 +8,14 @@
 //! person would have started.
 
 use std::collections::BTreeMap;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use serde_json::Value;
 
 use crate::branches::{Checkout, Organization, WorkspaceState};
 use crate::feed::gate::Gate;
 use crate::feed::model::Item;
+use crate::work::recipe::Recipe;
 
 /// How much conversation a ticket quotes (§FS-005-dispatch.2). A transcript is
 /// not evidence: what is dropped is said, and the url reaches the rest.
@@ -312,6 +313,272 @@ pub fn named(template: &str) -> Vec<String> {
         rest = &after[close + 1..];
     }
     names
+}
+
+/// The one name a path may never take (§FS-005-dispatch.34): `{reply}` is
+/// where ephor writes a proposed answer for the matter
+/// (§FS-005-dispatch.13), which is a place rather than a fact about it — and
+/// on the sweep that has no matter at all there is no answer to place.
+const NOT_IN_A_PATH: &str = "reply";
+
+/// Where a ticket's words came from, where they came from a file
+/// (§FS-005-dispatch.34.2).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Instruction {
+    /// The rendered path, as it was read.
+    pub path: PathBuf,
+    /// A sha256 of the bytes as read, before anything was done to them, so
+    /// `sha256sum` over the file on disk gives the same answer.
+    pub sha256: String,
+}
+
+impl Instruction {
+    /// What the ticket records about the ask rather than about the item
+    /// (§FS-005-dispatch.34.2, §FS-005-dispatch.8). Per ticket and never in
+    /// the dossier: the dossier is rewritten every time the matter reopens
+    /// (§FS-005-dispatch.5), and a hash written there would name the latest
+    /// dispatch's text while sitting above tickets that were given something
+    /// else.
+    pub fn metadata(&self) -> Vec<(&'static str, String)> {
+        vec![
+            ("instruction", self.path.to_string_lossy().into_owned()),
+            ("instruction_sha256", self.sha256.clone()),
+        ]
+    }
+}
+
+/// What a recipe asks for, as the words that reach the ticket
+/// (§FS-005-dispatch.34).
+#[derive(Debug, Clone, Default)]
+pub struct Brief {
+    /// The whole of it: the instruction file's text first, the rendered
+    /// `brief` after it (§FS-005-dispatch.34.1). Whatever a deterministic
+    /// opening move reached goes after both, which is the dispatch's to append
+    /// because it is what made the move (§FS-005-dispatch.12).
+    pub text: String,
+    /// Which words this was, where a file said them.
+    pub instruction: Option<Instruction>,
+}
+
+/// Render a recipe's brief, reading the file it keeps its words in
+/// (§FS-005-dispatch.34).
+///
+/// The whole behaviour is here — render the path, resolve it, read it, flatten
+/// it, hash it — because every writer of a brief honours the key and a rule
+/// each of them implemented would be a rule the sweep got wrong
+/// (§FS-005-dispatch.34.3).
+///
+/// `values` is the vocabulary both halves are rendered from. The path takes
+/// all of it but [`NOT_IN_A_PATH`], and a name it does not answer is refused
+/// **by name** rather than written into a path with a segment missing
+/// (§FS-005-dispatch.6.1) — which is what holds the unattended sweep, whose
+/// values are a checkout's and never a matter's, to the names a checkout can
+/// answer. The `brief` beside it is prose and carries the gap as prose always
+/// has.
+pub fn brief(
+    recipe: &Recipe,
+    values: &BTreeMap<&'static str, String>,
+) -> std::result::Result<Brief, String> {
+    let said = recipe
+        .brief
+        .as_deref()
+        .map(|brief| render(brief, values))
+        .unwrap_or_default();
+    let Some(template) = recipe.brief_file.as_deref() else {
+        return Ok(Brief {
+            text: said,
+            instruction: None,
+        });
+    };
+    let (instruction, read) = read_instruction(recipe, template, values)?;
+    // The file's text first and the rendered `brief` after it: the standing
+    // instruction says how work is done here, and `brief` says what to do with
+    // this matter (§FS-005-dispatch.34.1).
+    //
+    // Flattened after the hash, never before: the hash is of the bytes as
+    // read, so whoever holds the file can say whether this ticket got these
+    // words (§FS-005-dispatch.34.2). A heading inside a plan is a node the
+    // runtime reads as a task (§FS-005-dispatch.3).
+    let text = in_a_body(&String::from_utf8_lossy(&read));
+    let text = match said.is_empty() {
+        true => text.trim_end().to_string(),
+        false => format!("{}\n\n{said}", text.trim_end()),
+    };
+    Ok(Brief {
+        text,
+        instruction: Some(instruction),
+    })
+}
+
+/// The rendered path and the hash of what is behind it, refusing where there
+/// is nothing readable behind it — naming the path, and before anything the
+/// caller would have written (§FS-005-dispatch.34).
+fn read_instruction(
+    recipe: &Recipe,
+    template: &str,
+    values: &BTreeMap<&'static str, String>,
+) -> std::result::Result<(Instruction, Vec<u8>), String> {
+    let mut answerable = values.clone();
+    answerable.remove(NOT_IN_A_PATH);
+    if let Some(name) = named(template)
+        .into_iter()
+        .find(|name| !answerable.contains_key(name.as_str()))
+    {
+        return Err(format!(
+            "recipe '{}': the brief_file template '{template}' names {{{name}}}, which is not \
+             a placeholder this runtime can answer here",
+            recipe.id
+        ));
+    }
+    let rendered = crate::paths::expand_user_vars(&render(template, &answerable));
+    // Relative to the directory holding the configuration file that wrote it,
+    // never to the working directory: a recipe with its own sweep
+    // (§FS-005-dispatch.32) runs from wherever the unit that called ephor
+    // happened to stand, and a brief that depended on that would be a
+    // different brief on a timer than under a person (§FS-005-dispatch.34).
+    let path = match &recipe.based_in {
+        Some(config) => crate::paths::resolve_registry_relative(config, &rendered),
+        None => PathBuf::from(rendered),
+    };
+    let read = std::fs::read(&path).map_err(|err| {
+        format!(
+            "recipe '{}': cannot read the brief it keeps in {}: {err}",
+            recipe.id,
+            path.display()
+        )
+    })?;
+    // A file with nothing in it is a path with no brief behind it: the ticket
+    // would carry no words, which is the hole a recipe with neither key is
+    // refused for (§FS-005-dispatch.34.1).
+    if read.iter().all(u8::is_ascii_whitespace) {
+        return Err(format!(
+            "recipe '{}': the brief it keeps in {} is empty, so the ticket would ask for \
+             nothing",
+            recipe.id,
+            path.display()
+        ));
+    }
+    Ok((
+        Instruction {
+            sha256: sha256(&read),
+            path,
+        },
+        read,
+    ))
+}
+
+/// A document as a paragraph of somebody else's (§FS-005-dispatch.3).
+///
+/// A ticket's body is prose inside a plan, and a heading inside a plan is a
+/// *node*: the runtime reads one as a task, fails to parse it, and refuses the
+/// whole file — so the plan the writer meant to hand over is a plan nothing can
+/// load. The headings become plain emphasis here rather than at each caller,
+/// because everything that embeds a document in a body — the rebase report,
+/// the hand-over, the sweep, an instruction file a recipe named — would
+/// otherwise each have to remember. Fenced content is left exactly as it is:
+/// what git said is what git said, an example in an instruction is the example
+/// its author wrote, and the plan language skips a fence for the same reason.
+pub fn in_a_body(text: &str) -> String {
+    let mut out = String::new();
+    let mut fenced = false;
+    for line in text.lines() {
+        if line.trim_start().starts_with("```") {
+            fenced = !fenced;
+        }
+        let heading = match fenced {
+            true => None,
+            false => line
+                .strip_prefix('#')
+                .map(|rest| rest.trim_start_matches('#'))
+                .and_then(|rest| rest.strip_prefix(' ')),
+        };
+        match heading {
+            Some(text) => out.push_str(&format!("**{}**\n", text.trim_end())),
+            None => out.push_str(&format!("{line}\n")),
+        }
+    }
+    out
+}
+
+/// SHA-256 of some bytes, as lowercase hex (FIPS 180-4).
+///
+/// Written out rather than taken from a crate. The value is worth having only
+/// because a reader holding the file can check it (§FS-005-dispatch.34.2), so
+/// it has to be the hash `sha256sum` prints and nothing else — and this
+/// repository has twice written a digest by hand rather than take a dependency
+/// for one ([`crate::sweep`]'s branch fingerprint, the matter store's change
+/// detection). Shelling out to `sha256sum` is not available: the tool is not on
+/// every platform ephor runs on (§RM-004-windows).
+fn sha256(bytes: &[u8]) -> String {
+    const K: [u32; 64] = [
+        0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4,
+        0xab1c5ed5, 0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe,
+        0x9bdc06a7, 0xc19bf174, 0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f,
+        0x4a7484aa, 0x5cb0a9dc, 0x76f988da, 0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7,
+        0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967, 0x27b70a85, 0x2e1b2138, 0x4d2c6dfc,
+        0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85, 0xa2bfe8a1, 0xa81a664b,
+        0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070, 0x19a4c116,
+        0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
+        0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7,
+        0xc67178f2,
+    ];
+    let mut hash: [u32; 8] = [
+        0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab,
+        0x5be0cd19,
+    ];
+    // The padded message: the bytes, a single one bit, zeroes, and the length
+    // in bits as a big-endian u64 — which is what makes two inputs that differ
+    // only in trailing zeroes hash differently.
+    let mut padded = bytes.to_vec();
+    padded.push(0x80);
+    while padded.len() % 64 != 56 {
+        padded.push(0);
+    }
+    padded.extend_from_slice(&(bytes.len() as u64 * 8).to_be_bytes());
+
+    for block in padded.chunks_exact(64) {
+        let mut w = [0u32; 64];
+        for (index, word) in block.chunks_exact(4).enumerate() {
+            w[index] = u32::from_be_bytes([word[0], word[1], word[2], word[3]]);
+        }
+        for index in 16..64 {
+            let s0 = w[index - 15].rotate_right(7)
+                ^ w[index - 15].rotate_right(18)
+                ^ (w[index - 15] >> 3);
+            let s1 = w[index - 2].rotate_right(17)
+                ^ w[index - 2].rotate_right(19)
+                ^ (w[index - 2] >> 10);
+            w[index] = w[index - 16]
+                .wrapping_add(s0)
+                .wrapping_add(w[index - 7])
+                .wrapping_add(s1);
+        }
+        let [mut a, mut b, mut c, mut d, mut e, mut f, mut g, mut h] = hash;
+        for index in 0..64 {
+            let s1 = e.rotate_right(6) ^ e.rotate_right(11) ^ e.rotate_right(25);
+            let choice = (e & f) ^ (!e & g);
+            let one = h
+                .wrapping_add(s1)
+                .wrapping_add(choice)
+                .wrapping_add(K[index])
+                .wrapping_add(w[index]);
+            let s0 = a.rotate_right(2) ^ a.rotate_right(13) ^ a.rotate_right(22);
+            let majority = (a & b) ^ (a & c) ^ (b & c);
+            let two = s0.wrapping_add(majority);
+            h = g;
+            g = f;
+            f = e;
+            e = d.wrapping_add(one);
+            d = c;
+            c = b;
+            b = a;
+            a = one.wrapping_add(two);
+        }
+        for (slot, value) in hash.iter_mut().zip([a, b, c, d, e, f, g, h]) {
+            *slot = slot.wrapping_add(value);
+        }
+    }
+    hash.iter().map(|word| format!("{word:08x}")).collect()
 }
 
 fn render_gate(gate: &Gate) -> String {

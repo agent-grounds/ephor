@@ -791,7 +791,10 @@ mod tests {
                 hand: Some("luna at high".to_string()),
                 roster: Some(Vec::new()),
                 command: None,
-                brief: Some(recipe.brief.replace("{title}", "Humanize durations")),
+                brief: recipe
+                    .brief
+                    .as_deref()
+                    .map(|brief| brief.replace("{title}", "Humanize durations")),
                 branch: None,
                 workspace: None,
                 root: None,
