@@ -146,6 +146,10 @@ name = "e2e_028_a_sweep_nobody_has_to_type"
 path = "tests/e2e/cases/E2E-028-a-sweep-nobody-has-to-type.rs"
 
 [[test]]
+name = "e2e_030_a_standing_instruction_kept_in_its_file"
+path = "tests/e2e/cases/E2E-030-a-standing-instruction-kept-in-its-file.rs"
+
+[[test]]
 name = "agents_test"
 path = "tests/integration/agents_test.rs"
 

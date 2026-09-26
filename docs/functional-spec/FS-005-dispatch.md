@@ -32,7 +32,9 @@ running refuses with the configured runner named.
 A **recipe** is a named piece of configuration with a selector and a brief: the
 selector says which items it applies to — kind, role, whether the gate is red,
 whether a response is owed, which source reported it — and the brief is what
-the ticket asks for, in the reader's own words.
+the ticket asks for, in the reader's own words. Those words may be written
+inline or kept in a file the recipe names, which is the same brief arriving by
+another door ([§34](#34-a-brief-may-be-kept-in-the-file-that-owns-it)).
 
 Recipes are how the same watch serves different projects: what to do about a
 red gate in one repository is not what to do about it in another, and neither
@@ -176,6 +178,11 @@ A dossier is bounded. A conversation of two hundred messages is not evidence,
 it is a transcript; what is quoted is bounded per thread and in total, and
 where anything was dropped the ticket says so and links to the whole.
 
+The same rule is why a brief kept in a file is read when the ticket is written
+rather than named for the run to open
+([§34](#34-a-brief-may-be-kept-in-the-file-that-owns-it)): a path is a link,
+and a link is the opening move handed back.
+
 ## 3. One rhei per item, one ticket per dispatch
 
 An item's recipe work lives in at most one plan named after the item **per
@@ -224,7 +231,8 @@ because the reader who finds out is the runtime, and it finds out by not
 loading the plan at all — which on the one writer nobody is watching
 ([§FS-004-quick-actions.6.1](FS-004-quick-actions.md#61-the-same-replay-over-every-checkout-nobody-is-holding))
 means a ticket that can never be worked and a checkout passed over on it
-forever.
+forever. A brief read out of a file is an embedded document like any other and
+is flattened the same way ([§34](#34-a-brief-may-be-kept-in-the-file-that-owns-it)).
 
 A project that keeps a single checkout for every branch is not exempt from
 that. Its root is the branch's working tree only while it is standing on the
@@ -371,7 +379,10 @@ root* — because what it would otherwise write is a directory literally called
 been, and either one is work laid down somewhere nobody meant. The refusal is
 about the *path*: the dossier and a recipe's brief are prose, and carry an
 empty organization the way they carry any other field a matter has not got
-([§2](#2-the-ticket-carries-what-ephor-knows-not-a-link-to-it)).
+([§2](#2-the-ticket-carries-what-ephor-knows-not-a-link-to-it)). A brief that
+is *named by* a path is both at once, and is read as both: the path it names is
+under this rule, and the text that path holds is prose under the other
+([§34](#34-a-brief-may-be-kept-in-the-file-that-owns-it)).
 
 Branch placement is resolved before the selected root is rendered. Thus
 `{workspace}` names the existing or deterministically minted checkout and
@@ -423,7 +434,10 @@ Two consequences. A ticket that is appended to a plan **adds** its metadata
 rather than replacing what is there, because the runtime keeps its own
 bookkeeping in the same place and a ticket writing over it would break the
 plan. And what is written is identifiers only — the prose stays in the dossier,
-which is where a reader is looking.
+which is where a reader is looking. One thing here identifies the ask rather
+than the item: where the brief was read out of a file, the ticket also records
+which file and which version of it
+([§34.2](#342-which-text-a-ticket-was-given-is-recorded-on-the-ticket)).
 
 ## 9. Work that stops for a person says so where the person is looking
 
@@ -3248,3 +3262,135 @@ an ordered list of alternates anywhere keeps
 [§29](#29-headroom-is-reported-to-ephor-and-vetoes-a-member-it-never-reorders)'s
 behaviour exactly. Nothing already written is read differently, no file format
 changes, and no configuration becomes invalid.
+
+## 34. A brief may be kept in the file that owns it
+
+The brief is what the ticket asks for, in the reader's own words
+([§1](#1-a-recipe-decides-which-items-deserve-work-and-what-to-ask-for)) — and
+some of those words are not about the item at all. How work is done under this
+organization, what a house review looks at, the long standing prompt that took
+a year to settle: each of them is a document with an owner and a history, and
+each of them already lives in a file. Written inline, the copy that reaches a
+run is the one pasted into site configuration, so every edit to the instruction
+is a second edit somewhere else and a missed one is silent — the ticket carries
+last month's words with nothing in its output to say so.
+
+So a recipe may name that file instead. `brief_file` is a **path template**,
+rendered from the vocabulary a work root is rendered from
+([§6.1](#61-the-work-root-is-a-template-and-it-may-reach-above-the-project)):
+the item's own fields, the resolved checkout, the project root, and the two
+names that reach above it. `{reply}` is not among them — it is a place ephor
+writes to rather than a fact about the matter, and a path cannot be one
+([§13](#13-a-communication-is-work-too-and-its-answer-comes-back-as-a-proposal)).
+A relative path is relative to the directory holding the configuration file
+that wrote it, with `~` and `$VAR` expanded first, and never to the working
+directory: a recipe that sweeps on its own rhythm
+([§32](#32-a-recipe-can-ask-for-its-own-sweep-and-say-how-often)) runs from
+wherever the unit that called ephor happened to stand, and a brief that
+depended on that would be a different brief on a timer than under a person.
+
+**The file is read when the ticket is written, and its text is the brief.**
+Not named for the run to open: that is
+[§2](#2-the-ticket-carries-what-ephor-knows-not-a-link-to-it)'s rule and it
+applies here without amendment — a ticket saying *read the instruction at this
+path* has handed back the opening move, and it hands back more than a dossier
+would, because the file may be somewhere the work has no checkout of. Reading
+it here is also what makes the ticket a record of what was asked for rather
+than a pointer at whatever that path holds later.
+
+**Placeholders are rendered in the path and in `brief`, never inside the
+file.** A version-controlled document is not a template, and braces in it are
+the characters they are: an instruction whose own example names `{title}`
+reaches the ticket as those seven characters. Nothing in the file is
+substituted, which is what lets the file be written by somebody who has never
+heard of ephor.
+
+**A rendered path with no readable file behind it refuses, naming the path,
+before anything is written** — no workspace, no work root, no plan
+([§6.1](#61-the-work-root-is-a-template-and-it-may-reach-above-the-project)).
+This is the one thing the key adds to the boundary that section draws between
+a path and prose: a brief *named by* a path is under the path rule for its
+path and the prose rule for its text.
+
+**Where the path may point is the site's to say, and there is no refusal for
+pointing it anywhere.** A template resolving inside a watched checkout is
+permitted, and a repository's own words may be what a recipe spends on, because
+the person who wrote the template is the person who pays — no different in kind
+from a `root` that resolves into a checkout
+([§DF-001-manifest-offered.2](../decisions/functional/DF-001-manifest-offered.md#2-recipes-are-excluded)).
+What keeps that true is a bound on ephor rather than on the site: **no recipe
+ephor ships may default `brief_file` to a well-known in-repository filename**,
+because a project that gained a voice in what is asked for merely by containing
+a file would be an artifact required of it
+([§REQ-001-boundary.3](../requirements/REQ-001-boundary.md#3-requirements-on-a-project-are-capabilities-never-artifacts)).
+A repository is heard here only where a site pointed at it.
+
+### 34.1 Both keys compose, and neither is refused where the file loads
+
+A recipe may write `brief`, `brief_file`, or both. **Both is not an error**, and
+the two are not two spellings of one fact — the drift
+[§28](#28-a-workflow-entry-can-ask-for-the-same-thing-a-recipe-can) refuses is
+one key that means what another already means, and these mean different things.
+The file says how work is done here; `brief` still says what to do with this
+matter, with its `{title}` and its `{url}` in it. So they compose, in a fixed
+order: the file's text first, the rendered `brief` after it, and whatever a
+deterministic opening move reached last of all, because that is what this run
+found ([§12](#12-work-an-algorithm-can-finish-does-not-start-with-a-model)).
+
+**Neither is refused where the configuration loads**, naming the recipe, rather
+than at the dispatch that would have used it. A recipe can run from a timer
+with nobody watching ([§24](#24-work-nobody-has-to-start-starts-itself)), so a
+dispatch-time refusal lands in a log, while a load-time one stops the next
+reading of anything in front of the person who has just edited the file. This
+is the same reason the machine a recipe starts in is vetted before a ticket is
+written rather than after ([§6](#6-dispatch-is-offered-where-it-would-work-and-refuses-where-it-would-not)).
+
+### 34.2 Which text a ticket was given is recorded on the ticket
+
+A brief read from a file is the one part of a ticket whose source can change
+without the matter changing. So each ticket records the rendered path it read
+and a hash of the bytes as read, in that ticket's own structured metadata —
+the one thing there that identifies the ask rather than the item
+([§8](#8-the-ticket-carries-the-item-as-data-not-only-as-prose)). A reader
+holding the file can say whether the ticket got these words or older ones, and
+a program in the state machine can too.
+
+**Per ticket, and never in the dossier.** The dossier is rewritten every time
+the matter reopens ([§5](#5-an-item-that-moved-reopens-its-work)), and a hash
+written there would say what the *latest* dispatch read while sitting above
+tickets that were given something else. A hash naming another ticket's text is
+worse than no hash at all. Where a plan holds several tickets, each keeps its
+own and none is corrected by a later one.
+
+### 34.3 Every writer of a brief reads the file, the sweep included
+
+The key belongs to the recipe rather than to one caller, so every path that
+turns a recipe into words honours it. The previews
+([§6.1](#61-the-work-root-is-a-template-and-it-may-reach-above-the-project))
+show what the hand-over would actually carry, and where the file cannot be read
+they **fall back** to whatever can be rendered, as they already do for a
+placement that cannot be resolved: a menu row is a row, and a refusal in the
+slot where the words go is worse than words that are out of date. A dry run is
+not a preview in that sense and does not fall back — it promises what the real
+dispatch would do, and a dry run that promises a ticket the real dispatch would
+refuse is the most misleading promise of the set
+([§6](#6-dispatch-is-offered-where-it-would-work-and-refuses-where-it-would-not)).
+
+**The unattended sweep reads it too**, and it is the caller this point exists
+for. That sweep has a checkout and no matter
+([§3](#3-one-rhei-per-item-one-ticket-per-dispatch)), so the path renders from
+the names a checkout can answer, and one it cannot — a `{title}` where there is
+no item — is refused **by name**, as any other unanswerable name in a path is
+([§6.1](#61-the-work-root-is-a-template-and-it-may-reach-above-the-project)).
+Where the file cannot be read, the work is still reported and no ticket is
+opened: the conflict stays in the report with the reason on its own row, which
+is the shape that path already takes for everything it cannot open a ticket
+about ([§FS-004-quick-actions.6.1](FS-004-quick-actions.md#61-the-same-replay-over-every-checkout-nobody-is-holding)).
+A conflict that went unreported because an instruction was missing is the
+failure this rules out.
+
+**Nothing already written changes.** `brief_file` is absent from every existing
+configuration, `brief` alone keeps its whole meaning, and no configured value
+is read differently. One error appears where there was none — a recipe with
+neither key — and nobody reaches it without first editing the configuration
+that had one.

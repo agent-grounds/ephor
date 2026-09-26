@@ -30,3 +30,15 @@ chosen, while a recipe ([§FS-005-dispatch.1](../../functional-spec/FS-005-dispa
 on its own match — and a repository does not get to spend the person's
 agent time ([§FS-006-project-interface.2](../../functional-spec/FS-006-project-interface.md#2-the-manifest-is-offered-never-required)). What dispatches on its own is
 site configuration only, written by the person who pays.
+
+What this does not forbid is a site recipe whose words come out of a watched
+checkout — a standing instruction kept under version control, named by a
+`brief_file` that renders into it
+([§FS-005-dispatch.34](../../functional-spec/FS-005-dispatch.md#34-a-brief-may-be-kept-in-the-file-that-owns-it)).
+The line drawn here is about who spends, not about where words are kept: the
+site pointed at that file deliberately, and pointing at it is the payer's act,
+no different in kind from a `root` that resolves into the same checkout. The
+rule survives because ephor never points there on its own — no shipped recipe
+defaults such a path to a well-known in-repository name, so a repository never
+gains a voice in what is asked for merely by containing a file
+([§REQ-001-boundary.3](../../requirements/REQ-001-boundary.md#3-requirements-on-a-project-are-capabilities-never-artifacts)).
