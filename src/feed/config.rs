@@ -213,7 +213,16 @@ pub enum Minted {
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct AgentAsk {
-    brief: String,
+    /// The words, inline. Optional for the reason a recipe's are
+    /// (§FS-005-dispatch.34.1): an entry that asks for work may keep them in
+    /// the file that owns them instead, and writing both is not an error.
+    #[serde(default)]
+    brief: Option<String>,
+    /// The file the words are kept in, said here exactly as a recipe says it
+    /// — an entry that asks for work is a recipe under another name
+    /// (§FS-005-dispatch.34, §FS-005-dispatch.28).
+    #[serde(default)]
+    brief_file: Option<String>,
     #[serde(default)]
     state: Option<String>,
     #[serde(default)]
@@ -426,6 +435,11 @@ impl TryFrom<RawAction> for ActionConfig {
             // it. Nothing on screen sweeps for itself (§FS-005-dispatch.32).
             dispatch: None,
             brief: ask.brief,
+            brief_file: ask.brief_file,
+            // Stamped by whoever read the configuration file, which is the
+            // only reader that knows which file this was
+            // (§FS-005-dispatch.34).
+            based_in: None,
             // Ephor's own deterministic moves belong to the recipes that ship
             // with them (§FS-005-dispatch.12); an entry a person wrote asks
             // for what it says and nothing before it.
@@ -434,6 +448,16 @@ impl TryFrom<RawAction> for ActionConfig {
             target: None,
             model: None,
         });
+        // A recipe is a selector and a brief (§FS-005-dispatch.1), and an
+        // entry that asks for work is a recipe under another name — so it is
+        // held to the same rule, here where the configuration loads and the
+        // person can still see what they wrote (§FS-005-dispatch.34.1).
+        if let Some(why) = agent
+            .as_ref()
+            .and_then(crate::work::recipe::Recipe::without_a_brief)
+        {
+            return Err(format!("action {named} asks for work, and {why}"));
+        }
         Ok(ActionConfig {
             id: raw.id,
             icon: raw.icon,
@@ -706,7 +730,10 @@ mod tests {
         assert_eq!(recipe.id, "changelog");
         assert_eq!(recipe.icon, "✎");
         assert_eq!(recipe.description, "write the changelog bullet");
-        assert_eq!(recipe.brief, "Write the bullet for {title}.");
+        assert_eq!(
+            recipe.brief.as_deref(),
+            Some("Write the bullet for {title}.")
+        );
         assert_eq!(recipe.state, "fix");
         assert_eq!(recipe.when.kinds, ["pr"]);
         assert_eq!(
@@ -951,7 +978,7 @@ pub fn load_config() -> Result<StatusConfig> {
             path.display()
         ))
     })?;
-    let config: StatusConfig = serde_json::from_str(&text)
+    let mut config: StatusConfig = serde_json::from_str(&text)
         .map_err(|err| registry_error(format!("Invalid feed config {}: {err}", path.display())))?;
     for (project_id, project) in &config.projects {
         for provider in &project.providers {
@@ -969,27 +996,61 @@ pub fn load_config() -> Result<StatusConfig> {
     let recipes = config
         .work
         .recipes
-        .iter()
+        .iter_mut()
         .map(|recipe| ("work.recipes".to_string(), recipe))
-        .chain(config.organizations.iter().flat_map(|(id, organization)| {
-            organization
-                .work
-                .recipes
-                .iter()
-                .map(move |recipe| (format!("organizations.{id}.work.recipes"), recipe))
-        }))
-        .chain(config.projects.iter().flat_map(|(id, project)| {
+        .chain(
+            config
+                .organizations
+                .iter_mut()
+                .flat_map(|(id, organization)| {
+                    organization
+                        .work
+                        .recipes
+                        .iter_mut()
+                        .map(move |recipe| (format!("organizations.{id}.work.recipes"), recipe))
+                }),
+        )
+        .chain(config.projects.iter_mut().flat_map(|(id, project)| {
             project
                 .work
                 .recipes
-                .iter()
+                .iter_mut()
                 .map(move |recipe| (format!("projects.{id}.work.recipes"), recipe))
-        }));
+        }))
+        .chain(
+            config
+                .actions
+                .iter_mut()
+                .filter_map(|action| action.agent.as_mut())
+                .map(|recipe| ("actions".to_string(), recipe)),
+        );
     for (where_, recipe) in recipes {
         if let Some(why) = crate::api::offers::reserved(&recipe.id) {
             return Err(registry_error(format!(
                 "Feed config {where_} has a recipe that is refused: {why}"
             )));
+        }
+        // A recipe that asks for nothing is refused here rather than at the
+        // dispatch that would have used it: a recipe can run from a timer with
+        // nobody watching, so a dispatch-time refusal lands in a log while
+        // this one stops the next reading of anything in front of the person
+        // who has just edited this file (§FS-005-dispatch.34.1).
+        if let Some(why) = recipe.without_a_brief() {
+            return Err(registry_error(format!(
+                "Feed config {where_} has a recipe that is refused: {why}"
+            )));
+        }
+        // And this is the only reader that knows which file wrote it, which
+        // is what a relative `brief_file` is relative to
+        // (§FS-005-dispatch.34).
+        recipe.written_in(&path);
+    }
+    // A project's own action entries are read the same way; they are recipes
+    // under another name and the `try_from` above has already refused one that
+    // asks for nothing.
+    for project in config.projects.values_mut() {
+        for recipe in project.actions.iter_mut().filter_map(|a| a.agent.as_mut()) {
+            recipe.written_in(&path);
         }
     }
     Ok(config)

@@ -404,34 +404,13 @@ impl Rebase {
     /// The same report, as a paragraph of somebody else's document
     /// (§FS-005-dispatch.3).
     ///
-    /// A ticket's body is prose inside a plan, and a heading inside a plan is
-    /// a *node*: the runtime reads one as a task, fails to parse it, and
-    /// refuses the whole file — so the plan the writer meant to hand over is a
-    /// plan nothing can load. The headings become plain emphasis here rather
-    /// than at each caller, because the two callers that embed this — the
-    /// hand-over and the sweep — would otherwise each have to remember.
-    /// Fenced content is left exactly as it is: what git said is what git
-    /// said, and the plan language skips a fence for the same reason.
+    /// The rule itself is [`crate::work::dossier::in_a_body`], which every
+    /// caller that embeds a document in a ticket's body shares: this report
+    /// through the hand-over and the sweep, and the file a recipe keeps its
+    /// brief in (§FS-005-dispatch.34). A rule each of them carried its own
+    /// copy of would be a rule one of them got wrong.
     pub fn in_a_body(&self) -> String {
-        let mut out = String::new();
-        let mut fenced = false;
-        for line in self.report().lines() {
-            if line.trim_start().starts_with("```") {
-                fenced = !fenced;
-            }
-            let heading = match fenced {
-                true => None,
-                false => line
-                    .strip_prefix('#')
-                    .map(|rest| rest.trim_start_matches('#'))
-                    .and_then(|rest| rest.strip_prefix(' ')),
-            };
-            match heading {
-                Some(text) => out.push_str(&format!("**{}**\n", text.trim_end())),
-                None => out.push_str(&format!("{line}\n")),
-            }
-        }
-        out
+        crate::work::dossier::in_a_body(&self.report())
     }
 
     /// The declared repositories that are not on disk, named in the report so

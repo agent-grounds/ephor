@@ -866,7 +866,10 @@ fn the_menu_carries_the_work_that_can_be_handed_over() {
     // menu is the recipe itself (§FS-005-dispatch.4).
     let work = menu[1].agent.as_ref().expect("the recipe rides along");
     assert_eq!(work.id, "fix-gate");
-    assert!(work.brief.starts_with("The gate on {title} is red."));
+    assert!(work
+        .brief
+        .as_deref()
+        .is_some_and(|brief| brief.starts_with("The gate on {title} is red.")));
     // And the replay is one entry, the deterministic one.
     assert_eq!(menu.iter().filter(|entry| entry.id == "rebase").count(), 1);
 }

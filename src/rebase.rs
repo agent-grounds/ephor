@@ -298,7 +298,16 @@ fn hand_over(
         // The report as a paragraph of the plan rather than as a document of
         // its own: a heading in a body is a node the runtime cannot parse, and
         // a brief nothing can load is a ticket nobody works (§FS-005-dispatch.3).
-        brief: format!("{}\n\n{}", recipe.brief, outcome.in_a_body()),
+        //
+        // Appended to `brief` and not to the file's text, which `brief_file`
+        // carries through untouched: the order the ticket wants is the
+        // instruction, then what to do with this matter, then what this run
+        // found (§FS-005-dispatch.34.1), and a recipe that keeps its words in
+        // a file may have no `brief` at all.
+        brief: Some(match &recipe.brief {
+            Some(brief) => format!("{brief}\n\n{}", outcome.in_a_body()),
+            None => outcome.in_a_body(),
+        }),
         opens_with: None,
         ..recipe
     };
