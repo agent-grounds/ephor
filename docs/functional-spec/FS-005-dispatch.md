@@ -159,6 +159,17 @@ anything can run it, and where the entry would say who gets it, it says
 instead that nobody can be asked
 ([§14](#14-who-does-the-work-is-chosen-and-defaulted-per-project)).
 
+**What a brief may name.** The words are the reader's, and the names in them
+are the matter's: `{title}`, `{repo}`, `{number}`, `{branch}` and the rest of
+what [§FS-005-dispatch.2](FS-005-dispatch.md#2-the-ticket-carries-what-ephor-knows-not-a-link-to-it)'s dossier holds, rendered where the ticket is written
+so that nothing is a link the work has to follow. One of those names is open
+rather than fixed — **`{meta.<key>}`**, whatever this matter's source said
+about this matter ([§FS-005-dispatch.8](FS-005-dispatch.md#8-the-ticket-carries-the-item-as-data-not-only-as-prose)) — so a store that keeps its own division
+of the work can have a brief say which division this ticket belongs to without
+the reader writing one recipe per value. The same vocabulary renders a `root`
+and an entry's `branch`, under the rules [§FS-005-dispatch.25](FS-005-dispatch.md#25-work-about-a-matter-with-no-branch-can-mint-the-branch-it-needs) already sets for a
+name this matter has not got.
+
 ## 2. The ticket carries what ephor knows, not a link to it
 
 A ticket that says "look at pull request 42" has handed back the whole job. The
@@ -524,6 +535,38 @@ which is where a reader is looking. One thing here identifies the ask rather
 than the item: where the brief was read out of a file, the ticket also records
 which file and which version of it
 ([§34.2](#342-which-text-a-ticket-was-given-is-recorded-on-the-ticket)).
+
+**Identifiers only admits one open map: what the source said about this
+matter.** A source may know something about one matter that ephor has no field
+for — which slice of a project's work a task belongs to, which customer or
+environment it is about — and a store that keeps that in its own files has said
+it once and should not have to say it again in every recipe. So a matter also
+carries **`meta`**, a map whose keys the source chose rather than ephor, and it
+is held to a bound that keeps it identifiers rather than prose: a value is a
+scalar — a string, a number or a boolean — a key matches
+`[A-Za-z_][A-Za-z0-9_-]*`, and a rendered value is at most 1 KiB. What survives
+the bound is what a selector ([§FS-005-dispatch.31.1](FS-005-dispatch.md#311-and-it-can-ask-what-the-matters-own-source-said-about-it)), a brief or a template
+([§1](#1-a-recipe-decides-which-items-deserve-work-and-what-to-ask-for)) and a
+summoned command's environment ([§FS-006-project-interface.3](FS-006-project-interface.md#3-a-summons-environment-in-exit-code-and-answer-out)) may name.
+
+**A key that breaks the bound is dropped; the matter is not.** The offending
+key goes, the rest of the map is carried, and the drop is reported once where
+the source's own answer for that read is reported — naming the matter, the key
+and which part of the bound it broke. The source has not failed to answer, so
+its slot is not marked failed: a task vanishing out of the feed because
+somebody wrote a paragraph about it is the worse of the two failures, and a
+drop nobody is told about is how a selector silently stops matching.
+
+**The map is read-only inward.** What is written into a ticket is still the
+closed list of identifiers above; nothing a source said comes back out through
+it. That matters because the runtime keeps its per-task bookkeeping in exactly
+the namespace a store may be using to say these things — ephor lays its plans
+inside the directory it reads — so the names ephor itself writes there are
+**subtracted on the way in**, derived from the list this section already names
+rather than kept as a second copy of it that can fall behind. A store that
+deliberately writes a key of one of those names loses that key and is told why,
+by the same report a broken bound gets. Without the subtraction the next read
+hands ephor's own words back as though the store had said them.
 
 ## 9. Work that stops for a person says so where the person is looking
 
@@ -2406,9 +2449,13 @@ they have.
 read and rather than turned into a directory nobody meant, and the refusal
 says which of the three things is wrong with it: it names one of the three
 fields it decides; it names something that is no field of a matter at all, and
-the refusal lists the ones it may name; or what it renders is not a name git
-will take as a branch. The last of those is answered here rather than left to
-the checkout: git's own refusal arrives from inside the making, by which time
+the refusal lists the ones it may name — the fixed vocabulary in full, and
+`{meta.<key>}` named as the open one, because the keys under `meta` are
+whatever this matter's source reported
+([§8](#8-the-ticket-carries-the-item-as-data-not-only-as-prose)) and no
+refusal can enumerate a key a store has yet to invent; or what it renders is
+not a name git will take as a branch. The last of those is answered here rather
+than left to the checkout: git's own refusal arrives from inside the making, by which time
 the directories leading to the workspace are there, so a template git will
 not take is held to that before anything is made.
 
@@ -2416,8 +2463,11 @@ not take is held to that before anything is made.
 not serve this matter.** It is withheld from the menu and its readings, and
 from dispatch selection — including unattended sweeps — rather than selected
 and refused, because another matter can carry the field and render the same
-template correctly. The `work offers` reading names the excluded entry and
-the field it needed, as §27 requires; a silent disappearance would leave the
+template correctly. A `{meta.<key>}` this matter has not got is such a field
+and not an unknown name: the name is one a template may take, and it is this
+matter that did not answer it, so the entry is withheld and the next matter
+renders the same template. The `work offers` reading names the excluded entry
+and the field it needed, as §27 requires; a silent disappearance would leave the
 reader unable to distinguish an incompatible matter from no configured work.
 
 **The matter's own branch always wins — but the project's main branch is
@@ -2653,6 +2703,19 @@ looks, without explanation, like it covers nothing about a project's own
 tasks. This is a reading only: dispatch itself, and what it hands over, are
 unaffected — the exclusion is `ephor work offers`' own diagnosis of one
 matter, not a second thing the selector decides.
+
+**`meta` is the refusal a task is about to get most often, so it is named like
+the rest.** A selector asking what this matter's source said about it
+([§31.1](#311-and-it-can-ask-what-the-matters-own-source-said-about-it))
+refuses every matter whose source said nothing — every pull request, every
+issue, and every task in a plan carrying no such block — which is
+[§31](#31-a-selector-can-ask-who-holds-a-matter-and-what-it-is-labelled)'s
+silence rule working exactly as intended, and which makes it the commonest
+single reason a reader will see no offers. So the reading names `meta`, the
+keys the selector asked for, and what the matter carried under them: the keys
+it has, or that its source reported none at all. The distinction is the one
+this section exists for — a store nobody has annotated yet and a recipe that
+asks the wrong key read identically from an empty list.
 
 ## 28. A workflow entry can ask for the same thing a recipe can
 
@@ -3093,6 +3156,52 @@ says which of the two refused and what the matter carried instead
 the source reported nothing — a reader whose recipe silently stopped matching
 must be able to tell a matter that failed the filter from a source that never
 answered it.
+
+### 31.1 And it can ask what the matter's own source said about it
+
+`assignees` and `labels` are facts a forge keeps, so a selector asking either
+of them of a project's own task ([§FS-003-feed-categories.1](FS-003-feed-categories.md#1-the-categories)) asks a question no
+store answers. Yet a store is exactly where the remaining distinction lives. A
+project whose own work divides into slices — customers, environments,
+subsystems — keeps that division in its own files, and until a selector can
+read it such a project cannot be swept unattended at all: the sweep takes every
+slice or none, and the alternative is a source script per value of one field.
+
+So a selector may also ask **`meta`**: the bounded map of what this matter's
+source said about *this matter*
+([§8](#8-the-ticket-carries-the-item-as-data-not-only-as-prose),
+[§FS-006-project-interface.7](FS-006-project-interface.md#7-the-projects-own-tasks-are-read-where-they-live)). It is written as a map rather than a list, because
+each key is a different question:
+
+```json
+"when": { "kinds": ["task"], "meta": { "context": "acme-labs", "tier": "1" } }
+```
+
+**Every key must hold, and each is compared as a string.** This is an `and`
+where `assignees` and `labels` are an any-of, and for that reason: two keys are
+two questions about the matter, not two spellings of one — *the acme-labs
+context, at tier 1*. A number or a boolean the source reported answers by its
+canonical spelling, so `"tier": "1"` matches a `tier` the store wrote as `1`; a
+store writing its own files should not have to quote a digit to stay
+selectable. A selector value that is not a string is refused where the recipe is
+read, as an entry naming nothing already is
+([§31](#31-a-selector-can-ask-who-holds-a-matter-and-what-it-is-labelled)),
+and the published schema refuses it too ([§FS-006-project-interface.11](FS-006-project-interface.md#11-the-interface-is-versioned)).
+
+**Silence refuses, and it is §31's rule rather than a second one.** A matter
+whose source reported no such map at all, and a matter reporting one that has
+not got the key asked for, are both refused: nobody said this matter is outside
+the acme-labs context, and an unattended sweep may not read an absence as a
+statement. So a `meta` selector never matches a pull request, an issue, or a
+task in a plan that said nothing — and that costs no doctrine per source,
+because a source that does not report `meta` is a source that said nothing about
+it. The refusal names `meta` and what the matter carried, as
+[§27](#27-an-offer-that-a-selector-refused-says-why) requires.
+
+**There is no negative form.** A key's absence already refuses, so `!` here
+would have to mean *carried, and not this* — a second rule for a case nobody has
+asked for. One rule now; the other can be added later without unsaying
+anything here.
 
 ## 32. A recipe can ask for its own sweep, and say how often
 

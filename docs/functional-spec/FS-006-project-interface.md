@@ -67,6 +67,33 @@ spellings already agree, and a command that only passes a path on to another
 program sees no difference either way; the place the command runs in is set by
 ephor rather than spelled to the shell, so it is not involved.
 
+**What the matter's own source said about it reaches the command by name.** A
+matter carries `meta`, the bounded map of what its source said about that
+matter ([§FS-005-dispatch.8](FS-005-dispatch.md#8-the-ticket-carries-the-item-as-data-not-only-as-prose)), and each key it carries becomes one variable:
+**`EPHOR_META_<KEY>`**, the key upper-cased in ASCII with `-` written `_`. So
+`context` arrives as `EPHOR_META_CONTEXT` and `roll-out` as
+`EPHOR_META_ROLL_OUT`. The spelling is contracted here because this is where
+the environment is contracted, and it is one direction only: the variable is
+derived from the key, never the key from the variable. **Two keys that fold to
+one name set no variable at all**, and the fold is reported like a dropped key
+— a variable that could be either key's is a fact about neither — while both
+keys stay in `meta`, where a selector ([§FS-005-dispatch.31.1](FS-005-dispatch.md#311-and-it-can-ask-what-the-matters-own-source-said-about-it)) and a template
+name them unambiguously.
+
+**And one fixed name says which of them are this matter's.** A summons does not
+start from a cleared environment, so every name a matter can answer is also set
+— empty — on a summons about something that is not a matter; otherwise a
+command about a branch would read some other matter's title as this branch's.
+An open namespace
+cannot be emptied that way: ephor cannot blank an `EPHOR_META_CONTEXT` it has
+never heard of, and a script reading one would be reading whatever launched
+ephor. So **`EPHOR_META_KEYS`** carries the enumeration — the keys this matter
+carries, one per line, always set and empty where there are none — and the
+contract is that an `EPHOR_META_*` variable is this matter's **only if its key
+is listed there**. That is the one fixed name the open namespace needs, which is
+what keeps the vocabulary enumerable and lets a summons about anything else
+answer the whole of it.
+
 ## 4. The answer envelope
 
 Structured answers share one envelope, speaking the model's nouns
@@ -201,6 +228,29 @@ it.
 Verified on disk rather than derived from the registry row. The row names the
 branches somebody wrote down; the stores are wherever branches were actually
 checked out, and the two are not the same list.
+
+**What the store says about one of its own tasks is read with it.** A plan may
+carry a block about a task — which slice of the project's work it belongs to,
+which customer or environment it is about — in the store's own grammar, keyed by
+the task's own id, and it is there for the project's sake whether or not ephor
+ever runs. Where the store's grammar has such a place, ephor reads it and
+carries it on the matter as `meta`, bounded and subtracted exactly as
+[§FS-005-dispatch.8](FS-005-dispatch.md#8-the-ticket-carries-the-item-as-data-not-only-as-prose) requires, so a selector ([§FS-005-dispatch.31.1](FS-005-dispatch.md#311-and-it-can-ask-what-the-matters-own-source-said-about-it)), a brief and
+a summoned program (§3) can each key off it instead of re-opening and re-parsing
+the file ephor has already parsed ([§GOAL-001-fewest-moves](../goals.md#goal-001-fewest-moves-the-most-frequent-response-is-the-cheapest-one)).
+
+**The documented key is the task's own id** — the id the store uses for that
+task in the same file, and the one ephor's own tickets are recorded under. A
+plan-qualified spelling, the plan's id and the task's id joined by a dot, is
+**accepted as an alias** so that a store already writing it keeps working; it is
+accepted rather than documented, and where a plan somehow writes both the bare
+id wins. Reading a key the store keeps for itself is probing a convention, not
+requiring an artifact ([§REQ-001-boundary.2](../requirements/REQ-001-boundary.md#2-three-homes-one-resolution-order)): this is a convention a project may
+already have and never one it should adopt ([§REQ-001-boundary.3](../requirements/REQ-001-boundary.md#3-requirements-on-a-project-are-capabilities-never-artifacts)), so a store
+that says nothing has said nothing, and a selector asking about it refuses
+rather than matching. A block that will not parse is the store failing to answer
+for that plan, by the rule above, and is reported as such — never read as a plan
+that said nothing about its tasks.
 
 **A workspace ephor makes gets a store.** Where ephor creates a branch
 workspace ([§FS-004-quick-actions.7](FS-004-quick-actions.md#7-a-workspace-that-is-not-there-is-offered-the-checkout)) it initializes one there, so the first
@@ -441,6 +491,13 @@ field costs nothing, unknown fields are ignored, and any incompatible
 change bumps the schema version with a changelog entry per
 [§FS-002-release.1](FS-002-release.md#1-changelog). The schemas are the interface's stability surface — what
 a release may change is answerable by diffing them.
+
+That reach includes the selector language a project's own offers and a reader's
+recipes share (§9): **every field a selector may ask is in the published
+schema**, `meta` among them ([§FS-005-dispatch.31.1](FS-005-dispatch.md#311-and-it-can-ask-what-the-matters-own-source-said-about-it)) — declared as an object of
+scalar values, so a list or a nested map written where a value belongs is
+refused offline and by name rather than becoming a selector that silently never
+matches.
 
 ## 12. What the toolchain keeps in a checkout has a home, and a deprecated one
 
