@@ -5,6 +5,30 @@ The nouns of [§FS-007-matters](../functional-spec/FS-007-matters.md#fs-007-matt
 what a provider knows beyond the model rides in `raw` passthrough and comes
 back out in `EPHOR_RAW`.
 
+That sentence is read as a refusal and as a gap in the same breath, so it says
+which it is. A passthrough blob reaches exactly one surface: the command that
+gets `EPHOR_RAW` and parses it again. When a fact a source reported has to be
+named by a *selector*, a *template* and that environment alike, passthrough is
+not enough — and growing a field for it would be the sentence above being
+crossed. **So a `raw` key becomes reserved vocabulary instead, and no type
+grows a field.** A reserved key is one ephor names, any source may fill, every
+surface reads through one accessor, and that still rides in `raw`: the cache
+model does not move, `EPHOR_RAW` carries it for free, and the sentence above
+stays literally true.
+
+Three things have to hold before a key is reserved, and they are the whole
+test. The fact is about **this matter specifically** rather than about the
+source that reported it. **More than one surface has to name it by name**, so
+passthrough is genuinely short. And **no type grows a field for it** — if the
+fact belongs to every matter whatever reported it, it belongs on the model and
+this rule is not the way in. The reserved set is `assignees` and `labels`
+([§FS-005-dispatch.31](../functional-spec/FS-005-dispatch.md#31-a-selector-can-ask-who-holds-a-matter-and-what-it-is-labelled)), and `meta`, the bounded map of what one source said
+about one matter under keys that source chose
+([§FS-005-dispatch.31.1](../functional-spec/FS-005-dispatch.md#311-and-it-can-ask-what-the-matters-own-source-said-about-it), [§FS-005-dispatch.8](../functional-spec/FS-005-dispatch.md#8-the-ticket-carries-the-item-as-data-not-only-as-prose)). A key no source reported is
+**absent rather than empty**, which is the distinction every reader of a
+reserved key is built on and what a selector refuses on
+([§FS-005-dispatch.31](../functional-spec/FS-005-dispatch.md#31-a-selector-can-ask-who-holds-a-matter-and-what-it-is-labelled)).
+
 ## 1. The types
 
 - `Matter { key, kind, placement, state, links, discussions, events,
