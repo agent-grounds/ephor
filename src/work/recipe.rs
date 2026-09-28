@@ -1618,6 +1618,115 @@ mod tests {
         );
     }
 
+    /// A matter carrying what its own source said about it
+    /// (§FS-005-dispatch.31.1). The map rides in `raw` under the third reserved
+    /// key, exactly as `assignees` and `labels` do.
+    fn about(meta: Value) -> Item {
+        let mut item = item(ItemKind::Task, None);
+        item.raw = json!({ "meta": meta });
+        item
+    }
+
+    /// Every key is a different question, so every key must hold — an `and`
+    /// where `labels` is an any-of (§FS-005-dispatch.31.1).
+    #[test]
+    fn every_meta_key_a_selector_asks_must_hold() {
+        let asks = selector(json!({ "meta": { "context": "acme-labs", "tier": "1" } }));
+        assert!(asks.matches(
+            &about(json!({ "context": "acme-labs", "tier": "1", "owner": "ana" })),
+            &Facts::default()
+        ));
+        // One of two answered is not an answer to both.
+        assert!(!asks.matches(&about(json!({ "context": "acme-labs" })), &Facts::default()));
+        // And a value that is merely close is a different value.
+        assert!(!asks.matches(
+            &about(json!({ "context": "acme-labs-2", "tier": "1" })),
+            &Facts::default()
+        ));
+    }
+
+    /// A number or a boolean the source reported answers by its canonical
+    /// spelling: a store writing its own YAML should not have to quote a digit
+    /// to stay selectable (§FS-005-dispatch.31.1).
+    #[test]
+    fn a_scalar_the_store_did_not_quote_answers_by_its_canonical_spelling() {
+        let asks = selector(json!({ "meta": { "tier": "1", "live": "true" } }));
+        assert!(asks.matches(
+            &about(json!({ "tier": 1, "live": true })),
+            &Facts::default()
+        ));
+        assert!(!asks.matches(
+            &about(json!({ "tier": 2, "live": true })),
+            &Facts::default()
+        ));
+    }
+
+    /// Silence refuses, and it is §FS-005-dispatch.31's own rule: nobody said
+    /// this matter is outside the slice, and an unattended sweep may not read
+    /// an absence as a statement. So a `meta` selector never matches a pull
+    /// request either.
+    #[test]
+    fn a_matter_whose_source_said_nothing_is_refused_rather_than_matched() {
+        let asks = selector(json!({ "meta": { "context": "acme-labs" } }));
+        // A map that has not got the key asked for.
+        assert!(!asks.matches(&about(json!({ "tier": "1" })), &Facts::default()));
+        // No map at all — the key is absent rather than empty.
+        assert!(!asks.matches(&item(ItemKind::Task, None), &Facts::default()));
+        assert!(!asks.matches(
+            &item(ItemKind::Pr, Some(ItemRole::Author)),
+            &Facts::default()
+        ));
+    }
+
+    /// The refusal names the field a reader would edit and what the matter
+    /// carried instead, including the case where the source reported nothing at
+    /// all (§FS-005-dispatch.27).
+    #[test]
+    fn a_refused_meta_key_says_what_the_matter_carried() {
+        let asks = selector(json!({ "meta": { "context": "acme-labs" } }));
+        let refusals = asks.explain(
+            &about(json!({ "context": "field-notes" })),
+            &Facts::default(),
+        );
+        assert_eq!(refusals.len(), 1, "{refusals:#?}");
+        assert_eq!(refusals[0].field, "meta");
+        assert!(
+            refusals[0].reason.contains("field-notes"),
+            "{}",
+            refusals[0].reason
+        );
+
+        let silent = asks.explain(&item(ItemKind::Task, None), &Facts::default());
+        assert_eq!(silent.len(), 1, "{silent:#?}");
+        assert_eq!(silent[0].field, "meta");
+        assert!(
+            silent[0].reason.contains("reported nothing"),
+            "a source that never answered reads as a matter that failed the filter: {}",
+            silent[0].reason
+        );
+    }
+
+    /// A value that is not a string is refused where the recipe is read, as an
+    /// entry naming nothing already is (§FS-005-dispatch.31.1). Both halves are
+    /// asserted, because the refusal only means something once the field itself
+    /// is a field: a selector that refuses everything refuses this too.
+    #[test]
+    fn a_meta_value_that_is_not_a_scalar_is_refused_where_the_recipe_is_read() {
+        let read: Result<Selector, _> =
+            serde_json::from_value(json!({ "meta": { "context": "acme-labs" } }));
+        assert!(
+            read.is_ok(),
+            "a selector asking one key of `meta` was refused: {:?}",
+            read.err()
+        );
+        let refused: Result<Selector, _> =
+            serde_json::from_value(json!({ "meta": { "owners": ["ana", "bo"] } }));
+        assert!(
+            refused.is_err(),
+            "a selector asking a list of one key was read as a filter"
+        );
+    }
+
     fn ids_with(recipes: &[Recipe], item: &Item, facts: Facts) -> Vec<String> {
         applicable(recipes, item, &facts)
             .into_iter()

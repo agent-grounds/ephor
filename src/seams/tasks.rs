@@ -299,6 +299,175 @@ mod tests {
         assert!(items.iter().all(|item| item.kind == ItemKind::Task));
     }
 
+    /// A plan says something about one of its own tasks, in its own
+    /// frontmatter, and the fact arrives on that task's matter under ephor's
+    /// own name (§FS-006-project-interface.7). The documented key is the task's
+    /// own id; the sibling task's block is its own, and a matter carries only
+    /// what was said about it.
+    #[test]
+    fn what_the_plan_says_about_one_task_arrives_on_that_task() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = plan_dir(
+            tmp.path(),
+            "panta",
+            "# Rhei: work\n\n             ---\n             metadata:\n             \x20 tasks:\n             \x20   1:\n             \x20     context: acme-labs\n             \x20     tier: 1\n             \x20   2:\n             \x20     context: field-notes\n             ---\n\n             ## Tasks\n\n             ### Task 1: Widen the retry window\n**State:** pending\n\n             ### Task 2: And the other\n**State:** pending\n",
+        );
+        let items = read(
+            &Store {
+                kind: Kind::Plans,
+                path: dir,
+            },
+            "widget",
+        )
+        .expect("the store answered");
+        let meta = |id: &str| {
+            items
+                .iter()
+                .find(|item| item.id == id)
+                .unwrap_or_else(|| panic!("no {id} in {items:#?}"))
+                .raw["meta"]
+                .clone()
+        };
+        assert_eq!(
+            meta("rhei:work.1"),
+            serde_json::json!({ "context": "acme-labs", "tier": 1 })
+        );
+        assert_eq!(
+            meta("rhei:work.2"),
+            serde_json::json!({ "context": "field-notes" })
+        );
+    }
+
+    /// The plan-qualified spelling is accepted as an alias, so a store already
+    /// writing it keeps working; the bare id is the documented one and wins
+    /// where a plan somehow writes both (§FS-006-project-interface.7).
+    #[test]
+    fn the_plan_qualified_spelling_is_accepted_and_the_bare_id_wins() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = plan_dir(
+            tmp.path(),
+            "panta",
+            "# Rhei: work\n\n             ---\n             metadata:\n             \x20 tasks:\n             \x20   work.1:\n             \x20     context: acme-labs\n             \x20   work.2:\n             \x20     context: aliased\n             \x20   2:\n             \x20     context: canonical\n             ---\n\n             ## Tasks\n\n             ### Task 1: Widen the retry window\n**State:** pending\n\n             ### Task 2: And the other\n**State:** pending\n",
+        );
+        let items = read(
+            &Store {
+                kind: Kind::Plans,
+                path: dir,
+            },
+            "widget",
+        )
+        .expect("the store answered");
+        let meta = |id: &str| {
+            items
+                .iter()
+                .find(|item| item.id == id)
+                .unwrap_or_else(|| panic!("no {id} in {items:#?}"))
+                .raw["meta"]["context"]
+                .clone()
+        };
+        assert_eq!(meta("rhei:work.1"), serde_json::json!("acme-labs"));
+        assert_eq!(meta("rhei:work.2"), serde_json::json!("canonical"));
+    }
+
+    /// The bound: a value that is not a scalar, a value over the cap, and a key
+    /// no shell will take are each dropped, and the rest of the map is carried
+    /// (§FS-005-dispatch.8). The runtime's own counters are a nested map, so the
+    /// bound drops them before any subtraction has to think about them.
+    #[test]
+    fn a_key_the_bound_refuses_is_dropped_and_the_rest_is_carried() {
+        let tmp = tempfile::tempdir().unwrap();
+        let long = "x".repeat(2000);
+        let dir = plan_dir(
+            tmp.path(),
+            "panta",
+            &format!(
+                "# Rhei: work\n\n                 ---\n                 metadata:\n                 \x20 tasks:\n                 \x20   1:\n                 \x20     context: acme-labs\n                 \x20     owners:\n                 \x20       - ana\n                 \x20     stateVisits:\n                 \x20       fix: 2\n                 \x20     essay: {long}\n                 \x20     'rollout pct': 50\n                 ---\n\n                 ## Tasks\n\n                 ### Task 1: Widen the retry window\n**State:** pending\n"
+            ),
+        );
+        let items = read(
+            &Store {
+                kind: Kind::Plans,
+                path: dir,
+            },
+            "widget",
+        )
+        .expect("the store answered");
+        assert_eq!(items.len(), 1, "{items:#?}");
+        assert_eq!(
+            items[0].raw["meta"],
+            serde_json::json!({ "context": "acme-labs" }),
+            "the bound kept the wrong keys: {:#?}",
+            items[0].raw["meta"]
+        );
+    }
+
+    /// Read-only inward: ephor lays its plans inside the directory it reads, so
+    /// the names it writes into this same namespace are subtracted on the way in
+    /// rather than handed back as though the store had said them
+    /// (§FS-005-dispatch.8).
+    #[test]
+    fn the_names_ephor_writes_here_itself_do_not_come_back_out() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = plan_dir(
+            tmp.path(),
+            "panta",
+            "# Rhei: work\n\n             ---\n             metadata:\n             \x20 tasks:\n             \x20   1:\n             \x20     id: \"rhei:elsewhere.9\"\n             \x20     state: \"fix\"\n             \x20     title: \"Something else entirely\"\n             \x20     instruction: \"/tmp/brief.md\"\n             \x20     instruction_sha256: \"deadbeef\"\n             \x20     context: acme-labs\n             ---\n\n             ## Tasks\n\n             ### Task 1: Widen the retry window\n**State:** pending\n",
+        );
+        let items = read(
+            &Store {
+                kind: Kind::Plans,
+                path: dir,
+            },
+            "widget",
+        )
+        .expect("the store answered");
+        assert_eq!(
+            items[0].raw["meta"],
+            serde_json::json!({ "context": "acme-labs" }),
+            "ephor's own bookkeeping came back as the store's words: {:#?}",
+            items[0].raw["meta"]
+        );
+        // And the matter is still the store's own: nothing a laid ticket wrote
+        // displaces what the plan says about the task.
+        assert_eq!(items[0].id, "rhei:work.1");
+        assert_eq!(items[0].title, "Widen the retry window");
+    }
+
+    /// A directory workspace is a plan of its own, so its block is read from its
+    /// own `index.rhei.md` and keyed by the task ids under `tasks/`
+    /// (§FS-006-project-interface.7).
+    #[test]
+    fn a_directory_workspace_is_read_from_its_own_index() {
+        let tmp = tempfile::tempdir().unwrap();
+        let store = tmp.path().join("panta");
+        let workspace = store.join("alpha");
+        std::fs::create_dir_all(workspace.join("tasks")).unwrap();
+        std::fs::write(
+            workspace.join("index.rhei.md"),
+            "# Rhei: alpha\n\n             ---\n             metadata:\n             \x20 tasks:\n             \x20   shared:\n             \x20     context: acme-labs\n             ---\n",
+        )
+        .unwrap();
+        std::fs::write(
+            workspace.join("tasks/01-shared.md"),
+            "### Task shared: Alpha waits\n**State:** pending\n",
+        )
+        .unwrap();
+        let items = read(
+            &Store {
+                kind: Kind::Plans,
+                path: store,
+            },
+            "widget",
+        )
+        .expect("the store answered");
+        assert_eq!(items.len(), 1, "{items:#?}");
+        assert_eq!(items[0].id, "rhei:alpha.shared");
+        assert_eq!(
+            items[0].raw["meta"]["context"],
+            serde_json::json!("acme-labs")
+        );
+    }
+
     /// Which states are final is the store's own machine to say, not a list of
     /// spellings ephor carries: a store declaring `verified` final keeps its
     /// verified work to itself, and its `completed` — a state its machine never
