@@ -447,7 +447,9 @@ A path is not a name. A project whose one repository is the root of its
 checkout declares that repository's path as `.`, and a report headed by a full
 stop reads as a fault in the writing rather than as the repository it means —
 it sends the first reader of a refusal looking for a missing name in the
-registry, which is the one place the answer is not.
+registry, which is the one place the answer is not. So **`.` is the one path a
+report never puts beside a name**: a repository whose path is `.` is named by
+its name alone, however many repositories the forest holds.
 
 Where nothing declares the layout there is no name to reach for: the forest is
 probed from disk, and no repository of it carries a role or a handle. The root
