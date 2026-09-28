@@ -11,6 +11,10 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use crate::error::{EphorError, Result};
+// The bound's own measures live beside the model they hold
+// (§FS-005-dispatch.8), so the reader that reports a drop and the accessor that
+// guarantees the bound measure with one ruler rather than two that can drift.
+use crate::feed::model::{is_nameable, META_VALUE_CAP};
 
 /// The state machine ephor installs into a work root that has none.
 pub const SHIPPED_STATES: &str = include_str!("../../../assets/ephor-work.states.yaml");
@@ -658,11 +662,6 @@ pub struct TaskMeta {
     pub dropped: Vec<String>,
 }
 
-/// The most a carried value may render to (§FS-005-dispatch.8). Identifiers,
-/// not prose: this is the size a selector compares, a path carries and a
-/// process environment holds.
-const META_VALUE_CAP: usize = 1024;
-
 /// One entry of the store's task map, under a key it may have written as a
 /// bare number as readily as a string.
 fn entry<'a>(tasks: &'a serde_yaml::Value, key: &str) -> Option<&'a serde_yaml::Value> {
@@ -691,14 +690,6 @@ fn bounded(key: &str, value: &serde_yaml::Value) -> std::result::Result<serde_js
     if !is_nameable(key) {
         return Err("the key is not one a shell will take as a variable name".to_string());
     }
-    // The runtime keeps its own per-task bookkeeping in this same namespace,
-    // and ephor lays its plans inside the directory it reads as a store, so
-    // the names ephor writes here are subtracted on the way in rather than
-    // handed back as though the store had said them (§FS-005-dispatch.8). The
-    // list is derived from the two functions that write it, never copied.
-    if crate::work::dossier::written_into_a_ticket(key) {
-        return Err("the runtime writes this name here".to_string());
-    }
     let carried = match value {
         serde_yaml::Value::String(text) => serde_json::Value::String(text.clone()),
         serde_yaml::Value::Bool(yes) => serde_json::Value::Bool(*yes),
@@ -726,14 +717,34 @@ fn bounded(key: &str, value: &serde_yaml::Value) -> std::result::Result<serde_js
     Ok(carried)
 }
 
-/// `[A-Za-z_][A-Za-z0-9_-]*` — the keys §FS-005-dispatch.8 admits, which is
-/// what keeps every one of them nameable in a template and in a summons.
-fn is_nameable(key: &str) -> bool {
-    let mut letters = key.chars();
-    letters
-        .next()
-        .is_some_and(|first| first.is_ascii_alphabetic() || first == '_')
-        && letters.all(|letter| letter.is_ascii_alphanumeric() || letter == '_' || letter == '-')
+/// The keys that carried but set no variable, because another carried key folds
+/// to the same one (§FS-006-project-interface.3): one line per variable name
+/// two or more keys claim, naming both the keys and the variable neither of
+/// them sets.
+///
+/// Decidable here rather than at the summons, and reported here rather than
+/// there, because the fold is a property of the carried key set alone and this
+/// is where the drop list already is. `meta_variable` is called rather than
+/// restated, so the key-to-variable rule keeps one spelling.
+fn folded(values: &serde_json::Map<String, serde_json::Value>) -> Vec<String> {
+    let mut by_variable: std::collections::BTreeMap<String, Vec<&str>> =
+        std::collections::BTreeMap::new();
+    for key in values.keys() {
+        by_variable
+            .entry(crate::seams::dossier::meta_variable(key))
+            .or_default()
+            .push(key.as_str());
+    }
+    by_variable
+        .into_iter()
+        .filter(|(_, keys)| keys.len() > 1)
+        .map(|(variable, keys)| {
+            format!(
+                "'{}' fold to one name, so {variable} is set by neither",
+                keys.join("' and '")
+            )
+        })
+        .collect()
 }
 
 impl Plan {
@@ -962,6 +973,18 @@ impl Plan {
                 // nothing to report it under.
                 continue;
             };
+            // The runtime keeps its own per-task bookkeeping in this same
+            // namespace, and ephor lays its plans inside the directory it
+            // reads as a store, so the names ephor writes here are subtracted
+            // on the way in rather than handed back as though the store had
+            // said them (§FS-005-dispatch.8). Declined and not dropped: such a
+            // name was never the store's word, so there is nothing lost and
+            // nobody to tell — unlike a bound drop, which is a thing the store
+            // did say and has lost. The list is derived from the two functions
+            // that write it, never copied.
+            if crate::work::dossier::written_into_a_ticket(&key) {
+                continue;
+            }
             match bounded(&key, value) {
                 Ok(value) => {
                     meta.values.insert(key, value);
@@ -969,6 +992,7 @@ impl Plan {
                 Err(why) => meta.dropped.push(format!("dropped '{key}' — {why}")),
             }
         }
+        meta.dropped.extend(folded(&meta.values));
         meta
     }
 
@@ -1885,6 +1909,11 @@ metadata:
     /// taken back out rather than handed over as the store's words. Derived
     /// from the two lists that write them, so this holds for a name added to
     /// either.
+    ///
+    /// And taken out **silently**: such a name was never this store's word, so
+    /// nothing was lost and there is nobody to tell. A work root of ephor's own
+    /// is a store like any other, and a note per written name per open ticket
+    /// per refresh would bury the drops that do mean something.
     #[test]
     fn the_names_the_runtime_writes_here_are_subtracted() {
         let tmp = tempfile::tempdir().unwrap();
@@ -1906,11 +1935,56 @@ metadata:
             serde_json::json!({ "context": "acme-labs" }),
             "the runtime's own bookkeeping came back as the store's words"
         );
-        assert_eq!(
-            read.dropped.len(),
-            crate::work::dossier::SUBJECT_METADATA.len()
-                + crate::work::dossier::INSTRUCTION_METADATA.len()
+        assert!(
+            read.dropped.is_empty(),
+            "a name ephor wrote here was reported as though the store had lost it:\n{}",
+            read.dropped.join("\n")
         );
+    }
+
+    /// Two keys that fold to one variable name are reported like a dropped key
+    /// (§FS-006-project-interface.3), naming both keys and the variable neither
+    /// of them sets — while both keys stay in `meta`, where a selector and a
+    /// template name them unambiguously.
+    ///
+    /// Reported here because the fold is a property of the carried key set
+    /// alone, so the reader that holds the whole set can decide it; the summons
+    /// that withholds the variable has no channel to say so on.
+    #[test]
+    fn two_keys_that_fold_to_one_name_are_reported_like_a_drop() {
+        let tmp = tempfile::tempdir().unwrap();
+        let read = read_meta(
+            tmp.path(),
+            "# Rhei: work\n\n---\nmetadata:\n  tasks:\n    1:\n      roll-out: a\n      roll_out: b\n      context: acme-labs\n---\n",
+            "work",
+            "1",
+        );
+        // Both keys carried: the fold is about the variable, not about the map.
+        assert_eq!(
+            carried(&read),
+            serde_json::json!({ "roll-out": "a", "roll_out": "b", "context": "acme-labs" })
+        );
+        assert_eq!(
+            read.dropped,
+            vec![
+                "'roll-out' and 'roll_out' fold to one name, so EPHOR_META_ROLL_OUT is set by neither"
+                    .to_string()
+            ]
+        );
+    }
+
+    /// A key that folds with nobody is reported to nobody: one carried key is
+    /// the ordinary case and it sets its variable.
+    #[test]
+    fn a_key_that_folds_with_nobody_is_not_reported() {
+        let tmp = tempfile::tempdir().unwrap();
+        let read = read_meta(
+            tmp.path(),
+            "# Rhei: work\n\n---\nmetadata:\n  tasks:\n    1:\n      roll-out: a\n      context: acme-labs\n---\n",
+            "work",
+            "1",
+        );
+        assert!(read.dropped.is_empty(), "{:?}", read.dropped);
     }
 
     /// A directory workspace keeps its frontmatter in its own index, and its

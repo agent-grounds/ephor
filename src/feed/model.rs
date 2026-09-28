@@ -194,6 +194,41 @@ pub fn spelled(value: &Value) -> Option<String> {
     }
 }
 
+/// The most a carried `meta` value may render to (§FS-005-dispatch.8).
+/// Identifiers, not prose: this is the size a selector compares, a path
+/// carries and a process environment holds.
+pub const META_VALUE_CAP: usize = 1024;
+
+/// `[A-Za-z_][A-Za-z0-9_-]*` — the `meta` keys §FS-005-dispatch.8 admits,
+/// which is what keeps every one of them nameable in a template and in a
+/// summons.
+///
+/// Here rather than in the reader that reports its drops, because the bound is
+/// a property of the map and holds wherever the map is read: a source with no
+/// channel to report a drop on is still bounded, silently.
+pub fn is_nameable(key: &str) -> bool {
+    let mut letters = key.chars();
+    letters
+        .next()
+        .is_some_and(|first| first.is_ascii_alphabetic() || first == '_')
+        && letters.all(|letter| letter.is_ascii_alphanumeric() || letter == '_' || letter == '-')
+}
+
+/// One `meta` entry held to the bound §FS-005-dispatch.8 states, in the one
+/// spelling every surface reads: a key a shell will take, a scalar value on
+/// one line, at most `META_VALUE_CAP` bytes rendered. `None` for an entry the
+/// bound refuses.
+pub fn bounded_entry(key: &str, value: &Value) -> Option<String> {
+    if !is_nameable(key) {
+        return None;
+    }
+    let rendered = spelled(value)?;
+    if rendered.contains('\n') || rendered.len() > META_VALUE_CAP {
+        return None;
+    }
+    Some(rendered)
+}
+
 impl Item {
     /// The work is over: the item belongs under Recent rather than in its own
     /// category (§FS-003-feed-categories.2).
@@ -310,16 +345,22 @@ impl Item {
     /// turns on (§FS-005-dispatch.31.1). Each value comes back in the one
     /// spelling a selector compares, a template renders and a summons hands
     /// over, so a number or a boolean the source did not quote answers by its
-    /// canonical spelling; a value that is no scalar was dropped by the bound
-    /// before it ever reached a matter, and is skipped here rather than
-    /// rendered as its JSON.
+    /// canonical spelling.
+    ///
+    /// The bound is applied here and not only where a reader reports its
+    /// drops, because it is a property of the map rather than of one reader
+    /// (§FS-005-dispatch.8): a source whose free passthrough puts a whole
+    /// paragraph or a key no shell will take under this name reaches the same
+    /// four surfaces, and has no channel to be told on — so the entry is
+    /// dropped silently rather than carried. A reader that has such a channel
+    /// still reports what it drops, which is where the *once* is.
     pub fn meta(&self) -> Option<std::collections::BTreeMap<String, String>> {
         Some(
             self.raw
                 .get(META)?
                 .as_object()?
                 .iter()
-                .filter_map(|(key, value)| Some((key.clone(), spelled(value)?)))
+                .filter_map(|(key, value)| Some((key.clone(), bounded_entry(key, value)?)))
                 .collect(),
         )
     }
@@ -357,6 +398,47 @@ mod tests {
             updated_at,
             raw: Value::Null,
         }
+    }
+
+    /// The bound holds of the map wherever it is read, not only where a reader
+    /// has a channel to report a drop on (§FS-005-dispatch.8). A source whose
+    /// free passthrough puts a paragraph, an over-cap value or a key no shell
+    /// will take under `meta` reaches the same four surfaces as any other, and
+    /// a multi-line value in a process environment is exactly what the bound
+    /// exists to keep out — so the accessor drops them, silently.
+    #[test]
+    fn the_accessor_holds_the_bound_whatever_the_source_put_under_meta() {
+        let mut matter = item(Some("open"), Utc::now());
+        matter.raw = serde_json::json!({
+            META: {
+                "context": "acme-labs",
+                "bad key": "no shell will take this name",
+                "prose": "line one\nline two",
+                "essay": "x".repeat(META_VALUE_CAP + 1),
+                "owners": ["a", "b"],
+                "tier": 1,
+            }
+        });
+        let said = matter.meta().expect("the source reported a map");
+        assert_eq!(
+            said.keys().collect::<Vec<_>>(),
+            vec!["context", "tier"],
+            "an unbounded entry reached a surface: {said:?}"
+        );
+        assert_eq!(said["context"], "acme-labs");
+        assert_eq!(said["tier"], "1");
+    }
+
+    /// Absent rather than empty is the distinction the selector's silence rule
+    /// turns on (§FS-005-dispatch.31.1), and the bound does not blur it: a map
+    /// every one of whose keys the bound refused is still a map the source
+    /// reported.
+    #[test]
+    fn a_source_that_reported_no_map_is_absent_and_one_wholly_refused_is_empty() {
+        let mut matter = item(Some("open"), Utc::now());
+        assert!(matter.meta().is_none());
+        matter.raw = serde_json::json!({ META: { "bad key": "v" } });
+        assert_eq!(matter.meta().map(|said| said.len()), Some(0));
     }
 
     #[test]
