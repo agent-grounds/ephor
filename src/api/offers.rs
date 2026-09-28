@@ -874,6 +874,58 @@ mod tests {
         assert!(matches!(gate(&mut Unnamed), Gate::Blocked(_)));
     }
 
+    /// The row a reader reads is the site's own words, and the command behind
+    /// it is ephor's one checkout operation (§FS-004-quick-actions.7). Where a
+    /// project binds a checkout command, that command is what the operation
+    /// summons (§FS-006-project-interface.8) — so the row runs `ephor
+    /// checkout` and reaches the binding through it, rather than running the
+    /// binding itself and making a workspace with no store and no verification
+    /// behind it (§FS-004-quick-actions.7.1).
+    #[test]
+    fn a_bound_checkout_row_keeps_the_sites_words_and_runs_ephors_operation() {
+        let target = PathBuf::from("/demo/fix/issue-95");
+        let bound = CheckoutConfig {
+            icon: "\u{2913}".to_string(),
+            description: "make the slice this project works in".to_string(),
+            command: "/site/checkout.sh".to_string(),
+        };
+
+        let (row, at) = checkout_step(
+            &WorkspaceState::Missing(target.clone()),
+            &Some(bound.clone()),
+        )
+        .expect("a missing workspace is offered the checkout");
+        assert_eq!(at, target);
+        assert_eq!(row.icon, bound.icon, "the site's own icon");
+        assert_eq!(
+            row.description, bound.description,
+            "the site's own description"
+        );
+        assert!(
+            !row.command.contains(&bound.command),
+            "the row runs the binding itself, so the workspace it makes has no store and \
+             nothing verified it: {}",
+            row.command
+        );
+        assert!(
+            row.command.contains("checkout --project"),
+            "the row runs ephor's own checkout, which is what reaches the binding: {}",
+            row.command
+        );
+
+        // And the unbound case is unchanged: the same operation, which is what
+        // makes the binding reachable through one command rather than two.
+        let (plain, _) = checkout_step(&WorkspaceState::Missing(target.clone()), &None)
+            .expect("nothing has to be configured for the offer to exist");
+        assert!(
+            plain.command.contains("checkout --project"),
+            "{}",
+            plain.command
+        );
+        // A workspace that is not missing has nothing to make.
+        assert!(checkout_step(&WorkspaceState::Ready, &Some(bound)).is_none());
+    }
+
     /// The `@` namespace is ephor's, and an entry claiming it never reaches
     /// the menu under that name. `deny_unknown_fields` refuses an unknown
     /// *key* and says nothing about what a known one holds, so this is the

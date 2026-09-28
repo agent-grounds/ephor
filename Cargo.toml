@@ -150,6 +150,10 @@ name = "e2e_031_a_standing_instruction_kept_in_its_file"
 path = "tests/e2e/cases/E2E-031-a-standing-instruction-kept-in-its-file.rs"
 
 [[test]]
+name = "e2e_032_the_checkout_a_project_declared"
+path = "tests/e2e/cases/E2E-032-the-checkout-a-project-declared.rs"
+
+[[test]]
 name = "agents_test"
 path = "tests/integration/agents_test.rs"
 

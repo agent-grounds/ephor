@@ -338,9 +338,21 @@ that wants its own — a bare mirror, a filesystem snapshot, a `gh pr checkout` 
 configures one and that wins ([§3](#3-quick-actions-come-first-and-configuration-adds-to-them)),
 but nothing has to be configured for the offer to exist.
 
-What it does is git and nothing else, and it has the rebase's shape. A
-poly-repo workspace is several repositories sharing one branch name, so each
-gets a working tree under the new directory: the branch itself where the forge
+**That wins wherever the operation is asked for, and not only where it is
+offered.** A bound command is the maker of this project's branch workspaces: the
+key a reader presses, `ephor checkout` typed by name, the command a program state
+runs, and the dispatch that mints the workspace a `branch` template named
+([§FS-005-dispatch.25](FS-005-dispatch.md#25-work-about-a-matter-with-no-branch-can-mint-the-branch-it-needs)) all summon it. A binding honoured on some of
+the paths that cross a seam and not the others is a seam that is not done
+([§REQ-001-boundary.1](../requirements/REQ-001-boundary.md#1-the-anatomy)), and it fails in the quietest way there
+is: a site that declared a sparse slice gets a whole tree from every path but
+one, with nothing to report, because a directory is there either way. What the
+command is guaranteed, and what ephor holds it to afterwards, is the project's
+side of the interface ([§FS-006-project-interface.8](FS-006-project-interface.md#8-the-checkout-contract)).
+
+**Where none is bound, what it does is git and nothing else**, and it has the
+rebase's shape. A poly-repo workspace is several repositories sharing one branch
+name, so each gets a working tree under the new directory: the branch itself where the forge
 has it, a new branch of that name grown from the main branch where it does
 not, and — where the repository already has the branch but the forge does
 not — the branch as it stands, checked out and reported as published nowhere,
@@ -363,8 +375,9 @@ Like the rebase, it is one implementation for every caller
 the key the reader presses, the command a state machine runs, and the dispatch
 that makes the workspace a `branch` template named
 ([§FS-005-dispatch.25](FS-005-dispatch.md#25-work-about-a-matter-with-no-branch-can-mint-the-branch-it-needs))
-are the same operation, since two of them would eventually disagree about what
-a checked-out workspace is.
+are the same operation — the project's own command included, where one is bound
+— since two of them would eventually disagree about what a checked-out workspace
+is.
 
 ### 7.1 A workspace that is there is still owed its store
 
@@ -383,6 +396,15 @@ repositories where those are absent, and the store
 in either case, since a store is part of what makes a directory a workspace
 rather than a pile of repositories. Asking twice is how a half-made workspace
 is repaired, not a no-op the reader has to work around.
+
+**And the first ask owes it as much as the second.** A workspace a project's own
+checkout command has just made is the case above one moment earlier: making the
+repositories is the command's contract and the store is never its to make
+([§FS-006-project-interface.8](FS-006-project-interface.md#8-the-checkout-contract)), so the operation puts the store in when the
+command returns rather than leaving it for whoever asks next. The dispatch is the
+caller that cannot wait for a second ask, because the plan it is about to write
+lands in that store — a workspace handed back with nowhere for a plan to land
+would have traded one silence for another.
 
 **And it says how far behind the workspace is.** The distance is already
 measured and already said: the branch row for that very workspace reads
@@ -461,6 +483,16 @@ configuration, none of them asking the disk:
 A name that fails one of them is refused, saying which value and which rule,
 and nothing is made.
 
+All three hold whichever maker will be asked. A project's own checkout command is
+summoned only after the name has passed them, so a command is never handed a
+directory this project would not have put a workspace at, and a refusal still
+happens instead of a making rather than inside somebody else's. What does not
+hold for both is the **source checkout on disk**: a working tree is added from a
+repository, so ephor's git needs one and refuses by name without it, while a
+bound command is asked what it makes a workspace from and is not held to ephor's
+answer — which is already what a project on a bound command is told it can do
+([§FS-006-project-interface.8](FS-006-project-interface.md#8-the-checkout-contract)).
+
 ### 7.4 What a branch is grown from is a branch on the project's remote
 
 A branch the forge does not have is grown from somewhere, and the reader may
@@ -489,6 +521,17 @@ where to type and left them to find out what by running the command — the same
 answer-by-failure that a flag which parses and changes nothing gives
 ([§FS-011-command-line.9](FS-011-command-line.md#9-a-scope-selector-is-honoured-or-refused)),
 one command later.
+
+**And the input is refused by name where the project binds a checkout command.**
+What a branch is grown from is then that command's to decide, because the command
+is the maker ([§7](#7-a-workspace-that-is-not-there-is-offered-the-checkout)) and
+a base is not among the things it is guaranteed
+([§FS-006-project-interface.8](FS-006-project-interface.md#8-the-checkout-contract)). Carrying the value through to a
+command that cannot read it would be a flag that parses and changes nothing,
+which is the worse of the two answers
+([§FS-011-command-line.9](FS-011-command-line.md#9-a-scope-selector-is-honoured-or-refused)) — so the refusal names the input it
+came in on and says whose command decides the base instead. Nothing inside ephor
+passes one, so this is reachable only by a person who typed it.
 
 ## 8. A branch that trails its own published copy is offered the rebase onto it
 
