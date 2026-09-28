@@ -4005,15 +4005,20 @@ work needs:
 { "id": "task-work", "description": "work a task in its own checkout",
   "when": { "sources": ["rhei"] },
   "needs_checkout": true,
-  "branch": "task/{id_slug}" }
+  "branch": "task/{id_slug}",
+  "brief": "Work {title}." }
 ```
 
 ```console
 $ ephor work dispatch --project proj --dry-run
 would open Widen the retry window
-  task-work → …/proj/task/rhei-window-1-d8a9c768/panta/work/rhei-window-1.rhei.md#task-work-1
+  task-work → …/proj/task/rhei-window-1-d8a9c768/panta/rhei-window-1.rhei.md#task-work-1
 would open Shorten the reset
-  task-work → …/proj/task/rhei-window-2-dba9cc21/panta/work/rhei-window-2.rhei.md#task-work-1
+  task-work → …/proj/task/rhei-window-2-dba9cc21/panta/rhei-window-2.rhei.md#task-work-1
+note: task/rhei-window-1-d8a9c768 is not checked out — the dispatch would make …/proj/task/rhei-window-1-d8a9c768 first.
+note: task/rhei-window-2-dba9cc21 is not checked out — the dispatch would make …/proj/task/rhei-window-2-dba9cc21 first.
+
+2 ticket(s) would be opened
 ```
 
 **The digest is on the end because rendering is the resolution.** Nothing is
