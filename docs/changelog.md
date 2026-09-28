@@ -432,6 +432,32 @@ ships, the previous "latest" section moves verbatim to
 
 ### Fixed
 
+- **The checkout a project declared is the maker on every path that makes a
+  branch workspace**
+  ([§FS-004-quick-actions.7](functional-spec/FS-004-quick-actions.md#7-a-workspace-that-is-not-there-is-offered-the-checkout),
+  [§FS-006-project-interface.8](functional-spec/FS-006-project-interface.md#8-the-checkout-contract)).
+  A project binds one `checkout` command — the documented way a site substitutes
+  a sparse slice for ephor's plain `git worktree add` — and only the action chain
+  ran it: `ephor checkout` typed by name and the workspace a dispatch mints both
+  used ephor's git instead, silently, so a site whose repository needs a slice got
+  a whole tree per dispatched issue and the agent that ran there stood in a tree
+  the site deliberately did not want it to see. For an issue with no branch the
+  dispatch is the only maker there is, so there was no way to get the checkout
+  that was declared. The binding is now honoured inside the one checkout
+  operation, so all three callers reach it: it is summoned only where the
+  workspace is absent, with `EPHOR_BRANCH` as the branch being made and the
+  matter's names empty rather than absent where there is no matter, from the
+  project's root, and `EPHOR_CHECKOUT_MAKING` lets a command wrap `ephor checkout`
+  without summoning itself for ever. What it returns is verified — the directory
+  and every declared repository — and a workspace it did not make is refused with
+  its absent repositories named, nothing dispatched behind it and no store put
+  into it; ephor's git never fills in a tree it did not make. A workspace the
+  command did make gets its work store, on the first ask as much as the second,
+  because the plan a dispatch is writing lands there. `--from` is refused by name
+  where a command is bound, the base being that command's to decide, and
+  `ephor checkout` says which maker made the workspace in prose and as a `maker`
+  field under `--json`. A project with no command bound is untouched. (PR #128)
+
 - Resolve each action's hand picker at that entry's branch and work root,
   expose its choices as `offers[].roster`, and keep choices and pins from
   carrying between entries. (PR #112)
