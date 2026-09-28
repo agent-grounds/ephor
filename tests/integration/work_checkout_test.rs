@@ -359,3 +359,226 @@ fn a_busy_checkout_still_takes_a_dispatched_ticket() {
     );
     drop(holder);
 }
+
+// ---------------------------------------------------------------------------
+// The other invariant about the tree a run edits: the dispatch's own side of
+// the checkout a project declared. Where a project binds a `checkout` command
+// that command makes the minted workspace (§FS-004-quick-actions.7,
+// §FS-006-project-interface.8) — and ephor still owes it the work store, since
+// the plan the dispatch is about to write lands in it
+// (§FS-004-quick-actions.7.1). What is asserted here rather than in the
+// scenario is that the ledger and the tree agree.
+// ---------------------------------------------------------------------------
+
+/// A forge with one issue of the reader's. An issue has no branch until
+/// somebody cuts one, so it is the matter a dispatch has to mint a workspace
+/// for, and the dispatch is then the only maker there is
+/// (§FS-005-dispatch.25).
+const ISSUE_FORGE: &str = r#"#!/usr/bin/env bash
+set -euo pipefail
+cat > /dev/null
+case "${1:?subcommand}" in
+  capabilities) printf '{"issues":true,"pull_requests":false}' ;;
+  issues) printf '%s' '[
+      { "key": "acme/widget#95", "title": "Durations read as seconds",
+        "url": "https://acme.example/issue/95",
+        "updated_at": "2026-09-20T12:00:00Z", "status": "open" }
+    ]' ;;
+  *) printf '[]' ;;
+esac
+"#;
+
+/// The branch the shipped `implement` recipe renders for that issue.
+const MINTED: &str = "fix/issue-95";
+
+fn git_in(dir: &Path, args: &[&str]) {
+    let status = std::process::Command::new("git")
+        .arg("-C")
+        .arg(dir)
+        .args(args)
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .expect("git runs");
+    assert!(status.success(), "git {args:?} in {}", dir.display());
+}
+
+/// A project whose checkouts are one per branch, on a repository published on
+/// `main` and cloned into the `main` workspace, watching the forge above.
+/// `src/` is what a site's slice keeps and `README.md` is what it leaves out.
+fn minting_fixture(tmp: &Path) -> std::path::PathBuf {
+    let template = write_template(tmp);
+    let root = tmp.join("demo");
+    let origin = tmp.join("origin");
+    fs::create_dir_all(origin.join("src")).unwrap();
+    git_in(&origin, &["init", "-q", "--initial-branch=main"]);
+    git_in(&origin, &["config", "user.email", "t@example.com"]);
+    git_in(&origin, &["config", "user.name", "t"]);
+    fs::write(origin.join("README.md"), "the project\n").unwrap();
+    fs::write(origin.join("src/main.rs"), "fn main() {}\n").unwrap();
+    git_in(&origin, &["add", "-A"]);
+    git_in(&origin, &["commit", "-q", "-m", "the project"]);
+    fs::create_dir_all(&root).unwrap();
+    let status = std::process::Command::new("git")
+        .args(["clone", "-q"])
+        .arg(&origin)
+        .arg(root.join("main"))
+        .status()
+        .unwrap();
+    assert!(status.success());
+
+    write_registry(
+        &tmp.join("workspaces.json"),
+        &json!({
+            "project_types": base_project_types(&template),
+            "hook_sets": [],
+            "projects": [{
+                "id": "demo",
+                "type": "monorepo",
+                "display_name": "Demo",
+                "root": root.to_string_lossy(),
+                "main_branch": "main",
+                "branch_root_template": "{project_root}/{branch}",
+                "branches": []
+            }]
+        }),
+    );
+    fs::create_dir_all(tmp.join("fakebin")).unwrap();
+    make_executable(&tmp.join("fakebin/ephor-forge-acmeforge"), ISSUE_FORGE);
+    fs::write(
+        tmp.join("status.json"),
+        serde_json::to_string_pretty(&json!({
+            "defaults": { "ttl_seconds": 600, "provider_timeout_seconds": 10 },
+            "projects": { "demo": {
+                "providers": [{ "provider": "acmeforge", "user": "you", "repos": ["widget"] }]
+            }}
+        }))
+        .unwrap(),
+    )
+    .unwrap();
+    root
+}
+
+/// Bind a checkout command on that project.
+fn bind(tmp: &Path, command: &Path) {
+    let path = tmp.join("status.json");
+    let mut config: Value = serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
+    config["projects"]["demo"]["checkout"] = json!({ "command": command.to_string_lossy() });
+    fs::write(&path, serde_json::to_string_pretty(&config).unwrap()).unwrap();
+}
+
+/// The site's own checkout: a sparse slice rather than a whole tree, with a
+/// marker naming who made it.
+fn site_checkout(tmp: &Path) -> std::path::PathBuf {
+    let path = tmp.join("fakebin/site-checkout");
+    make_executable(
+        &path,
+        "#!/usr/bin/env bash\n\
+         set -euo pipefail\n\
+         : \"${EPHOR_WORKSPACE:?}\" \"${EPHOR_BRANCH:?}\"\n\
+         git -C \"$PWD/main\" worktree add --quiet -B \"$EPHOR_BRANCH\" \"$EPHOR_WORKSPACE\" main\n\
+         git -C \"$EPHOR_WORKSPACE\" sparse-checkout set --no-cone src\n\
+         printf 'made by the project checkout command\\n' > \"$EPHOR_WORKSPACE/.made-by-site-checkout\"\n",
+    );
+    path
+}
+
+fn ledger(tmp: &Path) -> Value {
+    let path = tmp.join("state/ephor/work.json");
+    fs::read_to_string(&path)
+        .ok()
+        .and_then(|text| serde_json::from_str(&text).ok())
+        .unwrap_or_else(|| json!({ "entries": {} }))
+}
+
+/// The workspace a bound command made is still owed the store, and the ledger
+/// has to agree with the tree: the branch it minted, the checkout the command
+/// made, the work root inside it, and the plan in that root
+/// (§FS-004-quick-actions.7.1, §FS-005-dispatch.25). A dispatch cannot wait
+/// for a second ask to repair the store — the plan it is writing lands there.
+#[test]
+fn the_store_a_dispatch_needs_is_in_the_workspace_a_bound_command_made() {
+    let tmp = tempdir();
+    let root = minting_fixture(tmp.path());
+    let command = site_checkout(tmp.path());
+    bind(tmp.path(), &command);
+
+    ephor(tmp.path())
+        .args(["refresh", "demo"])
+        .assert()
+        .success();
+    ephor(tmp.path())
+        .args(["work", "dispatch"])
+        .assert()
+        .success();
+
+    let workspace = root.join(MINTED);
+    assert!(
+        workspace.join(".made-by-site-checkout").is_file(),
+        "the project's own checkout command did not mint {}",
+        workspace.display()
+    );
+    let store = workspace.join("panta");
+    assert!(
+        store.join("states.yaml").is_file(),
+        "the workspace the command made has nowhere for a plan to land"
+    );
+
+    let entries = ledger(tmp.path());
+    let entry = &entries["entries"]["acmeforge:acme/widget#95"];
+    assert_eq!(entry["branch"], json!(MINTED), "{entry}");
+    assert_eq!(entry["checkout"], json!(workspace), "{entry}");
+    assert_eq!(entry["root"], json!(store), "{entry}");
+    let plan = entry["plan"].as_str().unwrap_or_default();
+    assert!(
+        Path::new(plan).is_file(),
+        "the ledger names a plan that is not in the store the command's workspace got: {entry}"
+    );
+    assert!(
+        plan.starts_with(&store.to_string_lossy().into_owned()),
+        "the plan landed outside the minted workspace: {entry}"
+    );
+}
+
+/// And nothing is dispatched behind a checkout that was not made
+/// (§FS-005-dispatch.25): a command that returns 0 having made a directory and
+/// no repository leaves no store, no plan, and no ledger entry — where today
+/// the dispatch succeeds and ephor's own verification passes.
+#[test]
+fn a_dispatch_behind_a_workspace_that_was_not_made_writes_nothing() {
+    let tmp = tempdir();
+    let root = minting_fixture(tmp.path());
+    let command = tmp.path().join("fakebin/hollow-checkout");
+    make_executable(
+        &command,
+        "#!/usr/bin/env bash\nset -euo pipefail\nmkdir -p \"$EPHOR_WORKSPACE\"\nexit 0\n",
+    );
+    bind(tmp.path(), &command);
+
+    ephor(tmp.path())
+        .args(["refresh", "demo"])
+        .assert()
+        .success();
+    let refused = ephor(tmp.path())
+        .args(["work", "dispatch"])
+        .output()
+        .unwrap();
+    assert!(
+        !refused.status.success(),
+        "a workspace that was not made read as made: {}",
+        String::from_utf8_lossy(&refused.stdout)
+    );
+
+    let workspace = root.join(MINTED);
+    assert!(!workspace.join("panta").exists(), "a store was made anyway");
+    assert!(
+        !workspace.join("src").exists(),
+        "ephor's git filled in a tree the command did not make"
+    );
+    assert!(
+        ledger(tmp.path())["entries"]
+            .get("acmeforge:acme/widget#95")
+            .is_none(),
+        "the ledger recorded work whose workspace does not exist"
+    );
+}

@@ -239,6 +239,56 @@ supplies the git checkout itself ([§FS-004-quick-actions.7](FS-004-quick-action
 needs a workspace — offers marked as requiring one, work whose recipe edits
 the change — is gated on this contract and degrades by naming it.
 
+**The binding is the maker, on every path that makes a branch workspace.** The
+key a reader presses, `ephor checkout` typed by name, the command a program
+state runs, and the dispatch that mints the workspace a `branch` template named
+([§FS-005-dispatch.25](FS-005-dispatch.md#25-work-about-a-matter-with-no-branch-can-mint-the-branch-it-needs)) all summon the bound command; ephor's own git
+is what makes the workspace where none is bound, and never a second maker
+standing beside one that is ([§FS-004-quick-actions.7](FS-004-quick-actions.md#7-a-workspace-that-is-not-there-is-offered-the-checkout)). A binding
+honoured on some of the paths that cross a seam and not the others is a seam
+that is not done ([§REQ-001-boundary.1](../requirements/REQ-001-boundary.md#1-the-anatomy)), and the site that bound a
+sparse slice would get a whole tree from every path but one — silently, since a
+directory is there either way. So the command is asked about branches nobody has
+cut and with no matter behind it at all, which is what the vocabulary below has
+to answer for.
+
+**What the command is guaranteed.** `EPHOR_PROJECT`, `EPHOR_ROOT` and
+`EPHOR_WORKSPACE` always. `EPHOR_BRANCH` is **the branch this checkout is
+making** — for a minted workspace the rendered name nobody has cut yet, not
+whatever the matter carries, because the matter's answer would be empty exactly
+where the command needs one. The matter's own names — `EPHOR_ITEM_ID`,
+`EPHOR_TITLE`, `EPHOR_NUMBER` and the rest of the one vocabulary
+([§FS-005-dispatch.8](FS-005-dispatch.md#8-the-ticket-carries-the-item-as-data-not-only-as-prose)) — come from the matter where there is one and are
+**empty rather than absent** where there is none: a summons does not start from
+a cleared environment (§3), so a name left unset is inherited, and a checkout
+asked for by branch alone would read some other matter's title as this one's. A
+call with no matter behind it runs the command rather than refusing; there is
+nothing about a matter that making a workspace needs. The working directory is
+the project's root, which is what lets a command reach the checkouts beside the
+one it is making by relative path.
+
+**And one name it is told about ephor.** A bound command may wrap `ephor
+checkout` — a workspace made the ordinary way and a step of the site's own after
+it — and a maker that summons the binding would otherwise summon itself for
+ever. So the operation exports `EPHOR_CHECKOUT_MAKING`, naming the project and
+branch it is making, and an operation that finds its own marker already there
+makes the workspace with git rather than asking the command a second time. The
+wrapper composes, which is what its author meant, and what ends the recursion is
+a documented variable rather than a guess about who called.
+
+**What *verified* means.** The directory is there, and every repository the
+project declares is in it — the same fold that answers whether any workspace is
+whole ([§FS-004-quick-actions.7](FS-004-quick-actions.md#7-a-workspace-that-is-not-there-is-offered-the-checkout)). One the command did not make is named and
+the checkout is refused rather than completed: ephor's git does not fill in a
+tree it did not make, because the command owns what a workspace of this project
+is, and a directory that is already there is never handed back to the command
+either. A non-zero exit is the checkout not made, `75` among them — there is no
+*parked* here, since a workspace either exists or does not (§3) — and the code is
+said. Nothing is dispatched behind a checkout that was not made and no store is
+put into a workspace that was not; where the directory is whole the store is
+ephor's to add, on this path as on the other
+([§FS-004-quick-actions.7.1](FS-004-quick-actions.md#71-a-workspace-that-is-there-is-still-owed-its-store)).
+
 ## 9. Offers: the project's actions
 
 A manifest may offer actions: entries for the same menu configured actions

@@ -2289,7 +2289,10 @@ for every entry that says nothing.
 source checkout, the same directory template, the same trees grown from the
 project's main branch, the same task store — the third caller of one
 implementation, so a workspace dispatch makes and a workspace the reader's key
-makes cannot be two different things. Nothing is written to the registry: a
+makes cannot be two different things — where the project binds a checkout
+command, that command is the maker here too, and a workspace it did not make is
+refused in its own terms with nothing dispatched behind it
+([§FS-006-project-interface.8](FS-006-project-interface.md#8-the-checkout-contract)). Nothing is written to the registry: a
 workspace ephor made is found on disk like every other
 ([§FS-008-attribution.2](FS-008-attribution.md#2-two-stages-one-engine)). Nothing is pushed either
 — publishing the branch is the work's move, not ephor's

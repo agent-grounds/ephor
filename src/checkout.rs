@@ -524,3 +524,41 @@ fn find_item(id: &str) -> Result<Item> {
         "{id} is not in any cached feed — run `ephor refresh` first."
     )))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A checkout that was not made must not read as one that was
+    /// (§FS-006-project-interface.8). This is the shape a bound command leaves
+    /// when it returns without making the workspace: nothing was already
+    /// there, git was never asked, the declared repositories are absent, and
+    /// no store went into a directory that is not a workspace. The caller asks
+    /// one question about that — [`Made::refusal`] — and it has to answer,
+    /// because the caller that asks it is a dispatch deciding whether to write
+    /// a plan (§FS-005-dispatch.25).
+    #[test]
+    fn a_workspace_that_was_not_made_is_a_refusal() {
+        let made = Made {
+            target: PathBuf::from("/demo/fix/issue-95"),
+            already: false,
+            missing: vec!["ce".to_string(), "ee".to_string()],
+            outcome: None,
+            store: None,
+        };
+
+        let why = made
+            .refusal(Path::new("/demo/main"))
+            .expect("a workspace nothing made is a refusal, not a success");
+        assert!(
+            why.contains("/demo/fix/issue-95"),
+            "the refusal names the workspace that was not made: {why}"
+        );
+        for absent in &made.missing {
+            assert!(
+                why.contains(absent.as_str()),
+                "the refusal names the declared repository that is not there: {why}"
+            );
+        }
+    }
+}

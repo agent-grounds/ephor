@@ -717,3 +717,309 @@ fn an_empty_value_is_still_nothing_given() {
         .failure()
         .stderr(predicates::str::contains("Nothing says which branch"));
 }
+
+// ---------------------------------------------------------------------------
+// The checkout a project declared. Where a project binds a `checkout` command
+// it is the maker of that project's branch workspaces, and ephor's git is the
+// fallback for a project that binds none (§FS-004-quick-actions.7,
+// §FS-006-project-interface.8). These take the two halves the surface above
+// cannot: what the contract hands the command, and what ephor holds it to.
+// ---------------------------------------------------------------------------
+
+/// Bind this project's own checkout command — the one substitution point a
+/// site has for what a branch workspace of its project *is*.
+fn bind_checkout(tmp: &Path, command: &Path) {
+    let path = tmp.join("status.json");
+    let mut config: serde_json::Value =
+        serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
+    config["projects"]["demo"]["checkout"] = json!({ "command": command.to_string_lossy() });
+    fs::write(&path, serde_json::to_string_pretty(&config).unwrap()).unwrap();
+}
+
+/// A checkout command that writes down everything it was told before it makes
+/// anything, then makes the workspace the ordinary way. It is how a case asks
+/// what the contract actually handed it rather than what the manual says it
+/// does.
+fn recording_checkout(tmp: &Path, record: &Path) -> PathBuf {
+    let path = tmp.join("fakebin").join("recording-checkout");
+    make_executable(
+        &path,
+        &format!(
+            "#!/usr/bin/env bash\n\
+             set -euo pipefail\n\
+             env | sort > {record}\n\
+             printf 'RECORDED_PWD=%s\\n' \"$(pwd -P)\" >> {record}\n\
+             mkdir -p \"$EPHOR_WORKSPACE\"\n\
+             for repo in ce ee; do\n\
+             \x20 git -C \"$PWD/main/$repo\" worktree add --quiet -B \"$EPHOR_BRANCH\" \
+             \"$EPHOR_WORKSPACE/$repo\" master\n\
+             done\n",
+            record = record.display(),
+        ),
+    );
+    path
+}
+
+/// A command that exits 0 having made the directory and no repository — the
+/// report's sharpest sentence as a fixture: the dispatch succeeds, the
+/// workspace exists, and ephor's own verification passes.
+fn hollow_checkout(tmp: &Path) -> PathBuf {
+    let path = tmp.join("fakebin").join("hollow-checkout");
+    make_executable(
+        &path,
+        "#!/usr/bin/env bash\nset -euo pipefail\nmkdir -p \"$EPHOR_WORKSPACE\"\nexit 0\n",
+    );
+    path
+}
+
+/// One name a bound command was told, out of the environment it recorded.
+fn told(record: &str, name: &str) -> Option<String> {
+    record
+        .lines()
+        .find(|line| line.starts_with(&format!("{name}=")))
+        .map(|line| line[name.len() + 1..].to_string())
+}
+
+/// What a bound command is guaranteed, in its own words
+/// (§FS-006-project-interface.8). `EPHOR_BRANCH` is the branch the checkout is
+/// *making* — which on the dispatch's path is a name nobody has cut, so the
+/// matter's own answer would be empty exactly where the command needs one —
+/// `EPHOR_WORKSPACE` is where it goes, the working directory is the project's
+/// root, and the matter's names are present and empty on a call with no matter
+/// behind it, because a summons does not start from a cleared environment
+/// (§FS-006-project-interface.3) and an unset name would be read as some other
+/// matter's.
+#[test]
+fn a_bound_checkout_command_is_told_the_branch_it_is_making() {
+    let tmp = tempdir();
+    let root = fixture(tmp.path());
+    let _ce = repo(tmp.path(), "ce");
+    let _ee = repo(tmp.path(), "ee");
+    let record = tmp.path().join("told.env");
+    let command = recording_checkout(tmp.path(), &record);
+    bind_checkout(tmp.path(), &command);
+
+    ephor(tmp.path())
+        .args(["checkout", "--project", "demo", "--branch", "feature"])
+        .assert()
+        .success();
+
+    let said = fs::read_to_string(&record)
+        .unwrap_or_else(|err| panic!("the bound command was never asked to make it: {err}"));
+    let root_said = root.to_string_lossy().into_owned();
+    assert_eq!(
+        told(&said, "EPHOR_PROJECT").as_deref(),
+        Some("demo"),
+        "{said}"
+    );
+    assert_eq!(
+        told(&said, "EPHOR_BRANCH").as_deref(),
+        Some("feature"),
+        "{said}"
+    );
+    assert_eq!(
+        told(&said, "EPHOR_WORKSPACE").as_deref(),
+        Some(root.join("feature").to_string_lossy().as_ref()),
+        "{said}"
+    );
+    assert_eq!(
+        told(&said, "EPHOR_ROOT").as_deref(),
+        Some(root_said.as_str()),
+        "{said}"
+    );
+    assert_eq!(
+        told(&said, "RECORDED_PWD").as_deref(),
+        Some(root_said.as_str()),
+        "the command runs from the project's root, which is what lets it reach the \
+         checkouts beside the one it is making:\n{said}"
+    );
+    for empty in [
+        "EPHOR_ITEM_ID",
+        "EPHOR_SOURCE",
+        "EPHOR_KIND",
+        "EPHOR_TITLE",
+        "EPHOR_URL",
+        "EPHOR_REPO",
+        "EPHOR_NUMBER",
+    ] {
+        assert_eq!(
+            told(&said, empty).as_deref(),
+            Some(""),
+            "{empty} is set and empty on a call with no matter, never absent:\n{said}"
+        );
+    }
+    // And the one name it is told about ephor itself, which is what lets a
+    // command wrap `ephor checkout` without summoning itself for ever.
+    assert!(
+        told(&said, "EPHOR_CHECKOUT_MAKING").is_some(),
+        "the marker that ends the recursion was not exported:\n{said}"
+    );
+}
+
+/// A bound command may wrap ephor's own checkout — the workspace made the
+/// ordinary way and a step of the site's own after it — and a maker that
+/// summons the binding would otherwise summon itself for ever. The marker ends
+/// it: the nested operation finds its own marker there and makes the workspace
+/// with git rather than asking the command again
+/// (§FS-006-project-interface.8). The wrapper counts its own calls, so the
+/// recursion this is about is bounded by the fixture rather than by a timeout.
+#[test]
+fn a_command_that_wraps_ephor_checkout_terminates_in_git() {
+    let tmp = tempdir();
+    let root = fixture(tmp.path());
+    let _ce = repo(tmp.path(), "ce");
+    let _ee = repo(tmp.path(), "ee");
+    let log = tmp.path().join("wrapper.log");
+    let wrapper = tmp.path().join("fakebin").join("wrapping-checkout");
+    make_executable(
+        &wrapper,
+        &format!(
+            "#!/usr/bin/env bash\n\
+             set -euo pipefail\n\
+             printf 'called\\n' >> {log}\n\
+             if [ \"$(wc -l < {log})\" -gt 2 ]; then\n\
+             \x20 echo 'the wrapper was summoned by its own summons' >&2\n\
+             \x20 exit 1\n\
+             fi\n\
+             {ephor} checkout --project \"$EPHOR_PROJECT\" --branch \"$EPHOR_BRANCH\"\n\
+             printf 'wrapped\\n' > \"$EPHOR_WORKSPACE/.after-the-checkout\"\n",
+            log = log.display(),
+            ephor = assert_cmd::cargo::cargo_bin("ephor").display(),
+        ),
+    );
+    bind_checkout(tmp.path(), &wrapper);
+
+    ephor(tmp.path())
+        .args(["checkout", "--project", "demo", "--branch", "feature"])
+        .assert()
+        .success();
+
+    let target = root.join("feature");
+    assert!(
+        target.join("ce/.git").exists() && target.join("ee/.git").exists(),
+        "the nested checkout did not make the workspace with git"
+    );
+    assert!(
+        target.join(".after-the-checkout").is_file(),
+        "the wrapper's own step never ran, so the wrapper never composed"
+    );
+    assert_eq!(
+        fs::read_to_string(&log).unwrap_or_default().lines().count(),
+        1,
+        "the wrapper is asked once and the checkout inside it is git's"
+    );
+}
+
+/// What a branch is grown from is the bound command's to decide, and ephor has
+/// nothing to pass it a base through — so `--from` is refused naming the input
+/// it came in on, and exits 2, the code a value ephor will not act on takes
+/// (§FS-004-quick-actions.7.4, §FS-011-command-line.9). A flag that parsed and
+/// changed nothing would be the worse of the two answers.
+#[test]
+fn from_is_refused_where_a_checkout_command_is_bound() {
+    let tmp = tempdir();
+    let root = fixture(tmp.path());
+    let _ce = repo(tmp.path(), "ce");
+    let _ee = repo(tmp.path(), "ee");
+    let record = tmp.path().join("told.env");
+    let command = recording_checkout(tmp.path(), &record);
+    bind_checkout(tmp.path(), &command);
+
+    ephor(tmp.path())
+        .args([
+            "checkout",
+            "--project",
+            "demo",
+            "--branch",
+            "feature",
+            "--from",
+            "master",
+        ])
+        .assert()
+        .code(2)
+        .stderr(predicates::str::contains("--from"));
+
+    assert!(
+        !record.exists(),
+        "the command was summoned behind a refusal"
+    );
+    assert!(
+        !root.join("feature").exists(),
+        "a refusal left a directory behind"
+    );
+}
+
+/// *Verified* is the directory and every repository the project declares, not
+/// the exit code (§FS-006-project-interface.8). A command that returns 0
+/// having made a directory and no repository is the checkout not made: the
+/// absent repositories are named, ephor's git does not fill in a tree it did
+/// not make, and no store is put into a workspace that was not made.
+#[test]
+fn a_command_that_returned_without_making_it_is_the_checkout_not_made() {
+    let tmp = tempdir();
+    let root = fixture(tmp.path());
+    let _ce = repo(tmp.path(), "ce");
+    let _ee = repo(tmp.path(), "ee");
+    let command = hollow_checkout(tmp.path());
+    bind_checkout(tmp.path(), &command);
+
+    let refused = ephor(tmp.path())
+        .args(["checkout", "--project", "demo", "--branch", "feature"])
+        .output()
+        .unwrap();
+    let said = String::from_utf8_lossy(&refused.stdout).into_owned()
+        + &String::from_utf8_lossy(&refused.stderr);
+    assert!(
+        !refused.status.success(),
+        "a workspace that was not made read as made: {said}"
+    );
+    for repo in ["ce", "ee"] {
+        assert!(
+            said.contains(repo),
+            "the repository the command did not make is not named: {said}"
+        );
+    }
+    let target = root.join("feature");
+    assert!(
+        !target.join("ce").exists() && !target.join("ee").exists(),
+        "ephor's git filled in a tree the command did not make"
+    );
+    assert!(
+        !target.join("panta").exists(),
+        "a plan was given somewhere to land in a workspace that was not made"
+    );
+}
+
+/// And `75` is among them. Every other verb reads it as *parked* — not
+/// applicable now, ask again later (§FS-006-project-interface.3) — but a
+/// workspace either exists or it does not, so here it is the checkout not made
+/// and the code is said (§FS-006-project-interface.8).
+#[test]
+fn a_parked_exit_is_the_checkout_not_made() {
+    let tmp = tempdir();
+    let root = fixture(tmp.path());
+    let _ce = repo(tmp.path(), "ce");
+    let _ee = repo(tmp.path(), "ee");
+    let command = tmp.path().join("fakebin").join("parking-checkout");
+    make_executable(&command, "#!/usr/bin/env bash\nexit 75\n");
+    bind_checkout(tmp.path(), &command);
+
+    let refused = ephor(tmp.path())
+        .args(["checkout", "--project", "demo", "--branch", "feature"])
+        .output()
+        .unwrap();
+    let said = String::from_utf8_lossy(&refused.stdout).into_owned()
+        + &String::from_utf8_lossy(&refused.stderr);
+    assert!(
+        !refused.status.success(),
+        "a parked checkout read as a made one: {said}"
+    );
+    assert!(
+        said.contains("75"),
+        "the exit code the command answered with is not said: {said}"
+    );
+    assert!(
+        !root.join("feature/panta").exists(),
+        "a store was made in a workspace that was not"
+    );
+}
