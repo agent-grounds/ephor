@@ -720,18 +720,35 @@ written.
 boolean — on one line and at most 1 KiB, under a key matching
 `[A-Za-z_][A-Za-z0-9_-]*`
 ([§FS-005-dispatch.8](functional-spec/FS-005-dispatch.md#8-the-ticket-carries-the-item-as-data-not-only-as-prose)).
+One line is a condition of its own and not a consequence of the size: a value
+with a line break in it is prose however short, and prose is neither a path
+segment, nor a variable a script can read a line at a time, nor anything a
+selector compares. Put a paragraph in the task's own text, which is where a
+reader is looking.
+
 A key that breaks that is **dropped and the rest of the block carried**, with
 the drop said out loud by the refresh that read it — which matter, which key,
 and which part of the bound it broke — and the store's own slot still `ok`,
 because the store answered. A task vanishing from the feed because somebody
-wrote a paragraph about it would be the worse failure.
+wrote a paragraph about it would be the worse failure. The bound holds of the
+map wherever it comes from, so a `custom-status` source putting a `meta` object
+in its answer's `data` ([§4.2.6](#426-what-a-verb-may-answer--the-envelope)) is
+held to it too — silently there, since nothing went and looked to report it.
 
 **Read-only inward.** ephor lays its own plans inside the directory it reads as
 a store, and keeps its per-task bookkeeping in this very namespace, so the names
 it writes there — `project`, `source`, `kind`, `id`, `url`, `state`, `repo`,
 `number`, `branch`, `ticket`, `workspace`, `root`, `title`, `instruction`,
-`instruction_sha256` — are taken back out on the way in and reported like any
-other drop. Nothing a store said is ever written back.
+`instruction_sha256` — are taken back out on the way in. Nothing a store said is
+ever written back.
+
+That subtraction is **silent**, unlike a broken bound. A name ephor wrote there
+was never your word, so nothing of yours was lost and there is nothing to tell
+you; and a work root ephor has laid tickets in is a store like any other, so
+saying it would put a line per written name per open ticket on every refresh and
+bury the drops that do mean something. If you meant to say `context` and wrote
+`state`, the key is gone and the refresh is quiet about it — that list is the
+one to check.
 
 Finding a store is a capability, never an obligation: it buys the *tasks* rung
 and nothing about a project without one degrades
@@ -1713,9 +1730,18 @@ emptied that way: ephor cannot blank an `EPHOR_META_CONTEXT` it has never heard
 of, and a script reading one would be reading whatever launched ephor. The
 contract is that an `EPHOR_META_*` variable is this matter's **only if its key
 is listed in `EPHOR_META_KEYS`**. Two keys that fold to one variable name — a
-`roll-out` and a `roll_out` in the same block — set no variable at all, and
-both stay readable under `meta` where a selector and a template name them
-unambiguously.
+`roll-out` and a `roll_out` in the same block — set no variable at all, the
+refresh that read them says so like any other drop, and both stay readable under
+`meta` where a selector and a template name them unambiguously.
+
+**`EPHOR_META_*` reaches a command ephor summons, and not a runtime's own state
+program.** The two `meta`s are different things that never meet: this one is
+what a matter's *source* said about it, and the `{meta.<key>}` a `states.yaml`
+renders ([§8.5](#85-a-script-in-front-of-the-agent)) is the ticket metadata
+*ephor* wrote, which is the closed list of identifiers. `meta` is read-only inward, so nothing
+a source said is written into a ticket and nothing a source said is in the
+environment ephor hands the runtime. A state program that wants such a fact gets
+it from the brief, where a template named it.
 
 Exit codes are read the same way wherever a command is summoned from: `0`
 done, non-zero failed, and `75` **parked** — not applicable now, ask again

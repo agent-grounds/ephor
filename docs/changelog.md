@@ -47,7 +47,7 @@ ships, the previous "latest" section moves verbatim to
   read-only inward: the names ephor writes into that same namespace are
   subtracted on the way in, so its own laid plans do not hand its bookkeeping
   back as the store's words. A store that says nothing is a store that said
-  nothing, and a `meta` selector refuses it rather than matching (PR #130)
+  nothing, and a `meta` selector refuses it rather than matching. (PR #130)
 - **`{id_slug}` joins the placeholder vocabulary: a matter's own id as a name a
   branch and a path will take, so a recipe can mint one checkout per task.**
   Most of that vocabulary is the forge's, and a project's own task carries none
