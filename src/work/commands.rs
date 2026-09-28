@@ -2241,7 +2241,9 @@ fn started(
 /// starts nothing is the ordinary case and is reported as success, because
 /// "every root that wanted a run has one" is the answer, not a failure — a
 /// timer that went red on a quiet machine would be a watch reporting on
-/// itself.
+/// itself. Each root's block is headed by the outcome that root reached, so
+/// the start marker is worn by the roots that started and by no others
+/// (§FS-005-dispatch.24.1).
 fn swept(
     config: &StatusConfig,
     dispatcher: &mut Dispatcher,
@@ -2305,17 +2307,39 @@ fn swept(
         println!("Nothing is due: no work root is waiting for a run.");
     } else {
         for run in launched {
-            println!(
-                "\n▶ {} {}",
-                runtime::label(&config.work),
-                run.root.display()
-            );
+            // One blank line between one root's block and the next, wherever
+            // that block's first line lands.
+            println!();
+            // The header is chosen after the outcome is known and carries
+            // that outcome's own verb, so `▶` still means the one thing it
+            // means here: a run began (§FS-005-dispatch.24.1).
+            let began = match (&run.failed, &run.passed_over) {
+                // A launch the runner refused: the refusal heads the block,
+                // on the stream an error belongs to.
+                (Some(_), _) => {
+                    eprintln!("error: {}", run.says());
+                    false
+                }
+                // A root nothing was attempted on: the pass-over heads it.
+                (None, Some(_)) => {
+                    println!("{}", run.says());
+                    false
+                }
+                // A run began — still going, or over before the launcher
+                // returned. Either way `▶` over it is true.
+                (None, None) => {
+                    println!("▶ {} {}", runtime::label(&config.work), run.root.display());
+                    true
+                }
+            };
             // What made the root due, so a run nobody asked for still says
-            // what it is about (§FS-005-dispatch.24).
+            // what it is about — and a root that got no run still says what
+            // it was about (§FS-005-dispatch.24.1).
             println!("  {}", style.dim(&run.tickets.join(", ")));
-            match &run.failed {
-                Some(_) => eprintln!("error: {}", run.says()),
-                None => println!("{}", run.says()),
+            // The started root's own line, beneath its tickets where it has
+            // always been; the outcomes that got no run said theirs above.
+            if began {
+                println!("{}", run.says());
             }
         }
     }
