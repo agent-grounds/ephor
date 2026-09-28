@@ -379,6 +379,11 @@ are the same operation — the project's own command included, where one is boun
 — since two of them would eventually disagree about what a checked-out workspace
 is.
 
+What it made is a report, so it takes the form its reader takes: prose where it
+is printed to a terminal or carried in a dispatch's note, markdown in the file
+`--report` writes and in the `report` field of `--json`, and every repository
+named rather than pathed ([§FS-011-command-line.11](FS-011-command-line.md#11-a-report-reaches-a-terminal-as-prose-and-a-file-as-markdown)).
+
 ### 7.1 A workspace that is there is still owed its store
 
 A directory that is there stops the offer: ephor reports the workspace as
