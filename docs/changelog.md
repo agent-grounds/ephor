@@ -457,7 +457,16 @@ ships, the previous "latest" section moves verbatim to
   path asks next: it is named and refused again rather than read as checked out, so
   a second dispatch cannot put a plan in a tree holding none of the project's
   repositories, and a refused checkout writes `--report` as git's refusal always
-  has. A workspace the
+  has. *Whichever path* is every branch workspace of the project — the one a
+  `branch` template minted and the one a matter already on a branch resolves to
+  alike, since they are the same directory to whoever asks the filesystem — and
+  the refusal comes before the recipe's opening move rather than after it. The
+  project's own checkout is never judged this way: a project that keeps one
+  checkout at its root has no branch workspace to make, so a repository missing
+  from that root refuses nothing. *Whole* is also one question rather than three,
+  so a project whose declared forest is empty — every declared repository skipped
+  — no longer has a bare directory refused on one ask and reported *already
+  checked out* on the next. A workspace the
   command did make gets its work store, on the first ask as much as the second,
   because the plan a dispatch is writing lands there. `--from` is refused by name
   where a command is bound, the base being that command's to decide, and

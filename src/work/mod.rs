@@ -1621,6 +1621,16 @@ impl Dispatcher {
         // Only for work that edits the change. A review or a reply runs in
         // the project's own checkout and fetches what it needs.
         if needs_checkout {
+            // Every branch workspace of this project that resolves as present
+            // is asked the half-made question, not only the one a `branch`
+            // template minted: the bare directory a bound command leaves
+            // behind is the same directory whether nobody had cut the branch
+            // or the matter owns it, and one surface of this contract refusing
+            // a workspace the other dispatches into is the contradiction the
+            // question exists to close (§FS-006-project-interface.8). The
+            // project's own checkout is never among them — it is not a branch
+            // workspace and was never the command's to make.
+            named = named.or_else(|| placement.branch_workspace(&checkout));
             let wanted = checkout.branch.as_deref().unwrap_or("?");
             match &checkout.state {
                 // A workspace this dispatch is about to make is not a missing
@@ -1815,8 +1825,8 @@ impl Dispatcher {
         }
         let target = site.named.clone()?;
         let bound = self.checkouts.get(&item.project)?.clone();
-        let missing = self.placement(&item.project)?.forest(&target).absent;
-        crate::checkout::half_made(&item.project, &bound, &target, &missing)
+        let forest = self.placement(&item.project)?.forest(&target);
+        crate::checkout::half_made(&item.project, &bound, &target, &forest)
     }
 
     /// The deterministic opening move a recipe declares, made before the
@@ -2023,6 +2033,16 @@ impl Dispatcher {
             });
         }
 
+        // A workspace that is there without being one is refused ahead of the
+        // opening move, not only ahead of the mint: the move replays commits in
+        // the workspace, so a dispatch that is going to refuse this tree must
+        // refuse it before the first thing it does to it — which is what
+        // [`Dispatcher::mint`]'s own guard says of itself and, asked from
+        // inside the mint alone, is not yet true of this path
+        // (§FS-006-project-interface.8).
+        if let Some(why) = self.half_made(item, &site) {
+            return Err(EphorError::Command(why));
+        }
         // The deterministic move first, and the work starts where it stopped
         // (§FS-005-dispatch.12). Before the machine is consulted and before
         // anything is written, so a clean move leaves no plan behind either.

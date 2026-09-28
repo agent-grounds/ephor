@@ -73,6 +73,28 @@ fn absent(missing: &[String]) -> String {
     format!("{} not on disk there", names.join(", "))
 }
 
+/// Whether the directory a bound command was asked for is a workspace of this
+/// project (§FS-006-project-interface.8).
+///
+/// One predicate because three sites meet this state — the maker's own
+/// already-whole answer, the verification after the command returns, and the
+/// dispatch's [`half_made`] — and a directory two of them call whole while the
+/// third refuses it is the silence this contract is about, one ask later. So
+/// *whole* is the whole of it: every declared repository on disk, **and** at
+/// least one repository of the project in there. The second clause is what a
+/// project whose declared forest is empty needs: with nothing declared there is
+/// nothing to be absent, so `absent` alone answers *whole* for a bare directory
+/// (§AR-004-forest.2), and `absent(&[])` is the sentence that says why it is
+/// not.
+///
+/// Only where a command is bound. Where nothing is bound, ephor's git has
+/// always filled in whatever the fold found missing and a project that declares
+/// no forest answers as it always did, which is the fallback's own contract and
+/// not this one (§FS-004-quick-actions.7).
+pub fn whole(forest: &crate::forest::Forest) -> bool {
+    forest.absent.is_empty() && !forest.repos.is_empty()
+}
+
 /// Why a directory that is already there is not a workspace this project's own
 /// command may be asked for, where it is not one (§FS-006-project-interface.8).
 ///
@@ -86,21 +108,23 @@ fn absent(missing: &[String]) -> String {
 /// One sentence in one place because two surfaces meet this state and have to
 /// say the same thing about it: the maker, before it summons anything, and the
 /// dispatch, which resolves *checked out* from the directory alone and would
-/// otherwise promise a ticket behind it (§FS-005-dispatch.25).
+/// otherwise promise a ticket behind it (§FS-005-dispatch.25). It asks
+/// [`whole`], so it is the same question the other two sites ask rather than a
+/// third reading of the same directory.
 pub fn half_made(
     project: &str,
     bound: &CheckoutConfig,
     target: &Path,
-    missing: &[String],
+    forest: &crate::forest::Forest,
 ) -> Option<String> {
-    (!missing.is_empty()).then(|| {
+    (!whole(forest)).then(|| {
         format!(
             "{} is there, but it is not a workspace of {project}: {}. {project}'s own checkout \
              command is what makes its workspaces (`{}`), and ephor neither fills in a tree that \
              command did not make nor hands it back a directory it did not make — remove {} and \
              ask for the checkout again.",
             target.display(),
-            absent(missing),
+            absent(&forest.absent),
             bound.command,
             target.display(),
         )
@@ -284,12 +308,23 @@ pub fn make(ask: &Ask) -> Result<(Made, PathBuf)> {
     // it one. This is the operation whose answer says whether the workspace is
     // whole (§AR-004-forest.1), so a directory that is there is asked which of
     // them are — by path, which is what tells presence (§AR-004-forest.3) —
-    // and only a whole one stops here. A project that declares no forest has
-    // nothing to be missing and answers as it always did.
+    // and only a whole one stops here. Where a command is bound that is
+    // [`whole`], the one predicate the verification and the dispatch ask too,
+    // so this end of the function cannot call a directory whole that the other
+    // end refuses (§FS-006-project-interface.8). Where nothing is bound, a
+    // project that declares no forest has nothing to be missing and answers as
+    // it always did.
+    // None where there is no directory to judge, which is the ask the maker is
+    // for: there is nothing half-made about a workspace that is simply absent.
+    let standing = target.is_dir().then(|| placement.forest(&target));
     let mut missing = Vec::new();
-    if target.is_dir() {
-        missing = placement.forest(&target).absent;
-        if missing.is_empty() {
+    if let Some(forest) = &standing {
+        missing = forest.absent.clone();
+        let already = match bound.is_some() {
+            true => whole(forest),
+            false => missing.is_empty(),
+        };
+        if already {
             // Every repository is here, so there is no tree left to make. The
             // store still may be: a workspace made before ephor made stores at
             // all, or made by the project's own checkout command, holds every
@@ -318,7 +353,10 @@ pub fn make(ask: &Ask) -> Result<(Made, PathBuf)> {
         // neither maker may finish: ephor's git would fill in a tree the command
         // did not make, and a directory that is already there is never handed
         // back to the command either (§FS-006-project-interface.8).
-        if let Some(why) = half_made(project, &bound, &target, &missing) {
+        if let Some(why) = standing
+            .as_ref()
+            .and_then(|forest| half_made(project, &bound, &target, forest))
+        {
             return Err(EphorError::Command(why));
         }
         return summoned(&bound, ask, &work, target, missing);
@@ -498,19 +536,20 @@ fn summoned(
             ),
         }));
     }
-    // *Verified* is the directory and every repository the project declares in
-    // it, never the exit code. One the command did not make is named and the
-    // checkout is refused rather than completed: ephor's git does not fill in a
-    // tree it did not make, because the command owns what a workspace of this
-    // project is (§FS-006-project-interface.8).
+    // *Verified* is [`whole`] — the directory, every repository the project
+    // declares in it, and a repository of this project in there at all — never
+    // the exit code. One the command did not make is named and the checkout is
+    // refused rather than completed: ephor's git does not fill in a tree it did
+    // not make, because the command owns what a workspace of this project is
+    // (§FS-006-project-interface.8).
     let forest = placement.forest(&target);
-    let whole = target.is_dir() && forest.absent.is_empty() && !forest.repos.is_empty();
-    let store = whole.then(|| init_store(work, placement, project, &target, ask.selected_root));
+    let made = target.is_dir() && whole(&forest);
+    let store = made.then(|| init_store(work, placement, project, &target, ask.selected_root));
     Ok((
         Made {
             target,
             already: false,
-            missing: match whole {
+            missing: match made {
                 true => missing,
                 false => forest.absent,
             },

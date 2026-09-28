@@ -483,6 +483,35 @@ fn site_checkout(tmp: &Path) -> std::path::PathBuf {
     path
 }
 
+/// A command that makes the directory and no repository, and exits 0 — the
+/// shape the whole contract is about: *returned* is not *made*
+/// (§FS-006-project-interface.8). It logs the branch it was asked for, so a
+/// case can assert it was not handed back the directory its own refusal left.
+fn hollow_checkout(tmp: &Path, log: &Path) -> std::path::PathBuf {
+    let path = tmp.join("fakebin/hollow-checkout");
+    make_executable(
+        &path,
+        &format!(
+            "#!/usr/bin/env bash\n\
+             set -euo pipefail\n\
+             printf '%s\\n' \"$EPHOR_BRANCH\" >> {log}\n\
+             mkdir -p \"$EPHOR_WORKSPACE\"\n\
+             exit 0\n",
+            log = log.display(),
+        ),
+    );
+    path
+}
+
+/// How many times a bound command was asked, from the log it appends to.
+fn asked(log: &Path) -> usize {
+    fs::read_to_string(log)
+        .unwrap_or_default()
+        .lines()
+        .filter(|line| !line.trim().is_empty())
+        .count()
+}
+
 fn ledger(tmp: &Path) -> Value {
     let path = tmp.join("state/ephor/work.json");
     fs::read_to_string(&path)
@@ -548,19 +577,8 @@ fn the_store_a_dispatch_needs_is_in_the_workspace_a_bound_command_made() {
 fn a_dispatch_behind_a_workspace_that_was_not_made_writes_nothing() {
     let tmp = tempdir();
     let root = minting_fixture(tmp.path());
-    let command = tmp.path().join("fakebin/hollow-checkout");
     let log = tmp.path().join("hollow-calls.log");
-    make_executable(
-        &command,
-        &format!(
-            "#!/usr/bin/env bash\n\
-             set -euo pipefail\n\
-             printf '%s\\n' \"$EPHOR_BRANCH\" >> {log}\n\
-             mkdir -p \"$EPHOR_WORKSPACE\"\n\
-             exit 0\n",
-            log = log.display(),
-        ),
-    );
+    let command = hollow_checkout(tmp.path(), &log);
     bind(tmp.path(), &command);
 
     ephor(tmp.path())
@@ -615,11 +633,7 @@ fn a_dispatch_behind_a_workspace_that_was_not_made_writes_nothing() {
         "the repository the command did not make is not named: {said}"
     );
     assert_eq!(
-        fs::read_to_string(&log)
-            .unwrap_or_default()
-            .lines()
-            .filter(|line| !line.trim().is_empty())
-            .count(),
+        asked(&log),
         1,
         "the command was handed back the directory its own refusal left behind"
     );
@@ -636,5 +650,390 @@ fn a_dispatch_behind_a_workspace_that_was_not_made_writes_nothing() {
             .get("acmeforge:acme/widget#95")
             .is_none(),
         "the ledger recorded work whose workspace does not exist"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// The same state reached the other way, and the boundary that keeps the
+// question narrow. A workspace resolves as *present* from a directory being
+// there whether a `branch` template minted it or the matter owns the branch, so
+// the half-made question is asked about every branch workspace of a
+// bound-command project — and about the project's own checkout never, which is
+// not a branch workspace and was never the command's to make
+// (§FS-006-project-interface.8).
+// ---------------------------------------------------------------------------
+
+/// A forge with one pull request of the reader's own, on a branch that is
+/// already cut. No `branch` template is asked for a matter that owns its
+/// branch, so this is the path that reaches a bare directory with nothing to
+/// mint (§FS-005-dispatch.25).
+const PR_FORGE: &str = r#"#!/usr/bin/env bash
+set -euo pipefail
+cat > /dev/null
+case "${1:?subcommand}" in
+  capabilities) printf '{"issues":false,"pull_requests":true}' ;;
+  pull-requests) printf '%s' '[
+      { "id": "widget/7", "repo": "widget", "number": "7",
+        "title": "Widen the retry window",
+        "url": "https://acme.example/pr/7", "branch": "feature",
+        "updated_at": "2026-09-20T12:00:00Z",
+        "role": "author", "state": "open", "cited": false }
+    ]' ;;
+  *) printf '[]' ;;
+esac
+"#;
+
+/// The branch that pull request owns, which the registry declares.
+const OWNED: &str = "feature";
+
+/// One recipe that edits the change, so the matter above needs the workspace.
+fn editing_recipe(tmp: &Path) {
+    let path = tmp.join("status.json");
+    let mut config: Value = serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
+    config["work"] = json!({ "recipes": [{
+        "id": "edit", "icon": "E", "description": "edit the change",
+        "needs_checkout": true,
+        "when": { "kinds": ["pr"], "roles": ["author"] },
+        "brief": "Edit {title}."
+    }]});
+    fs::write(&path, serde_json::to_string_pretty(&config).unwrap()).unwrap();
+}
+
+/// `minting_fixture` about a matter that owns its branch: the same project and
+/// the same repository, with the branch declared and the forge serving a pull
+/// request on it.
+fn owned_branch_fixture(tmp: &Path) -> std::path::PathBuf {
+    let root = minting_fixture(tmp);
+    make_executable(&tmp.join("fakebin/ephor-forge-acmeforge"), PR_FORGE);
+    let path = tmp.join("workspaces.json");
+    let mut registry: Value = serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
+    registry["projects"][0]["branches"] = json!([{
+        "id": OWNED, "branch": OWNED, "active": true, "ticket": "ABC-42"
+    }]);
+    fs::write(&path, serde_json::to_string_pretty(&registry).unwrap()).unwrap();
+    editing_recipe(tmp);
+    root
+}
+
+/// A matter that owns its branch reaches the same bare directory, and the
+/// dispatch refuses it there too (§FS-006-project-interface.8). Nothing is
+/// minted on this path — the branch is already cut — so before this the maker
+/// was never entered at all, and a store, a plan and a ledger entry landed in a
+/// tree holding none of the project's repositories one ask after the maker's own
+/// refusal had said it was not a workspace.
+#[test]
+fn a_dispatch_about_a_matter_on_its_own_branch_refuses_a_workspace_that_was_not_made() {
+    let tmp = tempdir();
+    let root = owned_branch_fixture(tmp.path());
+    let log = tmp.path().join("hollow-calls.log");
+    let command = hollow_checkout(tmp.path(), &log);
+    bind(tmp.path(), &command);
+
+    ephor(tmp.path())
+        .args(["refresh", "demo"])
+        .assert()
+        .success();
+    // The maker's own ask first, which is what leaves the directory behind: the
+    // command returns 0, the workspace is not one, and the checkout refuses.
+    let refused = ephor(tmp.path())
+        .args([
+            "checkout",
+            "--project",
+            "demo",
+            "--branch",
+            OWNED,
+            "--item",
+            "acmeforge:widget/7",
+        ])
+        .output()
+        .unwrap();
+    assert!(
+        !refused.status.success(),
+        "a workspace that was not made read as made: {}",
+        String::from_utf8_lossy(&refused.stdout)
+    );
+    let workspace = root.join(OWNED);
+    assert!(workspace.is_dir(), "the command made no directory to judge");
+    assert_eq!(asked(&log), 1, "the command was not the maker asked");
+
+    // And the dispatch about the matter on that branch says the same thing,
+    // rather than resolving *checked out* from the directory the refusal left.
+    let again = ephor(tmp.path())
+        .args([
+            "work",
+            "dispatch",
+            "--item",
+            "acmeforge:widget/7",
+            "--recipe",
+            "edit",
+        ])
+        .output()
+        .unwrap();
+    let said = String::from_utf8_lossy(&again.stderr).into_owned();
+    assert!(
+        !again.status.success(),
+        "a directory that is not a workspace read as one: {}",
+        String::from_utf8_lossy(&again.stdout)
+    );
+    assert!(
+        said.contains("the repository at its root not on disk there"),
+        "the repository the command did not make is not named: {said}"
+    );
+    assert!(
+        !workspace.join("panta").exists(),
+        "a store was made behind a checkout that was not made"
+    );
+    assert!(
+        !workspace.join("src").exists(),
+        "ephor's git filled in a tree the command did not make"
+    );
+    assert_eq!(
+        asked(&log),
+        1,
+        "the command was handed back the directory its own refusal left behind"
+    );
+    assert!(
+        ledger(tmp.path())["entries"]
+            .get("acmeforge:widget/7")
+            .is_none(),
+        "the ledger recorded work whose workspace does not exist"
+    );
+}
+
+/// A project that keeps one checkout at its root, with a command bound. Its
+/// workspace *is* the project root: not a branch workspace, and never the
+/// command's to make — so the half-made question is not asked about it, and a
+/// dispatch there is not refused for a repository the root is missing
+/// (§FS-006-project-interface.8). This is the boundary the question is drawn to:
+/// the fix above reaches every branch workspace and nothing else.
+#[test]
+fn a_single_checkout_project_is_never_judged_by_the_half_made_question() {
+    let tmp = tempdir();
+    let template = write_template(tmp.path());
+    let root = tmp.path().join("single");
+    // A polyrepo declaring three repositories, of which only `app` is on disk,
+    // so the root is a checkout with a declared repository absent from it —
+    // exactly the state that refuses in a branch workspace.
+    let origin = tmp.path().join("pr-origin");
+    fs::create_dir_all(origin.join("src")).unwrap();
+    git_in(&origin, &["init", "-q", "--initial-branch=main"]);
+    git_in(&origin, &["config", "user.email", "t@example.com"]);
+    git_in(&origin, &["config", "user.name", "t"]);
+    fs::write(origin.join("src/main.rs"), "fn main() {}\n").unwrap();
+    git_in(&origin, &["add", "-A"]);
+    git_in(&origin, &["commit", "-q", "-m", "the project"]);
+    fs::create_dir_all(&root).unwrap();
+    let cloned = std::process::Command::new("git")
+        .args(["clone", "-q"])
+        .arg(&origin)
+        .arg(root.join("app"))
+        .status()
+        .unwrap();
+    assert!(cloned.success());
+    git_in(&root.join("app"), &["checkout", "-q", "-b", OWNED]);
+
+    write_registry(
+        &tmp.path().join("workspaces.json"),
+        &json!({
+            "project_types": base_project_types(&template),
+            "hook_sets": [],
+            "projects": [{
+                "id": "demo",
+                "type": "product-workspace",
+                "display_name": "Demo",
+                "root": root.to_string_lossy(),
+                "main_branch": "main",
+                "branches": [{
+                    "id": OWNED, "branch": OWNED, "active": true, "ticket": "ABC-42"
+                }]
+            }]
+        }),
+    );
+    fs::create_dir_all(tmp.path().join("fakebin")).unwrap();
+    make_executable(&tmp.path().join("fakebin/ephor-forge-acmeforge"), PR_FORGE);
+    fs::write(
+        tmp.path().join("status.json"),
+        serde_json::to_string_pretty(&json!({
+            "defaults": { "ttl_seconds": 600, "provider_timeout_seconds": 10 },
+            "projects": { "demo": {
+                "providers": [{ "provider": "acmeforge", "user": "you", "repos": ["widget"] }]
+            }}
+        }))
+        .unwrap(),
+    )
+    .unwrap();
+    editing_recipe(tmp.path());
+    let log = tmp.path().join("hollow-calls.log");
+    let command = hollow_checkout(tmp.path(), &log);
+    bind(tmp.path(), &command);
+
+    ephor(tmp.path())
+        .args(["refresh", "demo"])
+        .assert()
+        .success();
+    let dispatched = ephor(tmp.path())
+        .args([
+            "work",
+            "dispatch",
+            "--item",
+            "acmeforge:widget/7",
+            "--recipe",
+            "edit",
+        ])
+        .output()
+        .unwrap();
+    assert!(
+        dispatched.status.success(),
+        "a dispatch into the project's own checkout was refused for a repository the root is \
+         missing: {}{}",
+        String::from_utf8_lossy(&dispatched.stdout),
+        String::from_utf8_lossy(&dispatched.stderr)
+    );
+    assert!(
+        root.join("panta/states.yaml").is_file(),
+        "the work store the dispatch has always put in the project root is gone"
+    );
+    assert_eq!(
+        asked(&log),
+        0,
+        "the project's own checkout was handed to the command that makes branch workspaces"
+    );
+}
+
+/// Declare this project's only repository `update_mode: skip`, which the
+/// declarations a placement reads filter out — so the declared forest is empty
+/// and the forest is probed on disk instead (§AR-004-forest.2).
+fn skip_every_repository(tmp: &Path) {
+    let path = tmp.join("workspaces.json");
+    let mut registry: Value = serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
+    for repo in registry["project_types"][0]["repos"]
+        .as_array_mut()
+        .expect("the type declares repositories")
+    {
+        repo["update_mode"] = json!("skip");
+    }
+    fs::write(&path, serde_json::to_string_pretty(&registry).unwrap()).unwrap();
+}
+
+/// And the dispatch's half of the same question. A project whose declared forest
+/// is empty has nothing to be absent, so the maker used to call the bare
+/// directory *already checked out* on the second ask and the dispatch wrote its
+/// plan straight into a tree holding no repository of the project
+/// (§FS-006-project-interface.8). Dispatched twice, the refusal holds and
+/// nothing is left behind.
+#[test]
+fn a_dispatch_into_a_tree_holding_no_repository_of_the_project_refuses_twice() {
+    let tmp = tempdir();
+    let root = minting_fixture(tmp.path());
+    skip_every_repository(tmp.path());
+    let log = tmp.path().join("hollow-calls.log");
+    let command = hollow_checkout(tmp.path(), &log);
+    bind(tmp.path(), &command);
+
+    ephor(tmp.path())
+        .args(["refresh", "demo"])
+        .assert()
+        .success();
+    let workspace = root.join(MINTED);
+    for ask in 1..=2 {
+        let refused = ephor(tmp.path())
+            .args(["work", "dispatch", "--item", "acmeforge:acme/widget#95"])
+            .output()
+            .unwrap();
+        let said = String::from_utf8_lossy(&refused.stdout).into_owned()
+            + &String::from_utf8_lossy(&refused.stderr);
+        assert!(
+            !refused.status.success(),
+            "ask {ask}: a tree holding no repository of demo read as a workspace: {said}"
+        );
+        assert!(
+            said.contains("no repository of this project is in it"),
+            "ask {ask}: the refusal does not say why it is not a workspace: {said}"
+        );
+        assert!(
+            !workspace.join("panta").exists(),
+            "ask {ask}: a store was made behind a checkout that was not made"
+        );
+        assert!(
+            ledger(tmp.path())["entries"]
+                .get("acmeforge:acme/widget#95")
+                .is_none(),
+            "ask {ask}: the ledger recorded work whose workspace does not exist"
+        );
+    }
+    assert_eq!(
+        asked(&log),
+        1,
+        "the command was handed back the directory its own refusal left behind"
+    );
+}
+
+/// The third path the census turned up, and the ordering it needs. The opening
+/// move a recipe declares runs before the mint, and it replays commits in the
+/// workspace — so a dispatch that is going to refuse this tree has to refuse it
+/// before the first thing it does to it, which asking the question from inside
+/// the mint alone did not (§FS-006-project-interface.8, §FS-005-dispatch.12).
+/// Pinned on the order of the two refusals, because that is the one thing about
+/// it a case can read without depending on what a replay would have done: the
+/// opening move here is one ephor does not know, which `opening` refuses before
+/// it reads anything, so whichever refusal arrives is the one that was asked
+/// first.
+#[test]
+fn a_workspace_that_was_not_made_is_refused_before_the_opening_move() {
+    let tmp = tempdir();
+    let root = owned_branch_fixture(tmp.path());
+    let path = tmp.path().join("status.json");
+    let mut config: Value = serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
+    config["work"]["recipes"][0]["opens_with"] = json!("nonsense");
+    fs::write(&path, serde_json::to_string_pretty(&config).unwrap()).unwrap();
+    let log = tmp.path().join("hollow-calls.log");
+    let command = hollow_checkout(tmp.path(), &log);
+    bind(tmp.path(), &command);
+
+    ephor(tmp.path())
+        .args(["refresh", "demo"])
+        .assert()
+        .success();
+    ephor(tmp.path())
+        .args([
+            "checkout",
+            "--project",
+            "demo",
+            "--branch",
+            OWNED,
+            "--item",
+            "acmeforge:widget/7",
+        ])
+        .output()
+        .unwrap();
+    assert!(
+        root.join(OWNED).is_dir(),
+        "the command made no directory to judge"
+    );
+
+    let refused = ephor(tmp.path())
+        .args([
+            "work",
+            "dispatch",
+            "--item",
+            "acmeforge:widget/7",
+            "--recipe",
+            "edit",
+        ])
+        .output()
+        .unwrap();
+    let said = String::from_utf8_lossy(&refused.stdout).into_owned()
+        + &String::from_utf8_lossy(&refused.stderr);
+    assert!(
+        !refused.status.success(),
+        "a directory that is not a workspace read as one: {said}"
+    );
+    assert!(
+        said.contains("is not a workspace of demo"),
+        "the workspace was not refused first: {said}"
+    );
+    assert!(
+        !said.contains("which ephor does not know"),
+        "the opening move had its chance at the tree before the tree was judged: {said}"
     );
 }

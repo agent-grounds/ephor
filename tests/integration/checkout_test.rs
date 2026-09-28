@@ -1322,3 +1322,61 @@ fn the_reading_says_which_maker_made_the_workspace() {
     assert_eq!(view["maker"], json!("command"), "{view}");
     assert_eq!(view["ready"], json!(true), "{view}");
 }
+
+/// Declare every repository of this project type `update_mode: skip` — a
+/// schema-valid shape a site uses for a checkout it keeps by hand. The
+/// declarations a placement reads filter skipped repositories out, so the
+/// project's declared forest is empty and the forest is probed on disk instead
+/// (§AR-004-forest.2).
+fn skip_every_repository(tmp: &Path) {
+    let path = tmp.join("workspaces.json");
+    let mut registry: serde_json::Value =
+        serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
+    for repo in registry["project_types"][0]["repos"]
+        .as_array_mut()
+        .expect("the type declares repositories")
+    {
+        repo["update_mode"] = json!("skip");
+    }
+    fs::write(&path, serde_json::to_string_pretty(&registry).unwrap()).unwrap();
+}
+
+/// A project whose declared forest is empty answers *whole* by one question
+/// rather than three (§FS-006-project-interface.8). With nothing declared there
+/// is nothing to be absent, so a bare directory used to be refused by the
+/// verification after the command returned and called *already checked out* by
+/// the maker's own short-circuit on the very next ask — one command, two
+/// answers, and the second one put a store into a directory holding no
+/// repository of the project. Asked twice, the refusal holds.
+#[test]
+fn a_directory_holding_no_repository_of_the_project_is_refused_on_every_ask() {
+    let tmp = tempdir();
+    let root = fixture(tmp.path());
+    skip_every_repository(tmp.path());
+    let _ce = repo(tmp.path(), "ce");
+    let _ee = repo(tmp.path(), "ee");
+    let command = hollow_checkout(tmp.path());
+    bind_checkout(tmp.path(), &command);
+    let target = root.join("feature");
+
+    for ask in 1..=2 {
+        let refused = ephor(tmp.path())
+            .args(["checkout", "--project", "demo", "--branch", "feature"])
+            .output()
+            .unwrap();
+        let said = String::from_utf8_lossy(&refused.stdout).into_owned()
+            + &String::from_utf8_lossy(&refused.stderr);
+        assert!(
+            !refused.status.success(),
+            "ask {ask}: a directory holding no repository of demo read as a workspace: {said}"
+        );
+        assert!(
+            said.contains("no repository of this project is in it"),
+            "ask {ask}: the refusal does not say why it is not a workspace: {said}"
+        );
+        assert!(
+            !target.join("panta").exists(),
+            "ask {ask}: a plan was given somewhere to land in a workspace that was not made"
+        );
+    }
+}
