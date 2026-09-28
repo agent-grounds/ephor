@@ -735,6 +735,13 @@ map wherever it comes from, so a `custom-status` source putting a `meta` object
 in its answer's `data` ([§4.2.6](#426-what-a-verb-may-answer--the-envelope)) is
 held to it too — silently there, since nothing went and looked to report it.
 
+`raw.meta` under `--json` is the one place to read that way round. `raw` is the
+provider's blob printed as the provider gave it ([§2](#2-the-vocabulary)), so a
+source that put a paragraph or an unnameable key under `meta` has it show up
+there — while the recipe, the template and the `EPHOR_META_*` environment see
+only what the bound carried. A key you can see in `raw.meta` that none of those
+three knows about is the bound, not a gap in it.
+
 **Read-only inward.** ephor lays its own plans inside the directory it reads as
 a store, and keeps its per-task bookkeeping in this very namespace, so the names
 it writes there — `project`, `source`, `kind`, `id`, `url`, `state`, `repo`,

@@ -563,6 +563,15 @@ channel to be told on is bounded **silently**. Reporting is the other half, and
 it belongs to whoever has a channel: a reader that went and looked says what it
 dropped, which is where the *once* below is.
 
+What the bound governs is therefore what a matter **promotes**, not what the
+source's answer held. That answer's own free passthrough still rides out as the
+source gave it — it is passthrough, and printing it whole is the point of it
+([§FS-006-project-interface.4](FS-006-project-interface.md#4-the-answer-envelope))
+— so a reader of the passthrough may well see the map with keys the bound
+refused still in it. Those are not the map: a key visible there that no selector
+matches, no template renders and no variable carries is this bound at work
+rather than a gap in it.
+
 **A key that breaks the bound is dropped; the matter is not.** The offending
 key goes, the rest of the map is carried, and the drop is reported once where
 the source's own answer for that read is reported — naming the matter, the key
