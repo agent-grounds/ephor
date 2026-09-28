@@ -1647,7 +1647,8 @@ mod tests {
         assert!(
             why.ends_with(
                 "it may name: {gate}, {id}, {id_slug}, {kind}, {number}, {org}, {org_root}, \
-                 {project}, {repo}, {root}, {source}, {state}, {ticket}, {title}, {url}."
+                 {project}, {repo}, {root}, {source}, {state}, {ticket}, {title}, {url}, \
+                 {meta.<key>}."
             ),
             "{why}"
         );
