@@ -1220,7 +1220,8 @@ fn a_template_that_will_not_do_is_refused_by_name_and_makes_nothing() {
         ))
         .stderr(predicate::str::contains(
             "it may name: {gate}, {id}, {id_slug}, {kind}, {number}, {org}, {org_root}, \
-             {project}, {repo}, {root}, {source}, {state}, {ticket}, {title}, {url}.",
+             {project}, {repo}, {root}, {source}, {state}, {ticket}, {title}, {url}, \
+             {meta.<key>}.",
         ));
     // The issue's title holds spaces, which git refuses in a branch name.
     world
