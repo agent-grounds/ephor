@@ -302,6 +302,41 @@ mod tests {
         assert_eq!(listed, vec!["context", "roll-out", "tier"]);
     }
 
+    /// The environment is bounded whatever put the map there
+    /// (§FS-005-dispatch.8). A source whose free passthrough reports `meta`
+    /// itself meets no reader that could hold it to the bound, so the accessor
+    /// does: a paragraph never reaches a process environment, and a key no shell
+    /// will take is not listed among the ones this matter answers to — which
+    /// would name a variable that could not legally exist, and a script obeying
+    /// the enumeration contract would read an unset name and take it for a fold.
+    #[test]
+    fn a_key_the_bound_refuses_reaches_neither_a_variable_nor_the_enumeration() {
+        let root = Path::new("/w");
+        let pairs = of_item(
+            &item(
+                ItemKind::Status,
+                "custom-status:widget",
+                json!({ "meta": {
+                    "bad key": "v",
+                    "prose": "line one\nline two",
+                    "context": "acme-labs",
+                } }),
+            ),
+            root,
+            root,
+            None,
+            None,
+        );
+        assert!(
+            pairs.iter().all(|(name, value)| !value.contains('\n')
+                || name == META_KEYS
+                || name == "EPHOR_RAW"),
+            "a value with a line break reached the environment: {pairs:#?}"
+        );
+        assert_eq!(value(&pairs, META_KEYS), "context");
+        assert_eq!(value(&pairs, "EPHOR_META_CONTEXT"), "acme-labs");
+    }
+
     /// Two keys that fold to one variable name set no variable at all, because a
     /// variable that could be either key's is a fact about neither. Both keys
     /// stay in `meta`, where a selector and a template name them unambiguously
