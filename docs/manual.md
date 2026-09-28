@@ -1574,14 +1574,22 @@ what lets it reach the checkouts beside the one it is making.
 
 What ephor holds it to when it returns:
 
-- **The directory, and every repository the project declares in it** — the same
-  fold that answers whether any workspace is whole. One the command did not make
+- **The directory, every repository the project declares in it, and a repository
+  of this project in it at all** — the same fold that answers whether any
+  workspace is whole. The last clause is what a project with no declared forest
+  needs, or one whose declared repositories are all `update_mode: skip`: nothing
+  can be absent from such a directory, so without it a bare one would answer
+  *whole*. It is refused in the fold's own words instead — *no repository of this
+  project is in it*. One the command did not make
   is named and the checkout is refused rather than completed; ephor's git does
   **not** fill in a tree it did not make, because the command owns what a
   workspace of this project is. That holds of the directory such a refusal
   leaves behind, on whichever path asks next: it is there without being a
   workspace, so it is named and refused again rather than read as checked out
-  (§7.1), and removing it is what gets the site the checkout it declared.
+  (§7.1), and removing it is what gets the site the checkout it declared. The
+  same one question either way — before the command is summoned, after it
+  returns, and on the dispatch's own path — because two of them calling a
+  directory whole while the third refuses it is the same silence, one ask later.
 - **A non-zero exit is the checkout not made**, and the code is said. `75` is
   among them: everywhere else it means *parked* (§7.3), but a workspace either
   exists or it does not.
@@ -1590,7 +1598,12 @@ What ephor holds it to when it returns:
   the checkout's own refusal and writes nothing, and so does the next one: the
   directory the refusal left behind is not a workspace, and a dispatch that read
   it as one would put a plan in a tree holding none of the project's
-  repositories.
+  repositories. That is true of **every branch workspace of the project**, not
+  only one a `branch` template minted — a matter already on a branch resolves to
+  the same kind of directory — and the refusal comes before the recipe's opening
+  move rather than after it. A project that keeps **one checkout at its root** has
+  no branch workspace to make (§7.2), so that directory is never judged this way
+  and a repository missing from it refuses nothing.
 - **The work store is ephor's to add** once the directory is whole, on the first
   ask as much as the second: making the repositories is the command's contract
   and the store is never its to make, and the dispatch cannot wait for a second

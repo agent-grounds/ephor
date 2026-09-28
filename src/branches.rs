@@ -1093,6 +1093,26 @@ impl Placement {
         self.checkout_of(item, self.own_branch(item))
     }
 
+    /// The branch workspace under this project's branch root that `checkout`
+    /// resolved to and that is on disk, where it resolved to one
+    /// (§FS-006-project-interface.8). What says whether a directory a resolution
+    /// called *ready* is a workspace a bound checkout command was the maker of,
+    /// and so whether it may be asked the half-made question at all.
+    ///
+    /// `None` for a single-checkout project, whose workspace *is* the project
+    /// root: that checkout is not a branch workspace and was never a command's
+    /// to make. `None` too where nothing is on disk to judge — the missing and
+    /// the unmatched resolutions both leave the root standing in for the
+    /// workspace, and the paths that own those states handle them. So this is
+    /// exactly [`Placement::checkout_of`]'s rendered-and-present arm, which is
+    /// the same kind of path [`minted`] names.
+    pub fn branch_workspace(&self, checkout: &Checkout) -> Option<PathBuf> {
+        self.template.as_ref()?;
+        matches!(checkout.state, WorkspaceState::Ready)
+            .then(|| checkout.workspace.clone())
+            .filter(|workspace| workspace != &self.root)
+    }
+
     fn checkout_of(&self, item: &Item, branch: Option<String>) -> Checkout {
         let ticket = self
             .matched(item)

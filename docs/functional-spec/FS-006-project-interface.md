@@ -276,9 +276,19 @@ makes the workspace with git rather than asking the command a second time. The
 wrapper composes, which is what its author meant, and what ends the recursion is
 a documented variable rather than a guess about who called.
 
-**What *verified* means.** The directory is there, and every repository the
+**What *verified* means.** The directory is there, every repository the
 project declares is in it — the same fold that answers whether any workspace is
-whole ([§FS-004-quick-actions.7](FS-004-quick-actions.md#7-a-workspace-that-is-not-there-is-offered-the-checkout)). One the command did not make is named and
+whole ([§FS-004-quick-actions.7](FS-004-quick-actions.md#7-a-workspace-that-is-not-there-is-offered-the-checkout)) — and a repository of this project is in
+it at all. The last clause is not a restatement of the middle one: where the
+registry declares no forest for the project, or declares only repositories it is
+told to skip, there is nothing that *can* be absent, so a bare directory answers
+*whole* by the fold alone. It is named a workspace the command did not make
+instead, in the fold's own words — no repository of this project is in it — and
+this is one question rather than three, asked identically wherever a directory
+that is there is judged: before the command is summoned, after it returns, and by
+the dispatch that would otherwise resolve *checked out* from the directory. Two
+of them calling a directory whole while the third refuses it is the same silence
+one ask later. One the command did not make is named and
 the checkout is refused rather than completed: ephor's git does not fill in a
 tree it did not make, because the command owns what a workspace of this project
 is, and a directory that is already there is never handed back to the command
@@ -288,6 +298,15 @@ said. Nothing is dispatched behind a checkout that was not made and no store is
 put into a workspace that was not; where the directory is whole the store is
 ephor's to add, on this path as on the other
 ([§FS-004-quick-actions.7.1](FS-004-quick-actions.md#71-a-workspace-that-is-there-is-still-owed-its-store)).
+
+**Which directories that judgement is about.** Every branch workspace of the
+project: the one a `branch` template minted and the one a matter already on a
+branch resolves to are the same directory to whoever asks the filesystem, so
+judging only the first would make the contract a quirk of matters nobody had cut
+a branch for. And the project's **own checkout** is never among them — a project
+that keeps one checkout at its root has no branch workspace to make
+([§FS-004-quick-actions.7](FS-004-quick-actions.md#7-a-workspace-that-is-not-there-is-offered-the-checkout)), so that directory was never the command's to
+make and a repository missing from it is not this contract's to refuse.
 
 ## 9. Offers: the project's actions
 
