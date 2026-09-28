@@ -683,38 +683,76 @@ fn scalar_key(key: &serde_yaml::Value) -> Option<String> {
     }
 }
 
+/// What the store wrote as the JSON a matter carries: a scalar in the spelling
+/// the store used, so a number is still a number. `None` where the store wrote
+/// something that is no scalar at all — a list, a nested map, or a number JSON
+/// has no room for, which `serde_json::Number::from_f64` refuses.
+fn converted(value: &serde_yaml::Value) -> Option<serde_json::Value> {
+    match value {
+        serde_yaml::Value::String(text) => Some(serde_json::Value::String(text.clone())),
+        serde_yaml::Value::Bool(yes) => Some(serde_json::Value::Bool(*yes)),
+        serde_yaml::Value::Number(number) => {
+            number.as_i64().map(serde_json::Value::from).or_else(|| {
+                number
+                    .as_f64()
+                    .and_then(serde_json::Number::from_f64)
+                    .map(serde_json::Value::Number)
+            })
+        }
+        _ => None,
+    }
+}
+
 /// One key of a store's block against §FS-005-dispatch.8's bound — a scalar, a
 /// key a shell will take, and an identifier rather than prose. `Err` carries
 /// which part of the bound broke, in the words the drop is reported in.
+///
+/// The verdict is `bounded_entry`'s and is not restated here: the bound sits on
+/// the accessor every surface reads the map through, so the reader carries
+/// exactly what `Item::meta` will answer with and the two cannot come apart
+/// (§FS-005-dispatch.8). A second copy of the clauses that merely agreed today
+/// is how a key carried here gets dropped there with nobody told, which is the
+/// silent stop-matching that point forbids. What the clauses are still for is
+/// the reason: a store's author reads *which* part of the bound they broke.
 fn bounded(key: &str, value: &serde_yaml::Value) -> std::result::Result<serde_json::Value, String> {
-    if !is_nameable(key) {
-        return Err("the key is not one a shell will take as a variable name".to_string());
+    let carried = converted(value);
+    match carried
+        .as_ref()
+        .filter(|carried| crate::feed::model::bounded_entry(key, carried).is_some())
+    {
+        Some(carried) => Ok(carried.clone()),
+        None => Err(broke(key, carried.as_ref())),
     }
-    let carried = match value {
-        serde_yaml::Value::String(text) => serde_json::Value::String(text.clone()),
-        serde_yaml::Value::Bool(yes) => serde_json::Value::Bool(*yes),
-        serde_yaml::Value::Number(number) => number
-            .as_i64()
-            .map(serde_json::Value::from)
-            .or_else(|| number.as_f64().map(serde_json::Value::from))
-            .ok_or_else(|| "the value is not a scalar".to_string())?,
-        _ => return Err("the value is not a scalar".to_string()),
+}
+
+/// Which clause of §FS-005-dispatch.8's bound an entry the accessor refused
+/// broke, in the words the drop is reported in.
+///
+/// Called only about an entry `bounded_entry` has already refused, so the last
+/// line is a refusal no clause here accounts for: a reason rather than a panic,
+/// because a drop reported vaguely is still reported, and the guarantee this
+/// arrangement buys is that the accessor's verdict is the one that stands.
+fn broke(key: &str, carried: Option<&serde_json::Value>) -> String {
+    if !is_nameable(key) {
+        return "the key is not one a shell will take as a variable name".to_string();
+    }
+    let Some(rendered) = carried.and_then(crate::feed::model::spelled) else {
+        return "the value is not a scalar".to_string();
     };
-    let rendered = crate::feed::model::spelled(&carried).unwrap_or_default();
     // *Identifiers only*: a value with a line break in it is the prose the
     // dossier is for, and it is neither a path segment, a variable a script
     // can read a line at a time, nor anything a selector compares
     // (§FS-005-dispatch.8).
     if rendered.contains('\n') {
-        return Err("the value is prose rather than an identifier".to_string());
+        return "the value is prose rather than an identifier".to_string();
     }
     if rendered.len() > META_VALUE_CAP {
-        return Err(format!(
+        return format!(
             "the value is {} bytes, and a carried value is at most {META_VALUE_CAP}",
             rendered.len()
-        ));
+        );
     }
-    Ok(carried)
+    "the value is not one the bound carries".to_string()
 }
 
 /// The keys that carried but set no variable, because another carried key folds
@@ -726,6 +764,10 @@ fn bounded(key: &str, value: &serde_yaml::Value) -> std::result::Result<serde_js
 /// there, because the fold is a property of the carried key set alone and this
 /// is where the drop list already is. `meta_variable` is called rather than
 /// restated, so the key-to-variable rule keeps one spelling.
+///
+/// The set it is asked about is what `bounded` carried, which is what the
+/// accessor will answer with — so a key the bound dropped can never be counted
+/// as claiming a variable its surviving neighbour then goes on to set.
 fn folded(values: &serde_json::Map<String, serde_json::Value>) -> Vec<String> {
     let mut by_variable: std::collections::BTreeMap<String, Vec<&str>> =
         std::collections::BTreeMap::new();
@@ -1985,6 +2027,108 @@ metadata:
             "1",
         );
         assert!(read.dropped.is_empty(), "{:?}", read.dropped);
+    }
+
+    /// A number JSON has no room for is a value the map cannot carry, and it is
+    /// dropped *out loud* (§FS-005-dispatch.8): YAML admits `.inf` and `.nan`,
+    /// and neither is a scalar the accessor every surface reads the map through
+    /// will answer with. An exponent past the end of a double is not one of
+    /// these, because serde_yaml reads `1.0e400` as a string — and a string is
+    /// an identifier the map carries.
+    ///
+    /// Pinned because this is the one way the reader and the accessor could
+    /// come apart without anybody seeing it: a value carried here and refused
+    /// there reaches no selector, no template and no variable, while the store's
+    /// author is told nothing — which is the silent stop-matching that point
+    /// forbids.
+    #[test]
+    fn a_number_the_map_cannot_carry_is_dropped_and_said() {
+        let tmp = tempfile::tempdir().unwrap();
+        let read = read_meta(
+            tmp.path(),
+            "# Rhei: work\n\n---\nmetadata:\n  tasks:\n    1:\n      context: acme-labs\n      limit: .inf\n      score: .nan\n---\n",
+            "work",
+            "1",
+        );
+        assert_eq!(
+            carried(&read),
+            serde_json::json!({ "context": "acme-labs" }),
+            "a number the accessor will refuse was carried anyway"
+        );
+        for key in ["limit", "score"] {
+            assert!(
+                read.dropped
+                    .iter()
+                    .any(|drop| drop.contains(key) && drop.contains("not a scalar")),
+                "'{key}' was dropped without saying so:\n{}",
+                read.dropped.join("\n")
+            );
+        }
+    }
+
+    /// A fold is only ever reported about keys the map actually carries
+    /// (§FS-006-project-interface.3): where one of two keys that fold to the
+    /// same variable is dropped by the bound, the survivor sets that variable
+    /// and there is no fold to report.
+    ///
+    /// The other way round would have the refresh say `EPHOR_META_ROLL_OUT` is
+    /// set by neither key while the summons set it from the one that carried —
+    /// one report contradicting the thing it reports on.
+    #[test]
+    fn a_fold_whose_other_key_was_dropped_is_not_reported() {
+        let tmp = tempfile::tempdir().unwrap();
+        let read = read_meta(
+            tmp.path(),
+            "# Rhei: work\n\n---\nmetadata:\n  tasks:\n    1:\n      roll-out: .inf\n      roll_out: b\n---\n",
+            "work",
+            "1",
+        );
+        assert_eq!(carried(&read), serde_json::json!({ "roll_out": "b" }));
+        assert_eq!(
+            read.dropped,
+            vec!["dropped 'roll-out' — the value is not a scalar".to_string()],
+            "the fold was reported about a key the map does not carry"
+        );
+    }
+
+    /// The agreement itself, at the seam it has to hold across: every key the
+    /// reader carries comes back out of `Item::meta`, the accessor the selector,
+    /// the template and the summons all read the map through
+    /// (§FS-005-dispatch.8).
+    ///
+    /// The reader asks the accessor for its verdict rather than restating the
+    /// bound, so this cannot fail while both sides are in one place — it is
+    /// here for the day one of them moves, and for the seam in between, which
+    /// publishes the carried map into `raw` under ephor's own name.
+    #[test]
+    fn what_the_reader_carries_is_what_the_accessor_answers_with() {
+        let tmp = tempfile::tempdir().unwrap();
+        let read = read_meta(
+            tmp.path(),
+            "# Rhei: work\n\n---\nmetadata:\n  tasks:\n    1:\n      context: acme-labs\n      tier: 1\n      live: true\n      ratio: 0.5\n      limit: .inf\n      'roll out': 50\n      handover: |\n        One line.\n\n        And another.\n---\n",
+            "work",
+            "1",
+        );
+        let item = crate::feed::model::Item {
+            id: "rhei:work.1".to_string(),
+            project: "demo".to_string(),
+            source: "rhei".to_string(),
+            kind: crate::feed::model::ItemKind::Task,
+            role: None,
+            title: "renew the staging certificate".to_string(),
+            url: None,
+            state: Some("open".to_string()),
+            needs_response: false,
+            updated_at: chrono::Utc::now(),
+            raw: serde_json::json!({ crate::feed::model::META: carried(&read) }),
+        };
+        let answered: Vec<String> = item.meta().unwrap().into_keys().collect();
+        let mut expected: Vec<String> = read.values.keys().cloned().collect();
+        expected.sort();
+        assert_eq!(
+            answered, expected,
+            "the reader carried a key the accessor would not answer with, or the other way round"
+        );
     }
 
     /// A directory workspace keeps its frontmatter in its own index, and its
