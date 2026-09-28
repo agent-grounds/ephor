@@ -466,6 +466,28 @@ is *named by* a path is both at once, and is read as both: the path it names is
 under this rule, and the text that path holds is prose under the other
 ([§34](#34-a-brief-may-be-kept-in-the-file-that-owns-it)).
 
+**A script's environment is neither, and is told the gap rather than refused
+on it.** A summons carries the organization and its root as `EPHOR_ORG` and
+`EPHOR_ORG_ROOT` ([§8](#8-the-ticket-carries-the-item-as-data-not-only-as-prose)),
+and carries them *present and empty* where there is no answer — a project the
+registry places in no organization, or an organization that declares no `root`.
+It cannot refuse the way a path does, because there is nothing to refuse: the
+summons is about the matter, and a check verb that never mentions the
+organization would stop running over a fact it does not use. And it may not
+leave the name out the way prose does, because a summoned command inherits the
+environment ephor itself was launched with — so a name ephor does not set is
+not absent but whatever the shell that started ephor held, and an org-less
+project's command would read some other organization's name as if it were its
+own. The name is therefore always defined, and the check is the caller's:
+`[ -n "$EPHOR_ORG" ]` before anything is built from it, never `${EPHOR_ORG:?}`,
+which can no longer fire. What that check protects against is the same mistake
+this rule refuses for a path — `mkdir -p "$EPHOR_ORG_ROOT/cache"` under an
+empty answer makes `cache/` wherever the command happened to be standing — and
+the reason it is the caller's to make is that ephor cannot see which of its
+names a shell string is about to use as a path. The refusal for a path is
+untouched: a work root naming `{org_root}` with no answer is still refused by
+name.
+
 Branch placement is resolved before the selected root is rendered. Thus
 `{workspace}` names the existing or deterministically minted checkout and
 `{root}` remains the registry project root. Offers and other previews, dry
@@ -508,9 +530,33 @@ So every ticket also carries the item's identifiers as **structured metadata**,
 under the same names its context takes in a shell action
 ([§FS-004-quick-actions.1](FS-004-quick-actions.md#1-a-quick-action-belongs-to-the-source-that-found-the-problem)):
 project and source, kind and item id, repository and number, branch and ticket,
-url and state, and the checkout the work belongs to. One vocabulary, whether
-the thing reading it is a shell command in a menu or a program in a state
-machine.
+url and state, the checkout the work belongs to, and the organization the
+registry places that project in together with where the organization is rooted
+([§6.1](#61-the-work-root-is-a-template-and-it-may-reach-above-the-project)).
+One vocabulary, whether the thing reading it is a shell command in a menu or a
+program in a state machine.
+
+**The organization is a fact about the project rather than about the matter,
+and is handed over all the same.** What a site keeps per organization — shared
+instructions, a shared cache, a sibling checkout — is then reachable from the
+matter a program was handed, instead of the site telling each project
+separately which organization it is in and every copy of that answer going
+stale on its own. It reaches the three places a brief cannot: a program in a
+state machine, a project's own command, and a quick action, none of which has
+prose to render `{org}` into. Both names are therefore in both halves of the
+vocabulary, under one spelling — `org` and `org_root` on a ticket, `EPHOR_ORG`
+and `EPHOR_ORG_ROOT` in a summons — because a vocabulary that spelled the same
+fact two ways would be two vocabularies.
+
+Each half says a missing answer its own way, and neither invents a third.
+A summons defines both names always and leaves them empty where there is no
+answer ([§6.1](#61-the-work-root-is-a-template-and-it-may-reach-above-the-project)),
+because an undefined name there is inherited rather than absent. A ticket
+writes no key for a value it has not got, so a project the registry places in
+no organization carries no `org` and an organization that declares no `root`
+carries no `org_root` — exactly as a matter with no branch carries no `branch`.
+Nothing reading a ticket has an environment to inherit from, so absence there
+says what it means.
 
 **That vocabulary is one set of names and two sets of members, and this point
 used to read as though it were one of each.** What a template may name as
