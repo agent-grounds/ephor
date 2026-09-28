@@ -264,12 +264,18 @@ pub fn checkout_action(target: &Path) -> ActionConfig {
 }
 
 /// The command that makes a missing branch workspace, and the directory it has
-/// to end up creating: the project's own where it configured one, otherwise
-/// ephor's (§FS-004-quick-actions.7). None where the workspace is not missing,
-/// which is every project that keeps one checkout at its root.
+/// to end up creating (§FS-004-quick-actions.7). None where the workspace is not
+/// missing, which is every project that keeps one checkout at its root.
 ///
 /// One function so the row in the menu and the step that runs before an action
-/// cannot come from two different commands.
+/// cannot come from two different commands. And one *command* either way: the
+/// row is the site's own words where it wrote them — its `icon` and
+/// `description`, which is what a reader is agreeing to — while what runs is
+/// `ephor checkout`, which is what reaches the binding
+/// (§FS-006-project-interface.8). A row that ran the binding itself would make
+/// a workspace nothing verified and nowhere for a plan to land
+/// (§FS-004-quick-actions.7.1), and pressing the key again would hand a
+/// directory that now exists back to a command written to create it.
 pub fn checkout_step(
     state: &WorkspaceState,
     checkout: &Option<CheckoutConfig>,
@@ -277,16 +283,11 @@ pub fn checkout_step(
     let WorkspaceState::Missing(target) = state else {
         return None;
     };
-    let action = match checkout {
-        Some(checkout) => ActionConfig {
-            id: "checkout".to_string(),
-            icon: checkout.icon.clone(),
-            description: checkout.description.clone(),
-            command: checkout.command.clone(),
-            ..ActionConfig::default()
-        },
-        None => checkout_action(target),
-    };
+    let mut action = checkout_action(target);
+    if let Some(checkout) = checkout {
+        action.icon = checkout.icon.clone();
+        action.description = checkout.description.clone();
+    }
     Some((action, target.clone()))
 }
 /// What a menu is about. An item is the usual one; a branch row is the other,

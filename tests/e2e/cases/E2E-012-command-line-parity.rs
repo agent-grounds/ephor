@@ -695,13 +695,19 @@ fn uncheckedout() -> World {
         }],
         "projects": { PROJECT: {
             "providers": [{ "provider": "acme", "user": "you", "repos": ["app"] }],
-            // The project's own way of making a workspace, so the chain has a
-            // real first step rather than ephor's `ephor checkout`.
+            // The project's own way of making a workspace, which is what
+            // `ephor checkout` summons where one is bound
+            // (§FS-006-project-interface.8). It has to leave a *workspace*
+            // behind and not only a directory, because that is what ephor holds
+            // it to afterwards — so the repository this project declares is
+            // there when it returns.
             "checkout": {
                 "icon": "⇣",
                 "description": "make the workspace",
                 // It runs in the root, so the tally lands there — one line per run.
-                "command": "mkdir -p \"$EPHOR_WORKSPACE\" && printf 'x\\n' >> made.txt"
+                "command": "mkdir -p \"$EPHOR_WORKSPACE\" \
+                            && git -C \"$EPHOR_WORKSPACE\" init -q \
+                            && printf 'x\\n' >> made.txt"
             }
         } }
     }));
@@ -791,9 +797,23 @@ fn a_dry_run_reports_the_whole_chain_and_where_each_step_lands() {
     );
     let steps = planned["steps"].as_array().expect("the steps");
     assert_eq!(steps.len(), 2, "the checkout, then the entry: {steps:?}");
+    // The checkout goes first, in the project's own words and as ephor's one
+    // checkout operation: the row a reader reads is the site's `description`,
+    // and what runs is `ephor checkout`, which is what reaches the command this
+    // project bound (§FS-004-quick-actions.7, §FS-006-project-interface.8). A
+    // step that ran the binding itself would make a workspace nothing verified
+    // and nowhere for a plan to land.
+    assert_eq!(
+        steps[0]["description"],
+        json!("make the workspace"),
+        "{steps:?}"
+    );
     assert!(
-        steps[0]["command"].as_str().unwrap_or("").contains("mkdir"),
-        "the project's own checkout goes first: {steps:?}"
+        steps[0]["command"]
+            .as_str()
+            .unwrap_or("")
+            .contains("checkout --project"),
+        "the checkout goes first: {steps:?}"
     );
     // The checkout runs in the root, because the workspace is not there yet.
     assert_eq!(steps[0]["cwd"], json!(world.forest()));

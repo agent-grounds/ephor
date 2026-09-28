@@ -63,6 +63,10 @@ esac
 /// issue, and the workspace it belongs in (§FS-005-dispatch.25).
 const MINTED: &str = "fix/issue-95";
 
+/// That issue in the feed, for a case that asks about the one matter rather
+/// than sweeping.
+const ITEM: &str = "acmeforge:acme/widget#95";
+
 fn git(dir: &Path, args: &[&str]) {
     let status = Command::new("git")
         .arg("-C")
@@ -378,9 +382,14 @@ fn a_workspace_the_command_did_not_make_is_named_and_nothing_is_dispatched() {
     );
 
     world.ephor().args(["refresh", PROJECT]).assert().success();
+    // Asked about the one matter, because a refusal is this command's answer
+    // only where a caller asked about one: a sweep steps over what it cannot
+    // reach and says so in its tally (§FS-005-dispatch.12). What the checkout
+    // refuses is the same either way, and it is the same call the report behind
+    // this ticket made.
     world
         .ephor()
-        .args(["work", "dispatch"])
+        .args(["work", "dispatch", "--item", ITEM])
         .assert()
         .failure()
         .stderr(predicate::str::contains(MINTED));

@@ -939,6 +939,12 @@ pub struct Dispatcher {
     /// (§FS-005-dispatch.28).
     actions: Vec<ActionConfig>,
     project_actions: BTreeMap<String, Vec<ActionConfig>>,
+    /// The checkout command each project bound, where it bound one
+    /// (§FS-006-project-interface.8). Held because a dry run says what it would
+    /// have made and by whom, and a dry run makes nothing at all: the maker is
+    /// a fact about the project rather than about the run
+    /// (§FS-005-dispatch.25).
+    checkouts: BTreeMap<String, crate::feed::config::CheckoutConfig>,
     /// What the reader should know about the hands this dispatcher resolved,
     /// each said once (§FS-006-project-interface.9).
     notes: Vec<String>,
@@ -972,6 +978,16 @@ impl Dispatcher {
                 .projects
                 .iter()
                 .map(|(id, project)| (id.clone(), project.actions.clone()))
+                .collect(),
+            checkouts: config
+                .projects
+                .iter()
+                .filter_map(|(id, project)| {
+                    project
+                        .checkout
+                        .as_ref()
+                        .map(|checkout| (id.clone(), checkout.clone()))
+                })
                 .collect(),
             notes: Vec::new(),
             journal: Journal::default(),
@@ -1728,7 +1744,12 @@ impl Dispatcher {
     /// caller's to decide because it is the caller that knows it is one.
     /// It is `ephor checkout`'s own operation ([`crate::checkout::make`]), so
     /// the workspace a dispatch makes and the workspace a reader's key makes
-    /// are the same thing (§FS-004-quick-actions.7).
+    /// are the same thing (§FS-004-quick-actions.7) — including the project's
+    /// own checkout command, where one is bound, which the operation summons
+    /// rather than each of its callers (§FS-006-project-interface.8). For a
+    /// matter nobody has cut a branch for this is the only maker there is, so a
+    /// binding this path did not honour was a binding a site could not reach at
+    /// all (§FS-005-dispatch.25).
     fn mint(&mut self, item: &Item, site: &Site) -> Result<()> {
         if site.mint.is_none() {
             return Ok(());
@@ -1738,8 +1759,17 @@ impl Dispatcher {
             .placement(&item.project)
             .cloned()
             .ok_or_else(|| EphorError::Command(format!("{} cannot be placed", item.project)))?;
-        let (made, source) =
-            crate::checkout::make_at(&placement, &item.project, &branch, None, Some(&site.dir))?;
+        let (made, source) = crate::checkout::make(&crate::checkout::Ask {
+            placement: &placement,
+            project: &item.project,
+            branch: &branch,
+            // Nothing inside ephor says what a branch is grown from: the
+            // project's main branch answers, or the bound command decides
+            // (§FS-004-quick-actions.7.4).
+            from: None,
+            selected_root: Some(&site.dir),
+            about: Some(item),
+        })?;
         // A repository the checkout refused is the checkout's own refusal, in
         // the checkout's own words, and nothing is dispatched behind it.
         if let Some(why) = made.refusal(&source) {
@@ -1900,11 +1930,24 @@ impl Dispatcher {
             // the branch, and the workspace the plan path below is inside
             // (§FS-005-dispatch.25).
             if let Some(target) = &site.mint {
-                let note = format!(
-                    "{} is not checked out — the dispatch would make {} first.",
-                    site.checkout.branch.as_deref().unwrap_or("?"),
-                    target.display()
-                );
+                // Naming the maker, because the two answers hold different
+                // things and a report that implied ephor's git where the
+                // project bound its own command would be describing a run
+                // nobody is about to make (§FS-006-project-interface.8).
+                let note = match self.checkouts.get(&item.project) {
+                    Some(checkout) => format!(
+                        "{} is not checked out — the dispatch would make {} first, with                          {}'s own checkout command (`{}`).",
+                        site.checkout.branch.as_deref().unwrap_or("?"),
+                        target.display(),
+                        item.project,
+                        checkout.command,
+                    ),
+                    None => format!(
+                        "{} is not checked out — the dispatch would make {} first.",
+                        site.checkout.branch.as_deref().unwrap_or("?"),
+                        target.display()
+                    ),
+                };
                 self.note_once(&note);
             }
             let path = plan::plan_path_in(&site.dir, &plan_id);
