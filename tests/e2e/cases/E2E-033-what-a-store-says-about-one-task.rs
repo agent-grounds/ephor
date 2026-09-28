@@ -112,15 +112,28 @@ fn refresh(world: &World) -> std::process::Output {
     output
 }
 
-/// The one plan a dispatch laid in a work root, as text.
+/// The one plan a dispatch laid in a work root, as text. A work root holds
+/// `index.panta.md` beside the plan, so the plan is picked by the `.rhei.md`
+/// suffix rather than by being the first `.md` an unordered read yields, and
+/// finding two is the case saying so rather than reading whichever it likes.
 fn laid_in(root: &std::path::Path) -> String {
-    let laid = std::fs::read_dir(root)
+    let mut laid: Vec<std::path::PathBuf> = std::fs::read_dir(root)
         .unwrap_or_else(|err| panic!("no work root at {}: {err}", root.display()))
         .filter_map(std::result::Result::ok)
         .map(|entry| entry.path())
-        .find(|path| path.extension().is_some_and(|extension| extension == "md"))
-        .unwrap_or_else(|| panic!("no plan was laid in {}", root.display()));
-    std::fs::read_to_string(&laid).expect("the laid plan is readable")
+        .filter(|path| {
+            path.file_name()
+                .is_some_and(|name| name.to_string_lossy().ends_with(".rhei.md"))
+        })
+        .collect();
+    laid.sort();
+    let [laid] = laid.as_slice() else {
+        panic!(
+            "expected one plan laid in {}, found {laid:?}",
+            root.display()
+        )
+    };
+    std::fs::read_to_string(laid).expect("the laid plan is readable")
 }
 
 /// 1. The fact arrives on the matter, under ephor's own name, and so reaches
