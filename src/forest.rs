@@ -24,6 +24,10 @@ use chrono::{DateTime, Datelike, Local, Utc};
 pub struct Declaration {
     /// Where it sits under the checkout: `.` is the checkout itself.
     pub path: String,
+    /// The handle the declaration itself gave it — a registry row's `id`, a
+    /// manifest's `name` — which is what a report reaches for where nothing
+    /// said what the repository is *to* the project (§FS-011-command-line.11.2).
+    pub id: Option<String>,
     /// What it is to the project, for a reader rather than for code.
     pub role: Option<String>,
     /// The branch this repository is measured and replayed against, where it
@@ -35,6 +39,7 @@ impl Declaration {
     pub fn at(path: impl Into<String>) -> Declaration {
         Declaration {
             path: path.into(),
+            id: None,
             role: None,
             main: None,
         }
@@ -45,7 +50,8 @@ impl Declaration {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Repo {
     /// Its path relative to the checkout — `.` for the checkout itself. This
-    /// is the name every report and answer uses.
+    /// is what every answer locates a repository by, and what a report falls
+    /// back to where nothing named it (§FS-011-command-line.11.2).
     pub name: String,
     pub path: PathBuf,
     /// The remote a fold fetches from, pushes to and measures against, read
@@ -87,7 +93,16 @@ pub struct Forest {
     /// not it is on disk. What a checkout has to *make*, as against what a
     /// rebase can fold over.
     pub layout: Vec<String>,
+    /// What a report calls each entry of [`Self::layout`], in the same order
+    /// (§FS-011-command-line.11.2). Worked out here because this is where a
+    /// declaration is read and a report has nowhere else to ask: a repository
+    /// the layout names but disk does not hold has no [`Repo`] to carry a
+    /// role.
+    pub labels: Vec<String>,
 }
+
+/// The checkout itself, as a layout spells it.
+pub const ROOT: &str = ".";
 
 impl Forest {
     /// The forest of `checkout`: the declared repositories where the row
@@ -99,10 +114,16 @@ impl Forest {
         let mut repos = Vec::new();
         let mut absent = Vec::new();
         let mut layout = Vec::new();
+        // What each layout entry was named by whoever declared it, in the
+        // same order, so the chain below can be walked once the width of the
+        // forest is known (§FS-011-command-line.11.2).
+        let mut named: Vec<Option<String>> = Vec::new();
         if declared.is_empty() {
             for path in crate::git::probe(checkout) {
                 let name = relative(checkout, &path);
                 layout.push(name.clone());
+                // Nothing declared this forest, so nothing named it either.
+                named.push(None);
                 repos.push(Repo {
                     name,
                     // Asked once per repository, here where the probe already
@@ -116,6 +137,7 @@ impl Forest {
         } else {
             for declaration in declared {
                 layout.push(declaration.path.clone());
+                named.push(declaration.role.clone().or_else(|| declaration.id.clone()));
                 let path = under(checkout, &declaration.path);
                 // Present means a `.git` marker — a directory for a clone, a
                 // file for a linked working tree. Tested through the path
@@ -139,13 +161,33 @@ impl Forest {
                 });
             }
         }
+        let plural = layout.len() > 1;
+        let labels = layout
+            .iter()
+            .zip(named.iter())
+            .map(|(path, name)| label_of(path, name.as_deref(), plural))
+            .collect();
         Forest {
             root: checkout.to_path_buf(),
             main: main.map(String::from),
             repos,
             absent,
             layout,
+            labels,
         }
+    }
+
+    /// What a report calls the layout entry `name` (§FS-011-command-line.11.2).
+    /// The path itself for anything this forest's layout does not hold, so a
+    /// caller folding over something else still has a word rather than
+    /// nothing.
+    pub fn label<'a>(&'a self, name: &'a str) -> &'a str {
+        self.layout
+            .iter()
+            .position(|entry| entry == name)
+            .and_then(|at| self.labels.get(at))
+            .map(String::as_str)
+            .unwrap_or(name)
     }
 
     pub fn is_empty(&self) -> bool {
@@ -477,6 +519,27 @@ impl Staleness {
     }
 }
 
+/// The name a report gives one repository: its role, failing that the handle
+/// its declaration gave it, and only failing that its path
+/// (§FS-011-command-line.11.2).
+///
+/// Where the forest has more than one repository the path is kept beside the
+/// name, because the role says what a repository is and the path says where
+/// it is. [`ROOT`] is the exception on both sides of the chain: it is the one
+/// path a report may not show — a section headed by a full stop reads as a
+/// fault in the writing rather than as the repository it means — so it is
+/// never put beside a name, and where nothing named the repository at all it
+/// is answered by what that repository *is*, the checkout itself.
+fn label_of(path: &str, named: Option<&str>, plural: bool) -> String {
+    match named {
+        Some(name) if plural && path != ROOT => format!("{path} — {name}"),
+        Some(name) => name.to_string(),
+        None if path == ROOT => "the checkout itself".to_string(),
+        // A path nobody named still reads as a name where it is not `.`.
+        None => path.to_string(),
+    }
+}
+
 /// A path under a checkout, where `.` means the checkout itself.
 pub fn under(checkout: &Path, name: &str) -> PathBuf {
     if name == "." {
@@ -565,6 +628,7 @@ mod tests {
         let declared = vec![
             Declaration {
                 path: "ee".to_string(),
+                id: None,
                 role: Some("enterprise".to_string()),
                 main: None,
             },
@@ -609,6 +673,7 @@ mod tests {
         work_tree(&tmp.path().join("vendored"));
         let declared = vec![Declaration {
             path: "vendored".to_string(),
+            id: None,
             role: None,
             main: Some("release/24".to_string()),
         }];
@@ -664,6 +729,7 @@ mod tests {
         tracked(&tmp.path().join("ce"), ORIGIN, "master", 2);
         let declared = vec![Declaration {
             path: "ce".to_string(),
+            id: None,
             role: None,
             main: Some("{branch}".to_string()),
         }];

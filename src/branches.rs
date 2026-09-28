@@ -127,6 +127,9 @@ fn declarations(registry_doc: &Value, project: &Value) -> Vec<Declaration> {
         .filter_map(|repo| {
             Some(Declaration {
                 path: registry::str_field(repo, "path")?.to_string(),
+                // The row's own handle for it, which a report falls back to
+                // where the row says no role (§FS-011-command-line.11.2).
+                id: registry::str_field(repo, "id").map(String::from),
                 role: registry::str_field(repo, "role").map(String::from),
                 main: registry::str_field(repo, "default_branch").map(String::from),
             })
@@ -825,6 +828,9 @@ impl Placement {
                     .iter()
                     .map(|repo| Declaration {
                         path: repo.path.clone(),
+                        // A manifest's required `name` is the same handle the
+                        // registry row calls `id` (§FS-011-command-line.11.2).
+                        id: Some(repo.name.clone()),
                         role: repo.role.clone(),
                         main: repo.main.clone(),
                     })
