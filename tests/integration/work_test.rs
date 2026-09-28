@@ -1795,6 +1795,146 @@ fn a_start_that_fails_is_said_and_rests_before_it_is_tried_again() {
     assert_eq!(starts(&log), tried, "the root rests after a failed start");
 }
 
+/// The one autorun recipe every case below sweeps, with the site ceiling that
+/// lets dispatch write the ticket and start nothing.
+fn held_at_the_ceiling() -> Value {
+    json!({
+        "max_concurrent": 0,
+        "recipes": [{
+            "id": "fix-gate",
+            "icon": "🔧",
+            "description": "fix the red gate",
+            "brief": "fix {title}",
+            "autorun": true,
+            "when": { "kinds": ["pr"], "gate": "red" }
+        }]
+    })
+}
+
+/// A root the acting sweep passes over is headed by the pass-over and by
+/// nothing else (§FS-005-dispatch.24.1). The ticket list stays under it, and
+/// the start marker is absent, because no run began — while the same root one
+/// free slot later keeps the header and the `▶ run <id> started` beneath it.
+#[test]
+fn a_root_the_acting_sweep_passes_over_is_never_headed_as_a_start() {
+    let tmp = tempdir();
+    fixture(tmp.path(), held_at_the_ceiling());
+    let log = tmp.path().join("runner.log");
+    detaching_runner(tmp.path(), &log);
+    ephor(tmp.path())
+        .args(["refresh", "demo"])
+        .assert()
+        .success();
+    ephor(tmp.path())
+        .args(["work", "dispatch"])
+        .assert()
+        .success();
+    assert_eq!(starts(&log), 0, "the configured zero starts nothing");
+
+    let swept = ephor(tmp.path())
+        .args(["work", "run", "--due"])
+        .output()
+        .expect("ephor work run --due");
+    let said = format!(
+        "{}{}",
+        String::from_utf8_lossy(&swept.stdout),
+        String::from_utf8_lossy(&swept.stderr)
+    );
+    assert!(swept.status.success(), "{said}");
+    assert_eq!(starts(&log), 0, "the ceiling is full: {said}");
+    assert!(
+        said.contains("passed over: global work.max_concurrent 0"),
+        "the sweep says which key refused the root: {said}"
+    );
+    assert!(
+        said.contains("github-prs-acme-widget-42.fix-gate-1"),
+        "what made the root due is still said (§FS-005-dispatch.24): {said}"
+    );
+    assert!(
+        !said.contains('▶'),
+        "nothing began, so nothing wears the marker that means a run began: {said}"
+    );
+
+    // The same root with a slot for it. The start keeps every line it has.
+    let started = ephor(tmp.path())
+        .args(["work", "run", "--due", "--max-concurrent", "1"])
+        .output()
+        .expect("ephor work run --due --max-concurrent 1");
+    let said = format!(
+        "{}{}",
+        String::from_utf8_lossy(&started.stdout),
+        String::from_utf8_lossy(&started.stderr)
+    );
+    assert!(started.status.success(), "{said}");
+    assert_eq!(starts(&log), 1, "{said}");
+    assert!(
+        said.contains("▶ rhei run ") && said.contains("▶ run 3f9a2c started"),
+        "a root that started is headed as it always was: {said}"
+    );
+    assert!(
+        said.contains("github-prs-acme-widget-42.fix-gate-1"),
+        "and says what it is about: {said}"
+    );
+}
+
+/// The same rule on the other non-start (§FS-005-dispatch.24.1): a launch the
+/// runner refuses is headed by the refusal. A rule written for the ceiling
+/// alone would leave the marker free to lie here.
+#[test]
+fn a_root_whose_launch_was_refused_is_never_headed_as_a_start() {
+    let tmp = tempdir();
+    fixture(tmp.path(), held_at_the_ceiling());
+    let log = tmp.path().join("runner.log");
+    // A runner that names the flag and then refuses to launch.
+    fs::create_dir_all(tmp.path().join("fakebin")).unwrap();
+    make_executable(
+        &tmp.path().join("fakebin/rhei"),
+        &format!(
+            "#!/usr/bin/env bash\n\
+             case \"$*\" in\n\
+             *--help*) printf 'Options:\\n      --headless  detach it\\n'; exit 0 ;;\n\
+             *--headless*) printf '%s\\n' \"$*\" >> {log}; printf 'no\\n' >&2; exit 3 ;;\n\
+             *) exit 0 ;;\n\
+             esac\n",
+            log = log.to_string_lossy(),
+        ),
+    );
+    ephor(tmp.path())
+        .args(["refresh", "demo"])
+        .assert()
+        .success();
+    // The configured zero keeps the dispatch's own sweep off the root, so the
+    // refusal below is this sweep's first attempt rather than a rest.
+    ephor(tmp.path())
+        .args(["work", "dispatch"])
+        .assert()
+        .success();
+    assert_eq!(starts(&log), 0);
+
+    let swept = ephor(tmp.path())
+        .args(["work", "run", "--due", "--max-concurrent", "1"])
+        .output()
+        .expect("ephor work run --due --max-concurrent 1");
+    let said = format!(
+        "{}{}",
+        String::from_utf8_lossy(&swept.stdout),
+        String::from_utf8_lossy(&swept.stderr)
+    );
+    assert_eq!(starts(&log), 1, "the launch was attempted: {said}");
+    assert!(
+        said.contains("no run started on"),
+        "the refusal is said, never swallowed: {said}"
+    );
+    assert!(
+        said.contains("github-prs-acme-widget-42.fix-gate-1"),
+        "what made the root due is still said (§FS-005-dispatch.24): {said}"
+    );
+    assert!(
+        !said.contains('▶'),
+        "no run began, so no line says one did: {said}"
+    );
+}
+
 /// A workflow entry a person wrote in their own configuration — the third of
 /// the three homes (§FS-005-dispatch.19) — asks to run itself and the sweep
 /// lays it (§FS-005-dispatch.28).

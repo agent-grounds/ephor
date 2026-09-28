@@ -2285,6 +2285,45 @@ whoever asked for it
 this sweep never touches, and on none of the terms above
 ([§30](#30-a-run-asked-for-by-name-reaches-the-whole-of-that-matters-work)).
 
+### 24.1 The sweep announces each root by the outcome it reached
+
+The sweep that acts prints a block per root, and until the start has been
+attempted there is nothing to head that block with. So **the header is chosen
+after the outcome is known, and it carries the outcome's own verb** — which
+leaves `▶` meaning the one thing it has ever meant on this command: a run
+began. A root whose run began keeps the pair it has, the runtime and the root
+under `▶` and then `▶ run <id> started`; a root that got no run is headed by
+the line that says so and by nothing else. The marker appears once per root
+that started, and on no root that did not.
+
+**Both non-starts are bound, not only the ceiling's.** A root passed over is
+announced as passed over — whether a full ceiling refused it, the reader's own
+`--except` named it, the last run there having advanced nothing rested it,
+another root's run holds its tree, or its plan needs pools this site cannot
+have together ([§33](#33-work-that-needs-several-pools-at-once-is-admitted-whole)).
+A root whose launch was refused is announced as that refusal. The two are
+different outcomes and say so in different words, but they are the same fault
+when a start marker is printed above them, and a rule written for one of them
+would leave the marker free to lie on the other.
+
+**The ticket list stays under the root in every case.** What made the root due
+is this section's answer to *a run nobody asked for still says what it is
+about*, and it is worth as much about a root that got no run as about one that
+did: it is what names the work the reader has just been told nothing happened
+to. Only the header is at issue: the sentence beneath it is the one line the
+outcome is worth, it already says the right thing for every outcome, and it is
+the same sentence wherever that outcome is met.
+
+**Nothing the readings say moves.** `--json` already answers `passed-over`,
+`failed`, `started` and `done` with the reason beside each, and no field, name
+or value here changes; the gated report already decides the outcome before it
+prints anything about the root ([§FS-011-command-line.10](FS-011-command-line.md#10-a-mutating-verb-above-one-project-reports-and-acts-under---act)).
+This point brings the acting surface's text up to what those two have been
+saying all along, which is the direction parity is owed in — the text and the
+reading of one command answering one situation in one voice
+([§REQ-002-parity.2](../requirements/REQ-002-parity.md#2-parity-runs-both-ways),
+[§REQ-002-parity.3](../requirements/REQ-002-parity.md#3-every-reading-answers-a-program)).
+
 ## 25. Work about a matter with no branch can mint the branch it needs
 
 A pull request arrives with a branch, and everything above resolves from it:
