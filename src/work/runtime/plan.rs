@@ -644,6 +644,98 @@ struct PlanPart {
     text: String,
 }
 
+/// What a store said about one of its own tasks, once the bound has been
+/// applied (§FS-005-dispatch.8): the keys that survived, and one line per key
+/// that did not, so the drop can be said out loud where the store's answer is
+/// reported rather than going silently.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct TaskMeta {
+    /// The carried keys, in the spelling a matter publishes them: the scalar
+    /// as the store wrote it, so a number is still a number.
+    pub values: serde_json::Map<String, serde_json::Value>,
+    /// Why each dropped key was dropped, ready to be qualified by the matter
+    /// it was about.
+    pub dropped: Vec<String>,
+}
+
+/// The most a carried value may render to (§FS-005-dispatch.8). Identifiers,
+/// not prose: this is the size a selector compares, a path carries and a
+/// process environment holds.
+const META_VALUE_CAP: usize = 1024;
+
+/// One entry of the store's task map, under a key it may have written as a
+/// bare number as readily as a string.
+fn entry<'a>(tasks: &'a serde_yaml::Value, key: &str) -> Option<&'a serde_yaml::Value> {
+    tasks
+        .as_mapping()?
+        .iter()
+        .find(|(written, _)| scalar_key(written).as_deref() == Some(key))
+        .map(|(_, value)| value)
+}
+
+/// A mapping key as the name it stands for, or None where the store wrote
+/// something that is no name — a list, a nested map.
+fn scalar_key(key: &serde_yaml::Value) -> Option<String> {
+    match key {
+        serde_yaml::Value::String(text) => Some(text.clone()),
+        serde_yaml::Value::Number(number) => Some(number.to_string()),
+        serde_yaml::Value::Bool(yes) => Some(yes.to_string()),
+        _ => None,
+    }
+}
+
+/// One key of a store's block against §FS-005-dispatch.8's bound — a scalar, a
+/// key a shell will take, and an identifier rather than prose. `Err` carries
+/// which part of the bound broke, in the words the drop is reported in.
+fn bounded(key: &str, value: &serde_yaml::Value) -> std::result::Result<serde_json::Value, String> {
+    if !is_nameable(key) {
+        return Err("the key is not one a shell will take as a variable name".to_string());
+    }
+    // The runtime keeps its own per-task bookkeeping in this same namespace,
+    // and ephor lays its plans inside the directory it reads as a store, so
+    // the names ephor writes here are subtracted on the way in rather than
+    // handed back as though the store had said them (§FS-005-dispatch.8). The
+    // list is derived from the two functions that write it, never copied.
+    if crate::work::dossier::written_into_a_ticket(key) {
+        return Err("the runtime writes this name here".to_string());
+    }
+    let carried = match value {
+        serde_yaml::Value::String(text) => serde_json::Value::String(text.clone()),
+        serde_yaml::Value::Bool(yes) => serde_json::Value::Bool(*yes),
+        serde_yaml::Value::Number(number) => number
+            .as_i64()
+            .map(serde_json::Value::from)
+            .or_else(|| number.as_f64().map(serde_json::Value::from))
+            .ok_or_else(|| "the value is not a scalar".to_string())?,
+        _ => return Err("the value is not a scalar".to_string()),
+    };
+    let rendered = crate::feed::model::spelled(&carried).unwrap_or_default();
+    // *Identifiers only*: a value with a line break in it is the prose the
+    // dossier is for, and it is neither a path segment, a variable a script
+    // can read a line at a time, nor anything a selector compares
+    // (§FS-005-dispatch.8).
+    if rendered.contains('\n') {
+        return Err("the value is prose rather than an identifier".to_string());
+    }
+    if rendered.len() > META_VALUE_CAP {
+        return Err(format!(
+            "the value is {} bytes, and a carried value is at most {META_VALUE_CAP}",
+            rendered.len()
+        ));
+    }
+    Ok(carried)
+}
+
+/// `[A-Za-z_][A-Za-z0-9_-]*` — the keys §FS-005-dispatch.8 admits, which is
+/// what keeps every one of them nameable in a template and in a summons.
+fn is_nameable(key: &str) -> bool {
+    let mut letters = key.chars();
+    letters
+        .next()
+        .is_some_and(|first| first.is_ascii_alphabetic() || first == '_')
+        && letters.all(|letter| letter.is_ascii_alphanumeric() || letter == '_' || letter == '-')
+}
+
 impl Plan {
     pub fn read(path: &Path) -> Result<Option<Plan>> {
         if !path.is_file() {
@@ -834,6 +926,77 @@ impl Plan {
             break;
         }
         end
+    }
+
+    /// What the plan says about one of its own tasks
+    /// (§FS-006-project-interface.7): the block the store keeps under this
+    /// task's id in its own frontmatter, held to §FS-005-dispatch.8's bound
+    /// and with the names ephor writes there itself subtracted.
+    ///
+    /// The documented key is the task's own id; `<plan id>.<task id>` is
+    /// accepted as an alias, and the bare id wins where a plan writes both.
+    /// `metadata.tasks` is the runtime's own grammar, so it is spelled here
+    /// and nowhere above this module (§REQ-001-boundary.5).
+    pub fn task_meta(&self, plan_id: &str, task_id: &str) -> TaskMeta {
+        let Some(block) = self.frontmatter_yaml() else {
+            return TaskMeta::default();
+        };
+        let Ok(doc) = serde_yaml::from_str::<serde_yaml::Value>(block) else {
+            return TaskMeta::default();
+        };
+        let Some(tasks) = doc.get("metadata").and_then(|node| node.get("tasks")) else {
+            return TaskMeta::default();
+        };
+        // The bare id is canonical; the plan-qualified spelling is accepted so
+        // that a store already writing it keeps working.
+        let said = entry(tasks, task_id)
+            .or_else(|| entry(tasks, &format!("{plan_id}.{task_id}")))
+            .and_then(serde_yaml::Value::as_mapping);
+        let Some(said) = said else {
+            return TaskMeta::default();
+        };
+        let mut meta = TaskMeta::default();
+        for (key, value) in said {
+            let Some(key) = scalar_key(key) else {
+                // A key that is not a scalar is no name at all, so there is
+                // nothing to report it under.
+                continue;
+            };
+            match bounded(&key, value) {
+                Ok(value) => {
+                    meta.values.insert(key, value);
+                }
+                Err(why) => meta.dropped.push(format!("dropped '{key}' — {why}")),
+            }
+        }
+        meta
+    }
+
+    /// The frontmatter body as YAML, between its fences. Accepted wherever the
+    /// ticket parser accepts a heading — indentation and all — because a store
+    /// writes these files by hand and the two readers of one file may not
+    /// disagree about where its frontmatter is (§FS-006-project-interface.7).
+    fn frontmatter_yaml(&self) -> Option<&str> {
+        let rest = &self.text[self.header_end()..];
+        let mut at = 0usize;
+        let mut open: Option<usize> = None;
+        for line in rest.lines() {
+            let starts = at;
+            at = (at + line.len() + 1).min(rest.len());
+            if line.trim() != "---" {
+                // Only a block that opens before any content is this plan's
+                // frontmatter; a horizontal rule further down is prose.
+                if open.is_none() && !line.trim().is_empty() {
+                    return None;
+                }
+                continue;
+            }
+            match open {
+                None => open = Some(at),
+                Some(open) => return Some(&rest[open..starts]),
+            }
+        }
+        None
     }
 
     /// Rewrite the dossier and nothing else. Tickets are appended, never
@@ -1594,6 +1757,186 @@ states:
         );
         assert_eq!(tickets[1].prior, vec!["first"]);
         assert_eq!(tickets[3].state.as_deref(), Some("completed"));
+    }
+
+    /// The block a store keeps about one of its own tasks, read where it is
+    /// written (§FS-006-project-interface.7). The seam's own tests pin the
+    /// publishing; these pin the reading, where each rule can be read on its
+    /// own.
+    ///
+    /// The bodies are written flush with the left margin on purpose: this is a
+    /// file a store wrote, and its frontmatter is at column zero.
+    fn read_meta(tmp: &Path, body: &str, plan_id: &str, task_id: &str) -> TaskMeta {
+        let path = tmp.join(format!("{plan_id}.rhei.md"));
+        fs::write(&path, body).unwrap();
+        Plan::read(&path)
+            .unwrap()
+            .unwrap()
+            .task_meta(plan_id, task_id)
+    }
+
+    fn carried(meta: &TaskMeta) -> serde_json::Value {
+        serde_json::Value::Object(meta.values.clone())
+    }
+
+    /// The documented key is the task's own id; the plan-qualified spelling is
+    /// accepted as an alias so a store already writing it keeps working, and
+    /// the bare id wins where a plan writes both
+    /// (§FS-006-project-interface.7).
+    #[test]
+    fn a_task_block_is_found_under_its_own_id_or_the_plan_qualified_alias() {
+        let tmp = tempfile::tempdir().unwrap();
+        let bare = read_meta(
+            tmp.path(),
+            "# Rhei: work\n\n---\nmetadata:\n  tasks:\n    1:\n      context: acme-labs\n---\n",
+            "work",
+            "1",
+        );
+        assert_eq!(
+            carried(&bare),
+            serde_json::json!({ "context": "acme-labs" })
+        );
+
+        let aliased = read_meta(
+            tmp.path(),
+            "# Rhei: work\n\n---\nmetadata:\n  tasks:\n    work.1:\n      context: aliased\n---\n",
+            "work",
+            "1",
+        );
+        assert_eq!(
+            carried(&aliased),
+            serde_json::json!({ "context": "aliased" })
+        );
+
+        let both = read_meta(
+            tmp.path(),
+            "# Rhei: work\n\n---\nmetadata:\n  tasks:\n    work.1:\n      context: aliased\n    1:\n      context: canonical\n---\n",
+            "work",
+            "1",
+        );
+        assert_eq!(
+            carried(&both),
+            serde_json::json!({ "context": "canonical" })
+        );
+
+        // A task nobody said anything about said nothing: absent, never empty
+        // (§AR-006-matters).
+        let silent = read_meta(tmp.path(), "# Rhei: work\n\n## Tasks\n", "work", "1");
+        assert_eq!(silent, TaskMeta::default());
+    }
+
+    /// The bound in isolation (§FS-005-dispatch.8): scalars, a key a shell
+    /// will take, an identifier rather than prose, 1 KiB. The offending key
+    /// goes, the rest is carried, and each drop says which part of the bound
+    /// it broke.
+    #[test]
+    fn the_bound_drops_the_key_and_carries_the_rest() {
+        let tmp = tempfile::tempdir().unwrap();
+        let body = "\
+# Rhei: work
+
+---
+metadata:
+  tasks:
+    1:
+      context: acme-labs
+      tier: 1
+      live: true
+      owners:
+        - ana
+      stateVisits:
+        fix: 2
+      essay: ESSAY
+      'rollout pct': 50
+      handover: |
+        One line.
+
+        And another.
+---
+"
+        .replace("ESSAY", &"x".repeat(META_VALUE_CAP + 1));
+        let read = read_meta(tmp.path(), &body, "work", "1");
+        // A number and a boolean are identifiers, and they keep the spelling
+        // the store wrote them in.
+        assert_eq!(
+            carried(&read),
+            serde_json::json!({ "context": "acme-labs", "tier": 1, "live": true })
+        );
+        for (key, why) in [
+            ("owners", "not a scalar"),
+            ("stateVisits", "not a scalar"),
+            ("essay", "at most"),
+            ("rollout pct", "a shell will take"),
+            ("handover", "prose"),
+        ] {
+            assert!(
+                read.dropped
+                    .iter()
+                    .any(|drop| drop.contains(key) && drop.contains(why)),
+                "'{key}' was not dropped for {why}:\n{}",
+                read.dropped.join("\n")
+            );
+        }
+    }
+
+    /// The subtraction in isolation (§FS-005-dispatch.8): ephor lays its plans
+    /// inside the directory it reads as a store and keeps its own per-task
+    /// bookkeeping in this very namespace, so the names it writes there are
+    /// taken back out rather than handed over as the store's words. Derived
+    /// from the two lists that write them, so this holds for a name added to
+    /// either.
+    #[test]
+    fn the_names_the_runtime_writes_here_are_subtracted() {
+        let tmp = tempfile::tempdir().unwrap();
+        let written: String = crate::work::dossier::SUBJECT_METADATA
+            .iter()
+            .chain(crate::work::dossier::INSTRUCTION_METADATA.iter())
+            .map(|key| format!("      {key}: mine\n"))
+            .collect();
+        let read = read_meta(
+            tmp.path(),
+            &format!(
+                "# Rhei: work\n\n---\nmetadata:\n  tasks:\n    1:\n{written}      context: acme-labs\n---\n"
+            ),
+            "work",
+            "1",
+        );
+        assert_eq!(
+            carried(&read),
+            serde_json::json!({ "context": "acme-labs" }),
+            "the runtime's own bookkeeping came back as the store's words"
+        );
+        assert_eq!(
+            read.dropped.len(),
+            crate::work::dossier::SUBJECT_METADATA.len()
+                + crate::work::dossier::INSTRUCTION_METADATA.len()
+        );
+    }
+
+    /// A directory workspace keeps its frontmatter in its own index, and its
+    /// tasks in files beside it (§FS-006-project-interface.7).
+    #[test]
+    fn a_directory_workspaces_block_is_read_from_its_index() {
+        let tmp = tempfile::tempdir().unwrap();
+        let workspace = tmp.path().join("alpha");
+        fs::create_dir_all(workspace.join("tasks")).unwrap();
+        fs::write(
+            workspace.join("index.rhei.md"),
+            "# Rhei: alpha\n\n---\nmetadata:\n  tasks:\n    shared:\n      context: acme-labs\n---\n",
+        )
+        .unwrap();
+        fs::write(
+            workspace.join("tasks/01-shared.md"),
+            "### Task shared: Alpha waits\n**State:** pending\n",
+        )
+        .unwrap();
+        let plan = Plan::read(&workspace.join("index.rhei.md"))
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            plan.task_meta("alpha", "shared").values["context"],
+            serde_json::json!("acme-labs")
+        );
     }
 
     /// A plan lends its own heading where nothing dispatched it — a foreign

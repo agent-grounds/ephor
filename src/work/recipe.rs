@@ -868,6 +868,17 @@ pub struct Selector {
         skip_serializing_if = "Vec::is_empty"
     )]
     pub labels: Vec<String>,
+    /// What the matter's own source said about *this matter*
+    /// (§FS-005-dispatch.31.1), asked as a map because each key is a different
+    /// question: `{"context": "acme-labs", "tier": "1"}` is *the acme-labs
+    /// context, at tier 1*. Every key must hold — an `and` where `assignees`
+    /// and `labels` are an any-of — and each is compared as a string, so a
+    /// number or a boolean the source did not quote answers by its canonical
+    /// spelling. A matter whose source reported no such map at all is refused
+    /// rather than matched, which is §FS-005-dispatch.31's own silence rule
+    /// and not a second one. There is no negative form.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub meta: BTreeMap<String, String>,
     /// The item's branch trails its main branch (`true`), or is level with it
     /// (`false`) — measured in the checkout, not asked of a forge
     /// (§FS-004-quick-actions.6). An item whose checkout cannot be measured —
@@ -1028,8 +1039,50 @@ impl Selector {
         ) {
             refusals.push(refusal);
         }
+        if let Some(refusal) = said_about(&self.meta, item) {
+            refusals.push(refusal);
+        }
         refusals
     }
+}
+
+/// The `meta` field against what this matter's source said about it
+/// (§FS-005-dispatch.31.1). `None` where it held: every key the selector names
+/// is carried and compares equal as a string. Read through the one accessor
+/// every surface reads a reserved `raw` key through (§AR-006-matters), so the
+/// spelling a selector compares is the spelling a template renders.
+fn said_about(selector: &BTreeMap<String, String>, item: &Item) -> Option<Refusal> {
+    if selector.is_empty() {
+        return None;
+    }
+    let Some(carried) = item.meta() else {
+        return Some(Refusal::new(
+            "meta",
+            "the matter's source reported nothing about the matter itself, so its `meta` \
+             answers no key",
+        ));
+    };
+    let refused: Vec<String> = selector
+        .iter()
+        .filter(|(key, want)| carried.get(*key) != Some(want))
+        .map(|(key, want)| match carried.get(key) {
+            Some(held) => {
+                format!(
+                    "the matter's `meta` has `{key}` = `{held}`; the selector asks for `{want}`"
+                )
+            }
+            None => format!(
+                "the matter's `meta` has no `{key}`; the selector asks for `{want}`, and it \
+                 carries {}",
+                if carried.is_empty() {
+                    "nothing".to_string()
+                } else {
+                    join_quoted_str(&carried.keys().map(String::as_str).collect::<Vec<_>>())
+                }
+            ),
+        })
+        .collect();
+    (!refused.is_empty()).then(|| Refusal::new("meta", refused.join(", ")))
 }
 
 /// Every entry of an `assignees` or `labels` field, refused where one names

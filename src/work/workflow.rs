@@ -14,6 +14,7 @@
 //! The order is §FS-005-dispatch.14's, deliberately, so one resolution order
 //! covers everything a dispatch settles.
 
+use std::borrow::Cow;
 use std::collections::BTreeMap;
 
 use serde::Deserialize;
@@ -229,7 +230,7 @@ pub fn answer(
     workflow: &Workflow,
     ask: &WorkflowAsk,
     typed: &BTreeMap<String, String>,
-    values: &BTreeMap<&'static str, String>,
+    values: &BTreeMap<Cow<'static, str>, String>,
     hand: Option<&str>,
     named: Rendering<'_>,
 ) -> Answered {
@@ -250,7 +251,7 @@ pub fn answer_with_values(
     ask: &WorkflowAsk,
     typed: &BTreeMap<String, String>,
     file_values: &serde_json::Map<String, Value>,
-    values: &BTreeMap<&'static str, String>,
+    values: &BTreeMap<Cow<'static, str>, String>,
     hand: Option<&str>,
     named: Rendering<'_>,
 ) -> Answered {
@@ -295,7 +296,7 @@ fn answer_one(
     ask: &WorkflowAsk,
     typed: &BTreeMap<String, String>,
     file_values: &serde_json::Map<String, Value>,
-    values: &BTreeMap<&'static str, String>,
+    values: &BTreeMap<Cow<'static, str>, String>,
     hand: Option<&str>,
     named: Rendering<'_>,
 ) -> Result<(Option<Value>, From), String> {
@@ -403,7 +404,7 @@ fn hands(written: &Value, input: &Input, named: Rendering<'_>) -> Result<Value, 
 /// A written answer with the matter's fields filled in. Strings anywhere in
 /// the value are rendered — the fields an item carries are as useful inside a
 /// structure as beside one (§FS-005-dispatch.19).
-fn fill(written: &Value, values: &BTreeMap<&'static str, String>) -> Value {
+fn fill(written: &Value, values: &BTreeMap<Cow<'static, str>, String>) -> Value {
     match written {
         Value::String(text) => Value::String(crate::work::dossier::render(text, values)),
         Value::Array(items) => Value::Array(items.iter().map(|item| fill(item, values)).collect()),
@@ -479,8 +480,8 @@ mod tests {
         }
     }
 
-    fn matter() -> BTreeMap<&'static str, String> {
-        BTreeMap::from([
+    fn matter() -> BTreeMap<Cow<'static, str>, String> {
+        crate::work::dossier::fixed([
             ("branch", "you/ABC-42-retry".to_string()),
             ("repo", "acme/widget".to_string()),
             ("number", "42".to_string()),

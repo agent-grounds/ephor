@@ -1019,9 +1019,11 @@ impl Dispatcher {
         recipe::resolve(&self.global.recipes, per_organization, per_project)
     }
 
-    /// The recipes that apply to one item. A branch template requiring a field
-    /// this matter has empty does not serve it, so it is withheld from dispatch
-    /// selection rather than selected and refused (§FS-005-dispatch.25).
+    /// The recipes that apply to one item. A `branch` or a `root` template
+    /// requiring a field this matter has not got does not serve it, so it is
+    /// withheld from dispatch selection rather than selected and refused
+    /// (§FS-005-dispatch.25) — another matter can carry the field and render
+    /// the same template.
     pub fn offers(&mut self, item: &Item) -> Vec<Recipe> {
         if item.is_blocked() {
             return Vec::new();
@@ -1034,6 +1036,8 @@ impl Dispatcher {
         offers.retain(|recipe| {
             recipe.branch.as_deref().is_none_or(|template| {
                 crate::branches::why_not_served(&placement, item, template).is_none()
+            }) && recipe.root.as_deref().is_none_or(|template| {
+                crate::branches::why_root_not_served(&placement, item, template).is_none()
             })
         });
         offers
@@ -1732,7 +1736,7 @@ impl Dispatcher {
         // from the checkout, not from the work root, so a brief that asks for
         // a file has to say which one (§FS-005-dispatch.13).
         values.insert(
-            "reply",
+            std::borrow::Cow::Borrowed("reply"),
             runtime::results::reply_path(&dir, &plan::plan_id(&item.id))
                 .to_string_lossy()
                 .into_owned(),
@@ -2537,8 +2541,14 @@ impl Dispatcher {
         // written before the workflow is (§FS-005-dispatch.19).
         let carried = carried(&site.dir, &plan_id);
         let mut values = site.values.clone();
-        values.insert("dossier", for_shell(&carried.join(DOSSIER)));
-        values.insert("item", for_shell(&carried.join(ITEM)));
+        values.insert(
+            std::borrow::Cow::Borrowed("dossier"),
+            for_shell(&carried.join(DOSSIER)),
+        );
+        values.insert(
+            std::borrow::Cow::Borrowed("item"),
+            for_shell(&carried.join(ITEM)),
+        );
         // Who does the work, before anything is answered: a refusal leaves
         // nothing behind (§FS-006-project-interface.9).
         let choice = self.hand(&item.project, &entry.id, picked, None, &site.dir);
@@ -5702,7 +5712,7 @@ pub fn enumerate_roots(
             if !place.is_dir() {
                 continue;
             }
-            let mut values = BTreeMap::from([
+            let mut values = dossier::fixed([
                 ("workspace", place.to_string_lossy().into_owned()),
                 ("root", placement.root.to_string_lossy().into_owned()),
                 ("project", placement.project.clone()),
@@ -5713,9 +5723,12 @@ pub fn enumerate_roots(
             // template dispatch would have refused wrote nothing to find
             // (§FS-005-dispatch.15.1).
             if let Some(organization) = organization {
-                values.insert("org", organization.id.clone());
+                values.insert(std::borrow::Cow::Borrowed("org"), organization.id.clone());
                 if let Some(root) = &organization.root {
-                    values.insert("org_root", root.to_string_lossy().into_owned());
+                    values.insert(
+                        std::borrow::Cow::Borrowed("org_root"),
+                        root.to_string_lossy().into_owned(),
+                    );
                 }
             }
             let rendered = dossier::render(&template, &values);
@@ -5870,15 +5883,18 @@ pub fn work_root_in(
     if let Some(why) = dossier::organization_gap(&template, project_id, placed_in) {
         return Err(EphorError::Command(why));
     }
-    let mut values = BTreeMap::from([
+    let mut values = dossier::fixed([
         ("workspace", workspace.to_string_lossy().into_owned()),
         ("root", root.to_string_lossy().into_owned()),
         ("project", project_id.to_string()),
     ]);
     if let Some(placed_in) = placed_in {
-        values.insert("org", placed_in.id.clone());
+        values.insert(std::borrow::Cow::Borrowed("org"), placed_in.id.clone());
         if let Some(root) = &placed_in.root {
-            values.insert("org_root", root.to_string_lossy().into_owned());
+            values.insert(
+                std::borrow::Cow::Borrowed("org_root"),
+                root.to_string_lossy().into_owned(),
+            );
         }
     }
     Ok(crate::paths::resolve_path(&dossier::render(
@@ -6201,7 +6217,7 @@ struct Site {
     /// The item as data, for the state machine's programs
     /// (§FS-005-dispatch.8).
     metadata: Vec<(&'static str, String)>,
-    values: BTreeMap<&'static str, String>,
+    values: BTreeMap<std::borrow::Cow<'static, str>, String>,
     /// An existing project root for preflight when a branch workspace is
     /// still to be minted. The real render uses `checkout.workspace`.
     runtime_root: PathBuf,
