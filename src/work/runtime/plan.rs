@@ -1122,16 +1122,13 @@ fn unfenced(text: &str) -> impl Iterator<Item = &str> {
 
 /// A rhei id for an item: its own id, reduced to what the runtime's grammar
 /// allows for a file stem, and never empty or leading with a digit.
+///
+/// The reduction itself is [`crate::slug::readable`], which is also the
+/// readable half of `{id_slug}`; the two guards below are this grammar's and
+/// not that field's, which is why the two strings agree for most ids and
+/// deliberately differ for some (§FS-005-dispatch.2).
 pub fn plan_id(item_id: &str) -> String {
-    let mut out = String::with_capacity(item_id.len());
-    for ch in item_id.chars() {
-        if ch.is_ascii_alphanumeric() {
-            out.push(ch.to_ascii_lowercase());
-        } else if !out.ends_with('-') {
-            out.push('-');
-        }
-    }
-    let trimmed = out.trim_matches('-').to_string();
+    let trimmed = crate::slug::readable(item_id);
     match trimmed.chars().next() {
         Some(first) if first.is_ascii_alphabetic() => trimmed,
         Some(_) => format!("item-{trimmed}"),
@@ -1889,6 +1886,10 @@ states:
         assert!(plan.text().contains(DOSSIER_CLOSE));
     }
 
+    /// These four strings are on disk in every plan the runtime has ever laid,
+    /// so they are pinned as literals rather than derived: the reduction moved
+    /// to [`crate::slug::readable`] and none of them moved with it
+    /// (§FS-005-dispatch.2).
     #[test]
     fn an_items_id_becomes_a_file_the_runtime_will_accept() {
         assert_eq!(
@@ -1898,5 +1899,22 @@ states:
         assert_eq!(plan_id("forge:repo/123"), "forge-repo-123");
         assert_eq!(plan_id("42"), "item-42");
         assert_eq!(plan_id("///"), "item");
+    }
+
+    /// And this is deliberately not what `{id_slug}` renders. The two guards
+    /// above are the runtime's file-stem grammar, which refuses a stem
+    /// beginning with a digit where neither git nor a filesystem cares — so
+    /// the two strings agree for most ids and part company for some, and a
+    /// reader who found that out by accident would read it as a bug
+    /// (§FS-005-dispatch.2).
+    #[test]
+    fn a_plan_file_stem_is_not_the_name_a_branch_is_minted_from() {
+        let id = "rhei:window.1";
+        assert_eq!(plan_id(id), "rhei-window-1");
+        assert_eq!(crate::slug::id_slug(id), "rhei-window-1-d8a9c768");
+        assert!(crate::slug::id_slug(id).starts_with(&plan_id(id)));
+        // Where the grammars disagree the strings do too, and only there.
+        assert_eq!(plan_id("42"), "item-42");
+        assert_eq!(crate::slug::id_slug("42"), "42-87e38583");
     }
 }

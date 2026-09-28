@@ -2216,10 +2216,12 @@ what was pushed of it — and a recipe may ask both.
 
 **The brief** takes `{title}`, `{url}`, `{repo}`, `{number}`, `{branch}`,
 `{ticket}`, `{state}`, `{gate}`, `{workspace}`, `{root}`, `{project}`,
-`{source}`, `{kind}`, `{id}`, and `{reply}` — the file a drafted answer belongs
-in, named absolutely ([§8.12](#812-an-answer-comes-back-as-a-proposal)). An
-unknown name is left as written, so a typo is visible in the ticket instead of
-becoming a blank.
+`{source}`, `{kind}`, `{id}`, `{id_slug}` — the matter's own id as a name a
+branch and a path will take, which every matter answers
+([§8.18](#818-a-branch-for-work-about-an-item-that-has-none)) — and `{reply}`,
+the file a drafted answer belongs in, named absolutely
+([§8.12](#812-an-answer-comes-back-as-a-proposal)). An unknown name is left as
+written, so a typo is visible in the ticket instead of becoming a blank.
 
 **`brief_file`** is the other door the words may come through: the file they
 are kept in, so a standing instruction — how work is done under this
@@ -3977,7 +3979,7 @@ in the workspace the project already has and says what it needs of one with
 `requires_checkout`.
 
 **What it may say.** The same fields a brief takes (§8.2) — `{number}`,
-`{repo}`, `{kind}`, `{title}`, `{ticket}`, … — and never `{branch}`,
+`{repo}`, `{kind}`, `{title}`, `{ticket}`, `{id_slug}`, … — and never `{branch}`,
 `{workspace}` or `{reply}`, which are what it produces. A template that will
 not do is refused by name rather than rendered into a directory nobody meant,
 and the refusal says which of the four things is wrong with it: it names one of
@@ -3987,6 +3989,55 @@ so every item missing it would land on one shared branch; or what it renders is
 not a name git will take as a branch. That last one is answered here rather
 than left to the checkout — git's own refusal comes from inside the making, by
 which time the directories leading to the workspace are already there.
+
+**One of those fields serves every matter: `{id_slug}`.** Most of that
+vocabulary is the forge's. A `{number}` and a `{repo}` belong to a matter a
+forge filed, and a project's own task has neither — and every field a task does
+carry, `{project}` and `{source}` and `{kind}` and `{state}`, is the same for
+every task of the project, so a template built from those would put all of them
+on one shared branch. `{id_slug}` is the matter's own id reduced to a name git
+will take: lowercased over its ASCII alphanumerics with every other run
+collapsed to a single `-`, and an eight-digit digest of the whole id on the end.
+So a recipe over a project's own tasks (§4.3) gives each one the checkout its
+work needs:
+
+```jsonc
+{ "id": "task-work", "description": "work a task in its own checkout",
+  "when": { "sources": ["rhei"] },
+  "needs_checkout": true,
+  "branch": "task/{id_slug}" }
+```
+
+```console
+$ ephor work dispatch --project proj --dry-run
+would open Widen the retry window
+  task-work → …/proj/task/rhei-window-1-d8a9c768/panta/work/rhei-window-1.rhei.md#task-work-1
+would open Shorten the reset
+  task-work → …/proj/task/rhei-window-2-dba9cc21/panta/work/rhei-window-2.rhei.md#task-work-1
+```
+
+**The digest is on the end because rendering is the resolution.** Nothing is
+written down, so each matter's branch is decided from that matter's id and from
+nothing else — and two ids that read down to one slug would therefore land in
+one workspace, two unrelated matters in one tree. A digest that appeared only on
+a collision would be worse than none, because a second matter arriving later
+would silently change what the first already resolves to. So a task `retry-1` in
+a plan called `window` and a task `1` in a plan called `window-retry` mint
+`task/rhei-window-retry-1-17bbeb3b` and `task/rhei-window-retry-1-5ff4987f` —
+two names you must look twice at, and two trees.
+
+Because every matter has an id, a template naming `{id_slug}` is **never
+withheld** for want of the field, and what it renders is always a name git will
+take; the refusals above can still fire on the rest of the template. Which also
+means a recipe naming it serves *every* matter its selector admits, where a
+`{number}` template would have been quietly withheld — so keep `sources` and
+`kinds` as narrow as the work is. And **prefer `{number}` where the matter has
+one**: `fix/issue-95` is a name a person reads and
+`acmeforge-acme-widget-95-4ef7cc9e` is one they tolerate. `{id_slug}` is for the
+matter that has nothing else. No shipped recipe names it: `implement` keeps
+`fix/issue-{number}`, because a store yields one matter per open task in every
+plan it holds and a default here would grow a forest with the store rather than
+with the work.
 
 **The item's own branch always wins.** A pull request keeps the branch the
 forge recorded and an item the registry matched keeps the branch it matched;

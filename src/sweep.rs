@@ -395,37 +395,16 @@ fn under_review(matters: &[Item], branch: &str) -> Option<String> {
 /// A readable name is not enough on its own: `clash/here` and `clash-here` are
 /// two checkouts and read down to one slug, and the second of them would be
 /// passed over forever on the first's ticket, saying so in words about a tree
-/// somewhere else. So the branch's own [`fingerprint`] rides along — the name
-/// is for the reader and the fingerprint is what makes it the branch's.
+/// somewhere else. So the branch's own [`crate::slug::fingerprint`] rides
+/// along — the name is for the reader and the fingerprint is what makes it the
+/// branch's. That pair is the same one `{id_slug}` renders an id as, and is
+/// kept in one place rather than written twice (§FS-005-dispatch.2).
 fn ticket_stem(branch: &str) -> String {
-    let mut slug = String::with_capacity(branch.len());
-    for ch in branch.chars() {
-        if ch.is_ascii_alphanumeric() {
-            slug.push(ch.to_ascii_lowercase());
-        } else if !slug.ends_with('-') {
-            slug.push('-');
-        }
-    }
     format!(
         "{RECIPE}-{}-{}",
-        slug.trim_matches('-'),
-        fingerprint(branch)
+        crate::slug::readable(branch),
+        crate::slug::fingerprint(branch)
     )
-}
-
-/// A branch name as eight hex digits (FNV-1a, 32 bits).
-///
-/// Written out rather than taken from the standard library's hasher, whose
-/// output is explicitly not stable between releases: this one goes into an id
-/// in a file on disk, and an id that changed when the compiler did would make
-/// every sweep after a rebuild miss its own earlier ticket and write a second.
-fn fingerprint(branch: &str) -> String {
-    let mut hash: u32 = 0x811c_9dc5;
-    for byte in branch.as_bytes() {
-        hash ^= u32::from(*byte);
-        hash = hash.wrapping_mul(0x0100_0193);
-    }
-    format!("{hash:08x}")
 }
 
 /// Whether this id is one of the tickets counted off that stem, rather than
@@ -1132,6 +1111,14 @@ mod brief_file_tests {
             .expect_err("there is no matter on a sweep");
         assert!(why.contains("{title}"), "{why}");
         assert!(why.contains(RECIPE), "{why}");
+
+        // Including the one a matter is never without. That `{id_slug}` is
+        // never withheld is about a matter, and this sweep has none: there is
+        // no id to slug, rather than an empty value to render
+        // (§FS-005-dispatch.34.3).
+        let why = work::dossier::brief(&recipe("{root}/{id_slug}.md"), &values)
+            .expect_err("there is no id on a sweep either");
+        assert!(why.contains("{id_slug}"), "{why}");
 
         let why = work::dossier::brief(&recipe("{root}/DESIRES.md"), &values)
             .expect_err("nothing is there to read");

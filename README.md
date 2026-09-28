@@ -304,6 +304,14 @@ resolves inside it. A project with
 no `branch_root_template` is refused by name, and so is checkout-needing work
 about an item with no branch and no template
 ([§FS-005-dispatch.25](docs/functional-spec/FS-005-dispatch.md#25-work-about-a-matter-with-no-branch-can-mint-the-branch-it-needs)).
+**One field always renders**: `{id_slug}` is the matter's own id reduced to a
+name git will take, with a digest of the whole id on the end, so it is never
+withheld and never renders something git refuses. That is what makes a project's
+own tasks dispatchable with a checkout each — `"branch": "task/{id_slug}"` mints
+one workspace per task, where `{number}` and `{repo}` are absent and everything
+a task does carry is the same for every task of the project. Prefer `{number}`
+where the matter has one: `fix/issue-95` reads better than
+`acmeforge-acme-widget-95-4ef7cc9e`, and no shipped recipe names the new field.
 
 **A work root for one kind of work**: a recipe or an entry that hands work
 over may also add `"root"`. The selected template is entry → recipe → project
@@ -542,10 +550,12 @@ field that refused it
 ([§FS-005-dispatch.27](docs/functional-spec/FS-005-dispatch.md#27-an-offer-that-a-selector-refused-says-why)).
 The brief takes `{title}`, `{url}`, `{repo}`,
 `{number}`, `{branch}`, `{ticket}`, `{state}`, `{gate}`, `{workspace}`,
-`{root}`, `{project}`, `{source}`, `{kind}`, `{id}`, and `{reply}` — the file a
-drafted answer belongs in. A recipe may also pin the runtime's execution
-identity with `"target"` or `"model"`, and say with `"branch"` which branch its
-work belongs on for an item that has none of its own.
+`{root}`, `{project}`, `{source}`, `{kind}`, `{id}`, `{id_slug}` — the matter's
+own id as a name a branch and a path will take, which every matter answers
+([§FS-005-dispatch.2](docs/functional-spec/FS-005-dispatch.md#2-the-ticket-carries-what-ephor-knows-not-a-link-to-it))
+— and `{reply}`, the file a drafted answer belongs in. A recipe may also pin the
+runtime's execution identity with `"target"` or `"model"`, and say with
+`"branch"` which branch its work belongs on for an item that has none of its own.
 
 **An answer comes back as a proposal.** The shipped `answer` recipe asks for
 the reply as a file of its own, and nothing posts it: the run writes it, ephor

@@ -1610,7 +1610,16 @@ mod tests {
             why.contains("not a field a branch template may name"),
             "{why}"
         );
-        assert!(why.contains("{number}") && why.contains("{repo}"), "{why}");
+        // Offered whole rather than by substring: the list is derived from the
+        // one placeholder vocabulary, so a name quietly leaving it would still
+        // satisfy a check for two of its members (§FS-005-dispatch.27).
+        assert!(
+            why.ends_with(
+                "it may name: {gate}, {id}, {id_slug}, {kind}, {number}, {org}, {org_root}, \
+                 {project}, {repo}, {root}, {source}, {state}, {ticket}, {title}, {url}."
+            ),
+            "{why}"
+        );
         // And never as one of the three it decides, which have their own
         // refusal above.
         assert!(!why.contains("{workspace}"), "{why}");
@@ -1705,6 +1714,80 @@ mod tests {
 
     /// An issue: the matter a branch template is for, with no branch of its
     /// own and no ticket key in it.
+    /// A task of the project's own store: no `{number}`, no `{repo}`, no url,
+    /// and everything it does carry the same for every task of the project
+    /// (§FS-006-project-interface.7).
+    fn task() -> Item {
+        let mut item = item("Widen the retry window", json!({}));
+        item.id = "rhei:window.1".to_string();
+        item.kind = ItemKind::Task;
+        item.state = Some("pending".to_string());
+        item
+    }
+
+    /// The one field every matter answers is offered by every refusal and
+    /// withheld from nobody (§FS-005-dispatch.2, §FS-005-dispatch.25).
+    ///
+    /// A task is the matter that has nothing else: before `{id_slug}` the only
+    /// templates it could render were the same for every task of the project,
+    /// so they minted one shared branch for all of them — the collision a
+    /// branch template is refused for elsewhere.
+    #[test]
+    fn the_one_field_every_matter_answers_is_offered_and_never_withheld() {
+        let tmp = tempfile::tempdir().unwrap();
+        let placement = placement(tmp.path(), Some("{project_root}/{branch}"));
+        let task = task();
+
+        // Offered, wherever a refusal lists what a template may name instead.
+        let values = placeholder_values(&placement, &task);
+        assert!(nameable(&values).contains(&"{id_slug}".to_string()));
+
+        // Never withheld: the field is never empty, so no entry naming it
+        // fails to serve a matter, however little else that matter carries.
+        assert_eq!(missing_field("task/{id_slug}", &values), None);
+        assert_eq!(why_not_served(&placement, &task, "task/{id_slug}"), None);
+        for template in ["task/{number}", "task/{repo}", "task/{url}"] {
+            assert!(
+                why_not_served(&placement, &task, template).is_some(),
+                "{template} served a task that has no such field"
+            );
+        }
+
+        // And it renders a name git will take, into a workspace of the task's
+        // own — where `{project}` or `{source}` would have given every task of
+        // the project one shared tree.
+        let named = minted(&placement, &task, "task/{id_slug}").unwrap();
+        assert_eq!(named.branch.as_deref(), Some("task/rhei-window-1-d8a9c768"));
+        assert_eq!(
+            named.workspace,
+            tmp.path().join("task/rhei-window-1-d8a9c768")
+        );
+        let mut second = task.clone();
+        second.id = "rhei:window.2".to_string();
+        assert_ne!(
+            minted(&placement, &second, "task/{id_slug}")
+                .unwrap()
+                .branch,
+            named.branch
+        );
+        assert_eq!(
+            minted(&placement, &task, "task/{project}").unwrap().branch,
+            minted(&placement, &second, "task/{project}")
+                .unwrap()
+                .branch,
+            "the field this replaces gave every task of the project one branch"
+        );
+
+        // The rest of the template is still refused around it.
+        let why = minted(&placement, &task, "task/{id_slug}/{sprint}").unwrap_err();
+        assert!(
+            why.contains("not a field a branch template may name"),
+            "{why}"
+        );
+        let why = minted(&placement, &task, "task/{id_slug}.").unwrap_err();
+        assert!(why.contains("git will not take"), "{why}");
+    }
+
     fn issue() -> Item {
         let mut item = item("Humanize durations", json!({}));
         item.id = "github-issues:acme/widget#95".to_string();
