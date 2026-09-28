@@ -1409,6 +1409,21 @@ a project that keeps one checkout per branch
 It runs `ephor checkout`, which needs nothing configured — the project's
 `branch_root_template` says where the workspace goes, its type says which
 repositories it holds, and its `main_branch` says what a new branch grows from.
+
+**Unless the project bound a `checkout` command, and then that command is the
+maker** — wherever the checkout is asked for, not only from this row: this key,
+`ephor checkout` typed by name, a program state in a machine, and the dispatch
+that mints the workspace for work about an issue with no branch (§8.18) all
+summon it ([§FS-006-project-interface.8](functional-spec/FS-006-project-interface.md#8-the-checkout-contract)).
+A binding honoured on some of those and not the others is a seam that is not
+done, and it fails in the quietest way there is: a site that declared a sparse
+slice would get a whole tree from every path but one, with nothing to report,
+because a directory is there either way. What is verified afterwards, what it is
+told, and what a command that returns without making the workspace comes to are
+in §7.2.
+
+Everything from here to the end of this entry is what **ephor's own git** does,
+which is what answers where no command is bound.
 Each repository gets its own working tree: the branch itself where that
 repository has it, and a new branch of the same name off the main branch where
 it does not, which is what a change touching one repository of a tree looks
@@ -1464,8 +1479,9 @@ distance rather than an invented zero.
 It is also the step that runs *before* any other action on a missing workspace.
 Pick `⧉ open the diff` on a branch you have never checked out and ephor checks
 it out first, then runs what you picked in it. Configure a `checkout` command
-for the project and yours runs instead ([§7.2](#72-configured-actions)); the
-difference is only whether anyone expects to want their own.
+for the project and yours runs instead ([§7.2](#72-configured-actions)) — from
+here, from `ephor checkout`, and from the dispatch alike; the difference is only
+whether anyone expects to want their own.
 
 ### 7.2 Configured actions
 
@@ -1543,9 +1559,46 @@ neither, is refused when the file is read. Inside `agent`, `brief` and
 an entry writing neither is refused there too, naming it.
 
 **The checkout dependency.** A project may define one `checkout` command whose
-contract is to make `$EPHOR_WORKSPACE` exist — ephor verifies the directory
-afterwards rather than trusting it
-([§FS-006-project-interface.8](functional-spec/FS-006-project-interface.md#8-the-checkout-contract)). Actions marked `requires_checkout` are
+contract is to make `$EPHOR_WORKSPACE` exist — ephor verifies afterwards rather
+than trusting it
+([§FS-006-project-interface.8](functional-spec/FS-006-project-interface.md#8-the-checkout-contract)).
+
+That command is **the maker of this project's branch workspaces, on every path
+that makes one**: the `C` key and this row, `ephor checkout` typed by name, a
+program state in a machine, and the dispatch that mints a branch for work about
+an item that has none (§8.18). It is summoned only where the workspace is
+**absent** — a directory that is there is never handed back to a command written
+to create it, so asking a second time reports *already checked out* and repairs a
+missing store instead (§7.1) — and it runs in the project's **root**, which is
+what lets it reach the checkouts beside the one it is making.
+
+What ephor holds it to when it returns:
+
+- **The directory, and every repository the project declares in it** — the same
+  fold that answers whether any workspace is whole. One the command did not make
+  is named and the checkout is refused rather than completed; ephor's git does
+  **not** fill in a tree it did not make, because the command owns what a
+  workspace of this project is.
+- **A non-zero exit is the checkout not made**, and the code is said. `75` is
+  among them: everywhere else it means *parked* (§7.3), but a workspace either
+  exists or it does not.
+- **Nothing happens behind a checkout that was not made** — no work store, no
+  plan, and nothing dispatched. `ephor work dispatch` about such an item reports
+  the checkout's own refusal and writes nothing.
+- **The work store is ephor's to add** once the directory is whole, on the first
+  ask as much as the second: making the repositories is the command's contract
+  and the store is never its to make, and the dispatch cannot wait for a second
+  ask because the plan it is writing lands there (§7.1).
+- **`--from` is refused** where a command is bound, naming the input it came in
+  on: what a branch is grown from is then that command's to decide, and ephor has
+  nothing to pass it a base through. Nothing inside ephor passes one, so this is
+  reachable only by a person who typed it.
+
+A command may **wrap ephor's own checkout** — `ephor checkout … && ./after.sh` —
+and the nested one makes the workspace with git rather than summoning the command
+again; `EPHOR_CHECKOUT_MAKING` (§7.3) is what ends it.
+
+Actions marked `requires_checkout` are
 gated on it: when the workspace is missing the menu annotates them *(will check
 out first)* and running one chains checkout → action. On an item linked to no
 branch there is no workspace to make, so they show *(unavailable)* with the
@@ -1581,10 +1634,29 @@ set it themselves: a replay asks nothing.
 | `EPHOR_RAW` | the item's whole raw JSON, for `jq` |
 | `EPHOR_ANSWER` | a file to write a structured answer to, if the command has one ([§FS-006-project-interface.4](functional-spec/FS-006-project-interface.md#4-the-answer-envelope)) |
 | `EPHOR_REPOS` | the workspace's repositories, one per line, in the order the project declares — what to fold over ([§AR-004-forest.1](architecture/AR-004-forest.md#1-folds)) |
+| `EPHOR_CHECKOUT_MAKING` | set only for a project's `checkout` command: what is being made, one `project:branch` per line, outermost first ([§FS-006-project-interface.8](functional-spec/FS-006-project-interface.md#8-the-checkout-contract)) |
 
 Exit codes are read the same way wherever a command is summoned from: `0`
 done, non-zero failed, and `75` **parked** — not applicable now, ask again
 later ([§FS-006-project-interface.3](functional-spec/FS-006-project-interface.md#3-a-summons-environment-in-exit-code-and-answer-out)).
+The one exception is a project's `checkout` command, where `75` is the checkout
+not made like any other non-zero (§7.2).
+
+**A project's `checkout` command reads two of these differently**, because it is
+asked about branches nobody has cut and with no matter behind it at all
+([§FS-006-project-interface.8](functional-spec/FS-006-project-interface.md#8-the-checkout-contract)).
+`EPHOR_BRANCH` is **the branch this checkout is making** — for a minted workspace
+the rendered name nobody has cut yet (§8.18), not whatever the matter carries,
+because the matter's answer would be empty exactly where the command needs one.
+And where there is no matter — `ephor checkout --project widget --branch spike`,
+typed by a person — the matter's own names are **present and empty** rather than
+absent: a summons does not start from a cleared environment, so a name left unset
+would be inherited from whatever launched ephor and a command reading
+`$EPHOR_TITLE` would read some other matter's. Such a call runs the command
+rather than refusing; there is nothing about a matter that making a workspace
+needs. `EPHOR_CHECKOUT_MAKING` is what lets that command wrap `ephor checkout`
+without summoning itself for ever: an operation that finds its own
+`project:branch` already in the list makes the workspace with git instead.
 
 ### 7.4 One-off commands
 
@@ -3906,7 +3978,12 @@ is already on disk is worked in as it stands.
 
 **Saying it means the work needs the checkout**, and ephor makes it: the same
 operation `ephor checkout` is (§7.1), with the same directory template, the
-same trees grown from the project's main branch, and the same task store. The
+same trees grown from the project's main branch, and the same task store —
+**including the project's own `checkout` command where one is bound** (§7.2),
+which for an item with no branch is the only path there is, since there is no
+workspace to offer the checkout on until a branch is named. A workspace that
+command did not make is refused in its own terms, with nothing dispatched behind
+it. The
 workspace is made **after every refusal and before anything is written** — the
 hand chosen, the machine vetted, the inputs answered — and **never on
 `--dry-run`**. The machine vetted is the one the work root declares where there
@@ -3921,6 +3998,17 @@ $ ephor work lay fix-issue --item acmeforge:acme/widget#95 --dry-run --json
   "plan": "…/widget/fix/issue-95/panta/acmeforge-acme-widget-95-fix-issue",
   "report": "would check out fix/issue-95 at …/widget/fix/issue-95 first, …"
 }
+```
+
+Where the project bound a `checkout` command, the dispatch's own note names it as
+what would make the workspace, so a dry run does not imply ephor's git where
+somebody else's slice is what is coming:
+
+```console
+$ ephor work dispatch --item acmeforge:acme/widget#95 --dry-run
+note: fix/issue-95 is not checked out — the dispatch would make
+      …/widget/fix/issue-95 first, with widget's own checkout command
+      (`/w/site-checkout.sh`).
 ```
 
 Nothing is written to the registry and nothing is pushed: the workspace is
