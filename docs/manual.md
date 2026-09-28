@@ -1578,13 +1578,19 @@ What ephor holds it to when it returns:
   fold that answers whether any workspace is whole. One the command did not make
   is named and the checkout is refused rather than completed; ephor's git does
   **not** fill in a tree it did not make, because the command owns what a
-  workspace of this project is.
+  workspace of this project is. That holds of the directory such a refusal
+  leaves behind, on whichever path asks next: it is there without being a
+  workspace, so it is named and refused again rather than read as checked out
+  (§7.1), and removing it is what gets the site the checkout it declared.
 - **A non-zero exit is the checkout not made**, and the code is said. `75` is
   among them: everywhere else it means *parked* (§7.3), but a workspace either
   exists or it does not.
 - **Nothing happens behind a checkout that was not made** — no work store, no
   plan, and nothing dispatched. `ephor work dispatch` about such an item reports
-  the checkout's own refusal and writes nothing.
+  the checkout's own refusal and writes nothing, and so does the next one: the
+  directory the refusal left behind is not a workspace, and a dispatch that read
+  it as one would put a plan in a tree holding none of the project's
+  repositories.
 - **The work store is ephor's to add** once the directory is whole, on the first
   ask as much as the second: making the repositories is the command's contract
   and the store is never its to make, and the dispatch cannot wait for a second

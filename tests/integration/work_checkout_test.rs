@@ -549,9 +549,17 @@ fn a_dispatch_behind_a_workspace_that_was_not_made_writes_nothing() {
     let tmp = tempdir();
     let root = minting_fixture(tmp.path());
     let command = tmp.path().join("fakebin/hollow-checkout");
+    let log = tmp.path().join("hollow-calls.log");
     make_executable(
         &command,
-        "#!/usr/bin/env bash\nset -euo pipefail\nmkdir -p \"$EPHOR_WORKSPACE\"\nexit 0\n",
+        &format!(
+            "#!/usr/bin/env bash\n\
+             set -euo pipefail\n\
+             printf '%s\\n' \"$EPHOR_BRANCH\" >> {log}\n\
+             mkdir -p \"$EPHOR_WORKSPACE\"\n\
+             exit 0\n",
+            log = log.display(),
+        ),
     );
     bind(tmp.path(), &command);
 
@@ -575,6 +583,50 @@ fn a_dispatch_behind_a_workspace_that_was_not_made_writes_nothing() {
 
     let workspace = root.join(MINTED);
     assert!(!workspace.join("panta").exists(), "a store was made anyway");
+    assert!(
+        !workspace.join("src").exists(),
+        "ephor's git filled in a tree the command did not make"
+    );
+    assert!(
+        ledger(tmp.path())["entries"]
+            .get("acmeforge:acme/widget#95")
+            .is_none(),
+        "the ledger recorded work whose workspace does not exist"
+    );
+
+    // And on the attempt after that, which is the one the directory hides. A
+    // workspace is resolved from the directory being there, so the bare one the
+    // refusal left behind reads as checked out: nothing is minted, the maker is
+    // never asked, and a store, a plan and a ledger entry would land in a tree
+    // holding none of the project's repositories — the same silence, one attempt
+    // later (§FS-006-project-interface.8).
+    let again = ephor(tmp.path())
+        .args(["work", "dispatch", "--item", "acmeforge:acme/widget#95"])
+        .output()
+        .unwrap();
+    let said = String::from_utf8_lossy(&again.stderr).into_owned();
+    assert!(
+        !again.status.success(),
+        "a directory that is not a workspace read as one: {}",
+        String::from_utf8_lossy(&again.stdout)
+    );
+    assert!(
+        said.contains("the repository at its root not on disk there"),
+        "the repository the command did not make is not named: {said}"
+    );
+    assert_eq!(
+        fs::read_to_string(&log)
+            .unwrap_or_default()
+            .lines()
+            .filter(|line| !line.trim().is_empty())
+            .count(),
+        1,
+        "the command was handed back the directory its own refusal left behind"
+    );
+    assert!(
+        !workspace.join("panta").exists(),
+        "a store was made behind a checkout that was not made"
+    );
     assert!(
         !workspace.join("src").exists(),
         "ephor's git filled in a tree the command did not make"
