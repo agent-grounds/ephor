@@ -1260,8 +1260,9 @@ impl Creation {
     pub fn say(&self) -> String {
         if self.repos.is_empty() {
             return format!(
-                "nothing to check out into {} — the project says it has no repository, \
+                "nothing to check out {} into {} — the project says it has no repository, \
                  and the source checkout holds none.\n",
+                self.branch,
                 self.target.display()
             );
         }
@@ -2474,7 +2475,8 @@ mod tests {
 
     /// git, refusing in two lines, which is the shape the reader of a refusal
     /// actually gets.
-    const REFUSED: &str = "fatal: 'origin' does not appear to be a git repository\n                           fatal: Could not read from remote repository.";
+    const REFUSED: &str = "fatal: 'origin' does not appear to be a git repository\n\
+                           fatal: Could not read from remote repository.";
 
     /// What §FS-011-command-line.11.1 forbids a terminal to be handed, and
     /// §FS-011-command-line.11.2 forbids any report to call a repository.
@@ -2595,6 +2597,32 @@ mod tests {
         }
     }
 
+    /// The forest with nothing in it is still one outcome told twice: the
+    /// document heads itself with the branch, so the sentence names it too —
+    /// neither telling may know something the other does not
+    /// (§FS-011-command-line.11.1, §REQ-002-parity.3). Only a unit test
+    /// reaches here: `ephor checkout` stops at a project with no checkout on
+    /// disk before it ever builds the report.
+    #[test]
+    fn a_forest_with_no_repository_names_the_branch_in_both_tellings() {
+        let nothing = creation(vec![]);
+        let said = nothing.say();
+        let report = nothing.report();
+
+        carries_no_markup(&said);
+        assert!(
+            said.contains("fix/one"),
+            "the prose form does not name the branch the document heads itself with:\n{said}"
+        );
+        assert!(report.contains("# check out fix/one into "), "{report}");
+        for telling in [&said, &report] {
+            assert!(
+                telling.contains("/w/proj/fix/one"),
+                "a telling does not say where nothing was checked out:\n{telling}"
+            );
+        }
+    }
+
     /// The naming chain, on a forest wide enough to keep the path beside the
     /// name: the role where a declaration gives one, the handle it gave
     /// otherwise, and the path where it gave neither
@@ -2640,6 +2668,38 @@ mod tests {
         // `Repo` to carry a role (§AR-004-forest.1).
         assert_eq!(forest.absent.len(), 3);
         assert_eq!(forest.label("ce"), "ce — the community edition");
+    }
+
+    /// The one path a report never puts beside a name: a root repository is
+    /// named by its name alone even where the forest is wide enough to keep
+    /// every other path (§FS-011-command-line.11.2).
+    #[test]
+    fn a_root_repository_is_named_alone_however_wide_the_forest_is() {
+        use crate::forest::Declaration;
+        let temp = tempfile::tempdir().unwrap();
+        let forest = Forest::resolve(
+            temp.path(),
+            None,
+            &[
+                Declaration {
+                    path: ".".to_string(),
+                    id: Some("root".to_string()),
+                    role: Some("the project".to_string()),
+                    main: None,
+                },
+                Declaration {
+                    path: "sub".to_string(),
+                    id: Some("sub".to_string()),
+                    role: Some("the sub".to_string()),
+                    main: None,
+                },
+            ],
+        );
+
+        assert_eq!(
+            forest.labels,
+            vec!["the project".to_string(), "sub — the sub".to_string()]
+        );
     }
 
     /// A forest of one: the name stands alone, because there is no second

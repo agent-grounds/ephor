@@ -526,10 +526,9 @@ impl Staleness {
 /// Where the forest has more than one repository the path is kept beside the
 /// name, because the role says what a repository is and the path says where
 /// it is. [`ROOT`] is the exception on both sides of the chain: it is the one
-/// path a report may not show — a section headed by a full stop reads as a
-/// fault in the writing rather than as the repository it means — so it is
-/// never put beside a name, and where nothing named the repository at all it
-/// is answered by what that repository *is*, the checkout itself.
+/// path a report never puts beside a name, however many repositories the
+/// forest holds, and where nothing named the repository at all it is answered
+/// by what that repository *is*, the checkout itself.
 fn label_of(path: &str, named: Option<&str>, plural: bool) -> String {
     match named {
         Some(name) if plural && path != ROOT => format!("{path} — {name}"),
