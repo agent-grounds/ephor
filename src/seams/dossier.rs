@@ -206,7 +206,90 @@ mod tests {
             .iter()
             .find(|(name, _)| name == key)
             .map(|(_, value)| value.clone())
-            .unwrap()
+            .unwrap_or_else(|| {
+                let names: Vec<&str> = pairs.iter().map(|(name, _)| name.as_str()).collect();
+                panic!("no {key} in the summons; it sets {names:?}")
+            })
+    }
+
+    /// What the matter's own source said about it reaches the command by name
+    /// (§FS-006-project-interface.3): the key upper-cased in ASCII, `-` written
+    /// `_`, prefixed `EPHOR_META_`.
+    #[test]
+    fn what_the_source_said_about_the_matter_reaches_the_command_by_name() {
+        let root = Path::new("/w");
+        let pairs = of_item(
+            &item(
+                ItemKind::Task,
+                "rhei:slices.1",
+                json!({ "meta": { "context": "acme-labs", "roll-out": "second", "tier": 1 } }),
+            ),
+            root,
+            root,
+            None,
+            None,
+        );
+        assert_eq!(value(&pairs, "EPHOR_META_CONTEXT"), "acme-labs");
+        assert_eq!(value(&pairs, "EPHOR_META_ROLL_OUT"), "second");
+        // A number the store did not quote arrives in the spelling the selector
+        // and the template both use.
+        assert_eq!(value(&pairs, "EPHOR_META_TIER"), "1");
+        // And the enumeration, so a command can tell this matter's variable
+        // from one it inherited from whatever launched ephor.
+        let keys = value(&pairs, "EPHOR_META_KEYS");
+        let mut listed: Vec<&str> = keys.lines().collect();
+        listed.sort_unstable();
+        assert_eq!(listed, vec!["context", "roll-out", "tier"]);
+    }
+
+    /// Two keys that fold to one variable name set no variable at all, because a
+    /// variable that could be either key's is a fact about neither. Both keys
+    /// stay in `meta`, where a selector and a template name them unambiguously
+    /// (§FS-006-project-interface.3).
+    #[test]
+    fn two_keys_that_fold_to_one_name_set_neither() {
+        let root = Path::new("/w");
+        let pairs = of_item(
+            &item(
+                ItemKind::Task,
+                "rhei:slices.1",
+                json!({ "meta": { "roll-out": "second", "roll_out": "third", "tier": 1 } }),
+            ),
+            root,
+            root,
+            None,
+            None,
+        );
+        assert!(
+            pairs.iter().all(|(name, _)| name != "EPHOR_META_ROLL_OUT"),
+            "a colliding pair set a variable that is neither key's: {pairs:#?}"
+        );
+        // The rest of the map is unaffected, and the enumeration still names
+        // both keys: they are readable where they are unambiguous.
+        assert_eq!(value(&pairs, "EPHOR_META_TIER"), "1");
+        let keys = value(&pairs, "EPHOR_META_KEYS");
+        let mut listed: Vec<&str> = keys.lines().collect();
+        listed.sort_unstable();
+        assert_eq!(listed, vec!["roll-out", "roll_out", "tier"]);
+    }
+
+    /// A matter whose source said nothing still answers the fixed name, empty —
+    /// and so does a summons about a branch. That is what keeps an open
+    /// namespace enumerable, and it is why the two-vocabulary assertion above
+    /// can go on holding (§FS-006-project-interface.3).
+    #[test]
+    fn the_enumeration_is_always_answered_even_where_there_is_nothing_to_enumerate() {
+        let root = Path::new("/w");
+        let silent = of_item(
+            &item(ItemKind::Pr, "test:1", json!({})),
+            root,
+            root,
+            None,
+            None,
+        );
+        assert_eq!(value(&silent, "EPHOR_META_KEYS"), "");
+        let branch = of_branch("widget", root, root, None, None);
+        assert_eq!(value(&branch, "EPHOR_META_KEYS"), "");
     }
 
     #[test]

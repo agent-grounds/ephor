@@ -812,6 +812,94 @@ mod tests {
         .dossier()
     }
 
+    /// A brief, a `root` and an entry's `branch` all render from one
+    /// vocabulary, and one of its names is open rather than fixed:
+    /// `{meta.<key>}`, whatever this matter's source said about this matter
+    /// (§FS-005-dispatch.1, §FS-005-dispatch.8).
+    #[test]
+    fn the_vocabulary_carries_what_the_source_said_about_this_matter() {
+        let item = item(json!({ "meta": { "context": "acme-labs", "tier": 1 } }));
+        let checkout = checkout();
+        let subject = Subject {
+            item: &item,
+            checkout: &checkout,
+            root: Path::new("/w"),
+            organization: None,
+        };
+        let values = subject.placeholders();
+        assert_eq!(
+            values.get("meta.context").map(String::as_str),
+            Some("acme-labs")
+        );
+        // A number the store did not quote is named by its canonical spelling,
+        // the same one the selector compares (§FS-005-dispatch.31.1).
+        assert_eq!(values.get("meta.tier").map(String::as_str), Some("1"));
+        assert_eq!(
+            render("{title} — in {meta.context}, tier {meta.tier}.", &values),
+            "Retry window — in acme-labs, tier 1."
+        );
+        // One entry per carried key and no more: a key nobody reported is
+        // absent rather than empty (§AR-006-matters).
+        assert!(values.keys().all(|name| name != &"meta.owners"));
+    }
+
+    /// A `meta` name this matter has not got renders empty in prose, which is
+    /// §FS-005-dispatch.25's rule for a template naming a field a matter lacks
+    /// — never the characters it was written with, which is what the closed
+    /// vocabulary does with a name that is no field at all.
+    #[test]
+    fn a_meta_name_this_matter_has_not_got_is_empty_in_prose() {
+        let carrying = item(json!({ "meta": { "context": "acme-labs" } }));
+        let checkout = checkout();
+        let subject = Subject {
+            item: &carrying,
+            checkout: &checkout,
+            root: Path::new("/w"),
+            organization: None,
+        };
+        let values = subject.placeholders();
+        assert_eq!(render("in {meta.absent}.", &values), "in .");
+        // And a matter whose source said nothing at all answers the same way:
+        // there is nothing to render, and nothing is rendered.
+        let silent = item(json!({}));
+        let subject = Subject {
+            item: &silent,
+            checkout: &checkout,
+            root: Path::new("/w"),
+            organization: None,
+        };
+        assert_eq!(
+            render("in {meta.context}.", &subject.placeholders()),
+            "in ."
+        );
+    }
+
+    /// A `root` renders from the same vocabulary, so the work for two slices
+    /// can land in two directories (§FS-005-dispatch.1). A name that is no
+    /// field of a matter at all is still refused by name, because a path cannot
+    /// carry a gap (§FS-005-dispatch.25).
+    #[test]
+    fn a_work_root_renders_the_word_and_still_refuses_a_name_that_is_no_field() {
+        let item = item(json!({ "meta": { "context": "acme-labs" } }));
+        let checkout = checkout();
+        let subject = Subject {
+            item: &item,
+            checkout: &checkout,
+            root: Path::new("/w"),
+            organization: None,
+        };
+        assert_eq!(
+            subject
+                .work_root("{root}/slices/{meta.context}")
+                .expect("the work root renders"),
+            PathBuf::from("/w/slices/acme-labs")
+        );
+        let refused = subject
+            .work_root("{root}/{titel}")
+            .expect_err("a name that is no field of a matter is refused");
+        assert!(refused.contains("titel"), "{refused}");
+    }
+
     #[test]
     fn the_dossier_states_the_facts_the_work_opens_with() {
         let text = dossier(json!({}));
