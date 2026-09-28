@@ -684,6 +684,55 @@ the feed shows what is open
 A declared machine that cannot be read reports the store as a source that did
 not answer, exactly like a plan ephor cannot read.
 
+**What a plan says about one of its own tasks is read with it.** A store may
+already keep a block about a task in its own frontmatter — which slice of the
+project's work it belongs to, which customer or environment it is about — keyed
+by the task's own id. This is a convention a project **may already have**, never
+one it should adopt for ephor's sake: a store that says nothing has said
+nothing, and everything below simply finds no key.
+
+```markdown
+# Rhei: slices
+
+---
+metadata:
+  tasks:
+    1:
+      context: acme-labs
+      tier: 1
+---
+
+## Tasks
+
+### Task 1: Renew the staging certificate
+**State:** open
+```
+
+ephor carries it on the matter as **`meta`**, where four things can key off it
+instead of re-opening and re-parsing the file ephor has already read: a recipe's
+`when` ([§8.3](#83-recipes)), a brief and a `root` or `branch` template, the
+`EPHOR_META_*` environment of anything it summons ([§7.3](#73-the-environment)),
+and `--json`, under `raw.meta`. The documented key is the task's own id;
+`<plan>.<task>` is accepted as an alias, and the bare id wins where both are
+written.
+
+**Identifiers, not prose.** A value must be a scalar — a string, a number or a
+boolean — on one line and at most 1 KiB, under a key matching
+`[A-Za-z_][A-Za-z0-9_-]*`
+([§FS-005-dispatch.8](functional-spec/FS-005-dispatch.md#8-the-ticket-carries-the-item-as-data-not-only-as-prose)).
+A key that breaks that is **dropped and the rest of the block carried**, with
+the drop said out loud by the refresh that read it — which matter, which key,
+and which part of the bound it broke — and the store's own slot still `ok`,
+because the store answered. A task vanishing from the feed because somebody
+wrote a paragraph about it would be the worse failure.
+
+**Read-only inward.** ephor lays its own plans inside the directory it reads as
+a store, and keeps its per-task bookkeeping in this very namespace, so the names
+it writes there — `project`, `source`, `kind`, `id`, `url`, `state`, `repo`,
+`number`, `branch`, `ticket`, `workspace`, `root`, `title`, `instruction`,
+`instruction_sha256` — are taken back out on the way in and reported like any
+other drop. Nothing a store said is ever written back.
+
 Finding a store is a capability, never an obligation: it buys the *tasks* rung
 and nothing about a project without one degrades
 ([§7.5](#75-why-something-is-not-offered)).
@@ -1651,9 +1700,22 @@ set it themselves: a replay asks nothing.
 | `EPHOR_TITLE`, `EPHOR_URL`, `EPHOR_STATE` | display fields, empty when absent |
 | `EPHOR_REPO`, `EPHOR_NUMBER` | best-effort `owner/name` and number |
 | `EPHOR_RAW` | the item's whole raw JSON, for `jq` |
+| `EPHOR_META_<KEY>` | what the matter's own source said about **this matter**, one variable per key it carries — the key upper-cased in ASCII with `-` written `_`, so `context` arrives as `EPHOR_META_CONTEXT` and `roll-out` as `EPHOR_META_ROLL_OUT` ([§FS-006-project-interface.3](functional-spec/FS-006-project-interface.md#3-a-summons-environment-in-exit-code-and-answer-out)) |
+| `EPHOR_META_KEYS` | which of those names are this matter's: the carried keys, one per line, always set and empty where there are none |
 | `EPHOR_ANSWER` | a file to write a structured answer to, if the command has one ([§FS-006-project-interface.4](functional-spec/FS-006-project-interface.md#4-the-answer-envelope)) |
 | `EPHOR_REPOS` | the workspace's repositories, one per line, in the order the project declares — what to fold over ([§AR-004-forest.1](architecture/AR-004-forest.md#1-folds)) |
 | `EPHOR_CHECKOUT_MAKING` | set only for a project's `checkout` command: what is being made, one `project:branch` per line, outermost first ([§FS-006-project-interface.8](functional-spec/FS-006-project-interface.md#8-the-checkout-contract)) |
+
+**Read `EPHOR_META_KEYS` before any `EPHOR_META_*`.** A summons does not start
+from a cleared environment, so every fixed name a matter can answer is also set
+— empty — where there is no matter to answer it. An open namespace cannot be
+emptied that way: ephor cannot blank an `EPHOR_META_CONTEXT` it has never heard
+of, and a script reading one would be reading whatever launched ephor. The
+contract is that an `EPHOR_META_*` variable is this matter's **only if its key
+is listed in `EPHOR_META_KEYS`**. Two keys that fold to one variable name — a
+`roll-out` and a `roll_out` in the same block — set no variable at all, and
+both stay readable under `meta` where a selector and a template name them
+unambiguously.
 
 Exit codes are read the same way wherever a command is summoned from: `0`
 done, non-zero failed, and `75` **parked** — not applicable now, ask again
@@ -2152,6 +2214,7 @@ Finished work never matches.
 | `sources` | provider names |
 | `assignees` | logins the matter must be held by; `!login` one it must not |
 | `labels` | labels the matter must carry; `!label` one it must not |
+| `meta` | a map: what the matter's own source said about **this matter**, every key of which must hold |
 | `behind` | `true` — the branch trails the project's `main_branch` · `false` — level with it |
 | `behind_upstream` | `true` — the branch trails its own **published copy** · `false` — level with it |
 
@@ -2169,6 +2232,27 @@ behind `!` is one it must not carry at all.
 ```
 
 *labelled `enhancement`, not labelled `GenAI`, and held by `kimeta`.*
+
+**`meta` is how a store's own division of its work is asked about**
+([§FS-005-dispatch.31.1](functional-spec/FS-005-dispatch.md#311-and-it-can-ask-what-the-matters-own-source-said-about-it)).
+A project whose work divides into slices — customers, environments, subsystems
+— may already be saying so in its own files ([§4.2.5](#425-the-projects-own-tasks)),
+and this is how a sweep tells one slice from another. It is written as a map
+rather than a list, because each key is a different question:
+
+```json
+{ "when": { "kinds": ["task"], "meta": { "context": "acme-labs", "tier": "1" } } }
+```
+
+*the acme-labs context, at tier 1.* **Every key must hold** — an `and`, where
+`assignees` and `labels` are an any-of — and each is compared **as a string**,
+so `"tier": "1"` matches a `tier` the store wrote as a bare `1`. A selector
+value that is not a string is refused where the recipe is read. **Silence
+refuses**, as it does for `assignees` and `labels`: a matter whose source
+reported nothing at all, and one reporting a map without the key asked for, are
+both passed over — so a `meta` selector never matches a pull request or an
+issue, and `ephor work offers --item <id>` says so by name. There is no `!`
+form.
 
 Every entry names something: `!` on its own is no filter at all, so it is
 refused rather than quietly matching everything. Write no filter by leaving the
@@ -2222,6 +2306,18 @@ branch and a path will take, which every matter answers
 the file a drafted answer belongs in, named absolutely
 ([§8.12](#812-an-answer-comes-back-as-a-proposal)). An unknown name is left as
 written, so a typo is visible in the ticket instead of becoming a blank.
+
+One name is **open** rather than fixed: **`{meta.<key>}`**, whatever this
+matter's source said about this matter ([§4.2.5](#425-the-projects-own-tasks)),
+with `{meta}` carrying the keys it has, one per line. The same vocabulary
+renders a `root` and an entry's `branch`, and there the rule is the one those
+already follow for a field a matter has not got: in prose a `{meta.<key>}` this
+matter has not got is **empty**, and in a `root` or a `branch` the entry is
+**withheld** — another matter can carry the key and render the same template,
+so it does not serve this one rather than being an error
+([§FS-005-dispatch.25](functional-spec/FS-005-dispatch.md#25-work-about-a-matter-with-no-branch-can-mint-the-branch-it-needs)).
+That is different from a name that is no field of a matter at all, which is
+still left standing in prose and refused by name in a path.
 
 **`brief_file`** is the other door the words may come through: the file they
 are kept in, so a standing instruction — how work is done under this
