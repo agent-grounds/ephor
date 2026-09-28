@@ -428,6 +428,10 @@ ephor doctor [--project P] [--skip-self|--self-only] [--json]
   from — `--from` says that instead, and takes a branch name on the project's
   remote, `main` and not `origin/main`, because the remote is ephor's to supply
   ([§FS-004-quick-actions.7.4](functional-spec/FS-004-quick-actions.md#74-what-a-branch-is-grown-from-is-a-branch-on-the-projects-remote)).
+  What it made is one outcome told twice: your terminal is handed prose, one
+  line per repository named the way the registry names it, while `--report
+  <path>` and the `report` field of `--json` carry the same account as markdown
+  ([§FS-011-command-line.11](functional-spec/FS-011-command-line.md#11-a-report-reaches-a-terminal-as-prose-and-a-file-as-markdown)).
   Where it goes is settled before anything is made — git takes the name, its
   path stays in the area `branch_root_template` puts branch workspaces in, and it
   is neither the work root nor inside it, or exit `2` with nothing on disk. A

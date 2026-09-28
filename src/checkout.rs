@@ -200,7 +200,9 @@ impl Made {
                 source.display()
             ));
         }
-        (!outcome.refused().is_empty()).then(|| outcome.report())
+        // The prose form: this travels to a terminal, folded into a
+        // dispatch's own note beside the item (§FS-011-command-line.11.1).
+        (!outcome.refused().is_empty()).then(|| outcome.say())
     }
 }
 
@@ -761,7 +763,9 @@ pub fn checkout(args: &CheckoutArgs) -> Result<ExitCode> {
             serde_json::to_string_pretty(&view).unwrap_or_else(|_| "null".to_string())
         );
     } else {
-        print!("{}", outcome.report());
+        // A terminal renders none of the document `--report` and `--json`
+        // carry, so it is handed the prose (§FS-011-command-line.11.1).
+        print!("{}", outcome.say());
     }
     if let Some(path) = report {
         write_report(&path, &outcome.report())?;

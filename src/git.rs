@@ -1042,11 +1042,82 @@ impl Created {
 pub struct RepoCreated {
     /// The repository's path relative to the checkout (`.` for the root).
     pub repo: String,
+    /// What a report calls it for a person — its role, the handle its
+    /// declaration gave it, or its path (§FS-011-command-line.11.2). Beside
+    /// `repo` and not instead of it: the machine form goes on carrying the
+    /// path, because that is what a program opens a directory with.
+    pub name: String,
     /// The remote the branch was looked for on, and the base grown from
     /// (§AR-004-forest.2).
     pub remote: String,
     pub created: Created,
 }
+
+/// What became of one repository, in the words both renderings of a report
+/// share (§FS-011-command-line.11.1): one sentence, and — where git itself
+/// spoke — its own message, which a frame quotes rather than rewrites.
+///
+/// Written once so that the markdown form and the prose form differ in their
+/// frame and in nothing else, and so that a sixth [`Created`] arm has one
+/// place to be said rather than two, and fails to compile until it is.
+pub struct Came {
+    pub sentence: String,
+    pub verbatim: Option<String>,
+}
+
+impl RepoCreated {
+    /// What this repository came to, said once for both readers
+    /// (§FS-011-command-line.11.1).
+    pub fn came_to(&self, branch: &str) -> Came {
+        let plain = |sentence: String| Came {
+            sentence,
+            verbatim: None,
+        };
+        match &self.created {
+            Created::Tracking => plain(format!(
+                "A working tree on `{branch}`, tracking the branch the forge has."
+            )),
+            Created::Branched(base) => plain(format!(
+                "The repository has no `{branch}`, so it was started from `{}/{base}`.",
+                self.remote
+            )),
+            Created::Unpublished { tracks } => {
+                let mut sentence = format!(
+                    "A working tree on `{branch}`, which this repository already had; `{}` has \
+                     no branch of that name, so nothing is published.",
+                    self.remote
+                );
+                if let Some(tracks) = tracks {
+                    sentence.push_str(&format!(
+                        " Its tracking configuration still names `{tracks}`"
+                    ));
+                    if *tracks == format!("{}/{branch}", self.remote) {
+                        sentence.push_str(&format!(", which `{}` does not have.", self.remote));
+                    } else {
+                        sentence.push('.');
+                    }
+                }
+                plain(sentence)
+            }
+            Created::Present => {
+                plain("A working tree was already here; nothing was touched.".into())
+            }
+            // git's own words are the answer here, so they are carried whole
+            // and framed by whichever rendering is asking.
+            Created::Refused(message) => Came {
+                sentence: "git refused:".to_string(),
+                verbatim: Some(message.clone()),
+            },
+        }
+    }
+}
+
+/// How far a repository's own line sits in from the headline of a prose
+/// report, and how far git's words sit in from that line
+/// (§FS-011-command-line.11.1). An indent rather than a fence: it is the one
+/// way to show a quotation to a reader whose terminal renders nothing.
+const SAYS_INDENT: &str = "  ";
+const VERBATIM_INDENT: &str = "      ";
 
 /// One workspace being made: every repository that belongs under it, in order.
 #[derive(Debug, Clone)]
@@ -1145,7 +1216,9 @@ impl Creation {
         parts.join(", ")
     }
 
-    /// The whole outcome as markdown, for the same two readers the rebase has.
+    /// The whole outcome as markdown: what `--report <path>` writes and what
+    /// the `report` field of a reading carries (§FS-011-command-line.11.1).
+    /// Not what a terminal is handed — [`Self::say`] is.
     pub fn report(&self) -> String {
         let mut out = format!(
             "# check out {} into {}\n\n",
@@ -1160,39 +1233,71 @@ impl Creation {
             return out;
         }
         for repo in &self.repos {
-            out.push_str(&format!("## {}\n\n", repo.repo));
-            match &repo.created {
-                Created::Tracking => out.push_str(&format!(
-                    "A working tree on `{}`, tracking the branch the forge has.\n\n",
-                    self.branch
-                )),
-                Created::Branched(base) => out.push_str(&format!(
-                    "The repository has no `{}`, so it was started from `{}/{base}`.\n\n",
-                    self.branch, repo.remote
-                )),
-                Created::Unpublished { tracks } => {
-                    out.push_str(&format!(
-                        "A working tree on `{}`, which this repository already had; `{}` has \
-                         no branch of that name, so nothing is published.",
-                        self.branch, repo.remote
-                    ));
-                    if let Some(tracks) = tracks {
-                        out.push_str(&format!(
-                            " Its tracking configuration still names `{tracks}`"
-                        ));
-                        if *tracks == format!("{}/{}", repo.remote, self.branch) {
-                            out.push_str(&format!(", which `{}` does not have.", repo.remote));
-                        } else {
-                            out.push('.');
-                        }
+            // The name, not the path: a section headed `## .` is wrong for
+            // every reader of this document (§FS-011-command-line.11.2).
+            out.push_str(&format!("## {}\n\n", repo.name));
+            let came = repo.came_to(&self.branch);
+            out.push_str(&came.sentence);
+            match came.verbatim {
+                Some(message) => out.push_str(&format!("\n\n```\n{message}\n```\n\n")),
+                None => out.push_str("\n\n"),
+            }
+        }
+        out
+    }
+
+    /// The whole outcome as prose, for a reader whose terminal renders no
+    /// markup — the person watching the command, and the dispatch that could
+    /// not make the workspace a recipe named and says so in a note beside the
+    /// item (§FS-011-command-line.11.1, §FS-005-dispatch.25).
+    ///
+    /// The same outcome [`Self::report`] tells, sentence for sentence: the two
+    /// differ in their frame — a heading and a fence there, a name and an
+    /// indent here — and in nothing else (§REQ-002-parity.3). Per repository
+    /// and never collapsed, because a line that cannot say which repository it
+    /// came from sends the reader to look at all of them
+    /// (§AR-004-forest.1).
+    pub fn say(&self) -> String {
+        if self.repos.is_empty() {
+            return format!(
+                "nothing to check out into {} — the project says it has no repository, \
+                 and the source checkout holds none.\n",
+                self.target.display()
+            );
+        }
+        let refused = self.refused().len();
+        let all = self.repos.len();
+        let repositories = if all == 1 {
+            "repository"
+        } else {
+            "repositories"
+        };
+        let mut out = if refused > 0 {
+            format!(
+                "could not check out {} into {} — {refused} of {all} {repositories} refused.\n",
+                self.branch,
+                self.target.display()
+            )
+        } else {
+            format!(
+                "checked out {} into {} — {all} {repositories}.\n",
+                self.branch,
+                self.target.display()
+            )
+        };
+        for repo in &self.repos {
+            let came = repo.came_to(&self.branch);
+            out.push_str(&format!("{SAYS_INDENT}{}: {}\n", repo.name, came.sentence));
+            // git's words, kept under the line they belong to. Indented
+            // rather than fenced, so `fatal:` never reads as ephor's own
+            // (§FS-011-command-line.11.1).
+            if let Some(message) = came.verbatim {
+                for line in message.lines() {
+                    if line.trim().is_empty() {
+                        out.push('\n');
+                    } else {
+                        out.push_str(&format!("{VERBATIM_INDENT}{line}\n"));
                     }
-                    out.push_str("\n\n");
-                }
-                Created::Present => {
-                    out.push_str("A working tree was already here; nothing was touched.\n\n")
-                }
-                Created::Refused(message) => {
-                    out.push_str(&format!("git refused:\n\n```\n{message}\n```\n\n"))
                 }
             }
         }
@@ -1220,6 +1325,9 @@ pub fn create(source: &Path, target: &Path, forest: &Forest, branch: &str, base:
             let remote = forest.remote_of(name).to_string();
             RepoCreated {
                 repo: name.clone(),
+                // Asked of the forest, which is where a declaration was read
+                // (§FS-011-command-line.11.2).
+                name: forest.label(name).to_string(),
                 created: create_one(
                     &under(source, name),
                     &under(target, name),
@@ -2326,6 +2434,7 @@ mod tests {
                 branch: "you/retry".to_string(),
                 repos: vec![RepoCreated {
                     repo: "app".to_string(),
+                    name: "the application".to_string(),
                     remote: ORIGIN.to_string(),
                     created,
                 }],
@@ -2342,5 +2451,262 @@ mod tests {
             assert_eq!(row.get("tracks").is_some(), name == "unpublished", "{row}");
             assert_eq!(row.get("says").is_some(), name == "refused", "{row}");
         }
+    }
+
+    /// A creation said by hand, so what follows is about the two renderings
+    /// rather than about what git did on the day.
+    fn came(repo: &str, name: &str, created: Created) -> RepoCreated {
+        RepoCreated {
+            repo: repo.to_string(),
+            name: name.to_string(),
+            remote: ORIGIN.to_string(),
+            created,
+        }
+    }
+
+    fn creation(repos: Vec<RepoCreated>) -> Creation {
+        Creation {
+            target: PathBuf::from("/w/proj/fix/one"),
+            branch: "fix/one".to_string(),
+            repos,
+        }
+    }
+
+    /// git, refusing in two lines, which is the shape the reader of a refusal
+    /// actually gets.
+    const REFUSED: &str = "fatal: 'origin' does not appear to be a git repository\n                           fatal: Could not read from remote repository.";
+
+    /// What §FS-011-command-line.11.1 forbids a terminal to be handed, and
+    /// §FS-011-command-line.11.2 forbids any report to call a repository.
+    fn carries_no_markup(said: &str) {
+        for line in said.lines() {
+            assert!(
+                !line.trim_end().starts_with('#'),
+                "a heading reached the terminal: {line:?}\n{said}"
+            );
+            assert!(
+                !line.trim_start().starts_with("```"),
+                "a fence reached the terminal: {line:?}\n{said}"
+            );
+            let bare = line.trim();
+            assert!(
+                bare != "." && !bare.starts_with(". ") && !bare.starts_with(".:"),
+                "a repository was named by its `.` path: {line:?}\n{said}"
+            );
+        }
+    }
+
+    /// The refusal a person reads: ephor's own sentence, git's own words under
+    /// it, and nothing a terminal renders as syntax
+    /// (§FS-011-command-line.11.1).
+    #[test]
+    fn a_terminal_is_handed_a_refusal_with_no_markup_in_it() {
+        let said = creation(vec![came(
+            ".",
+            "the project",
+            Created::Refused(REFUSED.to_string()),
+        )])
+        .say();
+
+        carries_no_markup(&said);
+        assert!(
+            said.contains("the project: git refused:"),
+            "the refused repository is not named for its reader:\n{said}"
+        );
+        let quoted: Vec<&str> = said
+            .lines()
+            .filter(|line| line.contains("fatal:"))
+            .collect();
+        assert_eq!(
+            quoted.len(),
+            2,
+            "git's own message was not kept whole:\n{said}"
+        );
+        for line in quoted {
+            assert!(
+                line.starts_with(' '),
+                "git's words are not indented under the line they belong to: {line:?}\n{said}"
+            );
+        }
+    }
+
+    /// Every outcome, not only the refused one: a workspace that was made
+    /// reads as prose too, and nothing is collapsed — one line per repository
+    /// (§AR-004-forest.1).
+    #[test]
+    fn every_repository_of_a_made_workspace_gets_its_own_plain_line() {
+        let made = creation(vec![
+            came("ce", "ce — the community edition", Created::Tracking),
+            came(
+                "ee",
+                "ee — the enterprise edition",
+                Created::Branched("master".to_string()),
+            ),
+        ]);
+        let said = made.say();
+
+        carries_no_markup(&said);
+        for name in ["the community edition", "the enterprise edition"] {
+            assert!(said.contains(name), "`{name}` is never named:\n{said}");
+        }
+        assert_eq!(
+            said.lines().filter(|line| line.starts_with("  ")).count(),
+            2,
+            "a repository lost its own line:\n{said}"
+        );
+    }
+
+    /// The other half of the rule: what `--report` writes and what the
+    /// `report` field carries is the document it always was
+    /// (§FS-011-command-line.11.1) — with the heading named rather than
+    /// pathed (§FS-011-command-line.11.2).
+    #[test]
+    fn the_markdown_form_of_the_same_outcome_stays_markdown() {
+        let made = creation(vec![came(
+            ".",
+            "the project",
+            Created::Refused(REFUSED.to_string()),
+        )]);
+        let report = made.report();
+
+        assert!(report.contains("# check out "), "{report}");
+        assert!(report.contains("## the project"), "{report}");
+        assert!(
+            report.contains("```"),
+            "the fence around git's words is gone:\n{report}"
+        );
+        assert!(
+            !report.contains("## ."),
+            "the heading is still a path:\n{report}"
+        );
+
+        // One outcome told twice: neither telling may know something the other
+        // does not (§REQ-002-parity.3).
+        let said = made.say();
+        for repo in &made.repos {
+            let came = repo.came_to(&made.branch);
+            assert!(report.contains(&came.sentence), "{report}");
+            assert!(said.contains(&came.sentence), "{said}");
+            let message = came.verbatim.expect("git spoke here");
+            for line in message.lines() {
+                assert!(report.contains(line), "{report}");
+                assert!(said.contains(line), "{said}");
+            }
+        }
+    }
+
+    /// The naming chain, on a forest wide enough to keep the path beside the
+    /// name: the role where a declaration gives one, the handle it gave
+    /// otherwise, and the path where it gave neither
+    /// (§FS-011-command-line.11.2).
+    #[test]
+    fn a_report_names_a_repository_by_its_role_then_its_handle_then_its_path() {
+        use crate::forest::Declaration;
+        let temp = tempfile::tempdir().unwrap();
+        let forest = Forest::resolve(
+            temp.path(),
+            None,
+            &[
+                Declaration {
+                    path: "ce".to_string(),
+                    id: Some("community".to_string()),
+                    role: Some("the community edition".to_string()),
+                    main: None,
+                },
+                Declaration {
+                    path: "ee".to_string(),
+                    id: Some("enterprise".to_string()),
+                    role: None,
+                    main: None,
+                },
+                Declaration {
+                    path: "sdk".to_string(),
+                    id: None,
+                    role: None,
+                    main: None,
+                },
+            ],
+        );
+
+        assert_eq!(
+            forest.labels,
+            vec![
+                "ce — the community edition".to_string(),
+                "ee — enterprise".to_string(),
+                "sdk".to_string(),
+            ]
+        );
+        // Declared and not on disk is still named: an absent repository has no
+        // `Repo` to carry a role (§AR-004-forest.1).
+        assert_eq!(forest.absent.len(), 3);
+        assert_eq!(forest.label("ce"), "ce — the community edition");
+    }
+
+    /// A forest of one: the name stands alone, because there is no second
+    /// repository for a path to tell it apart from. And where nothing declared
+    /// the forest at all, the root repository is named what it is
+    /// (§FS-011-command-line.11.2).
+    #[test]
+    fn one_repository_is_named_alone_and_an_undeclared_root_is_the_checkout_itself() {
+        use crate::forest::Declaration;
+        let temp = tempfile::tempdir().unwrap();
+        let checkout = checkout_with_origin(temp.path(), "app");
+
+        let declared = Forest::resolve(
+            &checkout,
+            None,
+            &[Declaration {
+                path: ".".to_string(),
+                id: Some("app".to_string()),
+                role: Some("the project".to_string()),
+                main: None,
+            }],
+        );
+        assert_eq!(declared.labels, vec!["the project".to_string()]);
+
+        let probed = Forest::resolve(&checkout, None, &[]);
+        assert_eq!(probed.layout, vec![".".to_string()]);
+        assert_eq!(probed.labels, vec!["the checkout itself".to_string()]);
+    }
+
+    /// The chain reaches the prose: a workspace actually made out of a
+    /// declared forest says the name, while the row a program reads goes on
+    /// carrying the path (§FS-011-command-line.11.2).
+    #[test]
+    fn the_name_a_declaration_gave_is_what_the_prose_form_says() {
+        use crate::forest::Declaration;
+        let temp = tempfile::tempdir().unwrap();
+        let checkout = checkout_with_origin(temp.path(), "app");
+        run_in(&checkout, &["checkout", "-q", "master"]);
+        run_in(&checkout, &["branch", "-q", "-D", "feature"]);
+        let forest = Forest::resolve(
+            &checkout,
+            None,
+            &[Declaration {
+                path: ".".to_string(),
+                id: Some("app".to_string()),
+                role: Some("the project".to_string()),
+                main: None,
+            }],
+        );
+
+        let target = temp.path().join("ws").join("feature");
+        let made = super::create(&checkout, &target, &forest, "feature", "master");
+
+        let said = made.say();
+        carries_no_markup(&said);
+        assert!(
+            said.contains("the project:"),
+            "the repository is not named for its reader:\n{said}"
+        );
+        assert_eq!(
+            made.repos[0].repo, ".",
+            "the machine form stopped carrying the path a program opens"
+        );
+        assert!(
+            made.report().contains("## the project"),
+            "{}",
+            made.report()
+        );
     }
 }
