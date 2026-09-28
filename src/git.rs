@@ -2611,7 +2611,7 @@ mod tests {
 
         carries_no_markup(&said);
         assert!(
-            said.contains("fix/one"),
+            said.starts_with("nothing to check out fix/one into "),
             "the prose form does not name the branch the document heads itself with:\n{said}"
         );
         assert!(report.contains("# check out fix/one into "), "{report}");
