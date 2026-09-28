@@ -136,6 +136,12 @@ fn refresh_projects(
         for failure in &outcome.failures {
             eprintln!("error: {project}: {}", failure.describe());
         }
+        // A source that answered but could not be carried whole is not an
+        // error and is not silent either: which matter, which key, and enough
+        // of the reason to go and fix the plan (§FS-005-dispatch.8).
+        for note in &outcome.notes {
+            eprintln!("note: {project}: {note}");
+        }
         if outcome.total_failure {
             total_failures += 1;
         } else if !outcome.failures.is_empty() {
@@ -150,6 +156,9 @@ fn refresh_projects(
                 .iter()
                 .map(|failure| failure.describe())
                 .collect::<Vec<_>>(),
+            // What a human surface says, `--json` says too
+            // (§REQ-002-parity.3).
+            "notes": outcome.notes,
         }));
         if !quiet {
             println!("{project}: {} items", outcome.item_count);

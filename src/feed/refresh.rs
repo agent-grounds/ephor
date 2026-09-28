@@ -45,6 +45,12 @@ impl ProviderFailure {
 pub struct RefreshOutcome {
     pub item_count: usize,
     pub failures: Vec<ProviderFailure>,
+    /// What a source answered but could not be carried whole: a key a plan
+    /// wrote about one of its tasks that the bound refused
+    /// (§FS-005-dispatch.8). Not a failure — the source answered, and its slot
+    /// says so — but not silent either, because a drop nobody is told about is
+    /// how a selector stops matching for no reason a reader can see.
+    pub notes: Vec<String>,
     /// True when every configured provider failed.
     pub total_failure: bool,
 }
@@ -194,6 +200,8 @@ pub fn refresh_project(
 
     let mut results = results.into_inner().unwrap();
 
+    let mut notes: Vec<String> = Vec::new();
+
     // Checkout sources read the forest itself, where there is one on disk
     // (§AR-008-pipeline.1). A task store is a project-native thing that
     // exists without ephor, so finding one is a capability rather than an
@@ -209,14 +217,20 @@ pub fn refresh_project(
             .collect();
         for store in stores {
             let name = store.kind.name().to_string();
-            match crate::seams::tasks::read(&store, project_id) {
+            match crate::seams::tasks::read_reporting(&store, project_id) {
                 // A store that answered lands its matters, empty answer
                 // included: a store with no open tasks has said so, and its
                 // slot saying so is what tells last refresh's tasks to go.
-                Ok(items) => {
+                Ok((items, said)) => {
                     let slot = results.entry(name).or_insert((true, None, Vec::new()));
                     slot.0 = true;
                     slot.2.extend(items);
+                    // Reported once, where this source's own answer for this
+                    // read is reported (§FS-005-dispatch.8).
+                    notes.extend(
+                        said.into_iter()
+                            .map(|said| format!("{}: {said}", store.kind.name())),
+                    );
                 }
                 // A store ephor could not read is reported like any other
                 // source that did not answer, rather than read as a store with
@@ -300,6 +314,7 @@ pub fn refresh_project(
     Ok(RefreshOutcome {
         item_count,
         failures,
+        notes,
         total_failure,
     })
 }
@@ -583,6 +598,7 @@ pub fn refresh_shared(registry_doc: &Value, config: &StatusConfig) -> Result<Ref
         return Ok(RefreshOutcome {
             item_count: 0,
             failures: Vec::new(),
+            notes: Vec::new(),
             total_failure: false,
         });
     }
@@ -747,6 +763,8 @@ pub fn refresh_shared(registry_doc: &Value, config: &StatusConfig) -> Result<Ref
     Ok(RefreshOutcome {
         item_count,
         failures,
+        // Shared sources are forge readers; no store answers here.
+        notes: Vec::new(),
         total_failure: ok_count == 0,
     })
 }

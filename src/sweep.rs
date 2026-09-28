@@ -548,9 +548,12 @@ fn became_of(row: &Swept, rebase: &git::Rebase) -> String {
 /// (§FS-005-dispatch.6.1). Every other name a brief knows is the item's, and
 /// there is no item here — so `brief_file` refuses on one by name rather than
 /// writing a path with a segment missing.
-fn checkout_values(placement: &Placement, row: &Swept) -> BTreeMap<&'static str, String> {
+fn checkout_values(
+    placement: &Placement,
+    row: &Swept,
+) -> BTreeMap<std::borrow::Cow<'static, str>, String> {
     let organization = placement.organization.as_ref();
-    BTreeMap::from([
+    work::dossier::fixed([
         ("project", row.project.clone()),
         ("branch", row.branch.clone()),
         ("workspace", row.checkout.to_string_lossy().into_owned()),

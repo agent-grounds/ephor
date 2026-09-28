@@ -759,6 +759,11 @@
               "failures": {
                 "type": "array",
                 "items": { "$ref": "#/$defs/failure_note" }
+              },
+              "notes": {
+                "type": "array",
+                "items": { "type": "string" },
+                "description": "What a source answered but could not be carried whole — a key a plan wrote about one of its tasks that the bound refused (FS-005-dispatch.8). Not a failure: the source answered and its slot says so. Said here because a drop nobody is told about is how a selector stops matching for no reason a reader can see."
               }
             }
           }

@@ -7,6 +7,7 @@
 //! and is on disk. So it goes into the plan, and the work starts where a
 //! person would have started.
 
+use std::borrow::Cow;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
@@ -45,12 +46,80 @@ pub struct Subject<'a> {
 /// refused where prose would have carried the gap.
 pub const ORGANIZATION_PLACEHOLDERS: [&str; 2] = ["org", "org_root"];
 
+/// The identifiers a ticket records about the matter (§FS-005-dispatch.8).
+/// Named as an array rather than written into [`Subject::metadata`] because
+/// the task reader subtracts exactly this list on the way in — the runtime
+/// writes these names into the same namespace a store may be using
+/// ([`written_into_a_ticket`]) — and a second copy of it is a copy that falls
+/// behind.
+pub const SUBJECT_METADATA: [&str; 13] = [
+    "project",
+    "source",
+    "kind",
+    "id",
+    "url",
+    "state",
+    "repo",
+    "number",
+    "branch",
+    "ticket",
+    "workspace",
+    "root",
+    "title",
+];
+
+/// What a ticket records about the ask rather than about the matter
+/// (§FS-005-dispatch.34.2), for the same reason and subtracted the same way.
+pub const INSTRUCTION_METADATA: [&str; 2] = ["instruction", "instruction_sha256"];
+
+/// Whether ephor writes this name into a ticket's own metadata, and so into
+/// the namespace a store may be keeping its own words in (§FS-005-dispatch.8).
+/// Derived from the two lists above, so a name added to either is subtracted
+/// without a second edit anywhere.
+pub fn written_into_a_ticket(key: &str) -> bool {
+    SUBJECT_METADATA
+        .iter()
+        .chain(INSTRUCTION_METADATA.iter())
+        .any(|written| *written == key)
+}
+
+/// The open name in the vocabulary, spelled as a template takes it
+/// (§FS-005-dispatch.1): `{meta.<key>}`, whatever this matter's source said
+/// about this matter.
+pub const META_PREFIX: &str = "meta.";
+
+/// The name that marks a vocabulary as one matter's, and carries the keys its
+/// source reported, one per line — the enumeration `{meta.<key>}` is open
+/// over, and the same one `EPHOR_META_KEYS` carries
+/// (§FS-006-project-interface.3).
+///
+/// A vocabulary without it is not a matter's at all — the fixed place a
+/// project's branches land in, rendered from the registry alone — and there a
+/// `{meta.<key>}` is a name only a matter could answer, left standing so the
+/// caller passes the template over rather than writing a path with a segment
+/// missing (§FS-005-dispatch.15.1).
+pub const META: &str = "meta";
+
+/// Whether a template name is the open one, which this matter may or may not
+/// answer (§FS-005-dispatch.25). Such a name is a field of a matter rather
+/// than an unknown name, so it is empty in prose and withholds an entry
+/// instead of refusing it.
+pub fn is_meta_name(name: &str) -> bool {
+    name.strip_prefix(META_PREFIX)
+        .is_some_and(|key| !key.is_empty())
+}
+
 impl Subject<'_> {
-    /// The fields a brief may name as `{placeholder}`.
-    pub fn placeholders(&self) -> BTreeMap<&'static str, String> {
+    /// The fields a brief may name as `{placeholder}`. All but one are fixed:
+    /// `{meta.<key>}` is open over whatever this matter's source said about
+    /// this matter (§FS-005-dispatch.1, §FS-005-dispatch.8), one entry per
+    /// carried key, and a key nobody reported is absent rather than empty
+    /// (§AR-006-matters).
+    pub fn placeholders(&self) -> BTreeMap<Cow<'static, str>, String> {
         let item = self.item;
         let gate = Gate::of(item);
-        BTreeMap::from([
+        let said = item.meta().unwrap_or_default();
+        let mut values: BTreeMap<Cow<'static, str>, String> = [
             ("title", item.title.clone()),
             ("project", item.project.clone()),
             ("source", item.source.clone()),
@@ -87,7 +156,27 @@ impl Subject<'_> {
                     .map(|root| root.to_string_lossy().into_owned())
                     .unwrap_or_default(),
             ),
-        ])
+        ]
+        .map(|(name, value)| (Cow::Borrowed(name), value))
+        .into();
+        // The one open name, and the fixed one that says what it is open over:
+        // this is a matter's vocabulary, and these are the keys it answers
+        // (§FS-005-dispatch.1, §FS-006-project-interface.3).
+        values.insert(
+            Cow::Borrowed(META),
+            said.keys().cloned().collect::<Vec<_>>().join("\n"),
+        );
+        values.extend(
+            said.into_iter()
+                .map(|(key, value)| (Cow::Owned(format!("{META_PREFIX}{key}")), value)),
+        );
+        values
+    }
+
+    /// Why a `root` template does not serve this matter
+    /// (§FS-005-dispatch.25), against this matter's own vocabulary.
+    pub fn root_not_served(&self, template: &str) -> Option<String> {
+        root_not_served(template, &self.placeholders())
     }
 
     /// Where a work-root template puts this item's work
@@ -99,6 +188,14 @@ impl Subject<'_> {
     pub fn work_root(&self, template: &str) -> std::result::Result<std::path::PathBuf, String> {
         if let Some(why) = organization_gap(template, &self.item.project, self.organization) {
             return Err(why);
+        }
+        // A `{meta.<key>}` this matter has not got is a field it lacks rather
+        // than an unknown name, and the entry holding it does not serve this
+        // matter — normally withheld before this point (§FS-005-dispatch.25).
+        // Refused rather than rendered here, because a path cannot carry the
+        // gap that prose would have carried.
+        if let Some(why) = self.root_not_served(template) {
+            return Err(format!("{}: {why}", self.item.project));
         }
         let values = self.placeholders();
         if let Some(name) = named(template)
@@ -119,24 +216,10 @@ impl Subject<'_> {
     /// environment, so one vocabulary covers both.
     pub fn metadata(&self) -> Vec<(&'static str, String)> {
         let values = self.placeholders();
-        [
-            "project",
-            "source",
-            "kind",
-            "id",
-            "url",
-            "state",
-            "repo",
-            "number",
-            "branch",
-            "ticket",
-            "workspace",
-            "root",
-            "title",
-        ]
-        .iter()
-        .filter_map(|key| values.get(key).map(|value| (*key, value.clone())))
-        .collect()
+        SUBJECT_METADATA
+            .iter()
+            .filter_map(|key| values.get(*key).map(|value| (*key, value.clone())))
+            .collect()
     }
 
     /// The whole dossier, as the markdown that opens the plan.
@@ -230,6 +313,37 @@ impl Subject<'_> {
     }
 }
 
+/// A vocabulary that is nobody's matter — a checkout, or the fixed place a
+/// project's branches land in — out of names known where it is written
+/// (§FS-005-dispatch.15.1). It carries no [`META`], so a `{meta.<key>}` read
+/// against it is a name only a matter could fill and is left standing rather
+/// than rendered away.
+pub fn fixed<const N: usize>(
+    pairs: [(&'static str, String); N],
+) -> BTreeMap<Cow<'static, str>, String> {
+    BTreeMap::from(pairs.map(|(name, value)| (Cow::Borrowed(name), value)))
+}
+
+/// Why a `root` template does not serve one matter (§FS-005-dispatch.25): the
+/// first `{meta.<key>}` it names that this matter's source did not report.
+///
+/// None where it names none — including where it names a field no matter has
+/// at all, which is an author error to refuse on every matter alike rather
+/// than a reason to withhold the entry from this one. Read here and not at
+/// either caller, because the menu withholds the entry on it and the dispatch
+/// refuses on it, and the two may not disagree.
+pub fn root_not_served(
+    template: &str,
+    values: &BTreeMap<Cow<'static, str>, String>,
+) -> Option<String> {
+    let name = named(template)
+        .into_iter()
+        .find(|name| is_meta_name(name) && !values.contains_key(name.as_str()))?;
+    Some(format!(
+        "the work root template '{template}' needs {{{name}}}, and this matter has none"
+    ))
+}
+
 /// Why a template reaching above the project cannot be rendered into a path
 /// for it (§FS-005-dispatch.6.1), naming the placeholder that has no answer
 /// and the organization that did not give one. None where the template names
@@ -274,7 +388,14 @@ pub fn organization_gap(
 
 /// Render `{placeholder}` occurrences; an unknown name is left as written so a
 /// typo shows up in the ticket rather than becoming an empty line.
-pub fn render(template: &str, values: &BTreeMap<&'static str, String>) -> String {
+///
+/// One name is not unknown even where the map has not got it: a
+/// `{meta.<key>}` asked of a matter's own vocabulary — one carrying [`META`] —
+/// is a field this matter has not answered, and §FS-005-dispatch.25's rule for
+/// that is a gap rather than the characters it was written with. A vocabulary
+/// that is nobody's matter carries no [`META`], and there the same name is one
+/// only a matter could fill and is left standing.
+pub fn render(template: &str, values: &BTreeMap<Cow<'static, str>, String>) -> String {
     let mut out = String::with_capacity(template.len());
     let mut rest = template;
     while let Some(open) = rest.find('{') {
@@ -285,6 +406,7 @@ pub fn render(template: &str, values: &BTreeMap<&'static str, String>) -> String
                 let name = &after[..close];
                 match values.get(name) {
                     Some(value) => out.push_str(value),
+                    None if values.contains_key(META) && is_meta_name(name) => {}
                     None => {
                         out.push('{');
                         out.push_str(name);
@@ -346,10 +468,13 @@ impl Instruction {
     /// dispatch's text while sitting above tickets that were given something
     /// else.
     pub fn metadata(&self) -> Vec<(&'static str, String)> {
-        vec![
-            ("instruction", self.path.to_string_lossy().into_owned()),
-            ("instruction_sha256", self.sha256.clone()),
-        ]
+        INSTRUCTION_METADATA
+            .into_iter()
+            .zip([
+                self.path.to_string_lossy().into_owned(),
+                self.sha256.clone(),
+            ])
+            .collect()
     }
 }
 
@@ -383,7 +508,7 @@ pub struct Brief {
 /// has.
 pub fn brief(
     recipe: &Recipe,
-    values: &BTreeMap<&'static str, String>,
+    values: &BTreeMap<Cow<'static, str>, String>,
 ) -> std::result::Result<Brief, String> {
     let said = recipe
         .brief
@@ -422,7 +547,7 @@ pub fn brief(
 fn read_instruction(
     recipe: &Recipe,
     template: &str,
-    values: &BTreeMap<&'static str, String>,
+    values: &BTreeMap<Cow<'static, str>, String>,
 ) -> std::result::Result<(Instruction, Vec<u8>), String> {
     let mut answerable = values.clone();
     answerable.remove(NOT_IN_A_PATH);
@@ -1213,7 +1338,7 @@ mod tests {
 
     /// The vocabulary a brief and its path are rendered from, with `{reply}`
     /// in it as a dispatch puts it there.
-    fn values(root: &Path) -> BTreeMap<&'static str, String> {
+    fn values(root: &Path) -> BTreeMap<Cow<'static, str>, String> {
         let item = item(json!({}));
         let checkout = checkout();
         let subject = Subject {
@@ -1223,7 +1348,7 @@ mod tests {
             organization: None,
         };
         let mut values = subject.placeholders();
-        values.insert("reply", "/w/panta/answer.md".to_string());
+        values.insert(Cow::Borrowed("reply"), "/w/panta/answer.md".to_string());
         values
     }
 

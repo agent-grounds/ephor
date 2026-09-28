@@ -244,19 +244,31 @@ impl Session {
             here || !needs_checkout || (branchless && branch.is_some())
         };
         let placement = self.placement(&item.project);
-        let serves = |branch: &Option<String>| {
-            branch.as_deref().is_none_or(|template| {
+        // Both templates an entry may carry are read the same way, because
+        // both are rendered from the one widened vocabulary and a hole in
+        // either one means the same thing: this entry is about some other
+        // matter (§FS-005-dispatch.25). The work screen withholds on `root`
+        // too ([`crate::work::Work::offers`]), and the two may not come to
+        // disagree about what is on offer (§REQ-002-parity.3).
+        let serves = |entry_branch: &Option<String>, entry_root: &Option<String>| {
+            let branch_serves = entry_branch.as_deref().is_none_or(|template| {
                 placement.is_none_or(|placement| {
                     crate::branches::why_not_served(placement, item, template).is_none()
                 })
-            })
+            });
+            let root_serves = entry_root.as_deref().is_none_or(|template| {
+                placement.is_none_or(|placement| {
+                    crate::branches::why_root_not_served(placement, item, template).is_none()
+                })
+            });
+            branch_serves && root_serves
         };
         menu.retain(|entry| match (&entry.agent, &entry.workflow) {
             (Some(recipe), _) => {
                 !item.is_finished()
                     && !item.is_blocked()
                     && offered(recipe.needs_checkout, &recipe.branch)
-                    && serves(&recipe.branch)
+                    && serves(&recipe.branch, &recipe.root)
             }
             // A workflow hands work over too, so it is gated the same way
             // (§FS-005-dispatch.19).
@@ -264,7 +276,7 @@ impl Session {
                 !item.is_finished()
                     && !item.is_blocked()
                     && offered(entry.requires_checkout, &entry.branch)
-                    && serves(&entry.branch)
+                    && serves(&entry.branch, &entry.root)
             }
             _ => true,
         });
@@ -388,7 +400,16 @@ impl Session {
                         crate::branches::why_not_served(placement, item, template)
                     })
                 });
-                if worth_reading.is_empty() && branch.is_none() {
+                // And where the work would land: a `root` naming a field this
+                // matter has not got withholds the entry exactly as a `branch`
+                // does, so the reading says which field it needed rather than
+                // letting the entry disappear (§FS-005-dispatch.25, §27).
+                let root = recipe.root.as_deref().and_then(|template| {
+                    placement.and_then(|placement| {
+                        crate::branches::why_root_not_served(placement, item, template)
+                    })
+                });
+                if worth_reading.is_empty() && branch.is_none() && root.is_none() {
                     return None;
                 }
                 Some(super::views::Exclusion {
@@ -397,6 +418,7 @@ impl Session {
                         .into_iter()
                         .map(|refusal| refusal.reason)
                         .chain(branch)
+                        .chain(root)
                         .collect::<Vec<_>>()
                         .join("; "),
                 })

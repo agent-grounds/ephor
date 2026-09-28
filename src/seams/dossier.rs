@@ -39,6 +39,58 @@ pub const REPOS: &str = "EPHOR_REPOS";
 /// decided inside ephor.
 pub const CHECKS: &str = "EPHOR_CHECKS";
 
+/// What this matter's own source said about it, one variable per key
+/// (§FS-006-project-interface.3): the key upper-cased in ASCII with `-`
+/// written `_`, behind this prefix.
+const META_PREFIX: &str = "EPHOR_META_";
+
+/// Which of those names are this matter's — the carried keys, one per line
+/// (§FS-006-project-interface.3).
+///
+/// Fixed, and always set. A summons does not start from a cleared environment
+/// (§AR-002-summons.1), so every name a matter can answer is also set empty on
+/// a summons about something that is not one; an open namespace cannot be
+/// emptied that way, because ephor cannot blank an `EPHOR_META_CONTEXT` it has
+/// never heard of. This is the one fixed name that makes it enumerable, and
+/// the contract is that an `EPHOR_META_*` variable is this matter's only if
+/// its key is listed here.
+pub const META_KEYS: &str = "EPHOR_META_KEYS";
+
+/// The variable one `meta` key is read under (§FS-006-project-interface.3).
+/// One direction only: the variable is derived from the key, never the key
+/// from the variable.
+fn meta_variable(key: &str) -> String {
+    format!(
+        "{META_PREFIX}{}",
+        key.to_ascii_uppercase().replace('-', "_")
+    )
+}
+
+/// What a matter's source said about it, as the summons carries it
+/// (§FS-006-project-interface.3): one variable per key, and the enumeration.
+///
+/// Two keys that fold to one variable name set no variable at all — a variable
+/// that could be either key's is a fact about neither — while both keys stay
+/// in `meta`, where a selector and a template name them unambiguously.
+fn said_about(item: &Item) -> Vec<(String, String)> {
+    let said = item.meta().unwrap_or_default();
+    let mut pairs: Vec<(String, String)> = said
+        .iter()
+        .map(|(key, value)| (meta_variable(key), value.clone()))
+        .filter(|(name, _)| {
+            said.keys()
+                .filter(|key| &meta_variable(key) == name)
+                .count()
+                == 1
+        })
+        .collect();
+    pairs.push((
+        META_KEYS.to_string(),
+        said.keys().cloned().collect::<Vec<_>>().join("\n"),
+    ));
+    pairs
+}
+
 /// Add the bound check verbs to a dossier, where the project fills any.
 pub fn with_checks(mut pairs: Vec<(String, String)>, checks: &[String]) -> Vec<(String, String)> {
     if !checks.is_empty() {
@@ -104,6 +156,11 @@ pub fn of_branch(
         ("EPHOR_REPO".to_string(), String::new()),
         ("EPHOR_NUMBER".to_string(), String::new()),
         ("EPHOR_RAW".to_string(), String::new()),
+        // The open namespace's one fixed name, empty like the rest: a branch
+        // carries no matter, so it carries no keys, and a command reading an
+        // `EPHOR_META_*` it inherited is told so by an enumeration that does
+        // not list it (§FS-006-project-interface.3).
+        (META_KEYS.to_string(), String::new()),
     ]);
     with_forest(pairs, forest)
 }
@@ -152,6 +209,9 @@ pub fn of_item(
         // (§AR-006-matters.1).
         ("EPHOR_RAW".to_string(), item.raw.to_string()),
     ]);
+    // And what it said about *this matter*, by name, so a program does not
+    // re-parse the passthrough to reach one word (§FS-006-project-interface.3).
+    pairs.extend(said_about(item));
     with_forest(pairs, forest)
 }
 

@@ -232,6 +232,15 @@ pub fn why_not_served(placement: &Placement, item: &Item, template: &str) -> Opt
     missing_field(template, &values).map(|name| not_served_reason(template, &name))
 }
 
+/// Why an entry's `root` template does not serve this matter
+/// (§FS-005-dispatch.25) — the same question [`why_not_served`] asks of a
+/// `branch`, asked of where the work would land. A `root` naming a
+/// `{meta.<key>}` this matter has not got describes no place for this matter,
+/// and another matter carrying the key renders the same template.
+pub fn why_root_not_served(placement: &Placement, item: &Item, template: &str) -> Option<String> {
+    crate::work::dossier::root_not_served(template, &placeholder_values(placement, item))
+}
+
 /// What an entry's `branch` template comes to on one matter
 /// (§FS-005-dispatch.25): the branch it names, and where that branch's
 /// workspace stands — [`WorkspaceState::Ready`] where it is already on disk,
@@ -314,7 +323,7 @@ pub fn minted(
 fn placeholder_values(
     placement: &Placement,
     item: &Item,
-) -> std::collections::BTreeMap<&'static str, String> {
+) -> std::collections::BTreeMap<std::borrow::Cow<'static, str>, String> {
     let here = placement.checkout(item);
     crate::work::dossier::Subject {
         item,
@@ -329,20 +338,22 @@ fn placeholder_values(
 /// errors are deliberately absent: they are refused wherever they are read.
 fn missing_field(
     template: &str,
-    values: &std::collections::BTreeMap<&'static str, String>,
+    values: &std::collections::BTreeMap<std::borrow::Cow<'static, str>, String>,
 ) -> Option<String> {
     let names = crate::work::dossier::named(template);
     // A template with an author error must stay visible and refuse loudly,
-    // even where another name in it is a real field this matter lacks.
-    if names
-        .iter()
-        .any(|name| DECIDED.contains(&name.as_str()) || !values.contains_key(name.as_str()))
-    {
+    // even where another name in it is a real field this matter lacks. A
+    // `{meta.<key>}` is never one: the name is one a template may take, and it
+    // is this matter that did not answer it (§FS-005-dispatch.25).
+    if names.iter().any(|name| {
+        DECIDED.contains(&name.as_str())
+            || !(values.contains_key(name.as_str()) || crate::work::dossier::is_meta_name(name))
+    }) {
         return None;
     }
     let missing: Vec<_> = names
         .into_iter()
-        .filter(|name| values[name.as_str()].is_empty())
+        .filter(|name| values.get(name.as_str()).is_none_or(String::is_empty))
         .collect();
     let first = missing.first()?.clone();
 
@@ -351,9 +362,7 @@ fn missing_field(
     // not a matter-specific reason to withhold the entry.
     let mut complete = values.clone();
     for name in missing {
-        if let Some(value) = complete.get_mut(name.as_str()) {
-            *value = "field".to_string();
-        }
+        complete.insert(std::borrow::Cow::Owned(name), "field".to_string());
     }
     let branch = crate::work::dossier::render(template, &complete)
         .trim()
@@ -371,11 +380,22 @@ fn not_served_reason(template: &str, name: &str) -> String {
 /// The fields a branch template may name, spelled as it would name them: every
 /// placeholder a matter carries but the three the template decides
 /// (§FS-005-dispatch.25). What a refusal offers instead of the name it refused.
-fn nameable(values: &std::collections::BTreeMap<&'static str, String>) -> Vec<String> {
+fn nameable(
+    values: &std::collections::BTreeMap<std::borrow::Cow<'static, str>, String>,
+) -> Vec<String> {
+    // The open name is named as itself: the keys under `meta` are whatever
+    // this matter's source reported, and no refusal can enumerate a key a
+    // store has yet to invent (§FS-005-dispatch.25).
     values
         .keys()
-        .filter(|name| !DECIDED.contains(name))
+        .filter(|name| !DECIDED.contains(&name.as_ref()))
+        .filter(|name| name.as_ref() != crate::work::dossier::META)
+        .filter(|name| !crate::work::dossier::is_meta_name(name))
         .map(|name| format!("{{{name}}}"))
+        .chain(std::iter::once(format!(
+            "{{{}<key>}}",
+            crate::work::dossier::META_PREFIX
+        )))
         .collect()
 }
 
@@ -463,22 +483,33 @@ pub fn why_the_workspace_is_refused(
     // Where this project's work goes, rendered against the workspace this
     // branch would be: the same values the store is made with, so the two
     // cannot disagree about the directory (§FS-006-project-interface.7).
-    let mut values = std::collections::BTreeMap::from([
+    let mut values = crate::work::dossier::fixed([
         ("workspace", target.to_string_lossy().into_owned()),
         ("root", placement.root.to_string_lossy().into_owned()),
         ("project", placement.project.clone()),
     ]);
     if let Some(organization) = &placement.organization {
-        values.insert("org", organization.id.clone());
+        values.insert(std::borrow::Cow::Borrowed("org"), organization.id.clone());
         if let Some(root) = &organization.root {
-            values.insert("org_root", root.to_string_lossy().into_owned());
+            values.insert(
+                std::borrow::Cow::Borrowed("org_root"),
+                root.to_string_lossy().into_owned(),
+            );
         }
     }
-    let rendered = crate::work::dossier::render(work_root, &values);
     // A template naming a field only a matter can fill describes no fixed
     // place, so there is nothing here for a branch to land on. Passed over
     // rather than guessed at, exactly as the board's walk passes it over
-    // (§FS-005-dispatch.15.1).
+    // (§FS-005-dispatch.15.1). Asked of the names rather than of the
+    // rendering, because this vocabulary is nobody's matter and a
+    // `{meta.<key>}` in it is exactly such a field.
+    if crate::work::dossier::named(work_root)
+        .iter()
+        .any(|name| !values.contains_key(name.as_str()))
+    {
+        return None;
+    }
+    let rendered = crate::work::dossier::render(work_root, &values);
     if rendered.contains('{') {
         return None;
     }

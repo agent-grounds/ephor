@@ -172,6 +172,28 @@ pub struct Item {
     pub raw: Value,
 }
 
+/// The reserved `raw` key carrying what one source said about one matter
+/// (§AR-006-matters, §FS-005-dispatch.8). Named here, beside the model it
+/// rides in, because the seam that fills it and the four surfaces that read it
+/// must be spelling the same word.
+pub const META: &str = "meta";
+
+/// One `meta` value in the spelling every surface uses: a string as written, a
+/// number or a boolean by its canonical form (§FS-005-dispatch.31.1). `None`
+/// for anything else, which the bound already refused.
+///
+/// One spelling, here, because the selector compares it, a template renders
+/// it, a summons hands it over and the bound measures it — and a value that
+/// meant one thing to the bound and another to the selector would be a key
+/// that stopped matching for no reason a reader could see.
+pub fn spelled(value: &Value) -> Option<String> {
+    match value {
+        Value::String(text) => Some(text.clone()),
+        Value::Number(_) | Value::Bool(_) => Some(value.to_string()),
+        _ => None,
+    }
+}
+
 impl Item {
     /// The work is over: the item belongs under Recent rather than in its own
     /// category (§FS-003-feed-categories.2).
@@ -276,6 +298,30 @@ impl Item {
         } else {
             None
         }
+    }
+
+    /// What this matter's own source said about *this matter*
+    /// (§FS-005-dispatch.8): the third reserved `raw` key, after `assignees`
+    /// and `labels`, and the one accessor every surface reads it through
+    /// (§AR-006-matters).
+    ///
+    /// `None` where the source reported no such map at all — **absent rather
+    /// than empty**, which is the distinction the selector's silence rule
+    /// turns on (§FS-005-dispatch.31.1). Each value comes back in the one
+    /// spelling a selector compares, a template renders and a summons hands
+    /// over, so a number or a boolean the source did not quote answers by its
+    /// canonical spelling; a value that is no scalar was dropped by the bound
+    /// before it ever reached a matter, and is skipped here rather than
+    /// rendered as its JSON.
+    pub fn meta(&self) -> Option<std::collections::BTreeMap<String, String>> {
+        Some(
+            self.raw
+                .get(META)?
+                .as_object()?
+                .iter()
+                .filter_map(|(key, value)| Some((key.clone(), spelled(value)?)))
+                .collect(),
+        )
     }
 
     /// The pull request or issue number, best effort: the digits after the

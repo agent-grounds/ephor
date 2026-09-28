@@ -98,12 +98,22 @@ pub fn find(root: &Path, manifest: Option<&Manifest>) -> Vec<Store> {
 /// source like any other, and "no tasks" has to mean there are none rather
 /// than that nobody could look (§FS-001-forge-interface.6).
 pub fn read(store: &Store, project: &str) -> Result<Vec<Item>, String> {
+    read_reporting(store, project).map(|(items, _)| items)
+}
+
+/// The same read, with what the bound dropped on the way
+/// (§FS-005-dispatch.8): one line per key a plan wrote that a matter may not
+/// carry, already naming the matter it was about. The caller says them where
+/// it says the rest of this source's answer — the store has answered, so its
+/// slot is not marked failed, and a drop nobody is told about is how a
+/// selector silently stops matching.
+pub fn read_reporting(store: &Store, project: &str) -> Result<(Vec<Item>, Vec<String>), String> {
     match store.kind {
         Kind::Plans => plans(store, project),
         // The beads reader is the second one; a store ephor recognizes but
         // cannot read yet reports nothing rather than pretending
         // (§RM-003-boundary).
-        Kind::Beads => Ok(Vec::new()),
+        Kind::Beads => Ok((Vec::new(), Vec::new())),
     }
 }
 
@@ -113,7 +123,7 @@ pub fn read(store: &Store, project: &str) -> Result<Vec<Item>, String> {
 ///
 /// A task in a final state is not read (§FS-006-project-interface.7): the
 /// machine applicable to its plan says which states those are.
-fn plans(store: &Store, project: &str) -> Result<Vec<Item>, String> {
+fn plans(store: &Store, project: &str) -> Result<(Vec<Item>, Vec<String>), String> {
     use crate::work::runtime::plan::{self, WorkRoot};
 
     // Resolve the root only when a plan needs it (§FS-006-project-interface.7).
@@ -122,6 +132,7 @@ fn plans(store: &Store, project: &str) -> Result<Vec<Item>, String> {
         .map_err(|err| format!("cannot read {}: {err}", store.path.display()))?;
 
     let mut items = Vec::new();
+    let mut notes = Vec::new();
     for found in plans {
         let path = found.path;
         // A plan the store holds and ephor cannot read is the store failing to
@@ -154,6 +165,7 @@ fn plans(store: &Store, project: &str) -> Result<Vec<Item>, String> {
         };
         for (task, task_path) in plan.tickets_with_paths() {
             let state = task.state.clone().unwrap_or_default();
+            let id = format!("{}:{}.{}", store.kind.name(), found.plan_id, task.id);
             // A finished task is history the store keeps, not news the feed
             // carries: it has no activity time of its own beyond this file's,
             // so it would resurface every time the plan was touched
@@ -161,8 +173,19 @@ fn plans(store: &Store, project: &str) -> Result<Vec<Item>, String> {
             if machine.is_final(&state) {
                 continue;
             }
+            // What the store itself said about this task, bounded and
+            // subtracted, under ephor's own name (§FS-006-project-interface.7).
+            // Written only where the plan said something that survived: absent
+            // rather than empty is how silence is told from an empty map, and
+            // the selector's silence rule turns on it (§AR-006-matters).
+            let said = plan.task_meta(&found.plan_id, &task.id);
+            notes.extend(said.dropped.iter().map(|why| format!("{id}: {why}")));
+            let mut raw = serde_json::json!({ "plan": path.to_string_lossy() });
+            if !said.values.is_empty() {
+                raw[crate::feed::model::META] = serde_json::Value::Object(said.values);
+            }
             items.push(Item {
-                id: format!("{}:{}.{}", store.kind.name(), found.plan_id, task.id),
+                id,
                 project: project.to_string(),
                 source: store.kind.name().to_string(),
                 // The project's own task, and not an issue a forge filed
@@ -177,11 +200,11 @@ fn plans(store: &Store, project: &str) -> Result<Vec<Item>, String> {
                 needs_response: false,
                 // Activity follows the task's file (§FS-006-project-interface.7).
                 updated_at: modified(task_path),
-                raw: serde_json::json!({ "plan": path.to_string_lossy() }),
+                raw,
             });
         }
     }
-    Ok(items)
+    Ok((items, notes))
 }
 
 /// When the store last changed, which is the closest thing a file-backed

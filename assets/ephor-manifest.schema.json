@@ -220,6 +220,11 @@
           "items": { "type": "string", "pattern": "[^!]", "description": "An entry names something: `label` or `!label`. A field that asks for nothing is written by omitting the field (FS-005-dispatch.31)." },
           "description": "Labels the matter must carry — any one of them — and '!label' one it must not carry at all (FS-005-dispatch.31). A matter whose source reported nothing about labels answers neither form and is refused."
         },
+        "meta": {
+          "type": "object",
+          "additionalProperties": { "type": ["string"] },
+          "description": "What the matter's own source said about this matter, asked as a map because each key is a different question (FS-005-dispatch.31.1). Every key must hold, and each is compared as a string, so \"tier\": \"1\" matches a tier the source wrote as a bare 1. A matter whose source reported nothing, or one reporting no such key, is refused rather than matched. There is no '!' form."
+        },
         "behind": {
           "type": "boolean",
           "description": "The matter's branch trails its main branch (true) or is level with it (false), measured in the checkout. An unmeasurable checkout matches neither (FS-004-quick-actions.6)."
