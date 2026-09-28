@@ -154,9 +154,9 @@ fn what_the_store_said_about_one_task_arrives_on_the_matter() {
         .output()
         .expect("the feed prints");
     let feed = shaped("feed", &printed);
-    let mine = feed["items"]
+    let mine = feed
         .as_array()
-        .expect("items")
+        .expect("the feed prints an array")
         .iter()
         .find(|item| item["id"] == MINE || item["key"] == MINE)
         .unwrap_or_else(|| panic!("no {MINE} in {feed:#?}"));
