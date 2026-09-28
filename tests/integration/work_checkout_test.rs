@@ -559,8 +559,12 @@ fn a_dispatch_behind_a_workspace_that_was_not_made_writes_nothing() {
         .args(["refresh", "demo"])
         .assert()
         .success();
+    // Asked about the one matter: a refusal is this command's own answer only
+    // where a caller asked about one, since a sweep steps over what it cannot
+    // reach and says so in its tally (§FS-005-dispatch.12). What the checkout
+    // refuses is the same either way.
     let refused = ephor(tmp.path())
-        .args(["work", "dispatch"])
+        .args(["work", "dispatch", "--item", "acmeforge:acme/widget#95"])
         .output()
         .unwrap();
     assert!(

@@ -899,7 +899,9 @@ pub struct CheckoutArgs {
     /// Grow a branch the repository does not have from this one instead of
     /// the project's main branch (`FROM`); what it takes is a branch name on
     /// the project's remote — `main`, not `origin/main`, because the remote is
-    /// ephor's to supply (§FS-004-quick-actions.7.4).
+    /// ephor's to supply. Refused where the project binds a checkout command:
+    /// the base is then that command's to decide
+    /// (§FS-004-quick-actions.7.4).
     #[arg(long)]
     pub from: Option<String>,
 

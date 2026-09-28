@@ -1,11 +1,18 @@
 //! `ephor checkout` — making the workspace that is not there
 //! (§FS-004-quick-actions.7).
 //!
-//! The reader presses a key for it and a state machine runs it as a program;
-//! both arrive here, so there is one answer to where a project's branch
-//! workspace goes and what it holds (§FS-005-dispatch.12). Everything it needs
-//! is already in the registry — the directory template, the repositories, the
-//! main branch — which is why nobody has to configure a command for it.
+//! The reader presses a key for it, a state machine runs it as a program, and a
+//! dispatch mints the workspace a `branch` template named; all three arrive
+//! here, so there is one answer to where a project's branch workspace goes and
+//! what it holds (§FS-005-dispatch.12). Everything the git fallback needs is
+//! already in the registry — the directory template, the repositories, the main
+//! branch — which is why nobody has to configure a command for it.
+//!
+//! And where a project does bind one, that command is the maker here rather
+//! than beside it (§FS-006-project-interface.8): honoured *inside* the
+//! operation, every caller of the operation gets it at once, which is the only
+//! shape in which the sentence above stays true of the code as well as of this
+//! comment.
 
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
@@ -14,10 +21,11 @@ use crate::branches::Placement;
 use crate::cli::CheckoutArgs;
 use crate::error::{EphorError, Result};
 use crate::feed::cache;
-use crate::feed::config::load_config;
+use crate::feed::config::{load_config, CheckoutConfig};
 use crate::feed::model::Item;
 use crate::git;
 use crate::given;
+use crate::seams::{dossier, summons};
 
 /// What making one branch workspace came to (§FS-004-quick-actions.7), in the
 /// shape every caller of [`make`] needs: what was already there, what git did
@@ -32,16 +40,80 @@ pub struct Made {
     /// The repositories that were absent from a directory that was there, for
     /// the line a reader is owed about what is being made.
     pub missing: Vec<String>,
-    /// What git came to, where anything was made.
+    /// What git came to, where git was the maker. None where the project's own
+    /// checkout command was asked instead (§FS-006-project-interface.8): there
+    /// is no per-repository creation to report, because ephor made none of it.
     pub outcome: Option<git::Creation>,
     /// None where the tree is half-made: a work root inside one would be a
     /// place for plans that cannot be worked (§FS-006-project-interface.7).
+    ///
+    /// Which makes it the one field that says *whether the workspace was made*,
+    /// whichever maker was asked — the store goes in exactly where the tree it
+    /// belongs to is whole, so a bound command that returned without making the
+    /// workspace leaves this `None` and [`Made::refusal`] answers for it.
     pub store: Option<Store>,
 }
 
+/// The repositories a workspace is missing, as a person reads them. A project
+/// that keeps one repository declares it as `.`, which names the workspace
+/// itself rather than a directory inside it, and a project that declares no
+/// forest has no name to give at all — so the reading says what was looked for
+/// rather than printing a bare dot at a site author (§AR-004-forest.1).
+fn absent(missing: &[String]) -> String {
+    if missing.is_empty() {
+        return "no repository of this project is in it".to_string();
+    }
+    let names: Vec<&str> = missing
+        .iter()
+        .map(|name| match name.as_str() {
+            "." => "the repository at its root",
+            other => other,
+        })
+        .collect();
+    format!("{} not on disk there", names.join(", "))
+}
+
+/// Who made a branch workspace (§FS-006-project-interface.8). The fact a
+/// reading owes whoever asked, because the two answers hold different things:
+/// the project's own command decides what a workspace of this project *is*, and
+/// ephor's git is what answers where nothing is bound.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Maker {
+    /// The command the project bound.
+    Command,
+    /// ephor's own git operation, which is the fallback and not a second maker.
+    Git,
+}
+
+impl Maker {
+    pub fn name(self) -> &'static str {
+        match self {
+            Maker::Command => "command",
+            Maker::Git => "git",
+        }
+    }
+}
+
 impl Made {
-    /// Why this is not a workspace, where it is not: nothing to make it from,
-    /// or a repository the checkout refused. Half a workspace is not one —
+    /// Which maker made this workspace, where one made anything now
+    /// (§FS-006-project-interface.8). None rather than a made-up answer where
+    /// nothing was made: a workspace that was already whole, and a bound
+    /// command that returned without making one (§REQ-002-parity.4).
+    pub fn maker(&self) -> Option<Maker> {
+        if self.already {
+            return None;
+        }
+        match &self.outcome {
+            Some(outcome) => (!outcome.repos.is_empty()).then_some(Maker::Git),
+            // The store is what says the tree is whole, so it is what says the
+            // command made the workspace it was asked for.
+            None => self.store.as_ref().map(|_| Maker::Command),
+        }
+    }
+
+    /// Why this is not a workspace, where it is not: nothing to make it from, a
+    /// repository the checkout refused, or a bound command that returned
+    /// without making the one it was asked for. Half a workspace is not one —
     /// whatever is missing, the next thing to run in here would fail on it.
     ///
     /// Returned rather than printed, because the two callers answer for it
@@ -49,7 +121,21 @@ impl Made {
     /// stops at an exit code, and a dispatch has written nothing yet and
     /// refuses in the checkout's own words (§FS-005-dispatch.25).
     pub fn refusal(&self, source: &Path) -> Option<String> {
-        let outcome = self.outcome.as_ref()?;
+        let Some(outcome) = self.outcome.as_ref() else {
+            // No git creation, so either the workspace was already whole or the
+            // project's own command was the maker. *Verified* is the directory
+            // and every repository the project declares, never the exit code,
+            // and ephor does not fill in a tree it did not make
+            // (§FS-006-project-interface.8).
+            if self.already || self.store.is_some() {
+                return None;
+            }
+            return Some(format!(
+                "The project's own checkout command returned, but {} is not a workspace: {}.",
+                self.target.display(),
+                absent(&self.missing)
+            ));
+        };
         if outcome.repos.is_empty() {
             return Some(format!(
                 "No repository under {} to make a workspace from.",
@@ -60,7 +146,41 @@ impl Made {
     }
 }
 
-/// Make the branch workspace `branch` belongs in, or find it already made
+/// What a base was given as, and the input it arrived on — the flag a reader
+/// typed or the name a program state set (§FS-011-command-line.9).
+///
+/// Both, because where the project binds a checkout command the base is that
+/// command's to decide and the value is refused: a refusal has to name the
+/// spelling the caller actually used, and only the caller knows it. Nothing
+/// inside ephor passes a base at all.
+pub struct Base<'a> {
+    pub value: &'a str,
+    pub input: &'a str,
+}
+
+/// What one caller asks the maker for (§FS-004-quick-actions.7).
+///
+/// One struct rather than six positional arguments, because every caller passes
+/// every one of them and the next caller would add a seventh: a call site of
+/// six anonymous options is how the third caller of this operation came to pass
+/// the wrong thing without anybody noticing.
+pub struct Ask<'a> {
+    pub placement: &'a Placement,
+    pub project: &'a str,
+    /// The branch this checkout is making — the name a reader typed, the one a
+    /// state machine set, or the one a `branch` template minted.
+    pub branch: &'a str,
+    pub from: Option<Base<'a>>,
+    /// The hand-off's selected work root, where a recipe or workflow entry
+    /// chose one after branch placement.
+    pub selected_root: Option<&'a Path>,
+    /// The matter this is about, where there is one. A checkout asked for by
+    /// branch alone is not one, and saying so is what keeps a stand-in matter
+    /// out of the command's dossier (§FS-006-project-interface.8).
+    pub about: Option<&'a Item>,
+}
+
+/// Make the branch workspace `ask.branch` belongs in, or find it already made
 /// (§FS-004-quick-actions.7).
 ///
 /// The one implementation of that operation, for every caller: the key the
@@ -71,32 +191,24 @@ impl Made {
 /// has a store — and the disagreement would be discovered by work landing in
 /// a directory that is not one.
 ///
+/// Which is also why the project's own bound command is summoned from in here
+/// (§FS-006-project-interface.8) rather than by each caller that knows about
+/// it: a binding honoured on some of a seam's paths and not the others is a
+/// seam that is not done (§REQ-001-boundary.1), and it fails in the quietest
+/// way there is, because a directory is there either way.
+///
 /// It writes nothing to the registry and pushes nothing: a workspace is found
 /// on disk like every other (§FS-008-attribution.2), and publishing a branch
 /// is the work's move.
-pub fn make(
-    placement: &Placement,
-    project: &str,
-    branch: &str,
-    from: Option<&str>,
-) -> Result<(Made, PathBuf)> {
-    make_at(placement, project, branch, from, None)
-}
-
-/// Make a branch workspace and initialize the hand-off's selected work root,
-/// where a recipe or workflow entry chose one after branch placement.
-pub fn make_at(
-    placement: &Placement,
-    project: &str,
-    branch: &str,
-    from: Option<&str>,
-    selected_root: Option<&Path>,
-) -> Result<(Made, PathBuf)> {
+pub fn make(ask: &Ask) -> Result<(Made, PathBuf)> {
+    let (placement, project, branch) = (ask.placement, ask.project, ask.branch);
     // Where the workspace goes is settled before the first directory can be
     // created (§FS-004-quick-actions.7.3), and here rather than at the command
     // line alone: this is the implementation every caller shares
     // (§FS-005-dispatch.12), so the name a reader typed, the one a state
     // machine set and the one a `branch` template minted are all held to it.
+    // All three hold whichever maker will be asked, so a command is never
+    // handed a directory this project would not have put a workspace at.
     if !crate::forest::is_branch_name(branch) {
         return Err(EphorError::Registry(format!(
             "'{branch}' is a placeholder nothing filled, not a branch to check out."
@@ -113,14 +225,26 @@ pub fn make_at(
              there is no workspace to make for {branch} — its root is the checkout."
         ))
     })?;
-    // Read once and answered twice: the work root says whether this name lands
-    // on the place plans go, and the same reading puts the store there once the
-    // tree is whole (§FS-006-project-interface.7).
+    // Read once and answered three times: the work root says whether this name
+    // lands on the place plans go, the same reading puts the store there once
+    // the tree is whole (§FS-006-project-interface.7), and the same reading
+    // says whether this project bound a maker of its own.
     let work = Work::read(placement, project);
     if let Some(why) =
         crate::branches::why_the_workspace_is_refused(placement, branch, &work.root())
     {
         return Err(EphorError::Registry(why));
+    }
+    let bound = work.checkout();
+    // A value this operation will not act on is refused naming the input it
+    // came in on, before anything is made rather than inside somebody else's
+    // making (§FS-004-quick-actions.7.4, §FS-011-command-line.9).
+    if let (Some(bound), Some(from)) = (&bound, &ask.from) {
+        return Err(EphorError::Registry(format!(
+            "{} was given '{}', which {project}'s own checkout command decides — it is the \
+             maker of this workspace (`{}`), and a base is not among the things it is told.",
+            from.input, from.value, bound.command
+        )));
     }
     // A directory is not a workspace: the declared repositories are what make
     // it one. This is the operation whose answer says whether the workspace is
@@ -137,7 +261,7 @@ pub fn make_at(
             // all, or made by the project's own checkout command, holds every
             // repository it should and has nowhere for a plan to land
             // (§FS-004-quick-actions.7.1). Asking again is what repairs it.
-            let store = init_store(&work, placement, project, &target, selected_root);
+            let store = init_store(&work, placement, project, &target, ask.selected_root);
             return Ok((
                 Made {
                     target: target.clone(),
@@ -151,11 +275,20 @@ pub fn make_at(
         }
     }
 
+    // The workspace is absent, so this is the ask the project bound its command
+    // for (§FS-006-project-interface.8) — unless this very operation is already
+    // inside one making it, which is what lets a command wrap `ephor checkout`
+    // instead of summoning itself for ever.
+    if let Some(bound) = bound.filter(|_| !nested(project, branch)) {
+        return summoned(&bound, ask, &work, target, missing);
+    }
+
     // A working tree is added from a repository, so one has to be on disk —
     // and not this one: a half-made workspace cannot supply the repositories it
     // is itself missing, and taking it as the source would answer *no
     // repository at* per repository instead of saying there is nothing to grow
-    // them from.
+    // them from. The requirement is the git fallback's alone: a bound command is
+    // asked what it makes a workspace from (§FS-004-quick-actions.7.3).
     let source = placement
         .source_checkout()
         .filter(|source| source != &target)
@@ -170,8 +303,10 @@ pub fn make_at(
     // from: the declared forest where the row declares one, the source
     // checkout's own repositories otherwise (§AR-004-forest.1).
     let forest = placement.forest(&source);
-    let base = match from
-        .map(str::to_string)
+    let base = match ask
+        .from
+        .as_ref()
+        .map(|from| from.value.to_string())
         .or_else(|| placement.main_branch.clone())
     {
         Some(base) => base,
@@ -192,7 +327,7 @@ pub fn make_at(
     // workspace is refused by the caller, and a work root inside one would be a
     // place for plans that cannot be worked (§FS-006-project-interface.7).
     let store = (outcome.refused().is_empty() && !outcome.repos.is_empty())
-        .then(|| init_store(&work, placement, project, &target, selected_root));
+        .then(|| init_store(&work, placement, project, &target, ask.selected_root));
     Ok((
         Made {
             target,
@@ -202,6 +337,129 @@ pub fn make_at(
             store,
         },
         source,
+    ))
+}
+
+/// The one name a bound checkout command is told about ephor itself
+/// (§FS-006-project-interface.8): what is being made, so a command that wraps
+/// `ephor checkout` composes instead of summoning itself for ever.
+///
+/// The value is one `project:branch` per line, outermost first — a list rather
+/// than a single pair because a command may legitimately wrap the checkout of a
+/// *different* branch, and what ends the recursion is the same ask arriving
+/// twice rather than the second ask arriving at all.
+pub const MAKING: &str = "EPHOR_CHECKOUT_MAKING";
+
+fn making(project: &str, branch: &str) -> String {
+    format!("{project}:{branch}")
+}
+
+/// The marker to hand the command: whatever is already under way, and this.
+fn marker(project: &str, branch: &str) -> String {
+    let mut under_way: Vec<String> = held().collect();
+    under_way.push(making(project, branch));
+    under_way.join("\n")
+}
+
+/// Whether a bound command making this very workspace is what this operation is
+/// running inside. Read from the environment because that is what crosses a
+/// process boundary: the wrapper is a shell script and the nested maker is
+/// another `ephor` (§REQ-001-boundary.1).
+fn nested(project: &str, branch: &str) -> bool {
+    let mine = making(project, branch);
+    held().any(|under_way| under_way == mine)
+}
+
+fn held() -> impl Iterator<Item = String> {
+    std::env::var(MAKING)
+        .unwrap_or_default()
+        .lines()
+        .filter(|line| !line.trim().is_empty())
+        .map(str::to_string)
+        .collect::<Vec<_>>()
+        .into_iter()
+}
+
+/// Ask the command the project bound to make the workspace, and hold it to what
+/// it came back having made (§FS-006-project-interface.8).
+///
+/// Making the repositories is the command's contract and the store is never its
+/// to make, so the two makers meet again here: the same fold decides whether
+/// the workspace is whole (§AR-004-forest.1), the store goes in exactly where
+/// it does on the other path (§FS-004-quick-actions.7.1), and what the caller
+/// is handed back is one shape either way.
+fn summoned(
+    bound: &CheckoutConfig,
+    ask: &Ask,
+    work: &Work,
+    target: PathBuf,
+    missing: Vec<String>,
+) -> Result<(Made, PathBuf)> {
+    let (placement, project) = (ask.placement, ask.project);
+    let root = placement.root.clone();
+    // The vocabulary is the one every other summons carries
+    // (§FS-005-dispatch.8), including its empties: a summons does not start
+    // from a cleared environment, so a name a matter would have answered is set
+    // and empty where there is no matter rather than inherited from whatever
+    // launched ephor (§AR-002-summons.1).
+    let standing = placement.forest(&target);
+    let mut carrying = match ask.about {
+        Some(item) => dossier::of_item(item, &root, &target, None, Some(&standing)),
+        None => dossier::of_branch(project, &root, &target, None, Some(&standing)),
+    };
+    // `EPHOR_BRANCH` is the branch this checkout is *making*. The matter's own
+    // answer is the wrong one and on the dispatch's path it is empty, which is
+    // exactly where the command needs it most: nobody has cut the branch a
+    // `branch` template minted (§FS-005-dispatch.25).
+    carrying.retain(|(name, _)| name != "EPHOR_BRANCH" && name != MAKING);
+    carrying.push(("EPHOR_BRANCH".to_string(), ask.branch.to_string()));
+    carrying.push((MAKING.to_string(), marker(project, ask.branch)));
+
+    // Placed at the project's root: the workspace is not there to run in yet,
+    // and the root is what lets a command reach the checkouts beside the one it
+    // is making by relative path. Run aside, because the surface that asked for
+    // this owns its standard output — the command's own output still reaches
+    // whoever is watching (§REQ-002-parity.3).
+    let summons = summons::Summons::new("checkout", &bound.command)
+        .at(summons::Place::Root)
+        .carrying(carrying);
+    let answer = summons::run(&summons, &summons::Site::root(&root), summons::Mode::Aside)?;
+    if !answer.is_done() {
+        // A non-zero exit is the checkout not made, and `75` is among them:
+        // there is no *parked* here, since a workspace either exists or it does
+        // not (§FS-006-project-interface.8).
+        return Err(EphorError::Command(match answer.exit_code {
+            Some(code) => format!(
+                "{project}'s own checkout command exited {code} without making {} — nothing \
+                 was made and nothing was done behind it.",
+                target.display()
+            ),
+            None => format!(
+                "{project}'s own checkout command was killed without making {}.",
+                target.display()
+            ),
+        }));
+    }
+    // *Verified* is the directory and every repository the project declares in
+    // it, never the exit code. One the command did not make is named and the
+    // checkout is refused rather than completed: ephor's git does not fill in a
+    // tree it did not make, because the command owns what a workspace of this
+    // project is (§FS-006-project-interface.8).
+    let forest = placement.forest(&target);
+    let whole = target.is_dir() && forest.absent.is_empty() && !forest.repos.is_empty();
+    let store = whole.then(|| init_store(work, placement, project, &target, ask.selected_root));
+    Ok((
+        Made {
+            target,
+            already: false,
+            missing: match whole {
+                true => missing,
+                false => forest.absent,
+            },
+            outcome: None,
+            store,
+        },
+        root,
     ))
 }
 
@@ -244,12 +502,26 @@ pub fn checkout(args: &CheckoutArgs) -> Result<ExitCode> {
     // command will not act on is refused instead of the workspace being made
     // and the refusal arriving afterwards (§FS-004-quick-actions.7.3).
     let from = given::branch(&args.from, "FROM")?;
+    let from_input = given::input(&args.from, "FROM");
     let report = given::value(&args.report, "REPORT")?;
 
     // Everything below is reporting: what the workspace came to is the one
     // operation's answer, and this command is the reading of it
     // (§AR-009-surfaces.1).
-    let (made, source) = make(&placement, &project, &branch, from.as_deref())?;
+    let (made, source) = make(&Ask {
+        placement: &placement,
+        project: &project,
+        branch: &branch,
+        // The input as well as the value, because a base this project's own
+        // checkout command decides is refused naming the spelling the caller
+        // used (§FS-004-quick-actions.7.4).
+        from: from
+            .as_deref()
+            .zip(from_input.as_deref())
+            .map(|(value, input)| Base { value, input }),
+        selected_root: None,
+        about: item.as_ref(),
+    })?;
     if made.already {
         let behind = distance(&placement, &made.target);
         let summary = match &behind {
@@ -288,7 +560,50 @@ pub fn checkout(args: &CheckoutArgs) -> Result<ExitCode> {
         }
         return Ok(ExitCode::SUCCESS);
     }
-    let outcome = made.outcome.as_ref().expect("a workspace that was made");
+    // Where the project's own command was the maker there is no per-repository
+    // creation to report, because ephor made none of it — so the reading says
+    // who made the workspace and what the store came to, and the command's own
+    // output has already been the reader's (§FS-006-project-interface.8).
+    let Some(outcome) = made.outcome.as_ref() else {
+        if let Some(why) = made.refusal(&source) {
+            return Err(EphorError::Command(why));
+        }
+        let summary = format!(
+            "{project}'s own checkout command made {}",
+            made.target.display()
+        );
+        if args.json {
+            let mut view = serde_json::json!({
+                "workspace": made.target,
+                "branch": branch,
+                "ready": true,
+                "summary": summary,
+                "repos": [],
+                "store": made.store.as_ref().map(Store::view),
+            });
+            // Absent rather than `null` typed as the fact would have been
+            // (§REQ-002-parity.4) — the same rule the distance follows above.
+            if let (Some(object), Some(maker)) = (view.as_object_mut(), made.maker()) {
+                object.insert(
+                    "maker".to_string(),
+                    serde_json::Value::String(maker.name().to_string()),
+                );
+            }
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&view).unwrap_or_else(|_| "null".to_string())
+            );
+        } else {
+            println!("{summary}.");
+            if let Some(store) = &made.store {
+                store.say();
+            }
+        }
+        if let Some(path) = report {
+            write_report(&path, &format!("{summary}.\n"))?;
+        }
+        return Ok(ExitCode::SUCCESS);
+    };
     if !args.json && !made.missing.is_empty() {
         println!(
             "{} is missing {} — making {}.",
@@ -308,6 +623,15 @@ pub fn checkout(args: &CheckoutArgs) -> Result<ExitCode> {
                 "report".to_string(),
                 serde_json::Value::String(outcome.report()),
             );
+            // Which maker made it, absent rather than `null` where nothing was
+            // made — the same rule the distance above follows
+            // (§REQ-002-parity.3, §REQ-002-parity.4).
+            if let Some(maker) = made.maker() {
+                object.insert(
+                    "maker".to_string(),
+                    serde_json::Value::String(maker.name().to_string()),
+                );
+            }
             if let Some(store) = &made.store {
                 object.insert("store".to_string(), store.view());
             }
@@ -393,6 +717,19 @@ impl<'a> Work<'a> {
             .as_ref()
             .map(|config| config.work.clone())
             .unwrap_or_default()
+    }
+
+    /// The checkout command this project bound, where it bound one
+    /// (§FS-006-project-interface.8). Site configuration and nothing else: the
+    /// maker is one of a seam's four parts and the seam's configured binding is
+    /// the person's to write (§REQ-001-boundary.1, §REQ-001-boundary.2).
+    fn checkout(&self) -> Option<CheckoutConfig> {
+        self.config
+            .as_ref()?
+            .projects
+            .get(self.project)?
+            .checkout
+            .clone()
     }
 
     fn per_project(&self) -> Option<&crate::work::recipe::ProjectWorkConfig> {

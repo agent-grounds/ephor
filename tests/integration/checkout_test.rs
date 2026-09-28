@@ -1023,3 +1023,95 @@ fn a_parked_exit_is_the_checkout_not_made() {
         "a store was made in a workspace that was not"
     );
 }
+
+/// Which maker made the workspace is a fact the reading owes whoever asked, in
+/// prose and in `--json` alike (§REQ-002-parity.3): the two answers hold
+/// different things — the project's own command decides what a workspace of this
+/// project *is*, ephor's git answers where nothing is bound — so a reader who
+/// cannot tell them apart cannot tell a slice from a whole tree either, which is
+/// the silence this whole contract is about (§FS-006-project-interface.8).
+///
+/// Absent rather than `null` where nothing was made, which is the same rule the
+/// distance beside it follows (§REQ-002-parity.4): a workspace that was already
+/// whole was made by nobody just now.
+#[test]
+fn the_reading_says_which_maker_made_the_workspace() {
+    // Where nothing is bound, git is the maker and says so.
+    let tmp = tempdir();
+    let _root = fixture(tmp.path());
+    let _ce = repo(tmp.path(), "ce");
+    let _ee = repo(tmp.path(), "ee");
+
+    let made = ephor(tmp.path())
+        .args([
+            "checkout",
+            "--project",
+            "demo",
+            "--branch",
+            "feature",
+            "--json",
+        ])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let view: serde_json::Value = serde_json::from_slice(&made).unwrap();
+    assert_eq!(view["maker"], json!("git"), "{view}");
+
+    // And a second ask made nothing, so it names no maker at all.
+    let again = ephor(tmp.path())
+        .args([
+            "checkout",
+            "--project",
+            "demo",
+            "--branch",
+            "feature",
+            "--json",
+        ])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let view: serde_json::Value = serde_json::from_slice(&again).unwrap();
+    assert_eq!(view["ready"], json!(true), "{view}");
+    assert!(
+        view.get("maker").is_none(),
+        "a workspace that was already there was made by nobody just now: {view}"
+    );
+
+    // Where the project bound its own command, that command is the maker — and
+    // the prose says so, since a reader has the prose and not the reading.
+    let tmp = tempdir();
+    let _root = fixture(tmp.path());
+    let _ce = repo(tmp.path(), "ce");
+    let _ee = repo(tmp.path(), "ee");
+    let record = tmp.path().join("told.env");
+    let command = recording_checkout(tmp.path(), &record);
+    bind_checkout(tmp.path(), &command);
+
+    ephor(tmp.path())
+        .args(["checkout", "--project", "demo", "--branch", "feature"])
+        .assert()
+        .success()
+        .stdout(predicates::str::contains("checkout command made"));
+
+    let bound = ephor(tmp.path())
+        .args([
+            "checkout",
+            "--project",
+            "demo",
+            "--branch",
+            "other",
+            "--json",
+        ])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let view: serde_json::Value = serde_json::from_slice(&bound).unwrap();
+    assert_eq!(view["maker"], json!("command"), "{view}");
+    assert_eq!(view["ready"], json!(true), "{view}");
+}
