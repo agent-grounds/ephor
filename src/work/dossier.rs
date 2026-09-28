@@ -56,6 +56,12 @@ impl Subject<'_> {
             ("source", item.source.clone()),
             ("kind", item.kind.label().to_string()),
             ("id", item.id.clone()),
+            // The one field every matter answers: its own id as a name a
+            // branch and a path will both take (§FS-005-dispatch.2). Never
+            // empty, because every matter has an id, and always `[a-z0-9-]+`,
+            // so a branch template naming it is never withheld and what it
+            // renders is always a name git will take (§FS-005-dispatch.25).
+            ("id_slug", crate::slug::id_slug(&item.id)),
             ("url", item.url.clone().unwrap_or_default()),
             ("state", item.state.clone().unwrap_or_default()),
             ("repo", item.repo().unwrap_or_default()),
