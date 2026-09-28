@@ -397,6 +397,16 @@ in either case, since a store is part of what makes a directory a workspace
 rather than a pile of repositories. Asking twice is how a half-made workspace
 is repaired, not a no-op the reader has to work around.
 
+**Except where the project bound its own maker.** The repositories are then not
+ephor's to fill in and the directory is not the command's to be handed back, so
+a directory that is there without being a workspace is named and the checkout
+refuses ([§FS-006-project-interface.8](FS-006-project-interface.md#8-the-checkout-contract)) — on every path that asks, since a
+dispatch reading it as checked out would put a plan in a tree holding none of
+the project's repositories. Clearing it is what gets the site the checkout it
+declared. The store is unchanged: it was never the command's to make, so it is
+ephor's on either path, and a *whole* workspace is still repaired by asking
+again.
+
 **And the first ask owes it as much as the second.** A workspace a project's own
 checkout command has just made is the case above one moment earlier: making the
 repositories is the command's contract and the store is never its to make

@@ -446,12 +446,18 @@ ships, the previous "latest" section moves verbatim to
   that was declared. The binding is now honoured inside the one checkout
   operation, so all three callers reach it: it is summoned only where the
   workspace is absent, with `EPHOR_BRANCH` as the branch being made and the
-  matter's names empty rather than absent where there is no matter, from the
-  project's root, and `EPHOR_CHECKOUT_MAKING` lets a command wrap `ephor checkout`
-  without summoning itself for ever. What it returns is verified — the directory
-  and every declared repository — and a workspace it did not make is refused with
-  its absent repositories named, nothing dispatched behind it and no store put
-  into it; ephor's git never fills in a tree it did not make. A workspace the
+  matter's own names set from the matter where there is one — the ticket key of
+  the registry branch it was matched to among them — and empty rather than absent
+  where there is none, from the project's root, and `EPHOR_CHECKOUT_MAKING` lets a
+  command wrap `ephor checkout` without summoning itself for ever. What it returns
+  is verified — the directory and every declared repository — and a workspace it
+  did not make is refused with its absent repositories named, nothing dispatched
+  behind it and no store put into it; ephor's git never fills in a tree it did not
+  make. That refusal holds of the bare directory it leaves behind, on whichever
+  path asks next: it is named and refused again rather than read as checked out, so
+  a second dispatch cannot put a plan in a tree holding none of the project's
+  repositories, and a refused checkout writes `--report` as git's refusal always
+  has. A workspace the
   command did make gets its work store, on the first ask as much as the second,
   because the plan a dispatch is writing lands there. `--from` is refused by name
   where a command is bound, the base being that command's to decide, and

@@ -73,6 +73,40 @@ fn absent(missing: &[String]) -> String {
     format!("{} not on disk there", names.join(", "))
 }
 
+/// Why a directory that is already there is not a workspace this project's own
+/// command may be asked for, where it is not one (§FS-006-project-interface.8).
+///
+/// Neither maker may finish what it did not start: ephor's git does not fill in
+/// a tree the command did not make, because the command owns what a workspace of
+/// this project is, and a directory that is already there is never handed back
+/// to the command either — a command written to create one would be run over a
+/// half-made tree. So what is absent is named and the checkout refuses, and
+/// clearing the directory is the one move that gets the site its workspace.
+///
+/// One sentence in one place because two surfaces meet this state and have to
+/// say the same thing about it: the maker, before it summons anything, and the
+/// dispatch, which resolves *checked out* from the directory alone and would
+/// otherwise promise a ticket behind it (§FS-005-dispatch.25).
+pub fn half_made(
+    project: &str,
+    bound: &CheckoutConfig,
+    target: &Path,
+    missing: &[String],
+) -> Option<String> {
+    (!missing.is_empty()).then(|| {
+        format!(
+            "{} is there, but it is not a workspace of {project}: {}. {project}'s own checkout \
+             command is what makes its workspaces (`{}`), and ephor neither fills in a tree that \
+             command did not make nor hands it back a directory it did not make — remove {} and \
+             ask for the checkout again.",
+            target.display(),
+            absent(missing),
+            bound.command,
+            target.display(),
+        )
+    })
+}
+
 /// Who made a branch workspace (§FS-006-project-interface.8). The fact a
 /// reading owes whoever asked, because the two answers hold different things:
 /// the project's own command decides what a workspace of this project *is*, and
@@ -280,6 +314,13 @@ pub fn make(ask: &Ask) -> Result<(Made, PathBuf)> {
     // inside one making it, which is what lets a command wrap `ephor checkout`
     // instead of summoning itself for ever.
     if let Some(bound) = bound.filter(|_| !nested(project, branch)) {
+        // Except where a directory is there without being a workspace, which
+        // neither maker may finish: ephor's git would fill in a tree the command
+        // did not make, and a directory that is already there is never handed
+        // back to the command either (§FS-006-project-interface.8).
+        if let Some(why) = half_made(project, &bound, &target, &missing) {
+            return Err(EphorError::Command(why));
+        }
         return summoned(&bound, ask, &work, target, missing);
     }
 
@@ -403,9 +444,26 @@ fn summoned(
     // and empty where there is no matter rather than inherited from whatever
     // launched ephor (§AR-002-summons.1).
     let standing = placement.forest(&target);
+    // The registry branch behind this ask, which is where `EPHOR_TICKET` comes
+    // from: the matter's own names are the matter's where there is one, and the
+    // ticket key the row carries is one of them (§FS-006-project-interface.8).
+    // Read here from the placement the ask already carries rather than taken as
+    // a field every caller would have to remember to fill — one caller
+    // forgetting it is how the name came to be emptied in the first place
+    // (§REQ-001-boundary.1).
+    let matched = match ask.about {
+        Some(item) => placement.matched(item),
+        // A checkout asked for by branch alone has no matter to match, so the
+        // row for the branch being made is what answers — the same branch the
+        // chain's own row is read from.
+        None => placement
+            .branches
+            .iter()
+            .find(|info| info.branch == ask.branch),
+    };
     let mut carrying = match ask.about {
-        Some(item) => dossier::of_item(item, &root, &target, None, Some(&standing)),
-        None => dossier::of_branch(project, &root, &target, None, Some(&standing)),
+        Some(item) => dossier::of_item(item, &root, &target, matched, Some(&standing)),
+        None => dossier::of_branch(project, &root, &target, matched, Some(&standing)),
     };
     // `EPHOR_BRANCH` is the branch this checkout is *making*. The matter's own
     // answer is the wrong one and on the dispatch's path it is empty, which is
@@ -566,6 +624,15 @@ pub fn checkout(args: &CheckoutArgs) -> Result<ExitCode> {
     // output has already been the reader's (§FS-006-project-interface.8).
     let Some(outcome) = made.outcome.as_ref() else {
         if let Some(why) = made.refusal(&source) {
+            // The two makers' refusals leave the same trace. `--report` is the
+            // file a caller reads the checkout out of rather than the terminal,
+            // and the git path writes it before its own refusal is tested
+            // below — a bound command's refusal reaching that reader as an
+            // absent file would be the one maker whose failure is silent
+            // exactly where it is being watched (§REQ-002-parity.3).
+            if let Some(path) = report {
+                write_report(&path, &format!("{why}\n"))?;
+            }
             return Err(EphorError::Command(why));
         }
         let summary = format!(

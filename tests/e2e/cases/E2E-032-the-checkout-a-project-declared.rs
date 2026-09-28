@@ -372,9 +372,17 @@ fn a_second_ask_does_not_call_the_command_again() {
 #[test]
 fn a_workspace_the_command_did_not_make_is_named_and_nothing_is_dispatched() {
     let world = project();
+    let log = world.path().join("hollow-calls.log");
     let command = world.stub(
         "hollow-checkout",
-        "#!/usr/bin/env bash\nset -euo pipefail\nmkdir -p \"$EPHOR_WORKSPACE\"\nexit 0\n",
+        &format!(
+            "#!/usr/bin/env bash\n\
+             set -euo pipefail\n\
+             printf '%s\\n' \"$EPHOR_BRANCH\" >> {log}\n\
+             mkdir -p \"$EPHOR_WORKSPACE\"\n\
+             exit 0\n",
+            log = log.display(),
+        ),
     );
     watching(
         &world,
@@ -404,6 +412,69 @@ fn a_workspace_the_command_did_not_make_is_named_and_nothing_is_dispatched() {
         !workspace.join("src").exists(),
         "ephor's git filled in a tree the command did not make: {:?}",
         listing(&workspace)
+    );
+    assert_eq!(calls(&log), 1, "the command was asked once");
+
+    // And it holds on the attempt after that. The directory the refusal left
+    // behind is what a workspace is resolved from, so a second dispatch is
+    // where *there* and *made* part company: read as checked out, it would mint
+    // nothing, ask nobody, and put a store and a plan in a tree holding none of
+    // the project's repositories — the same silence one attempt later.
+    world
+        .ephor()
+        .args(["work", "dispatch", "--item", ITEM])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains(
+            "the repository at its root not on disk there",
+        ));
+
+    assert_eq!(
+        calls(&log),
+        1,
+        "the command was handed back the directory its own refusal left behind"
+    );
+    assert!(
+        !workspace.join("panta").exists(),
+        "the second dispatch wrote a store behind a checkout that was not made: {:?}",
+        listing(&workspace)
+    );
+    assert!(
+        !workspace.join("src").exists(),
+        "ephor's git filled in a tree the command did not make: {:?}",
+        listing(&workspace)
+    );
+}
+
+/// A dry run makes nothing and says what it would have made, naming the maker:
+/// a note implying ephor's git where the project bound its own command would be
+/// describing a run nobody is about to make (§FS-005-dispatch.25). Asserted as
+/// the whole sentence rather than a substring — the report behind this ticket
+/// read a run of twenty-six spaces in the middle of it, which every substring
+/// match in the suite stepped straight over.
+#[test]
+fn the_dry_run_names_the_command_that_would_make_the_workspace() {
+    let world = project();
+    let log = bind_site_checkout(&world);
+    let command = world.path().join("fakebin").join("site-checkout");
+
+    world.ephor().args(["refresh", PROJECT]).assert().success();
+    world
+        .ephor()
+        .args(["work", "dispatch", "--item", ITEM, "--dry-run"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(format!(
+            "note: {MINTED} is not checked out — the dispatch would make {} first, with \
+             {PROJECT}'s own checkout command (`{}`).",
+            world.forest().join(MINTED).display(),
+            command.display(),
+        )));
+
+    assert_eq!(calls(&log), 0, "a dry run makes nothing");
+    assert!(
+        !world.forest().join(MINTED).exists(),
+        "a dry run left a workspace behind"
     );
 }
 

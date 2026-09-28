@@ -1604,11 +1604,13 @@ impl Dispatcher {
         // back to the matter's own placement, and the dispatch that would
         // write there refuses instead.
         let mut mint = None;
+        let mut named = None;
         if needs_checkout && placement.own_branch(item).is_none() {
             match branch {
                 Some(template) => {
                     checkout = crate::branches::minted(&placement, item, template)
                         .map_err(EphorError::Command)?;
+                    named = Some(checkout.workspace.clone());
                     if let WorkspaceState::Missing(target) = &checkout.state {
                         mint = Some(target.clone());
                     }
@@ -1733,6 +1735,7 @@ impl Dispatcher {
             runtime_root: placement.root.clone(),
             checkout: checkout.clone(),
             mint,
+            named,
         })
     }
 
@@ -1751,6 +1754,13 @@ impl Dispatcher {
     /// binding this path did not honour was a binding a site could not reach at
     /// all (§FS-005-dispatch.25).
     fn mint(&mut self, item: &Item, site: &Site) -> Result<()> {
+        // A workspace that is there is not minted, and on a bound-command
+        // project *there* is not *made*: the refusal is what the maker would
+        // have said had the directory not hidden the ask from it
+        // (§FS-006-project-interface.8).
+        if let Some(why) = self.half_made(item, site) {
+            return Err(EphorError::Command(why));
+        }
         if site.mint.is_none() {
             return Ok(());
         }
@@ -1779,6 +1789,34 @@ impl Dispatcher {
             self.note_once(&note);
         }
         Ok(())
+    }
+
+    /// Why the workspace a `branch` template named is a directory that is there
+    /// without being one, where it is (§FS-006-project-interface.8).
+    ///
+    /// [`crate::branches::minted`] answers *checked out* by asking the
+    /// filesystem for a directory, so the bare directory a bound command left
+    /// behind without making the workspace reads as checked out: nothing is
+    /// minted, the maker is never entered, and a store and a plan would land in
+    /// a tree holding none of the project's repositories — which is the silence
+    /// this whole contract is about, one attempt later. So the question the
+    /// maker would have answered is asked here instead, in the maker's own
+    /// words ([`crate::checkout::half_made`]).
+    ///
+    /// Only where the project bound a command. Where nothing is bound, ephor's
+    /// git completes a half-made workspace as it always has
+    /// (§FS-004-quick-actions.7), and only the command may decide what a
+    /// workspace of a project that bound one is.
+    fn half_made(&mut self, item: &Item, site: &Site) -> Option<String> {
+        // A workspace this dispatch is about to mint is absent, and every
+        // repository of it with it: there is nothing half-made about it.
+        if site.mint.is_some() {
+            return None;
+        }
+        let target = site.named.clone()?;
+        let bound = self.checkouts.get(&item.project)?.clone();
+        let missing = self.placement(&item.project)?.forest(&target).absent;
+        crate::checkout::half_made(&item.project, &bound, &target, &missing)
     }
 
     /// The deterministic opening move a recipe declares, made before the
@@ -1926,6 +1964,13 @@ impl Dispatcher {
             if let Some(existing) = WorkRoot::open(&site.dir)? {
                 vet(&existing)?;
             }
+            // And so does the workspace: a directory that is there without
+            // being one is a state the real dispatch refuses, so promising the
+            // ticket behind it would be that same misleading promise
+            // (§FS-006-project-interface.8).
+            if let Some(why) = self.half_made(item, &site) {
+                return Err(EphorError::Command(why));
+            }
             // A dry run makes nothing, so it says what it would have made:
             // the branch, and the workspace the plan path below is inside
             // (§FS-005-dispatch.25).
@@ -1936,7 +1981,8 @@ impl Dispatcher {
                 // nobody is about to make (§FS-006-project-interface.8).
                 let note = match self.checkouts.get(&item.project) {
                     Some(checkout) => format!(
-                        "{} is not checked out — the dispatch would make {} first, with                          {}'s own checkout command (`{}`).",
+                        "{} is not checked out — the dispatch would make {} first, with {}'s own \
+                         checkout command (`{}`).",
                         site.checkout.branch.as_deref().unwrap_or("?"),
                         target.display(),
                         item.project,
@@ -2685,6 +2731,14 @@ impl Dispatcher {
     /// ([§FS-005-dispatch.7](crate)).
     pub fn lay(&mut self, item: &Item, laying: &Laying, dry_run: bool) -> Result<Laid> {
         if let Some(why) = laying.refusal() {
+            return Err(EphorError::Command(why));
+        }
+        // A directory that is there without being a workspace is the maker's
+        // refusal, said before anything is staged and on a dry run as on the
+        // real one: [`Dispatcher::mint`] below would say it anyway, and a
+        // refusal arriving after the preflight is a refusal that left files
+        // behind (§FS-006-project-interface.8).
+        if let Some(why) = self.half_made(item, &laying.site) {
             return Err(EphorError::Command(why));
         }
         if laying.preflight_runtime && (!dry_run || laying.site.mint.is_some()) {
@@ -6141,6 +6195,15 @@ struct Site {
     /// (§FS-005-dispatch.25). None for everything else, including a workspace
     /// the template named that is already there.
     mint: Option<PathBuf>,
+    /// The branch workspace a `branch` template named, on disk or not — `mint`
+    /// is this same path narrowed to the case that has to be made.
+    ///
+    /// Held beside it because *there* and *made* are not the same fact: the
+    /// directory a bound checkout command left behind without making the
+    /// workspace reads as checked out, so nothing is minted and the maker never
+    /// gets to refuse (§FS-006-project-interface.8). This is what lets the
+    /// dispatch ask the one question `mint` cannot.
+    named: Option<PathBuf>,
 }
 
 #[cfg(test)]

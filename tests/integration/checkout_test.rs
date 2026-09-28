@@ -856,6 +856,174 @@ fn a_bound_checkout_command_is_told_the_branch_it_is_making() {
     );
 }
 
+/// A forge with one pull request of the reader's own, on the very branch this
+/// project's registry declares — which is the shape a ticket key lives in. The
+/// matter is matched to that row (§FS-008-attribution.3), and the row is where
+/// `EPHOR_TICKET` comes from.
+const FORGE: &str = r#"#!/usr/bin/env bash
+set -euo pipefail
+cat > /dev/null
+case "${1:?subcommand}" in
+  capabilities)
+    printf '{"pull_requests":true}'
+    ;;
+  pull-requests)
+    printf '%s' '[
+      { "id": "app/7", "repo": "app", "number": "7",
+        "title": "Widen the retry window",
+        "url": "https://acme.example/pr/7",
+        "branch": "feature",
+        "updated_at": "2026-08-01T12:00:00Z",
+        "role": "author", "state": "open", "cited": false }
+    ]'
+    ;;
+  *) printf '[]' ;;
+esac
+"#;
+
+/// That pull request in the feed. `ephor checkout --item` is what the menu
+/// entry and the state machine's program state both run
+/// (§FS-004-quick-actions.7), so this is the matter a bound command meets when a
+/// reader presses the key.
+const MATTER: &str = "acme:app/7";
+
+/// Put a matter behind the checkout: the forge above, watched, and the ticket
+/// key the registry's `feature` row carries. The fixture declares that row
+/// already — all this adds is the key, because a branch with no ticket is the
+/// one shape that cannot tell an emptied name from a name that was never there.
+fn a_matter_on_the_declared_branch(tmp: &Path) {
+    make_executable(&tmp.join("fakebin").join("ephor-forge-acme"), FORGE);
+
+    let path = tmp.join("workspaces.json");
+    let mut registry: serde_json::Value =
+        serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
+    registry["projects"][0]["branches"][0]["ticket"] = json!("ABC-42");
+    write_registry(&path, &registry);
+
+    let path = tmp.join("status.json");
+    let mut config: serde_json::Value =
+        serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
+    config["projects"]["demo"]["providers"] =
+        json!([{ "provider": "acme", "user": "you", "repos": ["app"] }]);
+    fs::write(&path, serde_json::to_string_pretty(&config).unwrap()).unwrap();
+
+    ephor(tmp).args(["refresh", "demo"]).assert().success();
+}
+
+/// The matter's own names are the matter's where there is one, and the ticket
+/// key of the registry branch it was matched to is among them
+/// (§FS-006-project-interface.8). This is the name that went missing when the
+/// menu entry became a caller of `ephor checkout`: the chain built its dossier
+/// from the matched row and the maker rebuilt it from the ask, which carries no
+/// row — so a command that had been told `ABC-42` was told the empty string, and
+/// nothing in the suite asked.
+#[test]
+fn a_bound_command_is_told_the_ticket_of_the_matter_it_is_making_for() {
+    let tmp = tempdir();
+    let root = fixture(tmp.path());
+    let _ce = repo(tmp.path(), "ce");
+    let _ee = repo(tmp.path(), "ee");
+    let record = tmp.path().join("told.env");
+    let command = recording_checkout(tmp.path(), &record);
+    bind_checkout(tmp.path(), &command);
+    a_matter_on_the_declared_branch(tmp.path());
+
+    // Every value the menu entry passes, in the order it passes them
+    // (§FS-004-quick-actions.7): the project, the matter and the branch.
+    ephor(tmp.path())
+        .args([
+            "checkout",
+            "--project",
+            "demo",
+            "--item",
+            MATTER,
+            "--branch",
+            "feature",
+        ])
+        .assert()
+        .success();
+
+    let said = fs::read_to_string(&record)
+        .unwrap_or_else(|err| panic!("the bound command was never asked to make it: {err}"));
+    assert_eq!(
+        told(&said, "EPHOR_TICKET").as_deref(),
+        Some("ABC-42"),
+        "the ticket key of the branch the matter was matched to:\n{said}"
+    );
+    // And the rest of the matter with it, because the row fills in more than the
+    // one name: restoring `EPHOR_TICKET` alone would leave the next of them to
+    // be found by whoever next binds a command.
+    assert_eq!(
+        told(&said, "EPHOR_ITEM_ID").as_deref(),
+        Some(MATTER),
+        "{said}"
+    );
+    assert_eq!(
+        told(&said, "EPHOR_TITLE").as_deref(),
+        Some("Widen the retry window"),
+        "{said}"
+    );
+    assert_eq!(
+        told(&said, "EPHOR_WORKSPACE").as_deref(),
+        Some(root.join("feature").to_string_lossy().as_ref()),
+        "{said}"
+    );
+    assert!(
+        root.join("feature").join("ce").is_dir(),
+        "the command did not make the workspace it was told about"
+    );
+}
+
+/// And the branch is still the one being *made*. The matter has a branch of its
+/// own and it is the wrong answer here — on the dispatch's path it is a name
+/// nobody has cut — so the matched row filling the dossier must not take
+/// `EPHOR_BRANCH` back off the ask (§FS-005-dispatch.25). Asked for a branch the
+/// matter does not own, the command is told the one it is making and the
+/// matter's ticket, which are two different rows' worth of fact arriving
+/// together.
+#[test]
+fn the_branch_being_made_wins_over_the_branch_the_matter_owns() {
+    let tmp = tempdir();
+    let root = fixture(tmp.path());
+    let _ce = repo(tmp.path(), "ce");
+    let _ee = repo(tmp.path(), "ee");
+    let record = tmp.path().join("told.env");
+    let command = recording_checkout(tmp.path(), &record);
+    bind_checkout(tmp.path(), &command);
+    a_matter_on_the_declared_branch(tmp.path());
+
+    ephor(tmp.path())
+        .args([
+            "checkout",
+            "--project",
+            "demo",
+            "--item",
+            MATTER,
+            "--branch",
+            "spike/elsewhere",
+        ])
+        .assert()
+        .success();
+
+    let said = fs::read_to_string(&record)
+        .unwrap_or_else(|err| panic!("the bound command was never asked to make it: {err}"));
+    assert_eq!(
+        told(&said, "EPHOR_BRANCH").as_deref(),
+        Some("spike/elsewhere"),
+        "the branch this checkout is making, not the one the matter owns:\n{said}"
+    );
+    assert_eq!(
+        told(&said, "EPHOR_TICKET").as_deref(),
+        Some("ABC-42"),
+        "the matter is still the matter it was matched to:\n{said}"
+    );
+    assert_eq!(
+        told(&said, "EPHOR_WORKSPACE").as_deref(),
+        Some(root.join("spike/elsewhere").to_string_lossy().as_ref()),
+        "{said}"
+    );
+}
+
 /// A bound command may wrap ephor's own checkout — the workspace made the
 /// ordinary way and a step of the site's own after it — and a maker that
 /// summons the binding would otherwise summon itself for ever. The marker ends
@@ -988,6 +1156,45 @@ fn a_command_that_returned_without_making_it_is_the_checkout_not_made() {
         !target.join("panta").exists(),
         "a plan was given somewhere to land in a workspace that was not made"
     );
+}
+
+/// And a refusal reaches `--report` whichever maker refused. The file is where a
+/// program state reads the checkout out of rather than the terminal
+/// (§FS-005-dispatch.12), and git's path has always written it before its own
+/// refusal was tested — so a bound command whose refusal left none would be the
+/// one maker that fails silently exactly where it is being watched
+/// (§REQ-002-parity.3).
+#[test]
+fn a_refused_checkout_writes_its_report_on_either_maker() {
+    let tmp = tempdir();
+    let _root = fixture(tmp.path());
+    let _ce = repo(tmp.path(), "ce");
+    let _ee = repo(tmp.path(), "ee");
+    let command = hollow_checkout(tmp.path());
+    bind_checkout(tmp.path(), &command);
+    let report = tmp.path().join("runtime/checkout.md");
+
+    let refused = ephor(tmp.path())
+        .args(["checkout", "--project", "demo", "--branch", "feature"])
+        .arg("--report")
+        .arg(&report)
+        .output()
+        .unwrap();
+    assert!(
+        !refused.status.success(),
+        "a workspace that was not made read as made: {}",
+        String::from_utf8_lossy(&refused.stderr)
+    );
+
+    let written = fs::read_to_string(&report).unwrap_or_else(|err| {
+        panic!("the bound command's refusal left no report where git's leaves one: {err}")
+    });
+    for repo in ["ce", "ee"] {
+        assert!(
+            written.contains(repo),
+            "the report does not name what the command did not make: {written}"
+        );
+    }
 }
 
 /// And `75` is among them. Every other verb reads it as *parked* — not
