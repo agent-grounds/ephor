@@ -1712,8 +1712,6 @@ mod tests {
         assert!(why.contains("widget"), "{why}");
     }
 
-    /// An issue: the matter a branch template is for, with no branch of its
-    /// own and no ticket key in it.
     /// A task of the project's own store: no `{number}`, no `{repo}`, no url,
     /// and everything it does carry the same for every task of the project
     /// (§FS-006-project-interface.7).
@@ -1788,6 +1786,8 @@ mod tests {
         assert!(why.contains("git will not take"), "{why}");
     }
 
+    /// An issue: the matter a branch template is for, with no branch of its
+    /// own and no ticket key in it.
     fn issue() -> Item {
         let mut item = item("Humanize durations", json!({}));
         item.id = "github-issues:acme/widget#95".to_string();

@@ -2864,6 +2864,11 @@ fn each_task_of_the_project_gets_the_checkout_its_work_needs() {
         before,
         "a second dispatch minted a second tree for the same task"
     );
+    // The sweep above withheld the second ticket on the ledger's word, which
+    // would agree whatever the field rendered. So ask the second time in the
+    // form that gets past the ledger and renders again — `--item` for the row
+    // and `--again` for the work the ledger already holds — and read the
+    // workspace it names.
     let said = world
         .ephor()
         .args([
@@ -2871,18 +2876,28 @@ fn each_task_of_the_project_gets_the_checkout_its_work_needs() {
             "dispatch",
             "--project",
             PROJECT,
+            "--item",
+            "rhei:window.1",
+            "--again",
             "--dry-run",
             "--json",
         ])
         .assert()
         .success();
-    let again = landed(&json_of(said.get_output()));
-    if let Some(says) = again.get("rhei:window.1") {
-        assert!(
-            says.contains(&first.to_string_lossy().to_string()),
-            "the same task resolved somewhere else: {says}"
-        );
-    }
+    let report = json_of(said.get_output());
+    let again = landed(&report);
+    let says = again
+        .get("rhei:window.1")
+        .unwrap_or_else(|| panic!("asking again about the task said nothing: {report}"));
+    assert!(says.starts_with("would-open"), "{says}");
+    assert!(
+        says.contains(&first.to_string_lossy().to_string()),
+        "the same task resolved somewhere else: {says}"
+    );
+    assert!(
+        !says.contains(&second.to_string_lossy().to_string()),
+        "the task resolved to the other task's tree: {says}"
+    );
 }
 
 /// Two ids that read down to one slug stay two branches, which is what the
