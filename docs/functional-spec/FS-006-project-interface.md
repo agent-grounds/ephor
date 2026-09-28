@@ -80,6 +80,18 @@ one name set no variable at all**, and the fold is reported like a dropped key
 keys stay in `meta`, where a selector ([§FS-005-dispatch.31.1](FS-005-dispatch.md#311-and-it-can-ask-what-the-matters-own-source-said-about-it)) and a template
 name them unambiguously.
 
+**`EPHOR_META_*` is the one part of this vocabulary a state-machine script does
+not receive**, and the *one vocabulary* above is to be read with that
+exception. The reason is the map's own direction: `meta` is read-only inward
+([§FS-005-dispatch.8](FS-005-dispatch.md#8-the-ticket-carries-the-item-as-data-not-only-as-prose)), so what a source said about a matter reaches neither
+road into a runtime's own process — not the summons ephor hands the runtime,
+and not the ticket metadata a state machine renders its `{meta.*}` from, which
+is the closed list of identifiers and never these keys. The enumeration is what
+keeps that honest rather than dangerous: in such a process `EPHOR_META_KEYS` is
+unset, so a script reading the contract above finds no key listed and treats
+nothing as this matter's, which is the right answer. A runtime that wants these
+facts asks for them in the brief, where a template names them.
+
 **And one fixed name says which of them are this matter's.** A summons does not
 start from a cleared environment, so every name a matter can answer is also set
 — empty — on a summons about something that is not a matter; otherwise a

@@ -544,10 +544,24 @@ it once and should not have to say it again in every recipe. So a matter also
 carries **`meta`**, a map whose keys the source chose rather than ephor, and it
 is held to a bound that keeps it identifiers rather than prose: a value is a
 scalar — a string, a number or a boolean — a key matches
-`[A-Za-z_][A-Za-z0-9_-]*`, and a rendered value is at most 1 KiB. What survives
-the bound is what a selector ([§FS-005-dispatch.31.1](FS-005-dispatch.md#311-and-it-can-ask-what-the-matters-own-source-said-about-it)), a brief or a template
+`[A-Za-z_][A-Za-z0-9_-]*`, a rendered value **is on one line**, and a rendered
+value is at most 1 KiB. The line is a condition of its own rather than a
+consequence of the size: a value with a line break in it is prose however
+short, and prose is neither a path segment, nor a variable a script can read a
+line at a time, nor anything a selector compares — the dossier is where a
+paragraph about a matter goes. What survives the bound is what a selector ([§FS-005-dispatch.31.1](FS-005-dispatch.md#311-and-it-can-ask-what-the-matters-own-source-said-about-it)), a brief or a template
 ([§1](#1-a-recipe-decides-which-items-deserve-work-and-what-to-ask-for)) and a
 summoned command's environment ([§FS-006-project-interface.3](FS-006-project-interface.md#3-a-summons-environment-in-exit-code-and-answer-out)) may name.
+
+**The bound holds of the map, wherever the map is read.** It is not one
+reader's diligence. A source that reports these facts through its own free
+passthrough reaches the same four surfaces as one ephor read out of a file, and
+an unbounded value there would be a paragraph in a process environment, or a key
+no shell can name listed among the ones this matter answers to. So the guarantee
+sits on the accessor every surface reads the map through, and a source with no
+channel to be told on is bounded **silently**. Reporting is the other half, and
+it belongs to whoever has a channel: a reader that went and looked says what it
+dropped, which is where the *once* below is.
 
 **A key that breaks the bound is dropped; the matter is not.** The offending
 key goes, the rest of the map is carried, and the drop is reported once where
@@ -563,10 +577,19 @@ it. That matters because the runtime keeps its per-task bookkeeping in exactly
 the namespace a store may be using to say these things — ephor lays its plans
 inside the directory it reads — so the names ephor itself writes there are
 **subtracted on the way in**, derived from the list this section already names
-rather than kept as a second copy of it that can fall behind. A store that
-deliberately writes a key of one of those names loses that key and is told why,
-by the same report a broken bound gets. Without the subtraction the next read
-hands ephor's own words back as though the store had said them.
+rather than kept as a second copy of it that can fall behind. Without the
+subtraction the next read hands ephor's own words back as though the store had
+said them.
+
+**A subtracted name is declined, not dropped, and is reported to nobody.** The
+two look alike and are opposites. A broken bound is a thing the store *said* and
+has lost, which is why it is announced — a drop nobody is told about is how a
+selector silently stops matching. A name ephor itself wrote there was never the
+store's word at all, so nothing was lost and there is nobody to tell. Saying it
+anyway would be the noisier mistake as well as the wronger one: ephor's own work
+root is a store like any other, so every ticket it has laid would report every
+name it wrote, on every refresh, and the drops that do mean something would be
+buried under them. The bound's own drops stay reported, exactly as above.
 
 ## 9. Work that stops for a person says so where the person is looking
 
