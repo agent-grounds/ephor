@@ -4132,3 +4132,56 @@ fn the_preview_shows_the_files_words_and_falls_back_without_them() {
         "Spec before code.\n\nWork Place the work."
     );
 }
+
+/// `recorded_recipe_plans` is the *recipe* reading and stays that
+/// (§FS-005-dispatch.35): a workflow-only entry contributes no plan to it, and
+/// the one plan it can still yield is the legacy fallback — a file sitting at
+/// the entry's own plan path.
+///
+/// Both halves are stated here because the second is a trap. A count built on
+/// this reading is blind to a workflow's laid plan, which is the defect
+/// §FS-005-dispatch.35 corrects; and a fixture that puts the laid plan at the
+/// entry's path is answered by the fallback rather than by the widened reading,
+/// so it would pass before the correction and pin nothing. The widened reading
+/// belongs beside this one and never inside it: two other consumers ask this
+/// function for recipe roots alone (§FS-005-dispatch.13).
+#[test]
+fn the_recipe_reading_sees_no_workflow_plan_and_falls_back_only_to_the_entrys_own() {
+    let tmp = tempfile::tempdir().unwrap();
+    let root = tmp.path().join("panta");
+    fs::create_dir_all(&root).unwrap();
+    let plan_path = root.join("widget-10.rhei.md");
+
+    let mut entry = entry_for(&root, &plan_path);
+    entry.plan_id = "widget-10".to_string();
+    entry.dispatches = vec![ledger::Dispatch {
+        ticket: String::new(),
+        recipe: "implement".to_string(),
+        at: Utc::now(),
+        plan: Some("widget-10-implement".to_string()),
+        root: Some(root.clone()),
+        checkout: None,
+        branch: None,
+        pools: Vec::new(),
+        snapshot: Snapshot::default(),
+    }];
+
+    // The laid plan is where the record names it, and this reading cannot see
+    // it: the dispatch's root plus the laid plan's own id.
+    let laid = root.join("widget-10-implement");
+    fs::create_dir_all(&laid).unwrap();
+    fs::write(laid.join("index.rhei.md"), "# Rhei: Alpha\n").unwrap();
+    assert!(
+        recorded_recipe_plans(&entry).is_empty(),
+        "the recipe reading grew a workflow plan"
+    );
+    assert_eq!(recipe_roots(&entry), Vec::<PathBuf>::new());
+
+    // And the one thing that does put a plan back in the list is a file at the
+    // entry's own path, which is the fallback rather than the workflow.
+    fs::write(&plan_path, "# Rhei: Alpha\n").unwrap();
+    let plans = recorded_recipe_plans(&entry);
+    assert_eq!(plans.len(), 1);
+    assert_eq!(plans[0].path, plan_path);
+    assert_eq!(plans[0].plan_id, "widget-10");
+}

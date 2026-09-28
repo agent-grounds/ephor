@@ -162,6 +162,10 @@ name = "e2e_034_the_organization_is_handed_over"
 path = "tests/e2e/cases/E2E-034-the-organization-is-handed-over.rs"
 
 [[test]]
+name = "e2e_035_a_workflow_plan_is_the_matters_work"
+path = "tests/e2e/cases/E2E-035-a-workflow-plan-is-the-matters-work.rs"
+
+[[test]]
 name = "agents_test"
 path = "tests/integration/agents_test.rs"
 

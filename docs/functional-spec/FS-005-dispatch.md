@@ -3761,3 +3761,55 @@ configuration, `brief` alone keeps its whole meaning, and no configured value
 is read differently. One error appears where there was none — a recipe with
 neither key — and nobody reaches it without first editing the configuration
 that had one.
+
+## 35. What a ledger entry may be forgotten for is read from the plans
+
+A matter's work is **every plan the record says is that matter's** — the one
+ephor wrote itself and every one a workflow laid beside it
+([§19](#19-a-workflow-the-runtime-offers-is-an-action-and-its-inputs-are-answered-here),
+[§30](#30-a-run-asked-for-by-name-reaches-the-whole-of-that-matters-work)).
+Which entries `work forget --done` drops is read from those plans, and never
+from which of them ephor wrote: an entry whose laid plan holds a task that is
+not final is not over, and is not dropped.
+
+This is [§4](#4-the-ledger-is-ephors-record-and-never-the-truth-about-the-work)
+applied to who may be forgotten. The work's state belongs to the runtime and is
+read from the plan; a reading that reports no open tickets while the plan on
+disk says otherwise is the watch reporting on itself instead of on the world,
+and it is the reading that is at fault rather than the ledger. A count that
+cannot see a workflow's plan is that reading, whatever the ledger holds.
+
+**A plan that cannot be read is not evidence the work is over.** A laid workflow
+plan that is absent or unreadable makes its entry report as **missing** — the
+row says so, `--missing` reaches it, and `--item` reaches it — and `--done`
+leaves it alone. A deleted *recipe* plan keeps the rule
+[§4](#4-the-ledger-is-ephors-record-and-never-the-truth-about-the-work) gives it
+and is still selected by `--done`. The asymmetry is deliberate: ephor wrote the
+recipe plan, so its absence is ephor's own record of something gone, while a
+plan ephor only asked a runtime to write is a file it can conclude nothing
+from. An entry is never dropped for a file nobody promised.
+
+**The same reading answers every surface**, because a matter has one body of
+work and not one per command
+([§30](#30-a-run-asked-for-by-name-reaches-the-whole-of-that-matters-work)). So
+`work list --open` shows a matter whose laid workflow plan is still going, and
+the badge on its row says what that plan's task is doing rather than that a
+workflow exists at all — a workflow stopped at a question was invisible before
+([§15](#15-every-operation-is-visible-in-one-place),
+[§REQ-002-parity.3](../requirements/REQ-002-parity.md#3-every-reading-answers-a-program)).
+It reaches the hand a run is started with too
+([§14](#14-who-does-the-work-is-chosen-and-defaulted-per-project)): a laid
+task takes part in that resolution exactly as a recipe ticket does, and a task
+that names its own target is still its own authority.
+
+**So a matter no recipe applies to is not thereby dormant.**
+[§5](#5-an-item-that-moved-reopens-its-work) keeps its words for the case it is
+about — it merged, it closed, nothing is open — including the
+`work forget --done` it offers there. Where the plans say something is still
+open, the report says that instead, names the plan and the task it is at, and
+offers nothing to clear; the machine-readable report calls that outcome
+**underway** rather than dormant. The discriminator is the plans and never
+whether a dispatch was a workflow, so a *recipe* entry with open tickets stops
+being offered the same wrong hint by the same sentence. What is not fixed here
+is that such a report is made again on every turn: no snapshot is acknowledged
+where nothing is written, so the words change and their repetition does not.
