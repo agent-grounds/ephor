@@ -134,6 +134,28 @@ fn workspace_ticket(workspace: &Workspace) -> Option<String> {
     }
 }
 
+/// Every task store this project's refresh reads, each one once.
+///
+/// The root, and every active branch's workspace: work about a change lives in
+/// that change's tree, so a branch-addressable project keeps a store per
+/// workspace (§FS-006-project-interface.7). The root is named twice over —
+/// `task_stores` answers for it wherever it probes as one, and it stays named
+/// here besides because only `find` honours a manifest that declares a store
+/// somewhere neither kind is probed — so a store found by both roads is kept
+/// once. A store read twice answers twice, and its answer's drops would then be
+/// reported twice where §FS-005-dispatch.8 says once.
+fn stores_to_read(
+    placement: &crate::branches::Placement,
+    manifest: Option<&crate::manifest::Manifest>,
+) -> Vec<crate::seams::tasks::Store> {
+    let mut seen: std::collections::HashSet<std::path::PathBuf> = std::collections::HashSet::new();
+    std::iter::once(placement.root.clone())
+        .chain(placement.task_stores())
+        .flat_map(|root| crate::seams::tasks::find(&root, manifest))
+        .filter(|store| seen.insert(store.path.clone()))
+        .collect()
+}
+
 /// Fetch all providers of one project concurrently and store the merged feed.
 pub fn refresh_project(
     registry_doc: &Value,
@@ -208,14 +230,7 @@ pub fn refresh_project(
     // obligation (§FS-006-project-interface.7).
     if let Some(placement) = crate::branches::Placement::load(registry_doc, project_id) {
         let manifest = placement.manifest();
-        // The root, and every active branch's workspace: work about a change
-        // lives in that change's tree, so a branch-addressable project keeps a
-        // store per workspace (§FS-006-project-interface.7).
-        let stores: Vec<crate::seams::tasks::Store> = std::iter::once(placement.root.clone())
-            .chain(placement.task_stores())
-            .flat_map(|root| crate::seams::tasks::find(&root, manifest.as_ref()))
-            .collect();
-        for store in stores {
+        for store in stores_to_read(&placement, manifest.as_ref()) {
             let name = store.kind.name().to_string();
             match crate::seams::tasks::read_reporting(&store, project_id) {
                 // A store that answered lands its matters, empty answer
@@ -828,6 +843,59 @@ mod tests {
                 Some(serde_json::json!({ "time_supplied": supplied, "terminal": null })),
             ),
         })
+    }
+
+    /// One store is read once, so what its answer dropped is reported once
+    /// (§FS-005-dispatch.8). The root reaches the list by two roads — named
+    /// outright, and answered for by `task_stores` — and a store read twice
+    /// answers twice, which doubled every `note:` line on the error stream and
+    /// in `refresh --json`.
+    #[test]
+    fn a_store_the_root_and_the_workspaces_both_name_is_read_once() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path().join("demo");
+        std::fs::create_dir_all(root.join("panta")).unwrap();
+        let registry = serde_json::json!({
+            "projects": [{ "id": "demo", "root": root.to_string_lossy() }]
+        });
+        let placement =
+            crate::branches::Placement::load(&registry, "demo").expect("the row names a root");
+        // Both roads answer for it: the guard is the list, not the roads.
+        assert!(placement.task_stores().contains(&root));
+
+        let stores = stores_to_read(&placement, None);
+        let paths: Vec<_> = stores.iter().map(|store| store.path.clone()).collect();
+        assert_eq!(paths, vec![root.join("panta")], "one store, read twice");
+    }
+
+    /// The root stays named in its own right, because `task_stores` probes the
+    /// two store kinds while only `find` reads a manifest that declares one
+    /// somewhere else (§FS-006-project-interface.2).
+    #[test]
+    fn a_manifest_declared_store_at_the_root_is_still_read() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path().join("demo");
+        std::fs::create_dir_all(root.join("elsewhere")).unwrap();
+        let registry = serde_json::json!({
+            "projects": [{ "id": "demo", "root": root.to_string_lossy() }]
+        });
+        let placement =
+            crate::branches::Placement::load(&registry, "demo").expect("the row names a root");
+        // Nothing probes as a store here, so the other road answers for nothing.
+        assert!(placement.task_stores().is_empty());
+
+        let manifest = crate::manifest::Manifest {
+            tasks: vec![crate::manifest::TaskStore {
+                kind: "rhei".to_string(),
+                path: "elsewhere".to_string(),
+            }],
+            ..Default::default()
+        };
+        let paths: Vec<_> = stores_to_read(&placement, Some(&manifest))
+            .iter()
+            .map(|store| store.path.clone())
+            .collect();
+        assert_eq!(paths, vec![root.join("elsewhere")]);
     }
 
     /// The previous-slot boundary retains omitted activity only for one
