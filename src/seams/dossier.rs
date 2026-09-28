@@ -59,7 +59,7 @@ pub const META_KEYS: &str = "EPHOR_META_KEYS";
 /// The variable one `meta` key is read under (§FS-006-project-interface.3).
 /// One direction only: the variable is derived from the key, never the key
 /// from the variable.
-fn meta_variable(key: &str) -> String {
+pub(crate) fn meta_variable(key: &str) -> String {
     format!(
         "{META_PREFIX}{}",
         key.to_ascii_uppercase().replace('-', "_")
