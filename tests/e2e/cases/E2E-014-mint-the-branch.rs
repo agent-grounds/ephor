@@ -18,6 +18,13 @@
 //! place; `ephor checkout` afterwards agrees the workspace is already there;
 //! and without a template the same work is refused by name rather than written
 //! at the root.
+//!
+//! One kind of matter has none of the fields a template usually tells it apart
+//! by. A project's own task carries no `{number}` and no `{repo}`, and
+//! everything it does carry is the same for every task of the project — so this
+//! case also holds ephor to `{id_slug}`, the matter's own id as a name a branch
+//! will take (§FS-005-dispatch.2): each task gets the checkout its work needs,
+//! and two ids that read down to one slug stay two branches.
 
 #[path = "../support.rs"]
 mod support;
@@ -1198,6 +1205,11 @@ fn a_template_that_will_not_do_is_refused_by_name_and_makes_nothing() {
         "work": { "runner": "acme-runtime" }
     }));
 
+    // The refusal offers the fields it may name instead, and the list is
+    // derived from the one placeholder vocabulary rather than written out
+    // beside it — so it is pinned whole, `{id_slug}` included, and never as a
+    // substring that a name quietly leaving the vocabulary would still satisfy
+    // (§FS-005-dispatch.2, §FS-005-dispatch.27).
     world
         .ephor()
         .args(["work", "dispatch", "--item", ITEM, "--recipe", "by-sprint"])
@@ -1205,6 +1217,10 @@ fn a_template_that_will_not_do_is_refused_by_name_and_makes_nothing() {
         .failure()
         .stderr(predicate::str::contains(
             "not a field a branch template may name",
+        ))
+        .stderr(predicate::str::contains(
+            "it may name: {gate}, {id}, {id_slug}, {kind}, {number}, {org}, {org_root}, \
+             {project}, {repo}, {root}, {source}, {state}, {ticket}, {title}, {url}.",
         ));
     // The issue's title holds spaces, which git refuses in a branch name.
     world
@@ -2633,5 +2649,274 @@ fn issue_43_failed_second_workflow_lay_restores_a_symlinked_existing_root() {
         workflows.len(),
         1,
         "fresh listing exposed the unsaved workflow: {listed}"
+    );
+}
+
+/// A store of two unrelated tasks, as the store itself writes one: the plan's
+/// file stem and each task's own id are what the matter is keyed by, so
+/// `window.rhei.md` holding `Task 1` yields `rhei:window.1`
+/// (§FS-006-project-interface.7). Borrowed in shape from E2E-004, which is the
+/// case about the reading half.
+const TWO_TASKS: &str = "# Rhei: the retry window\n\n\
+## Tasks\n\n\
+### Task 1: Widen the retry window\n**State:** pending\n\n\
+The window resets per attempt, which is not what the docs say.\n\n\
+### Task 2: Shorten the reset\n**State:** pending\n\n\
+A second, unrelated task.\n";
+
+/// The two ids that read down to one slug: a task `retry-1` in a plan called
+/// `window`, and a task `1` in a plan called `window-retry`. They differ only
+/// in where the punctuation falls, which is exactly what slugging loses
+/// (§FS-005-dispatch.2).
+const COLLIDING_ONE: &str = "# Rhei: the retry window\n\n\
+## Tasks\n\n\
+### Task retry-1: Widen the retry window\n**State:** pending\n\n\
+One of the two.\n";
+
+const COLLIDING_TWO: &str = "# Rhei: the retry reset\n\n\
+## Tasks\n\n\
+### Task 1: Shorten the reset\n**State:** pending\n\n\
+The other, and nothing to do with it.\n";
+
+/// A world like [`watching`], with a rhei task store in the project's `main`
+/// checkout and a recipe over that store's tasks which says each one belongs in
+/// a checkout of its own. `plans` is the store's own files, written before the
+/// refresh that reads them.
+///
+/// This is the reproducer attached to agent-grounds/ephor#120, as a case: one
+/// branch-addressable project, a store of tasks in its checkout, and a
+/// `sources: ["rhei"]` recipe carrying `needs_checkout: true` and one branch
+/// template (§FS-005-dispatch.25).
+fn watching_tasks(branch_template: &str, plans: &[(&str, &str)]) -> World {
+    let world = World::new();
+    world.stub("ephor-forge-acmeforge", ACME_FORGE);
+    project_with_main_checked_out(&world);
+    // The store is the project's own, in the checkout, and exists whether or
+    // not ephor ever runs (§FS-006-project-interface.7).
+    for (name, body) in plans {
+        world.file(&format!("main/panta/{name}"), body);
+    }
+    world.stub("acme-runtime", &runtime(&workflows(&world), ""));
+
+    world.configure(json!({
+        "projects": { PROJECT: {
+            "providers": [],
+            "work": { "recipes": [ {
+                "id": "task-work",
+                "icon": "⛬",
+                "description": "work a task in its own checkout",
+                "when": { "sources": ["rhei"] },
+                "needs_checkout": true,
+                "branch": branch_template,
+                // A state ephor's own machine declares, so nothing is refused
+                // before the branch is ever rendered.
+                "state": "fix",
+                "brief": "Work {title}."
+            } ] }
+        } },
+        "work": { "runner": "acme-runtime" }
+    }));
+    world.register(json!({
+        "branches": [],
+        "branch_root_template": "{project_root}/{branch}"
+    }));
+    world.ephor().args(["refresh", PROJECT]).assert().success();
+    world
+}
+
+/// Every workspace of the project that is on disk, by branch, as `ephor
+/// branches` reports it. A worktree ephor minted is found on disk like every
+/// other and needs nothing written to the registry (§FS-005-dispatch.25).
+fn checked_out_branches(world: &World) -> Vec<String> {
+    let said = world
+        .ephor()
+        .args(["branches", PROJECT, "--checked-out", "--json"])
+        .assert()
+        .success();
+    let mut branches: Vec<String> = json_of(said.get_output())
+        .as_array()
+        .expect("the branch rows")
+        .iter()
+        .map(|row| {
+            row["branch"]
+                .as_str()
+                .expect("each row names its branch")
+                .to_string()
+        })
+        .collect();
+    branches.sort();
+    branches
+}
+
+/// What one dispatched matter was told it landed in, keyed by the matter's id.
+fn landed(report: &serde_json::Value) -> std::collections::BTreeMap<String, String> {
+    report["items"]
+        .as_array()
+        .expect("the items")
+        .iter()
+        .map(|row| {
+            (
+                row["item"].as_str().expect("an item id").to_string(),
+                format!(
+                    "{} {}",
+                    row["outcome"].as_str().unwrap_or_default(),
+                    row["says"].as_str().unwrap_or_default()
+                ),
+            )
+        })
+        .collect()
+}
+
+/// The ticket's own case: a project's tasks each get the checkout their work
+/// needs, from the one field every matter can answer.
+///
+/// A task carries no `{number}` and no `{repo}`, and every field it does carry
+/// — `{project}`, `{source}`, `{kind}`, `{state}` — is the same for every task
+/// of the project, so before `{id_slug}` the only template that was accepted
+/// minted one shared branch for all of them. Here the dry run promises two
+/// different workspaces, the real run makes two worktrees that `ephor branches`
+/// lists, and asking again lands in the same place because rendering is the
+/// resolution (§FS-005-dispatch.2, §FS-005-dispatch.25,
+/// §FS-006-project-interface.7).
+#[test]
+fn each_task_of_the_project_gets_the_checkout_its_work_needs() {
+    let world = watching_tasks("task/{id_slug}", &[("window.rhei.md", TWO_TASKS)]);
+    let first = world.forest().join("task/rhei-window-1-d8a9c768");
+    let second = world.forest().join("task/rhei-window-2-dba9cc21");
+
+    // The dry run promises the plan inside the workspace each task's own id
+    // names, and makes none of it.
+    let said = world
+        .ephor()
+        .args([
+            "work",
+            "dispatch",
+            "--project",
+            PROJECT,
+            "--dry-run",
+            "--json",
+        ])
+        .assert()
+        .success();
+    let report = json_of(said.get_output());
+    assert_eq!(report["opened"], json!(2), "{report}");
+    let promised = landed(&report);
+    for (item, workspace) in [("rhei:window.1", &first), ("rhei:window.2", &second)] {
+        let says = promised
+            .get(item)
+            .unwrap_or_else(|| panic!("{item} was not dispatched: {report}"));
+        assert!(says.starts_with("would-open"), "{item}: {says}");
+        assert!(
+            says.contains(&workspace.to_string_lossy().to_string()),
+            "{item} was not promised {}: {says}",
+            workspace.display()
+        );
+    }
+    assert!(!first.exists() && !second.exists(), "a dry run made a tree");
+
+    // The real run: two worktrees, on the two branches, each holding the plan
+    // about its own task.
+    world
+        .ephor()
+        .args(["work", "dispatch", "--project", PROJECT])
+        .assert()
+        .success();
+    for (workspace, branch) in [
+        (&first, "task/rhei-window-1-d8a9c768"),
+        (&second, "task/rhei-window-2-dba9cc21"),
+    ] {
+        assert!(workspace.join(".git").exists(), "{branch}: no working tree");
+        let head = Command::new("git")
+            .args(["rev-parse", "--abbrev-ref", "HEAD"])
+            .current_dir(workspace)
+            .output()
+            .expect("git runs");
+        assert_eq!(String::from_utf8_lossy(&head.stdout).trim(), branch);
+        // Grown from main, with the store every workspace ephor makes gets.
+        assert!(
+            workspace.join("README.md").exists(),
+            "{branch}: nothing grown"
+        );
+        assert!(workspace.join("panta/states.yaml").is_file(), "{branch}");
+    }
+    // Two workspaces and not one shared between them, which is what every
+    // template a task could render used to give.
+    assert_ne!(first, second);
+    assert_eq!(
+        checked_out_branches(&world),
+        vec![
+            "main".to_string(),
+            "task/rhei-window-1-d8a9c768".to_string(),
+            "task/rhei-window-2-dba9cc21".to_string(),
+        ]
+    );
+
+    // And asking again resolves the same names to the same trees: nothing was
+    // written down for the two runs to agree.
+    let before = checked_out_branches(&world);
+    world
+        .ephor()
+        .args(["work", "dispatch", "--project", PROJECT])
+        .assert()
+        .success();
+    assert_eq!(
+        checked_out_branches(&world),
+        before,
+        "a second dispatch minted a second tree for the same task"
+    );
+    let said = world
+        .ephor()
+        .args([
+            "work",
+            "dispatch",
+            "--project",
+            PROJECT,
+            "--dry-run",
+            "--json",
+        ])
+        .assert()
+        .success();
+    let again = landed(&json_of(said.get_output()));
+    if let Some(says) = again.get("rhei:window.1") {
+        assert!(
+            says.contains(&first.to_string_lossy().to_string()),
+            "the same task resolved somewhere else: {says}"
+        );
+    }
+}
+
+/// Two ids that read down to one slug stay two branches, which is what the
+/// digest is for. A task `retry-1` in a plan called `window` and a task `1` in
+/// a plan called `window-retry` both slug to `rhei-window-retry-1`; because
+/// rendering is the resolution and nothing is written down, a bare slug would
+/// resolve both to one workspace — two unrelated tasks in one tree, which is
+/// the failure a branch template is refused for elsewhere (§FS-005-dispatch.2,
+/// §FS-005-dispatch.25).
+#[test]
+fn two_ids_that_slug_alike_stay_two_branches() {
+    let world = watching_tasks(
+        "task/{id_slug}",
+        &[
+            ("window.rhei.md", COLLIDING_ONE),
+            ("window-retry.rhei.md", COLLIDING_TWO),
+        ],
+    );
+
+    world
+        .ephor()
+        .args(["work", "dispatch", "--project", PROJECT])
+        .assert()
+        .success();
+
+    assert_eq!(
+        checked_out_branches(&world),
+        vec![
+            "main".to_string(),
+            // rhei:window.retry-1
+            "task/rhei-window-retry-1-17bbeb3b".to_string(),
+            // rhei:window-retry.1
+            "task/rhei-window-retry-1-5ff4987f".to_string(),
+        ],
+        "the two ids that slug alike did not stay two branches"
     );
 }

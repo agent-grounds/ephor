@@ -178,6 +178,72 @@ A dossier is bounded. A conversation of two hundred messages is not evidence,
 it is a transcript; what is quoted is bounded per thread and in total, and
 where anything was dropped the ticket says so and links to the whole.
 
+**One field every matter can answer: `{id_slug}`.** Most of this vocabulary is
+the forge's. A `{number}` and a `{repo}` belong to a matter a forge filed, and a
+project's own task has neither
+([§FS-003-feed-categories.1](FS-003-feed-categories.md#1-the-categories)) — so a
+template naming one of them describes work about some matters and not others,
+which is a distinction the templates are for. But every matter has an id, and so
+every matter can answer `{id_slug}`: **that id reduced to a name a branch and a
+path will take.** The value is the id lowercased over its ASCII alphanumerics,
+with every other run of characters collapsed to a single `-` and trimmed at both
+ends, followed by an eight-digit digest of the **whole** id:
+
+| the matter's id | its `{id_slug}` |
+|---|---|
+| `rhei:window.1` | `rhei-window-1-d8a9c768` |
+| `rhei:window.2` | `rhei-window-2-dba9cc21` |
+| `rhei:window.retry-1` | `rhei-window-retry-1-17bbeb3b` |
+| `rhei:window-retry.1` | `rhei-window-retry-1-5ff4987f` |
+| `acmeforge:acme/widget#95` | `acmeforge-acme-widget-95-4ef7cc9e` |
+| `github-issues:agent-grounds/ephor#120` | `github-issues-agent-grounds-ephor-120-bac79ee0` |
+
+The third and fourth rows are what the digest is for, and why it is appended
+**unconditionally** rather than only where the slug lost something: two
+unrelated matters that read down to one slug stay two. An id of punctuation
+alone leaves no readable half at all, and renders `item-<digest>` rather than a
+name beginning with `-`. Nothing is truncated: the digest already carries the
+uniqueness, so a cap would buy tidiness only, and how long a branch name may be
+is a rule about branch names rather than about this field
+([§25](#25-work-about-a-matter-with-no-branch-can-mint-the-branch-it-needs)).
+
+**It is not the name of the matter's plan file, and is not meant to be.** A plan
+file's stem is reduced from the same id by the same slugging, and then held to
+the runtime's own grammar for a file stem, which refuses a stem beginning with a
+digit where neither git nor a filesystem cares
+([§3](#3-one-rhei-per-item-one-ticket-per-dispatch)). So the two strings agree
+for most ids and deliberately differ for some, because they answer to different
+grammars. A reader who finds that out by accident reads it as a bug, which is
+why it is written here.
+
+**Readable is not the same as best, and defined everywhere is not either.**
+A matter that has a `{number}` renders both fields and neither wins: `fix/issue-95`
+is a name a person reads and `acmeforge-acme-widget-95-4ef7cc9e` is one they
+tolerate, so `{number}` stays the right choice wherever the matter has one.
+`{id_slug}` is for the matter that has nothing else. A slugged *title* would read
+better still and is deliberately not offered here: a name minted from free text
+moves when the matter is retitled, and where rendering is the resolution
+([§25](#25-work-about-a-matter-with-no-branch-can-mint-the-branch-it-needs)) a
+retitle would silently resolve the same matter to a second workspace. It is
+tracked at agent-grounds/ephor#126 rather than left as an omission.
+
+**And one hazard belongs to the field rather than to any caller of it.** Because
+`{id_slug}` is never absent, a recipe naming it serves *every* matter its
+selector admits — which is the field doing what it was asked for, and also means
+a too-wide `sources` or `kinds` list mints branches where a `{number}` template
+would have been quietly withheld
+([§25](#25-work-about-a-matter-with-no-branch-can-mint-the-branch-it-needs)). One
+case of that is not a wide selector at all: a recipe over a project's own tasks
+([§FS-006-project-interface.7](FS-006-project-interface.md#7-the-projects-own-tasks-are-read-where-they-live))
+that mints a workspace gets a task store made inside it, dispatch writes its plan
+into that store, and the next refresh reads that plan as a new task matter
+matching the same recipe. The ledger keys work per item, so no task is dispatched
+twice ([§4](#4-the-ledger-is-ephors-record-and-never-the-truth-about-the-work)),
+but the matters a dispatch created are different items and nothing here bounds
+them. Bounding it would change what the tasks seam yields, which is a contract of
+its own: it is tracked at agent-grounds/ephor#125 and is not settled by this
+point.
+
 The same rule is why a brief kept in a file is read when the ticket is written
 rather than named for the run to open
 ([§34](#34-a-brief-may-be-kept-in-the-file-that-owns-it)): a path is a link,
@@ -359,6 +425,11 @@ same way a site recipe carrying one does today. That reads like an inversion of
 the scopes and is not: it is the second rung of a ladder whose rungs were never
 the scopes.
 
+**One of the names answers for every matter.** `{id_slug}` is the matter's own
+id as a name a path will take (§2), so a root naming it gives each matter a work
+root of its own — expressible for a matter with no `{number}` and no `{repo}`,
+which is where a per-matter root was unreachable before.
+
 **Two of the names reach above the project.** `{org}` is the organization the
 project's registry row places it in and `{org_root}` is where that organization
 is rooted — the registry has always known both, and it was the placement that
@@ -429,6 +500,21 @@ project and source, kind and item id, repository and number, branch and ticket,
 url and state, and the checkout the work belongs to. One vocabulary, whether
 the thing reading it is a shell command in a menu or a program in a state
 machine.
+
+**That vocabulary is one set of names and two sets of members, and this point
+used to read as though it were one of each.** What a template may name as
+`{placeholder}` and what a ticket carries as metadata are chosen separately: the
+list above is an **enumerated** one, and a name joins it deliberately rather than
+by joining the placeholders. `{id_slug}` is the case that made the difference
+visible — it is a placeholder every template may name
+([§2](#2-the-ticket-carries-what-ephor-knows-not-a-link-to-it)) and it is not in
+the list above, so a program in a state machine cannot read it as data and a
+brief or a branch template can. `{org}` and `{org_root}` are in the same position
+from the other direction. Nothing here says that is *right* — bringing the two
+back together is tracked at agent-grounds/ephor#117 — but the promise this point
+makes is the one it keeps: a name that is in both sets means the same thing in
+both, and a name in only one says so here rather than being discovered by a
+script that read nothing where it expected a value.
 
 Two consequences. A ticket that is appended to a plan **adds** its metadata
 rather than replacing what is there, because the runtime keeps its own
@@ -2231,10 +2317,51 @@ An existing matter branch still wins, and a configured `implement` recipe still
 replaces the shipped recipe and chooses its own branch behavior.
 
 **The template is rendered like a brief**, from the same fields — `{number}`,
-`{repo}`, `{kind}`, `{title}`, `{ticket}`, and the rest of
+`{repo}`, `{kind}`, `{title}`, `{ticket}`, `{id_slug}`, and the rest of
 [§2](#2-the-ticket-carries-what-ephor-knows-not-a-link-to-it)'s vocabulary —
 and three of them it may not name, because they are what it produces:
 `{branch}`, `{workspace}` and `{reply}`.
+
+**One of those fields serves every matter, and so is never withheld.**
+`{id_slug}` is the matter's own id as a name (§2), and every matter has an id: a
+template naming it is never withheld for want of the field, because the field is
+never empty, and what it renders is always a name git will take, because the
+rendering is `[a-z0-9-]+` by construction. So the refusals below can still fire
+on the rest of the template — a `{sprint}` beside it, a rendering that ends in a
+`.` — and never on `{id_slug}` itself. This is what makes the field usable
+exactly where the distinguishing fields are all absent: **a project's own tasks
+can be dispatched with a checkout each.** A recipe over them
+([§FS-006-project-interface.7](FS-006-project-interface.md#7-the-projects-own-tasks-are-read-where-they-live))
+writing `"branch": "task/{id_slug}"` mints one workspace per task, through the
+same one checkout operation as every other branch here, rather than the one
+shared workspace that `{project}` or `{source}` — the same for every task of a
+project — would have given all of them.
+
+**The digest is not decoration, and a bare slug would be wrong here.** Rendering
+*is* the resolution and nothing is written down, so each matter's branch is
+decided from that matter's own id and from nothing else. Two ids that read down
+to the same slug would therefore resolve to the same workspace, and two
+unrelated matters sharing one workspace is the failure this point refuses a
+template for. A digest that appeared only on a collision would be worse than
+none: there is nowhere to ask whether one was needed, so a second matter
+arriving later would silently change what the first already resolves to. Hence
+`rhei:window.retry-1` and `rhei:window-retry.1` mint `task/rhei-window-retry-1-17bbeb3b`
+and `task/rhei-window-retry-1-5ff4987f` — two names a reader must look twice at,
+and two trees.
+
+**No shipped recipe names it, and nothing defaults to it.** `implement` keeps
+`fix/issue-{number}`. A store yields one matter per open task in every plan it
+holds, so a recipe that named `{id_slug}` by default would mint a tree per task
+of every project that keeps its work in its checkout — a forest that grows with
+the store rather than with the work anybody asked for. Which scope work belongs
+in is read off what that work touches and off nothing else
+([§FS-014-work-root-scopes.2](FS-014-work-root-scopes.md#2-reach-places-and-nothing-else-does)),
+and a checkout root dies with its branch, which is what makes it cheap and also
+what makes an unasked-for one waste
+([§FS-014-work-root-scopes.5](FS-014-work-root-scopes.md#5-nothing-durable-lives-in-a-checkout-work-root)).
+So a reader who wants a checkout per task writes the field, and one who wants
+work about a task beside the project's other work says nothing and keeps what
+they have.
 
 **A template that is wrong for every matter is refused by name**, where it is
 read and rather than turned into a directory nobody meant, and the refusal
@@ -2451,7 +2578,13 @@ So **a recipe considered for the matter and refused by its selector or its
 branch template is named, beside what refused it**, in the reading `ephor work
 offers` returns: which of `roles`, `gate`, `needs_response`, or `sources` did
 not hold and what the matter carried instead of what the selector asked for,
-or which field its branch template needed and this matter did not carry.
+or which field its branch template needed and this matter did not carry. Where
+the refused template named something that is no field of a matter at all, the
+refusal lists the fields it may name instead, and `{id_slug}` is one of them
+([§25](#25-work-about-a-matter-with-no-branch-can-mint-the-branch-it-needs)) — it
+is offered on every matter, because it is the one field every matter answers, and
+so no recipe is ever named as excluded *for* `{id_slug}`: there is no matter that
+has not got it.
 "Considered" is narrower than every recipe the project has. A recipe whose
 `kinds` refused was never about a matter of this shape at all — a `pr`
 recipe has nothing to say about a task — so it names nothing, the same as a
@@ -3383,8 +3516,13 @@ refuse is the most misleading promise of the set
 for. That sweep has a checkout and no matter
 ([§3](#3-one-rhei-per-item-one-ticket-per-dispatch)), so the path renders from
 the names a checkout can answer, and one it cannot — a `{title}` where there is
-no item — is refused **by name**, as any other unanswerable name in a path is
-([§6.1](#61-the-work-root-is-a-template-and-it-may-reach-above-the-project)).
+no item, or an `{id_slug}` where there is no id to slug — is refused **by name**,
+as any other unanswerable name in a path is
+([§6.1](#61-the-work-root-is-a-template-and-it-may-reach-above-the-project)). That
+`{id_slug}` is never withheld from a matter
+([§25](#25-work-about-a-matter-with-no-branch-can-mint-the-branch-it-needs)) does
+not reach here: this sweep has no matter, so the field has nothing to render from
+rather than an empty value to render.
 Where the file cannot be read, the work is still reported and no ticket is
 opened: the conflict stays in the report with the reason on its own row, which
 is the shape that path already takes for everything it cannot open a ticket
