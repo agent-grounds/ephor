@@ -396,3 +396,68 @@ A gated report is an answer like any other: under `--json` it is the dry run's
 own reading with the gate named in it, and a refused `--act` lands on standard
 output as an outcome with `ok` false ([§7](#7---json-is-the-same-answer-not-a-second-one),
 [§REQ-002-parity.3](../requirements/REQ-002-parity.md#3-every-reading-answers-a-program)).
+
+## 11. A report reaches a terminal as prose and a file as markdown
+
+Some answers are a line and some are a **report**: what a checkout made of
+every repository under it, what a replay did to every branch it replayed. A
+report has more readers than a line does — a person watching a command run, a
+file a state machine opens, a field a program parses — and the fault this rule
+ends is writing it once, for whichever of them was thought of first, and
+handing that one form to all of them.
+
+### 11.1 What a terminal is handed carries no markup it does not render
+
+**What a command prints to a terminal carries no markup a terminal does not
+render**: no line-initial heading marker, no fence. A terminal renders none of
+it, so a heading arrives as a `#` and a fenced message arrives between two rows
+of backticks, and a reader looking for what a command could not do has to read
+past the syntax to find it. Worse where the report travels inside another
+line — the dispatch that could not make the workspace a recipe named says so as
+a note beside the item it was for ([§FS-005-dispatch.25](FS-005-dispatch.md#25-work-about-a-matter-with-no-branch-can-mint-the-branch-it-needs)) — because the report's
+first heading folds onto that line's prefix, and what is left reads as a fault
+in ephor rather than as the news it is carrying.
+
+The markdown form is not lost, because it was never the terminal's: it is what
+`--report <path>` writes and what the `report` field of `--json` carries, both
+declared as markdown and both for a reader that renders or stores it
+([§7](#7---json-is-the-same-answer-not-a-second-one)). So
+one outcome is told twice, and a caller who wants the document has a flag that
+hands it over unchanged. Neither telling may know something the other does not
+([§REQ-002-parity.3](../requirements/REQ-002-parity.md#3-every-reading-answers-a-program)): they differ in their frame — a heading and a fence in one,
+a sentence and an indent in the other — and in nothing else.
+
+The rule is about **reports** and not about any one command. Whichever command
+built it, a report reaching a terminal is prose and a report reaching a file or
+a JSON field is markdown; a report embedded in a plan body is neither, and is
+flattened by the rule the plan language has for it ([§FS-005-dispatch.3](FS-005-dispatch.md#3-one-rhei-per-item-one-ticket-per-dispatch)).
+
+### 11.2 A report names a repository for its reader
+
+A report about a forest says something per repository, and what it calls each
+one is a name a person reads rather than the directory a program opens. **A
+report names a repository by its role, failing that by the handle its
+declaration gave it — the registry row's id, the manifest's name
+([§FS-006-project-interface.1](FS-006-project-interface.md#1-the-three-homes)) — and only failing that by its path.** Where the
+forest has more than one repository the path is kept beside the name, because
+the role says what a repository is and the path says where it is; where it has
+one, the name stands alone.
+
+A path is not a name. A project whose one repository is the root of its
+checkout declares that repository's path as `.`, and a report headed by a full
+stop reads as a fault in the writing rather than as the repository it means —
+it sends the first reader of a refusal looking for a missing name in the
+registry, which is the one place the answer is not.
+
+Where nothing declares the layout there is no name to reach for: the forest is
+probed from disk, and no repository of it carries a role or a handle. The root
+repository of such a forest is named **the checkout itself**, which is what it
+is rather than a name invented for it; any other is named by its path, which is
+a real name there.
+
+The machine form goes on carrying the path. The `repo` field a reading gives
+per repository is what a program opens a directory with, and a person's word
+for it would open nothing ([§7](#7---json-is-the-same-answer-not-a-second-one),
+[§REQ-002-parity.4](../requirements/REQ-002-parity.md#4-the-machine-form-is-a-contract-not-a-dump)) — so naming is the prose
+form's, and the two forms stay the same answer because the path is still in the
+one that is parsed.

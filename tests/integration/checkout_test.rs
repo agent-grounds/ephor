@@ -1380,3 +1380,155 @@ fn a_directory_holding_no_repository_of_the_project_is_refused_on_every_ask() {
         );
     }
 }
+
+/// The roles this project's declaration gives its two repositories — a name a
+/// person reads, which is what a report reaches for before it reaches for the
+/// directory a program opens (§FS-011-command-line.11.2).
+fn name_the_repositories(tmp: &Path, ce: &str, ee: &str) {
+    let path = tmp.join("workspaces.json");
+    let mut registry: serde_json::Value =
+        serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
+    registry["project_types"][0]["repos"][0]["role"] = json!(ce);
+    registry["project_types"][0]["repos"][1]["role"] = json!(ee);
+    fs::write(&path, serde_json::to_string_pretty(&registry).unwrap()).unwrap();
+}
+
+/// Everything §FS-011-command-line.11.1 forbids a terminal to be handed. The
+/// assertions are about the form of what is printed and never about its
+/// wording, so the sentences stay free to improve.
+fn carries_no_markup(text: &str, what: &str) {
+    for line in text.lines() {
+        assert!(
+            !line.trim_end().starts_with('#'),
+            "{what} carries a markdown heading a terminal does not render: {line:?}\n{text}"
+        );
+        assert!(
+            !line.trim_start().starts_with("```"),
+            "{what} carries a fence: {line:?}\n{text}"
+        );
+    }
+}
+
+/// The seam this whole change can be wired backwards at: three surfaces, two
+/// forms. What the command prints is prose; the file `--report` writes is the
+/// markdown document it always was (§FS-011-command-line.11.1).
+#[test]
+fn the_terminal_is_handed_prose_while_the_report_file_stays_markdown() {
+    let tmp = tempdir();
+    let root = fixture(tmp.path());
+    name_the_repositories(
+        tmp.path(),
+        "the community edition",
+        "the enterprise edition",
+    );
+    let _ce = repo(tmp.path(), "ce");
+    let _ee = repo(tmp.path(), "ee");
+    let report = tmp.path().join("runtime/checkout.md");
+
+    let made = ephor(tmp.path())
+        .args(["checkout", "--project", "demo", "--branch", "feature"])
+        .arg("--report")
+        .arg(&report)
+        .output()
+        .unwrap();
+    assert!(made.status.success(), "{made:?}");
+    let printed = String::from_utf8_lossy(&made.stdout).into_owned();
+
+    carries_no_markup(&printed, "what `ephor checkout` printed");
+    // Each repository is introduced by the name its declaration gave it.
+    for name in ["the community edition", "the enterprise edition"] {
+        assert!(
+            printed.contains(name),
+            "`{name}` is never named in what the command printed:\n{printed}"
+        );
+    }
+    assert!(root.join("feature/ce/.git").exists());
+
+    // And the document is where it was declared to be, unchanged in kind.
+    let written = fs::read_to_string(&report).unwrap();
+    assert!(
+        written.lines().any(|line| line.starts_with("# ")),
+        "the report file lost its markdown heading:\n{written}"
+    );
+    assert!(
+        written.lines().any(|line| line.starts_with("## ")),
+        "the report file lost its per-repository heading:\n{written}"
+    );
+}
+
+/// The refusal, which is the moment a reader most needs to act: git's own
+/// words, kept, with nothing between them and the reader but ephor's sentence
+/// — while the `report` field of `--json` goes on carrying the markdown
+/// document and `repo` goes on carrying the path a program opens
+/// (§FS-011-command-line.11).
+#[test]
+fn a_refusal_reads_as_prose_while_the_reading_keeps_the_document_and_the_path() {
+    let tmp = tempdir();
+    let root = fixture(tmp.path());
+    name_the_repositories(
+        tmp.path(),
+        "the community edition",
+        "the enterprise edition",
+    );
+    let _ce = repo(tmp.path(), "ce");
+    let ee = repo(tmp.path(), "ee");
+    // Nothing to look the branch up on, which is git's refusal to give.
+    git(&ee, &["remote", "remove", "origin"]);
+
+    let refused = ephor(tmp.path())
+        .args(["checkout", "--project", "demo", "--branch", "feature"])
+        .output()
+        .unwrap();
+    let printed = String::from_utf8_lossy(&refused.stdout).into_owned()
+        + &String::from_utf8_lossy(&refused.stderr);
+    assert!(
+        printed.contains("fatal:"),
+        "git did not refuse, so there is no refusal to judge:\n{printed}"
+    );
+
+    carries_no_markup(&printed, "what a refused `ephor checkout` printed");
+    assert!(
+        printed.contains("the enterprise edition"),
+        "the refused repository is not named for its reader:\n{printed}"
+    );
+    for line in printed.lines().filter(|line| line.contains("fatal:")) {
+        assert!(
+            line.starts_with(' ') || line.starts_with('\t'),
+            "git's message is not indented under the repository it refused: {line:?}\n{printed}"
+        );
+    }
+    assert!(root.join("feature/ce/.git").exists());
+
+    // The same outcome for a program: still the document, still the path.
+    let view: serde_json::Value = serde_json::from_slice(
+        &ephor(tmp.path())
+            .args([
+                "checkout",
+                "--project",
+                "demo",
+                "--branch",
+                "feature",
+                "--json",
+            ])
+            .output()
+            .unwrap()
+            .stdout,
+    )
+    .unwrap();
+    let report = view["report"].as_str().unwrap();
+    assert!(
+        report.lines().any(|line| line.starts_with("# ")),
+        "the `report` field lost its markdown heading:\n{report}"
+    );
+    assert!(
+        report.lines().any(|line| line.starts_with("## ")),
+        "the `report` field lost its per-repository heading:\n{report}"
+    );
+    let rows = view["repos"].as_array().unwrap();
+    let names: Vec<&str> = rows.iter().filter_map(|row| row["repo"].as_str()).collect();
+    assert_eq!(
+        names,
+        vec!["ce", "ee"],
+        "the machine form stopped carrying the path a program opens: {view:#}"
+    );
+}
