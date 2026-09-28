@@ -35,8 +35,9 @@ container. Whoever can work one can work all three, and a plan can move between
 them without being rewritten.
 
 Which organization a project belongs to and where that organization is rooted
-are the registry's own facts, read when a root is rendered and never written
-back ([§REQ-001-boundary.2](../requirements/REQ-001-boundary.md#2-three-homes-one-resolution-order)). This rule says which scope work belongs in; it does
+are the registry's own facts, read when a root is rendered, when a summons is
+placed, and when a ticket is written, and never written back
+([§REQ-001-boundary.2](../requirements/REQ-001-boundary.md#2-three-homes-one-resolution-order), [§FS-005-dispatch.8](FS-005-dispatch.md#8-the-ticket-carries-the-item-as-data-not-only-as-prose)). This rule says which scope work belongs in; it does
 not say where the three scopes live, because the registry already does.
 
 ## 2. Reach places, and nothing else does

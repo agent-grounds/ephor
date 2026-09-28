@@ -1199,6 +1199,49 @@ mod tests {
         }
     }
 
+    /// The item as data carries the organization too, under the same spelling
+    /// the brief's placeholders already use (§FS-005-dispatch.8).
+    ///
+    /// A program in a state machine cannot read the dossier's prose, and the
+    /// organization is what it needs to find whatever a site keeps per
+    /// organization. What the brief renders and what the ticket records are
+    /// one vocabulary, so the filter below admits what `placeholders` was
+    /// already holding rather than a second name for the same fact.
+    ///
+    /// Empty here is not the same as absent on the ticket: a value with
+    /// nothing in it is not written into the metadata block at all, which is
+    /// why every case below states the empty string rather than a missing key.
+    #[test]
+    fn the_item_as_data_carries_the_organization_the_project_is_placed_in() {
+        let item = item(json!({}));
+        let checkout = checkout();
+        let carried = |organization: Option<&Organization>| {
+            subject(&item, &checkout, organization)
+                .metadata()
+                .into_iter()
+                .collect::<BTreeMap<&'static str, String>>()
+        };
+
+        let foundation = organization("foundation", Some("/f"));
+        let placed = carried(Some(&foundation));
+        assert_eq!(placed.get("project").map(String::as_str), Some("widget"));
+        assert_eq!(placed.get("org").map(String::as_str), Some("foundation"));
+        assert_eq!(placed.get("org_root").map(String::as_str), Some("/f"));
+
+        // Membership and the root are absent independently, so an
+        // organization that declares no root still names itself.
+        let rootless = organization("personal", None);
+        let half = carried(Some(&rootless));
+        assert_eq!(half.get("org").map(String::as_str), Some("personal"));
+        assert_eq!(half.get("org_root").map(String::as_str), Some(""));
+
+        // And a project no registry row places in an organization answers
+        // neither — which the ticket then writes as no key at all.
+        let none = carried(None);
+        assert_eq!(none.get("org").map(String::as_str), Some(""));
+        assert_eq!(none.get("org_root").map(String::as_str), Some(""));
+    }
+
     /// A work root may reach above the project to the organization the
     /// registry places it in (§FS-005-dispatch.6.1): `{org}` is the
     /// organization's id and `{org_root}` where it is rooted, so an

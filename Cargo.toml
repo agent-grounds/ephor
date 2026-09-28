@@ -158,6 +158,10 @@ name = "e2e_033_what_a_store_says_about_one_task"
 path = "tests/e2e/cases/E2E-033-what-a-store-says-about-one-task.rs"
 
 [[test]]
+name = "e2e_034_the_organization_is_handed_over"
+path = "tests/e2e/cases/E2E-034-the-organization-is-handed-over.rs"
+
+[[test]]
 name = "agents_test"
 path = "tests/integration/agents_test.rs"
 

@@ -225,6 +225,14 @@ mod tests {
     /// have named is left to be inherited from the process that launched ephor.
     /// This is the whole guard: add a name to [`of_item`] and this fails until
     /// [`of_branch`] answers it too.
+    ///
+    /// The third shape is here for what it claims rather than for what it
+    /// catches today: a name written in [`place`] reaches all three by
+    /// construction, so the subset holds by the shape of the code — and
+    /// asserting it is what keeps the next name from drifting out of one shape
+    /// when somebody writes it somewhere else. The organization is the case in
+    /// point: it is a fact about the project rather than about the matter, so
+    /// every shape answers both its names (§FS-005-dispatch.6.1).
     #[test]
     fn a_branch_answers_every_name_a_matter_does() {
         let root = Path::new("/w");
@@ -242,7 +250,64 @@ mod tests {
             None,
         ));
         let branch = names(of_branch("widget", root, root, None, None));
+        let project = names(of_project("widget", root, root, None));
         assert_eq!(matter, branch);
+        assert!(
+            project.is_subset(&matter),
+            "a project summons names something no matter does: {:?}",
+            &project - &matter
+        );
+        for (shape, told) in [
+            ("matter", &matter),
+            ("branch", &branch),
+            ("project", &project),
+        ] {
+            for name in ["EPHOR_ORG", "EPHOR_ORG_ROOT"] {
+                assert!(
+                    told.contains(name),
+                    "a {shape} summons is not told {name}: {told:?}"
+                );
+            }
+        }
+    }
+
+    /// Where there is no organization to name, the names are still there and
+    /// say nothing — in all three shapes (§FS-005-dispatch.6.1).
+    ///
+    /// Leaving them out would not be silence: a summons does not start from a
+    /// cleared environment, so an unset name is whatever the shell that
+    /// launched ephor held, and a project the registry places in no
+    /// organization would hand its command some other organization's name.
+    /// Empty is the answer that can be tested for; absent is the one that
+    /// cannot.
+    #[test]
+    fn a_summons_with_no_organization_is_told_so_rather_than_left_to_inherit_one() {
+        let root = Path::new("/w");
+        let shapes = [
+            ("project", of_project("widget", root, root, None)),
+            ("branch", of_branch("widget", root, root, None, None)),
+            (
+                "matter",
+                of_item(
+                    &item(ItemKind::Pr, "test:1", json!({})),
+                    root,
+                    root,
+                    None,
+                    None,
+                ),
+            ),
+        ];
+        for (shape, pairs) in shapes {
+            for name in ["EPHOR_ORG", "EPHOR_ORG_ROOT"] {
+                let told = pairs
+                    .iter()
+                    .find(|(candidate, _)| candidate == name)
+                    .unwrap_or_else(|| {
+                        panic!("a {shape} summons left {name} out rather than empty: {pairs:?}")
+                    });
+                assert_eq!(told.1, "", "a {shape} summons answered {name}");
+            }
+        }
     }
 
     fn item(kind: ItemKind, id: &str, raw: serde_json::Value) -> Item {
