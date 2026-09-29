@@ -3779,15 +3779,28 @@ disk says otherwise is the watch reporting on itself instead of on the world,
 and it is the reading that is at fault rather than the ledger. A count that
 cannot see a workflow's plan is that reading, whatever the ledger holds.
 
+**No sweep takes an entry that still has something open.** `--done` and
+`--missing` are both read from the plans and from every one of them
+([§FS-005-dispatch.30](FS-005-dispatch.md#30-a-run-asked-for-by-name-reaches-the-whole-of-that-matters-work)),
+so a single task that is not final anywhere in a matter's work keeps that
+matter's entry in the ledger, whichever verb swept and whatever the rest of its
+plans say. Only `--item`, which names one entry whatever its plans say, reaches
+past this sentence. What follows says which sweep an entry is *for*, and is
+read against it.
+
 **A plan that cannot be read is not evidence the work is over.** A laid workflow
 plan that is absent or unreadable makes its entry report as **missing** — the
-row says so, `--missing` reaches it, and `--item` reaches it — and `--done`
-leaves it alone. A deleted *recipe* plan keeps the rule
-[§4](#4-the-ledger-is-ephors-record-and-never-the-truth-about-the-work) gives it
-and is still selected by `--done`. The asymmetry is deliberate: ephor wrote the
-recipe plan, so its absence is ephor's own record of something gone, while a
-plan ephor only asked a runtime to write is a file it can conclude nothing
-from. An entry is never dropped for a file nobody promised.
+row says so, `--missing` is the sweep it is for, and `--item` reaches it — and
+`--done` leaves it alone. A deleted *recipe* plan keeps the rule
+[§4](#4-the-ledger-is-ephors-record-and-never-the-truth-about-the-work) gives
+it: it counts to `--done` as a finished plan rather than as an unreadable one,
+so an entry that has nothing else open is still selected. The asymmetry is
+deliberate: ephor wrote the recipe plan, so its absence is ephor's own record of
+something gone, while a plan ephor only asked a runtime to write is a file it
+can conclude nothing from. An entry is never dropped for a file nobody promised.
+Where both stand in one matter — a recipe plan ephor lost, and beside it a laid
+plan whose task is going — neither sweep takes the entry, because the sentence
+above governs both and something is open.
 
 **The same reading answers every surface**, because a matter has one body of
 work and not one per command
@@ -3808,7 +3821,11 @@ about — it merged, it closed, nothing is open — including the
 `work forget --done` it offers there. Where the plans say something is still
 open, the report says that instead, names the plan and the task it is at, and
 offers nothing to clear; the machine-readable report calls that outcome
-**underway** rather than dormant. The discriminator is the plans and never
+**underway** rather than dormant. Where a plan the record names cannot be read
+at all, the report says what it does not know — what that work came to — and
+names `--missing`, the verb that does reach the entry; that outcome is
+**unread**. Only where the plans really are over is it **dormant**, and only
+there is `--done` offered. The discriminator is the plans and never
 whether a dispatch was a workflow, so a *recipe* entry with open tickets stops
 being offered the same wrong hint by the same sentence. What is not fixed here
 is that such a report is made again on every turn: no snapshot is acknowledged
