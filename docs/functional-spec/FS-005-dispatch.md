@@ -2042,7 +2042,14 @@ over the tree and never over the kind of caller — a checkout a live run holds
 is passed over by that sweep, said in the same words and the same kind of row a
 held work root is passed over in, and it is never forced. `--force` is the
 reader's word about a run they asked for by name; it reaches no sweep, and it
-does not reach this one.
+does not reach this one. A third such writer is the unattended dispatch itself
+where its recipe mints a checkout per matter
+([§25](#25-work-about-a-matter-with-no-branch-can-mint-the-branch-it-needs)):
+minting a tree and writing a plan into it is the permissive half's *writing a
+file*, so no ceiling here counts it — and it is bounded where it must be,
+at what the sweep is offered rather than at what it opens, because a writer
+that can create the matters it is next selected for is not bounded by a number
+at all ([§FS-006-project-interface.7](FS-006-project-interface.md#7-the-projects-own-tasks-are-read-where-they-live)).
 
 **A run the reader asks for by name is refused by name.** `ephor work run` on
 a plan whose checkout a live run holds starts nothing and says *a run is live
@@ -2522,6 +2529,22 @@ what makes an unasked-for one waste
 So a reader who wants a checkout per task writes the field, and one who wants
 work about a task beside the project's other work says nothing and keeps what
 they have.
+
+**And the minting stops at one generation.** The paragraph above refuses a
+forest by *breadth* — a tree per task of every store — and a reader who writes
+the field asks for exactly one tree per task, which is what it is for. Depth is
+the other way that number grows, and nothing in the template bounds it: the
+workspace this mints gets a task store of its own
+([§FS-006-project-interface.7](FS-006-project-interface.md#7-the-projects-own-tasks-are-read-where-they-live)),
+the dispatch writes its plan inside that store
+([§3](#3-one-rhei-per-item-one-ticket-per-dispatch),
+[§6.1](#61-the-work-root-is-a-template-and-it-may-reach-above-the-project)), and a recipe
+over this source would be offered its own plan back on the next read and mint
+again. So what a dispatch wrote is not something a later sweep can dispatch:
+the seam yields no matter for a plan ephor caused to exist, absolutely and
+without a knob. The sentence above stays true and stays legal — a project's own
+tasks can still be dispatched with a checkout each, and the reader gets the one
+tree per task they asked for and no generation after it.
 
 **A template that is wrong for every matter is refused by name**, where it is
 read and rather than turned into a directory nobody meant, and the refusal
@@ -3455,7 +3478,10 @@ is opened, never what is stepped over, which is the reading `--limit` already
 has. Omitted, the recipe is bounded by the ceilings every start is bounded by
 ([§24](#24-work-nobody-has-to-start-starts-itself),
 [§FS-015-spend-ceiling](FS-015-spend-ceiling.md#fs-015-spend-ceiling-what-unattended-work-may-spend-is-the-persons-number-and-the-sweep-stops-at-it))
-and by nothing nearer.
+and by nothing nearer. All of that is about what a sweep *runs*. What it is
+offered to run at all is decided before any of it, by the source
+([§FS-006-project-interface.7](FS-006-project-interface.md#7-the-projects-own-tasks-are-read-where-they-live)):
+a matter the seam declines to yield never reaches a limit to spend one.
 
 ### 32.5 When each recipe last swept is ephor's record of ephor
 

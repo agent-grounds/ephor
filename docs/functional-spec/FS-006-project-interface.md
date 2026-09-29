@@ -227,6 +227,55 @@ read is a store that did not answer, never permission to substitute another
 machine, exactly like a plan that cannot be read
 ([§FS-001-forge-interface.6](FS-001-forge-interface.md#6-a-source-that-did-not-answer-says-so-and-says-which-kind-of-not)).
 
+**A plan ephor caused to exist is not read.** The store holds the project's
+work, and a plan ephor put there to *do* some of that work is ephor's own
+filing rather than a second piece of it. So the seam yields no matter for such
+a plan and none for any of its tasks. This is absolute: no depth, no recipe
+key, nothing that relaxes it. Without it the seam closes a loop — a recipe
+selecting this source and minting a checkout per task
+([§FS-005-dispatch.25](FS-005-dispatch.md#25-work-about-a-matter-with-no-branch-can-mint-the-branch-it-needs))
+gets a store in every checkout it mints, writes its plan inside that store, and
+is offered its own plans back as fresh work on the next read, each one minting
+again.
+
+**Which plans those are is read from what ephor wrote on disk beside them,
+never from the ledger** ([§FS-005-dispatch.4](FS-005-dispatch.md#4-the-ledger-is-ephors-record-and-never-the-truth-about-the-work)): the record of what ephor did is not
+the truth about what is on disk, and a plan moved, copied or restored under a
+ledger that never heard of it must still read the same. There are two marks,
+because ephor stands in two relations to the two plan shapes:
+
+- A plan ephor **authored** carries ephor's own dossier block. Every verb that
+  authors a plan authors it through the one writer that emits that block, so
+  the rule tests the mark and never enumerates verbs — a writer added later is
+  covered the day it is written.
+- A plan ephor **asked the runtime to render** is not ephor's to write
+  ([§REQ-001-boundary.1](../requirements/REQ-001-boundary.md#1-the-anatomy)), so it carries no block of ephor's. It is named instead by
+  ephor's own hidden corner beside it in the same work root, keyed by the
+  plan's id — the place ephor already puts what it carries for that plan
+  ([§FS-005-dispatch.15](FS-005-dispatch.md#15-every-operation-is-visible-in-one-place)).
+
+**And one case is deliberately outside the rule: a plan the project wrote that
+a dispatch merely appended a ticket to stays a matter, with all its tasks —
+including the one ephor appended.** It carries no block and has no corner, and
+appending to somebody's plan is not causing it to exist. Authorship is what
+decides, because the other reading would delete a project's own tasks from its
+own feed the first time ephor dispatched into their plan. A reader's habit
+expects the opposite, which is why it is said here.
+
+The consequence of putting the fact on disk is that deleting the mark restores
+the matter: a rendered plan whose hidden corner somebody removed is read again,
+because everything ephor writes into a checkout must be deletable
+([§REQ-001-boundary.4](../requirements/REQ-001-boundary.md#4-the-footprint-rule)) and the one store that could not be deleted that way —
+the ledger — is forbidden this job. An authored plan carries its mark inside
+the plan file and cannot lose it without losing the plan, which is the shape
+the loop above is made of.
+
+**This narrows the feed and nothing else.** Ephor's own work stays as visible
+as it was: every plan a work root holds is still watched whoever wrote it
+([§FS-005-dispatch.15](FS-005-dispatch.md#15-every-operation-is-visible-in-one-place)), and the rows work stands on are read from ephor's record
+beneath the matter it is about. One directory, two readers, and only the
+feed-facing one applies this test.
+
 **Where they live is per branch, where a project has branch workspaces.**
 Work about a change belongs in that change's working tree
 ([§FS-005-dispatch.3](FS-005-dispatch.md#3-one-rhei-per-item-one-ticket-per-dispatch)), so a branch-addressable project keeps a store per
@@ -271,7 +320,11 @@ visible from the moment the tree exists. This is not an artifact required of
 the project and does not bend [§REQ-001-boundary.3](../requirements/REQ-001-boundary.md#3-requirements-on-a-project-are-capabilities-never-artifacts): the store ignores itself,
 so what it holds is ephor's own planning state that happens to live in a
 checkout, never content the project carries. A project cloned without ephor
-is byte-for-byte what it was.
+is byte-for-byte what it was. That promise is about **version control and
+nothing else** — it says the checkout is unchanged, and it never said the seam
+declined to read what the store holds. The seam does decline a plan ephor
+caused to exist, by the rule above, which says so rather than leaving it to be
+inferred from this sentence.
 
 **The runtime makes its own project; ephor says where.** What a runtime
 project consists of is the runtime's answer, so ephor asks the runner for one

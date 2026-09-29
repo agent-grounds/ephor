@@ -1764,6 +1764,117 @@ states:
         assert!(plans_in(&dir.join("nowhere")).is_empty());
     }
 
+    /// A work root holding one plan of each provenance, for the two readers
+    /// below to disagree about: the project's own, the project's own with an
+    /// ephor ticket appended to it, one ephor authored, and one ephor asked
+    /// the runtime to render with ephor's hidden corner beside it.
+    fn a_root_of_every_provenance(dir: &Path) {
+        // The project's own plan: no block of ephor's, no corner.
+        fs::write(
+            dir.join("theirs.rhei.md"),
+            "# Rhei: theirs\n\n## Tasks\n\n### Task 1: Widen the retry window\n\
+             **State:** pending\n",
+        )
+        .unwrap();
+        // The project's own plan a dispatch appended a ticket to. Appending
+        // is not causing a plan to exist (§FS-006-project-interface.7).
+        fs::write(
+            dir.join("appended.rhei.md"),
+            "# Rhei: theirs too\n\n## Tasks\n\n### Task 1: Shorten the reset\n\
+             **State:** pending\n\n### Task fix-1: Fix the red gate\n**State:** fix\n",
+        )
+        .unwrap();
+        // A plan ephor authored, exactly as `Plan::create` writes one.
+        let authored = Plan::create(
+            &dir.join("authored.rhei.md"),
+            "ephor-work",
+            "authored",
+            "acmeforge:acme/widget#95",
+            &ticket("fix-1", "fix", "Fix the red gate.\n"),
+        );
+        fs::write(&authored.path, authored.text()).unwrap();
+        // A plan ephor asked the runtime to render, named by ephor's own
+        // hidden corner in the same root, keyed by the plan's id.
+        fs::create_dir_all(dir.join("laid")).unwrap();
+        fs::write(
+            dir.join("laid/index.rhei.md"),
+            "# Rhei: laid\n\n## Tasks\n\n### Task 1: Do the issue\n**State:** pending\n",
+        )
+        .unwrap();
+        fs::create_dir_all(dir.join(".ephor/laid")).unwrap();
+        fs::write(dir.join(".ephor/laid/dossier.md"), "# Do the issue\n").unwrap();
+    }
+
+    fn ids(found: &[FoundPlan]) -> Vec<String> {
+        let mut ids: Vec<String> = found.iter().map(|plan| plan.plan_id.clone()).collect();
+        ids.sort();
+        ids
+    }
+
+    /// The feed-facing reader declines a plan ephor caused to exist
+    /// (§FS-006-project-interface.7). Two marks, because ephor stands in two
+    /// relations to the two plan shapes: the dossier block it writes into a
+    /// plan it authored, and its own hidden corner beside a plan the runtime
+    /// rendered for it, which is never ephor's to write (§REQ-001-boundary.1).
+    /// Without this a recipe over this source is offered its own filing back
+    /// as fresh work and mints again (§FS-005-dispatch.25).
+    #[test]
+    fn the_task_store_reader_declines_a_plan_ephor_caused_to_exist() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path();
+        a_root_of_every_provenance(dir);
+
+        assert_eq!(
+            ids(&task_store_plans_in(dir).unwrap()),
+            vec!["appended".to_string(), "theirs".to_string()],
+        );
+    }
+
+    /// And the probing reader behind the work screen and the operations board
+    /// returns all four: every plan a work root holds is watched whoever wrote
+    /// it (§FS-005-dispatch.15). One directory, two readers, and only the
+    /// feed-facing one applies the test above.
+    #[test]
+    fn the_probing_reader_still_returns_every_plan_whoever_wrote_it() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path();
+        a_root_of_every_provenance(dir);
+
+        assert_eq!(
+            ids(&plans_in(dir)),
+            vec![
+                "appended".to_string(),
+                "authored".to_string(),
+                "laid".to_string(),
+                "theirs".to_string(),
+            ],
+        );
+    }
+
+    /// Deleting the mark restores the matter, and that is the documented
+    /// consequence of putting the fact on disk rather than in the ledger:
+    /// everything ephor writes into a checkout must be deletable
+    /// (§REQ-001-boundary.4), and the one store that could not be deleted that
+    /// way is forbidden this job (§FS-005-dispatch.4). An authored plan
+    /// carries its mark inside the plan file and cannot lose it without losing
+    /// the plan, which is the shape the loop is made of.
+    #[test]
+    fn a_rendered_plan_whose_mark_was_deleted_is_read_again() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path();
+        a_root_of_every_provenance(dir);
+        fs::remove_dir_all(dir.join(".ephor")).unwrap();
+
+        assert_eq!(
+            ids(&task_store_plans_in(dir).unwrap()),
+            vec![
+                "appended".to_string(),
+                "laid".to_string(),
+                "theirs".to_string(),
+            ],
+        );
+    }
+
     /// Origin tracking preserves the shared reader's index-first, sorted
     /// task-file order and task metadata (§FS-006-project-interface.7, §FS-005-dispatch.28).
     #[test]
