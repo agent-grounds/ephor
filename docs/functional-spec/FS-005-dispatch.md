@@ -295,6 +295,18 @@ record, the second matter's ticket ordered behind the first's
 something else is finished — silently, since both dispatches did what they were
 asked.
 
+**And where two records name one plan file, dispatch refuses and names both
+matters and the file.** That is not a hypothetical shape: it is what the
+non-injective naming left behind wherever it fired, one file carrying two
+matters' tickets and two ledger entries recorded at it. Giving the file to
+whichever of them sorts first would leave the other's record naming a file that
+is not there, which is the one outcome a rename must not produce
+([§3.1](#31-a-plan-named-before-the-digest-is-carried-over)) — so nothing about
+those two matters moves, and which of the file's tickets belongs to which matter
+is the reader's to say. It is the mirror of the refusal below: two files naming
+one matter, and two matters naming one file, are both two records only a person
+can separate.
+
 **Where both names hold a plan about this matter, dispatch refuses and names both
 files.** A root that has been carried over
 ([§3.1](#31-a-plan-named-before-the-digest-is-carried-over)) holds one plan per
@@ -374,9 +386,36 @@ Nothing is written down about whether it has run, because the question is answer
 by looking — so it is idempotent, and a root some other binary or a hand edit has
 already moved is not skipped for having been touched.
 
+**It happens at the moment ephor is entitled to write in that root, and not
+before.** The verbs that recompute a stem are the ones that write with it — the
+dispatch, the workflow lay, and the sweep that starts runs — and those are
+where the carry-over runs. Every reading command answers from the recorded name
+([§4](#4-the-ledger-is-ephors-record-and-never-the-truth-about-the-work)) and is
+therefore already consistent with the disk, so moving files beneath one would
+buy nothing it has not got; what it would cost is the two promises this rule
+must not break, a run held above one project writing nothing without `--act`
+([§FS-011-command-line.10](FS-011-command-line.md#10-a-mutating-verb-above-one-project-reports-and-acts-under---act))
+and a dry run writing nothing at all ([§26](#26-an-ordering-already-made-can-be-read-and-a-limit-bounds-what-runs)).
+A run that only reports must still report the truth, so where a root has not
+been carried over yet it reads the plan the record names and says the move it
+is reporting across — the ticket it promises is the ticket the next real
+dispatch writes.
+
+**Each entry moves on its own, and what cannot move stops only itself.** The
+plan, the results, the artifacts and the recorded name of one matter are one
+commit: wherever an error escapes, what that entry had already moved is put
+back and the record still says what it said, so the two never disagree. A root
+that cannot be carried over — an unreachable directory, or either of the
+refusals [§3](#3-one-rhei-per-item-one-ticket-per-dispatch) states — is
+reported and holds back the matters it names and nothing else. It does stop a
+dispatch *of those matters*, because a dispatch that went ahead would open a
+second plan at the digested name and orphan the one already there; every other
+project is carried over and handed its work as usual.
+
 **A root a run is holding waits.** Moving a plan out from under a live run is the
 one way this could lose work, and there is nothing to gain by hurrying it: the
-root is carried over the next time ephor reads its ledger and no run is there.
+root is carried over the next time a verb entitled to write in it runs and no
+run is there.
 
 **A workflow already laid keeps the name it was recorded under**
 ([§19](#19-a-workflow-the-runtime-offers-is-an-action-and-its-inputs-are-answered-here)).
@@ -384,9 +423,10 @@ A laid plan's name is a record and not a lookup — nothing recomputes it — so
 moving it would buy nothing and would break the one path its reader has.
 
 What was carried over is said on the command's own output and carried in `--json`
-([§REQ-002-parity](../requirements/REQ-002-parity.md)). It is a fact only ephor
-knows and only at that moment: the reader who had a path to a plan does not have
-one now, and a rename nobody was told about reads as work that vanished.
+([§REQ-002-parity](../requirements/REQ-002-parity.md)), by the verb that carried
+it over. It is a fact only ephor knows and only at that moment: the reader who
+had a path to a plan does not have one now, and a rename nobody was told about
+reads as work that vanished.
 
 ## 4. The ledger is ephor's record, and never the truth about the work
 

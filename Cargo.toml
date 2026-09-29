@@ -170,6 +170,10 @@ name = "e2e_036_the_minting_stops_at_one_generation"
 path = "tests/e2e/cases/E2E-036-the-minting-stops-at-one-generation.rs"
 
 [[test]]
+name = "e2e_037_a_plan_named_before_the_digest"
+path = "tests/e2e/cases/E2E-037-a-plan-named-before-the-digest.rs"
+
+[[test]]
 name = "agents_test"
 path = "tests/integration/agents_test.rs"
 

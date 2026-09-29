@@ -865,7 +865,32 @@ impl PathImage {
         Ok(PathImage::Directory(entries))
     }
 
+    /// Whether the path already holds exactly this image, so putting it back
+    /// is nothing to do (§FS-005-dispatch.4).
+    ///
+    /// A hand-off journals a path before it touches it and unwinds every path
+    /// it journalled, so most of what a rollback puts back never moved. The
+    /// restore below removes and rewrites, which fails where the directory is
+    /// the very thing that went wrong — and then the reader is told the
+    /// rollback failed about a file that is sitting exactly where it belongs.
+    /// Only the two shapes a rename produces are recognised; a directory or a
+    /// symlink is restored as before.
+    fn unchanged_at(&self, path: &std::path::Path) -> bool {
+        match self {
+            PathImage::Missing => std::fs::symlink_metadata(path)
+                .is_err_and(|err| err.kind() == std::io::ErrorKind::NotFound),
+            PathImage::File(bytes) => {
+                std::fs::symlink_metadata(path).is_ok_and(|metadata| metadata.is_file())
+                    && std::fs::read(path).is_ok_and(|have| have == *bytes)
+            }
+            _ => false,
+        }
+    }
+
     fn restore(&self, path: &std::path::Path) -> std::io::Result<()> {
+        if self.unchanged_at(path) {
+            return Ok(());
+        }
         remove_path(path)?;
         match self {
             PathImage::Missing => Ok(()),
@@ -993,6 +1018,51 @@ impl Journal {
     }
 }
 
+/// One ledger entry whose recorded plan name is not the stem its own id
+/// renders now (§FS-005-dispatch.3.1).
+struct Behind {
+    id: String,
+    was: String,
+    now: String,
+    root: PathBuf,
+}
+
+/// A carry-over that was not made: the matters it holds back, and what the
+/// reader is told about them (§FS-005-dispatch.3).
+struct Refused {
+    matters: Vec<String>,
+    says: String,
+}
+
+/// What one carry-over pass moved, and what stood in its way
+/// (§FS-005-dispatch.3.1).
+#[derive(Default)]
+struct CarriedOver {
+    moved: Vec<String>,
+    refused: Vec<Refused>,
+}
+
+impl CarriedOver {
+    /// Everything that stood in the way, said together — and what was carried
+    /// over anyway, because a rename nobody was told about reads as work that
+    /// vanished (§REQ-002-parity).
+    fn stopped(&self) -> String {
+        let mut says = self
+            .refused
+            .iter()
+            .map(|one| one.says.as_str())
+            .collect::<Vec<_>>()
+            .join("\n\n");
+        if !self.moved.is_empty() {
+            says.push_str(&format!(
+                "\n\nEverything else was carried over and is committed: {}.",
+                self.moved.join("; ")
+            ));
+        }
+        says
+    }
+}
+
 /// Reads the work configuration, offers recipes, writes tickets, and keeps the
 /// ledger.
 pub struct Dispatcher {
@@ -1037,8 +1107,17 @@ pub struct Dispatcher {
 }
 
 impl Dispatcher {
+    /// Read the configuration and the ledger, and write nothing.
+    ///
+    /// Every reading command answers from the recorded plan name and is
+    /// self-consistent before anything is carried over, so the carry-over
+    /// belongs to the verbs entitled to write in those roots rather than to
+    /// this (§FS-005-dispatch.3.1): loading it here made `work list` move
+    /// files, and made a sweep the `--act` gate was holding rename plans in
+    /// every project while it printed that nothing had been written
+    /// (§FS-011-command-line.10, §FS-005-dispatch.26).
     pub fn load(config: &StatusConfig) -> Result<Dispatcher> {
-        let mut dispatcher = Dispatcher {
+        let dispatcher = Dispatcher {
             registry_doc: crate::feed::commands::load_registry_doc()?,
             global: config.work.clone(),
             projects: config
@@ -1075,14 +1154,6 @@ impl Dispatcher {
             journal: Journal::default(),
             ledger: ledger::load()?,
         };
-        // Before anything recomputes a stem: a root named before the digest is
-        // carried over first, so no lookup is ever made against a name the disk
-        // has not caught up to (§FS-005-dispatch.3.1). What moved is said the
-        // way every other fact this dispatcher learns is — in prose and in
-        // `--json` alike (§REQ-002-parity, §FS-006-project-interface.9).
-        for note in dispatcher.carry_over_plan_names()? {
-            dispatcher.note_once(&note);
-        }
         Ok(dispatcher)
     }
 
@@ -2016,6 +2087,20 @@ impl Dispatcher {
                 item.id
             )));
         }
+        // A root named before the digest is carried over before this dispatch
+        // recomputes a stem in it, so no lookup is made against a name the
+        // disk has not caught up to — and only here, where the verb is
+        // entitled to write in that root. A dry run promises rather than moves
+        // and reads the record instead, below (§FS-005-dispatch.3.1,
+        // §FS-005-dispatch.26).
+        match dry_run {
+            false => self.carry_over_before_writing(Some(&item.id))?,
+            true => {
+                if let Some(why) = self.carry_over_refusal(&item.id) {
+                    return Err(EphorError::Command(why));
+                }
+            }
+        }
         let site = self.site(item, recipe)?;
         // Who does it, before anything is written and before the opening move
         // is made: a refusal leaves nothing behind
@@ -2116,7 +2201,27 @@ impl Dispatcher {
                 self.note_once(&note);
             }
             let path = plan::plan_path_in(&site.dir, &plan_id);
-            let existing = Plan::read(&path)?;
+            // What the next real dispatch would append to, over a root it has
+            // not carried over yet: the plan the record still names
+            // (§FS-005-dispatch.3.1). The move is named too, because the path
+            // this report prints is not the path the plan is at today.
+            let behind = match path.is_file() {
+                true => None,
+                false => self.recorded_plan_behind(&item.id, &plan_id),
+            };
+            if let Some((was, _)) = &behind {
+                let note = format!(
+                    "the plan of {} is still named {was} in {}; the dispatch would carry it \
+                     over to {plan_id} first",
+                    item.id,
+                    site.dir.display()
+                );
+                self.note_once(&note);
+            }
+            let existing = match &behind {
+                Some((_, recorded)) => Plan::read(recorded)?,
+                None => Plan::read(&path)?,
+            };
             let ticket = next_ticket_id(
                 self.ledger.entries.get(&item.id),
                 existing.as_ref(),
@@ -2966,7 +3071,10 @@ impl Dispatcher {
         }
         // Everything above could still refuse; nothing above has written
         // anything. The workspace goes in here, and the work root is the first
-        // thing inside it (§FS-005-dispatch.25).
+        // thing inside it (§FS-005-dispatch.25) — and a root named before the
+        // digest is carried over first, because this is the moment ephor is
+        // entitled to write in it (§FS-005-dispatch.3.1).
+        self.carry_over_before_writing(Some(&item.id))?;
         self.begin_handoff();
         self.journal_work_root(&laying.site.dir)?;
         self.mint(item, &laying.site)?;
@@ -4103,10 +4211,12 @@ impl Dispatcher {
         let _autorun = autorun_lock()?;
         self.ledger = ledger::load()?;
         // The record just reloaded may still be named before the digest — this
-        // sweep's own process may never have read it (§FS-005-dispatch.3.1).
-        for note in self.carry_over_plan_names()? {
-            self.note_once(&note);
-        }
+        // sweep's own process may never have read it, and a sweep that starts
+        // runs is entitled to write in the roots it starts them in
+        // (§FS-005-dispatch.3.1). A root it cannot carry over is said and
+        // passed over: a sweep is about no one matter, so nothing here is a
+        // reason to leave the rest of the site unswept.
+        self.carry_over_before_writing(None)?;
         // What the budgets have spent, read once for the whole sweep: the
         // answer is about the window rather than about any one root
         // (§FS-015-spend-ceiling.1).
@@ -4449,100 +4559,274 @@ impl Dispatcher {
         }
     }
 
-    /// Carry every plan named before the digest over to the name its matter's
-    /// id renders now, once, and say what moved (§FS-005-dispatch.3.1).
-    ///
-    /// Run where the ledger is read, so no stem is recomputed before the root
-    /// it names has been carried over. Decided per entry and out of the entry
-    /// itself — a recorded name that is not the stem of its own id — so it is
-    /// idempotent and needs nothing written down about whether it has run.
-    /// Where both the digested name and a pre-digest name hold a plan about one
-    /// matter it refuses and names both files, because choosing between two
-    /// records of the same work is the reader's call (§FS-005-dispatch.3).
-    ///
-    /// What is reported is what a reader has lost a path to, so an entry whose
-    /// plan was never written has its recorded name corrected and is not
-    /// reported: there was no file, and so nothing that reads as gone.
-    pub fn carry_over_plan_names(&mut self) -> Result<Vec<String>> {
-        let behind: Vec<(String, String, String)> = self
-            .ledger
+    /// Every entry whose recorded plan name is not the stem its own id renders
+    /// now (§FS-005-dispatch.3.1). The question is answered by looking, so
+    /// nothing is written down about whether the carry-over has run.
+    fn plans_behind(&self) -> Vec<Behind> {
+        self.ledger
             .entries
             .iter()
             .filter_map(|(id, entry)| {
-                let stem = plan::plan_id(id);
-                (entry.plan_id != stem).then(|| (id.clone(), entry.plan_id.clone(), stem))
+                let now = plan::plan_id(id);
+                (entry.plan_id != now).then(|| Behind {
+                    id: id.clone(),
+                    was: entry.plan_id.clone(),
+                    now,
+                    root: entry.root.clone(),
+                })
             })
-            .collect();
-        if behind.is_empty() {
-            return Ok(Vec::new());
+            .collect()
+    }
+
+    /// The carry-overs this pass will not make, each said in full and each
+    /// naming the matters it holds back (§FS-005-dispatch.3).
+    ///
+    /// Both shapes are two records of work that only a person can separate, so
+    /// both stop at saying so. Neither reaches past the matters it names: a
+    /// collided root is not a reason to leave an unrelated project behind.
+    fn refused_carry_overs(&self, behind: &[Behind]) -> Vec<Refused> {
+        let mut refused: Vec<Refused> = Vec::new();
+        // Two records of one plan file — the state the collision this digest
+        // fixes actually leaves on disk, where an older ephor wrote both
+        // matters' tickets into one file and recorded both entries at it.
+        // Giving the file to one of them would leave the other's record naming
+        // a file that is not there, which is the one outcome a carry-over must
+        // not produce (§FS-005-dispatch.3.1).
+        let mut sharing: BTreeMap<PathBuf, Vec<String>> = BTreeMap::new();
+        for entry in behind {
+            sharing
+                .entry(plan::plan_path_in(&entry.root, &entry.was))
+                .or_default()
+                .push(entry.id.clone());
         }
-        // Two plans about one matter is refused before anything moves, and over
-        // the whole ledger rather than per entry: a refusal leaves the reader
-        // exactly what they had (§FS-005-dispatch.3).
-        for (id, was, now) in &behind {
-            let root = &self.ledger.entries[id].root;
-            let (old, new) = (plan::plan_path_in(root, was), plan::plan_path_in(root, now));
-            if old.is_file() && new.is_file() {
-                return Err(EphorError::Command(format!(
-                    "{id} has a plan at two names: {} and {}. One of them was written by \
+        for (file, matters) in sharing {
+            if matters.len() < 2 || !file.is_file() {
+                continue;
+            }
+            refused.push(Refused {
+                says: format!(
+                    "{} is recorded as the plan of {} at once. One plan file holding two \
+                     matters is what an ephor that named plans without the digest wrote, \
+                     and which of its tickets belongs to which matter is yours to say — so \
+                     nothing about them has been moved. Split it into one plan per matter, \
+                     and the next dispatch carries each of them over.",
+                    file.display(),
+                    matters.join(" and ")
+                ),
+                matters,
+            });
+        }
+        let held: BTreeSet<String> = refused
+            .iter()
+            .flat_map(|one| one.matters.iter().cloned())
+            .collect();
+        // One matter holding a plan at the digested name and at a pre-digest
+        // name at once, which only a mixed pair of binaries can produce
+        // (§FS-005-dispatch.3).
+        for entry in behind {
+            if held.contains(&entry.id) {
+                continue;
+            }
+            let (old, new) = (
+                plan::plan_path_in(&entry.root, &entry.was),
+                plan::plan_path_in(&entry.root, &entry.now),
+            );
+            if !(old.is_file() && new.is_file()) {
+                continue;
+            }
+            refused.push(Refused {
+                matters: vec![entry.id.clone()],
+                says: format!(
+                    "{} has a plan at two names: {} and {}. One of them was written by \
                      an ephor that named plans without the digest, and which of two records \
                      of the same work to go on with is yours to say — so nothing here has \
                      been moved. Keep one of the two files and remove the other.",
+                    entry.id,
                     old.display(),
                     new.display()
-                )));
+                ),
+            });
+        }
+        refused
+    }
+
+    /// One entry's plan, its results, its artifacts and the recorded name,
+    /// moved together and committed on their own (§FS-005-dispatch.3.1).
+    ///
+    /// Its own hand-off, so wherever an error escapes the record and the disk
+    /// agree: what this entry had already moved is put back and the ledger is
+    /// left saying what it said (§FS-005-dispatch.4). Committing per entry is
+    /// what keeps one root's trouble from undoing another's move.
+    fn carry_one_over(&mut self, behind: &Behind) -> Result<Option<String>> {
+        let moves = runtime::carried_over_paths(&behind.root, &behind.was, &behind.now);
+        self.begin_handoff();
+        for (from, to) in &moves {
+            if let Err(why) = self
+                .journal
+                .remember(from)
+                .and_then(|()| self.journal.remember(to))
+            {
+                return Err(self.unwind(why));
             }
         }
-        let mut moved = Vec::new();
-        let mut carried = false;
-        for (id, was, now) in behind {
-            let root = self.ledger.entries[&id].root.clone();
-            // A run holding this root waits: moving a plan out from under it is
-            // the one way this could lose work, and the next read carries it
-            // over instead (§FS-005-dispatch.3.1).
-            if runtime::watch::live(&self.global, &root) {
+        for (from, to) in &moves {
+            if let Err(err) = std::fs::rename(from, to) {
+                let why = EphorError::Command(format!(
+                    "Cannot carry {} over to {}: {err}",
+                    from.display(),
+                    to.display()
+                ));
+                return Err(self.unwind(why));
+            }
+        }
+        let entry = self
+            .ledger
+            .entries
+            .get_mut(&behind.id)
+            .expect("the entry was read from this ledger");
+        entry.plan_id = behind.now.clone();
+        entry.plan = plan::plan_path_in(&behind.root, &behind.now);
+        self.save()?;
+        // What is reported is what a reader has lost a path to, so an entry
+        // whose plan was never written has its recorded name corrected and is
+        // not reported: there was no file, and so nothing that reads as gone.
+        Ok((!moves.is_empty()).then(|| {
+            format!(
+                "carried the plan of {} over from {} to {} in {}",
+                behind.id,
+                behind.was,
+                behind.now,
+                behind.root.display()
+            )
+        }))
+    }
+
+    /// Put back what this hand-off had already moved, restore the ledger it
+    /// began from, and say what went wrong (§FS-005-dispatch.4).
+    fn unwind(&mut self, why: EphorError) -> EphorError {
+        let journal = std::mem::take(&mut self.journal);
+        let (ledger, cleanup) = journal.rollback();
+        self.ledger = ledger;
+        match cleanup {
+            None => why,
+            Some((path, failure)) => EphorError::Command(format!(
+                "{why}; rollback could not restore {}: {failure}",
+                path.display()
+            )),
+        }
+    }
+
+    /// One pass: carry over every root that can be, and collect what stood in
+    /// the way rather than stopping on the first of it (§FS-005-dispatch.3.1).
+    fn carry_plans_over(&mut self) -> CarriedOver {
+        let behind = self.plans_behind();
+        let mut pass = CarriedOver::default();
+        if behind.is_empty() {
+            return pass;
+        }
+        pass.refused = self.refused_carry_overs(&behind);
+        let held: BTreeSet<String> = pass
+            .refused
+            .iter()
+            .flat_map(|one| one.matters.iter().cloned())
+            .collect();
+        for entry in &behind {
+            if held.contains(&entry.id) {
                 continue;
             }
-            let moves = runtime::carried_over_paths(&root, &was, &now);
-            // The plan, its results, its artifacts and the record move together
-            // under the one rollback the hand-off already has
-            // (§FS-005-dispatch.4).
-            self.begin_handoff();
-            for (from, to) in &moves {
-                self.journal.remember(from)?;
-                self.journal.remember(to)?;
+            // A run holding this root waits: moving a plan out from under it
+            // is the one way this could lose work, and the next verb entitled
+            // to write carries it over instead (§FS-005-dispatch.3.1).
+            if runtime::watch::live(&self.global, &entry.root) {
+                continue;
             }
-            for (from, to) in &moves {
-                std::fs::rename(from, to).map_err(|err| {
-                    EphorError::Command(format!(
-                        "Cannot carry {} over to {}: {err}",
-                        from.display(),
-                        to.display()
-                    ))
-                })?;
-            }
-            let entry = self
-                .ledger
-                .entries
-                .get_mut(&id)
-                .expect("the entry was read from this ledger");
-            entry.plan_id = now.clone();
-            entry.plan = plan::plan_path_in(&root, &now);
-            carried = true;
-            if !moves.is_empty() {
-                moved.push(format!(
-                    "carried the plan of {id} over from {was} to {now} in {}",
-                    root.display()
-                ));
+            match self.carry_one_over(entry) {
+                Ok(said) => pass.moved.extend(said),
+                // A root that cannot be carried over is reported and stops
+                // itself; the rest of the pass goes on, because one
+                // unreachable directory is no reason to leave every other
+                // project behind.
+                Err(why) => pass.refused.push(Refused {
+                    matters: vec![entry.id.clone()],
+                    says: why.to_string(),
+                }),
             }
         }
-        // Committed here, so the record and the disk never disagree across two
-        // invocations: a name this moved and did not write down is a plan the
-        // next reading command says is missing (§FS-005-dispatch.3.1).
-        if carried {
-            self.save()?;
+        pass
+    }
+
+    /// Carry every plan named before the digest over to the name its matter's
+    /// id renders now, once, and say what moved (§FS-005-dispatch.3.1).
+    ///
+    /// Run from the verbs entitled to write in the roots they name — the
+    /// dispatch, the lay and the sweep — rather than wherever the ledger is
+    /// read: a reading command answers from the recorded name and is
+    /// self-consistent before anything moves, so carrying over beneath it
+    /// would write where `--act` and `--dry-run` promised nothing would be
+    /// (§FS-011-command-line.10, §FS-005-dispatch.26).
+    ///
+    /// Decided per entry and out of the entry itself — a recorded name that is
+    /// not the stem of its own id — so it is idempotent and needs nothing
+    /// written down about whether it has run.
+    ///
+    /// What could not be carried over is the error, after everything that
+    /// could has been: a refusal is about the matters it names and never about
+    /// the rest of the ledger.
+    pub fn carry_over_plan_names(&mut self) -> Result<Vec<String>> {
+        let pass = self.carry_plans_over();
+        if pass.refused.is_empty() {
+            return Ok(pass.moved);
         }
-        Ok(moved)
+        Err(EphorError::Command(pass.stopped()))
+    }
+
+    /// Carry over before this verb recomputes a stem in a root it is entitled
+    /// to write in, and say what moved (§FS-005-dispatch.3.1, §REQ-002-parity).
+    ///
+    /// A root that could not be carried over stops the matter it is about and
+    /// nothing else: the dispatch of that matter would otherwise open a second
+    /// plan at the digested name and orphan the one already there, while a
+    /// collided root in another project is somebody else's to split and is
+    /// said rather than obeyed (§FS-005-dispatch.3).
+    fn carry_over_before_writing(&mut self, about: Option<&str>) -> Result<()> {
+        let pass = self.carry_plans_over();
+        for note in pass.moved {
+            self.note_once(&note);
+        }
+        for refused in pass.refused {
+            if about.is_some_and(|id| refused.matters.iter().any(|matter| matter == id)) {
+                return Err(EphorError::Command(refused.says));
+            }
+            self.note_once(&refused.says);
+        }
+        Ok(())
+    }
+
+    /// What a carry-over would refuse about this matter, asked without moving
+    /// anything — so a dry run refuses exactly where the dispatch it promises
+    /// would (§FS-005-dispatch.26, §FS-005-dispatch.3).
+    fn carry_over_refusal(&self, item: &str) -> Option<String> {
+        let behind = self.plans_behind();
+        self.refused_carry_overs(&behind)
+            .into_iter()
+            .find(|refused| refused.matters.iter().any(|matter| matter == item))
+            .map(|refused| refused.says)
+    }
+
+    /// Where this matter's plan still stands, for a run that reports rather
+    /// than writes: the recorded stem and the file it names, where the root
+    /// has not been carried over yet (§FS-005-dispatch.3.1).
+    ///
+    /// A dry run recomputes the stem and moves nothing, so the plan the next
+    /// real dispatch appends to is the one the record names
+    /// ([`Dispatcher::save`] keeps the two together, §FS-005-dispatch.4). A
+    /// dry run that read only the digested name would promise a first ticket
+    /// in a fresh plan where an append is what is actually due — and a dry run
+    /// that lies is no better than one that writes (§FS-005-dispatch.26).
+    fn recorded_plan_behind(&self, item: &str, stem: &str) -> Option<(String, PathBuf)> {
+        let entry = self.ledger.entries.get(item)?;
+        (entry.plan_id != stem && entry.plan.is_file())
+            .then(|| (entry.plan_id.clone(), entry.plan.clone()))
     }
 
     /// Commit the ledger and only then release the work-root pre-images. A

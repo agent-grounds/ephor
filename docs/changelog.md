@@ -209,19 +209,26 @@ ships, the previous "latest" section moves verbatim to
   A plan's stem *is* what `{id_slug}` renders, held additionally to the runtime's
   rule that a file stem begins with a letter, so
   `github-prs-acme-widget-42.rhei.md` is now
-  `github-prs-acme-widget-42-922ddbdc.rhei.md`. The first time `ephor work` runs
-  after the upgrade, a plan named before the digest is carried over: the plan
+  `github-prs-acme-widget-42-922ddbdc.rhei.md`. The first time after the upgrade
+  that ephor writes in a root — a `work dispatch`, a `work lay`, or a sweep
+  starting a run — a plan named there before the digest is carried over: the plan
   file, the results and the artifacts named after its old stem, and ephor's own
   record of the name all move together, and what moved is said on the command's
-  output and in `--json`. A root a run is holding waits for the next time; a
-  workflow already laid keeps the name it was recorded under, because nothing
-  recomputes it. Where the digested name *and* a pre-digest name each hold a plan
-  about one matter — which only a mixed pair of binaries can produce — the
-  carry-over refuses and names both files rather than choosing between two
-  records of the same work. A workflow laid from now on takes its digest over the
-  matter and the entry as a pair, since joining two ids with a `-` before a
-  reduction that collapses punctuation to a `-` is no name for a pair.
-  (PR #137)
+  output and in `--json`. Reading moves nothing, and neither does a `--dry-run`
+  or a sweep the `--act` gate is holding; a dry run over a root that is behind
+  still reports the ticket the real dispatch will write, and says the move it is
+  reporting across. Each root moves on its own, so one that cannot be reached
+  leaves the record and the disk agreeing and holds back only the matters it
+  names. A root a run is holding waits for the next such command; a workflow
+  already laid keeps the name it was recorded under, because nothing recomputes
+  it. Two shapes are refused by name rather than resolved, because both are two
+  records of work only a person can separate: one matter holding a plan at the
+  digested name *and* at a pre-digest name, which only a mixed pair of binaries
+  can produce, and one plan file that two matters are both recorded at, which is
+  what the naming this release fixes left wherever it fired. A workflow laid from
+  now on takes its digest over the matter and the entry as a pair, since joining
+  two ids with a `-` before a reduction that collapses punctuation to a `-` is no
+  name for a pair. (PR #137)
 
 - **An organization block over nobody is named for reaching nobody, not for
   bounding nobody.** `ephor doctor` and the sweep note already said that an

@@ -3603,9 +3603,9 @@ them. It is the answer to "what is ephor doing right now", in one place
 
   operations
   ▸ ▶ demo · ~/c/demo/you/ABC-42-retry/panta   running · quiet 12m · dashboard (o)
-        ⚠ acmeforge-app-101.answer-2  · Retry window on app 101  [needs-human]  waiting on you
-        ⚙ acmeforge-app-101.fix-gate-1  · Retry window on app 101  [fix]  running
-        ‖ acmeforge-app-101.answer-1  · Retry window on app 101  [fix]  queued
+        ⚠ acmeforge-app-101-e48f01f0.answer-2  · Retry window on app 101  [needs-human]  waiting on you
+        ⚙ acmeforge-app-101-e48f01f0.fix-gate-1  · Retry window on app 101  [fix]  running
+        ‖ acmeforge-app-101-e48f01f0.answer-1  · Retry window on app 101  [fix]  queued
         ✓ 2 finished
     ✋ demo · ~/c/demo/panta   claimed, not scheduled
         ✋ forge-demo-17-4c68d162.fix-1  · Humanize durations  [fix]  claimed by luna — free it: rhei release forge-demo-17-4c68d162.fix-1
@@ -4109,7 +4109,7 @@ running, and set apart**
 ```
  actions — Widen the retry window
   running
- 1   ▶ ⚙  fix the red gate       12m · acmeforge-app-101.fix-gate-1 [fix]
+ 1   ▶ ⚙  fix the red gate       12m · acmeforge-app-101-e48f01f0.fix-gate-1 [fix]
  2   ⤴  rebase onto master (3 behind as of Jul 28)
  3   ✎  leave a note about it
 ```
@@ -4254,14 +4254,29 @@ reduction, one digest, two grammars — and for the same reason as the branch: t
 matters whose ids read alike are two plans rather than two matters' tickets in
 one file.
 
-**A plan named before the digest is carried over**, the first time `ephor work`
-runs after the upgrade. The plan file, the results and the artifacts named after
-its old stem, and ephor's own record of the name, all move together, and what
-moved is said on the command's output and in `--json` — so a path you had
-written down is a path ephor tells you about. A root a run is holding is left
-alone and carried over the next time there is no run in it. A workflow already
-laid keeps the name it was recorded under: nothing recomputes a laid plan's
-name, so moving it would only break the one path its reader has.
+**A plan named before the digest is carried over**, the first time after the
+upgrade that ephor writes in that root — a `work dispatch`, a `work lay`, or a
+sweep starting a run. A command that only reads moves nothing, and neither does
+a `--dry-run` or a sweep the `--act` gate is holding: reading answers from
+ephor's record, which says where the plan is today. The plan file, the results
+and the artifacts named after its old stem, and ephor's own record of the name,
+all move together, and what moved is said on the command's output and in
+`--json` — so a path you had written down is a path ephor tells you about. A
+root a run is holding is left alone and carried over the next such command with
+no run in it. A workflow already laid keeps the name it was recorded under:
+nothing recomputes a laid plan's name, so moving it would only break the one
+path its reader has.
+
+A dry run over a root that has not been carried over yet still tells you the
+truth: it reads the plan ephor's record names, says the move it is reporting
+across, and promises the ticket the real dispatch will in fact write. Two
+shapes it will not resolve for you, because both are two records of work only
+you can separate: one matter holding a plan at the digested name *and* at a
+pre-digest name, which only a mixed pair of binaries can produce, and one plan
+file that two matters are both recorded at, which is what the naming this digest
+fixes left wherever it fired. Either is named in full — the matters and the
+files — nothing about them is moved, and every other project is carried over
+and handed its work as usual.
 
 Because every matter has an id, a template naming `{id_slug}` is **never
 withheld** for want of the field, and what it renders is always a name git will
