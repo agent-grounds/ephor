@@ -26,6 +26,13 @@ pub type ProviderResult = Result<Vec<Item>, ProviderError>;
 pub struct ProviderContext {
     pub project_id: String,
     pub project_root: PathBuf,
+    /// The organization the registry places this project in, where it places
+    /// it in one (§FS-005-dispatch.6.1). A provider that summons the project's
+    /// own command hands it on, so the command is told which organization it
+    /// is in the same way the menu and the ticket are told
+    /// (§FS-005-dispatch.8); a context that is about the site rather than
+    /// about a project has none, the way it has no project id.
+    pub organization: Option<crate::branches::Organization>,
     #[allow(dead_code)] // for providers that filter by branch
     pub main_branch: String,
     /// Ticket keys harvested from the registry's active branch entries.

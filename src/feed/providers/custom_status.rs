@@ -326,7 +326,16 @@ fn run(
     timeout: Duration,
 ) -> Result<summons::Answer, ProviderError> {
     let site = Site::root(cwd);
-    let dossier = dossier::of_project(&ctx.project_id, &ctx.project_root, cwd, None);
+    // The organization the registry places the project in travels with the
+    // context, so this command is told it the way a menu action and a ticket
+    // are (§FS-005-dispatch.8).
+    let dossier = dossier::of_project(
+        &ctx.project_id,
+        &ctx.project_root,
+        cwd,
+        ctx.organization.as_ref(),
+        None,
+    );
     let summons = Summons::new("custom-status", command)
         .at(Place::Workspace)
         .carrying(dossier);
@@ -363,6 +372,7 @@ mod tests {
                 &ProviderContext {
                     project_id: "demo".to_string(),
                     project_root: PathBuf::from("/fixture"),
+                    organization: None,
                     main_branch: "main".to_string(),
                     tickets: Vec::new(),
                     github_user: None,

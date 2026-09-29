@@ -9,12 +9,25 @@
 
 use std::path::Path;
 
-use crate::branches::BranchInfo;
+use crate::branches::{BranchInfo, Organization};
 use crate::feed::model::Item;
 use crate::forest::Forest;
 
-/// What every summons is told, whichever matter it is about.
-fn place(project: &str, root: &Path, workspace: &Path) -> Vec<(String, String)> {
+/// What every summons is told, whichever matter it is about — where it is, and
+/// the organization the registry places it in (§FS-005-dispatch.8).
+///
+/// The organization is written here rather than in each of the three shapes
+/// below, so a summons about a project, a branch and a matter cannot end up
+/// answering it three different ways. Both its names are always defined and
+/// empty where the registry has no answer — membership and the root are absent
+/// independently, and an unset name would be inherited from the shell that
+/// launched ephor rather than absent (§FS-005-dispatch.6.1).
+fn place(
+    project: &str,
+    root: &Path,
+    workspace: &Path,
+    organization: Option<&Organization>,
+) -> Vec<(String, String)> {
     vec![
         ("EPHOR_PROJECT".to_string(), project.to_string()),
         // Spelled for the shell that will parse them, not for the platform
@@ -23,6 +36,19 @@ fn place(project: &str, root: &Path, workspace: &Path) -> Vec<(String, String)> 
         (
             "EPHOR_WORKSPACE".to_string(),
             crate::paths::for_shell(workspace),
+        ),
+        (
+            "EPHOR_ORG".to_string(),
+            organization
+                .map(|organization| organization.id.clone())
+                .unwrap_or_default(),
+        ),
+        (
+            "EPHOR_ORG_ROOT".to_string(),
+            organization
+                .and_then(|organization| organization.root.as_deref())
+                .map(crate::paths::for_shell)
+                .unwrap_or_default(),
         ),
     ]
 }
@@ -112,9 +138,10 @@ pub fn of_project(
     project: &str,
     root: &Path,
     workspace: &Path,
+    organization: Option<&Organization>,
     forest: Option<&Forest>,
 ) -> Vec<(String, String)> {
-    with_forest(place(project, root, workspace), forest)
+    with_forest(place(project, root, workspace, organization), forest)
 }
 
 /// A summons about a branch rather than a matter — what a branch row's menu
@@ -130,10 +157,11 @@ pub fn of_branch(
     project: &str,
     root: &Path,
     workspace: &Path,
+    organization: Option<&Organization>,
     branch: Option<&BranchInfo>,
     forest: Option<&Forest>,
 ) -> Vec<(String, String)> {
-    let mut pairs = place(project, root, workspace);
+    let mut pairs = place(project, root, workspace, organization);
     pairs.extend([
         ("EPHOR_ITEM_ID".to_string(), String::new()),
         ("EPHOR_SOURCE".to_string(), String::new()),
@@ -172,6 +200,7 @@ pub fn of_item(
     item: &Item,
     root: &Path,
     workspace: &Path,
+    organization: Option<&Organization>,
     branch: Option<&BranchInfo>,
     forest: Option<&Forest>,
 ) -> Vec<(String, String)> {
@@ -185,7 +214,7 @@ pub fn of_item(
         .map(String::from)
         .or_else(|| branch.map(|branch| branch.branch.clone()))
         .unwrap_or_default();
-    let mut pairs = place(&item.project, root, workspace);
+    let mut pairs = place(&item.project, root, workspace, organization);
     pairs.extend([
         ("EPHOR_ITEM_ID".to_string(), item.id.clone()),
         ("EPHOR_SOURCE".to_string(), item.source.clone()),
@@ -220,6 +249,7 @@ mod tests {
     use super::*;
     use crate::feed::model::ItemKind;
     use serde_json::json;
+    use std::path::PathBuf;
 
     /// A branch row answers every name a matter does, so nothing an item would
     /// have named is left to be inherited from the process that launched ephor.
@@ -248,9 +278,10 @@ mod tests {
             root,
             None,
             None,
+            None,
         ));
-        let branch = names(of_branch("widget", root, root, None, None));
-        let project = names(of_project("widget", root, root, None));
+        let branch = names(of_branch("widget", root, root, None, None, None));
+        let project = names(of_project("widget", root, root, None, None));
         assert_eq!(matter, branch);
         assert!(
             project.is_subset(&matter),
@@ -284,14 +315,15 @@ mod tests {
     fn a_summons_with_no_organization_is_told_so_rather_than_left_to_inherit_one() {
         let root = Path::new("/w");
         let shapes = [
-            ("project", of_project("widget", root, root, None)),
-            ("branch", of_branch("widget", root, root, None, None)),
+            ("project", of_project("widget", root, root, None, None)),
+            ("branch", of_branch("widget", root, root, None, None, None)),
             (
                 "matter",
                 of_item(
                     &item(ItemKind::Pr, "test:1", json!({})),
                     root,
                     root,
+                    None,
                     None,
                     None,
                 ),
@@ -308,6 +340,62 @@ mod tests {
                 assert_eq!(told.1, "", "a {shape} summons answered {name}");
             }
         }
+    }
+
+    /// And where there is an organization, every shape names it and where it
+    /// is rooted (§FS-005-dispatch.8), spelled for the shell that will parse
+    /// it the way `EPHOR_ROOT` is (§FS-006-project-interface.3).
+    ///
+    /// The two tests above pin the absences; this is the answer itself, in all
+    /// three shapes, because a fact about the project belongs in a summons
+    /// about the project as much as in one about a matter.
+    #[test]
+    fn every_shape_names_the_organization_the_registry_places_the_project_in() {
+        let root = Path::new("/w");
+        let foundation = Organization {
+            id: "foundation".to_string(),
+            root: Some(PathBuf::from("/shared")),
+        };
+        let shapes = [
+            (
+                "project",
+                of_project("widget", root, root, Some(&foundation), None),
+            ),
+            (
+                "branch",
+                of_branch("widget", root, root, Some(&foundation), None, None),
+            ),
+            (
+                "matter",
+                of_item(
+                    &item(ItemKind::Pr, "test:1", json!({})),
+                    root,
+                    root,
+                    Some(&foundation),
+                    None,
+                    None,
+                ),
+            ),
+        ];
+        for (shape, pairs) in shapes {
+            assert_eq!(value(&pairs, "EPHOR_ORG"), "foundation", "{shape}");
+            assert_eq!(
+                value(&pairs, "EPHOR_ORG_ROOT"),
+                crate::paths::for_shell(Path::new("/shared")),
+                "{shape}"
+            );
+        }
+
+        // Membership without a root is still membership: the id is answered
+        // and the root is the same empty string a project in no organization
+        // gets (§FS-005-dispatch.6.1).
+        let rootless = Organization {
+            id: "personal".to_string(),
+            root: None,
+        };
+        let pairs = of_project("widget", root, root, Some(&rootless), None);
+        assert_eq!(value(&pairs, "EPHOR_ORG"), "personal");
+        assert_eq!(value(&pairs, "EPHOR_ORG_ROOT"), "");
     }
 
     fn item(kind: ItemKind, id: &str, raw: serde_json::Value) -> Item {
@@ -353,6 +441,7 @@ mod tests {
             root,
             None,
             None,
+            None,
         );
         assert_eq!(value(&pairs, "EPHOR_META_CONTEXT"), "acme-labs");
         assert_eq!(value(&pairs, "EPHOR_META_ROLL_OUT"), "second");
@@ -391,6 +480,7 @@ mod tests {
             root,
             None,
             None,
+            None,
         );
         assert!(
             pairs.iter().all(|(name, value)| !value.contains('\n')
@@ -417,6 +507,7 @@ mod tests {
             ),
             root,
             root,
+            None,
             None,
             None,
         );
@@ -446,9 +537,10 @@ mod tests {
             root,
             None,
             None,
+            None,
         );
         assert_eq!(value(&silent, "EPHOR_META_KEYS"), "");
-        let branch = of_branch("widget", root, root, None, None);
+        let branch = of_branch("widget", root, root, None, None, None);
         assert_eq!(value(&branch, "EPHOR_META_KEYS"), "");
     }
 
@@ -458,6 +550,7 @@ mod tests {
             "widget",
             Path::new("/tmp/widget"),
             Path::new("/tmp/widget"),
+            None,
             None,
         );
         assert_eq!(value(&pairs, "EPHOR_PROJECT"), "widget");
@@ -486,26 +579,26 @@ mod tests {
                 crate::forest::Declaration::at("ee"),
             ],
         );
-        let pairs = of_project("widget", tmp.path(), tmp.path(), Some(&forest));
+        let pairs = of_project("widget", tmp.path(), tmp.path(), None, Some(&forest));
         assert_eq!(value(&pairs, REPOS), "ce\nee");
 
         // A forest of nothing says nothing rather than saying "none".
         let empty = Forest::resolve(tmp.path(), None, &[crate::forest::Declaration::at("gone")]);
-        let pairs = of_project("widget", tmp.path(), tmp.path(), Some(&empty));
+        let pairs = of_project("widget", tmp.path(), tmp.path(), None, Some(&empty));
         assert!(pairs.iter().all(|(name, _)| name != REPOS));
     }
 
     #[test]
     fn the_check_verbs_are_handed_over_so_composition_stays_configuration() {
         let pairs = with_checks(
-            of_project("widget", Path::new("/w"), Path::new("/w"), None),
+            of_project("widget", Path::new("/w"), Path::new("/w"), None, None),
             &["./check.sh".to_string(), "mx gate".to_string()],
         );
         assert_eq!(value(&pairs, CHECKS), "./check.sh\nmx gate");
 
         // A project that fills none says nothing, rather than saying "none".
         let bare = with_checks(
-            of_project("widget", Path::new("/w"), Path::new("/w"), None),
+            of_project("widget", Path::new("/w"), Path::new("/w"), None, None),
             &[],
         );
         assert!(bare.iter().all(|(name, _)| name != CHECKS));
@@ -518,6 +611,7 @@ mod tests {
             &pr,
             Path::new("/tmp/widget"),
             Path::new("/tmp/widget/master"),
+            None,
             None,
             None,
         );
@@ -541,6 +635,7 @@ mod tests {
             Path::new("/tmp/widget"),
             None,
             None,
+            None,
         );
         assert_eq!(value(&pairs, "EPHOR_NUMBER"), "123");
         assert_eq!(value(&pairs, "EPHOR_REPO"), "plugins");
@@ -558,7 +653,14 @@ mod tests {
         };
         // A github item records no branch: the registry match fills in.
         let pr = item(ItemKind::Pr, "github-prs:acme/widget#42", json!({}));
-        let pairs = of_item(&pr, Path::new("/r"), Path::new("/r/b"), Some(&branch), None);
+        let pairs = of_item(
+            &pr,
+            Path::new("/r"),
+            Path::new("/r/b"),
+            None,
+            Some(&branch),
+            None,
+        );
         assert_eq!(value(&pairs, "EPHOR_BRANCH"), "you/ABC-42-retry-window");
         assert_eq!(value(&pairs, "EPHOR_TICKET"), "ABC-42");
 
@@ -568,7 +670,14 @@ mod tests {
             "bitbucket-prs:app/123",
             json!({ "branch": "other" }),
         );
-        let pairs = of_item(&pr, Path::new("/r"), Path::new("/r/b"), Some(&branch), None);
+        let pairs = of_item(
+            &pr,
+            Path::new("/r"),
+            Path::new("/r/b"),
+            None,
+            Some(&branch),
+            None,
+        );
         assert_eq!(value(&pairs, "EPHOR_BRANCH"), "other");
     }
 }
