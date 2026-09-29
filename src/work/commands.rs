@@ -1541,12 +1541,20 @@ fn sync_work(
                 // plans and never whether a dispatch was a workflow, so a
                 // matter whose work is still going is reported as going —
                 // and is offered nothing that would untrack it.
-                let open = dispatcher
+                let status = dispatcher
                     .ledger
                     .entries
                     .get(&item.id)
-                    .map(|entry| dispatcher.status_of(entry, None))
-                    .and_then(|status| status.open_at);
+                    .map(|entry| dispatcher.status_of(entry, None));
+                // Which of the three things is true of this entry is asked
+                // exactly as `forget` asks it, so the sentence and the verb
+                // it names cannot drift apart: the work is going, or a plan
+                // the record named cannot be read — which `--done` will not
+                // clear and `--missing` will — or it really is over.
+                let unread = status
+                    .as_ref()
+                    .is_some_and(|status| !done_enough_to_forget(status));
+                let open = status.and_then(|status| status.open_at);
                 match &open {
                     Some(going) => {
                         landed.push(serde_json::json!({
@@ -1568,6 +1576,31 @@ fn sync_work(
                                     going.plan.display(),
                                     going.ticket,
                                     going.state
+                                ))
+                            );
+                        }
+                    }
+                    // Nothing open that anyone can read, because a plan the
+                    // record names is not there. That is not a matter that
+                    // is over, so it is not offered the verb for one: the
+                    // report says what it does not know and names the verb
+                    // that does reach it (§FS-005-dispatch.35).
+                    None if unread => {
+                        landed.push(serde_json::json!({
+                            "item": item.id,
+                            "title": item.title,
+                            "outcome": "unread",
+                            "changes": changes,
+                        }));
+                        if !args.json {
+                            println!(
+                                "{}\n  {}",
+                                title(&item.title),
+                                style.dim(&format!(
+                                    "{} — a plan its record names cannot be read, so what \
+                                     its work came to is unknown; `ephor work forget \
+                                     --missing` clears it",
+                                    changes.join("; ")
                                 ))
                             );
                         }
@@ -2540,6 +2573,33 @@ fn exit_code(failed: usize) -> Result<ExitCode> {
     Ok(ExitCode::SUCCESS)
 }
 
+/// What `work forget --done` selects: nothing open in any plan the record
+/// says is this matter's, and no plan the record named that nobody could read
+/// (§FS-005-dispatch.35). A plan nobody can read is not a finished one, so
+/// it is `--missing` that reaches an entry whose laid plan has gone.
+///
+/// A free function because `work sync` asks the same question before it
+/// recommends this verb: the words a report writes about an entry and the
+/// verb it names are one decision, and having been two is the defect
+/// §FS-005-dispatch.35 is about.
+fn done_enough_to_forget(status: &crate::work::WorkStatus) -> bool {
+    status.open_tickets() == 0 && status.unread_workflows == 0
+}
+
+/// What `work forget --missing` selects: a plan the record named that nobody
+/// could read, and nothing still open beside it (§FS-005-dispatch.35).
+///
+/// The second half is what keeps the rule `--done` obeys from being escapable
+/// through the other verb. Since a matter's work is every plan the record says
+/// is its own, one of them being unreadable while another holds a task that is
+/// not final would otherwise untrack work that is running — which is the harm
+/// this point exists to stop, and the verb it is stopped in does not matter.
+/// An entry whose unreadable plan is all it has left is reached exactly as
+/// before.
+fn missing_enough_to_forget(status: &crate::work::WorkStatus) -> bool {
+    status.missing && status.open_tickets() == 0
+}
+
 /// Drop ledger entries. The plans stay on disk: they are the record of what
 /// was done, and ephor deleting a reader's work would be the one irreversible
 /// thing in here.
@@ -2554,12 +2614,8 @@ fn forget_work(config: &StatusConfig, args: &crate::cli::WorkForgetArgs) -> Resu
                 return *id == wanted;
             }
             let status = dispatcher.status_of(entry, None);
-            // What may be dropped is read from the plans, and never from
-            // which of them ephor wrote (§FS-005-dispatch.35). A plan nobody
-            // can read is not a finished one, so it is `--missing` that
-            // reaches an entry whose laid plan has gone, not `--done`.
-            let done = status.open_tickets() == 0 && status.unread_workflows == 0;
-            (args.done && done) || (args.missing && status.missing)
+            (args.done && done_enough_to_forget(&status))
+                || (args.missing && missing_enough_to_forget(&status))
         })
         .map(|(id, _)| id.clone())
         .collect();

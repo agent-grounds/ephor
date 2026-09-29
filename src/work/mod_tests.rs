@@ -4388,6 +4388,155 @@ fn an_absent_laid_plan_is_unread_and_reports_the_entry_as_missing() {
     assert_eq!(status.badge(64), "⚠ plan missing");
 }
 
+/// One plan of a matter's unreadable and another going is a matter that is
+/// missing a plan *and* has work to show, and every surface says both
+/// (§FS-005-dispatch.30, §FS-005-dispatch.35). `missing` answers the record —
+/// something the ledger named could not be read — and is not the same
+/// question as whether there is anything here to read, which is what a row
+/// with one line to spend is asking.
+#[test]
+fn a_going_plan_beside_an_unreadable_one_is_said_on_the_row_as_well() {
+    let tmp = tempfile::tempdir().unwrap();
+    let root = tmp.path().join("panta");
+    fs::create_dir_all(&root).unwrap();
+    fs::write(root.join("states.yaml"), LAID_CALLS_IMPLEMENTING_GOING).unwrap();
+    lay_plan(&root, "going-implement", "implementing", None, false);
+
+    let mut entry = entry_for(&root, &root.join("widget-10.rhei.md"));
+    entry.plan_id = "widget-10".to_string();
+    entry.dispatches = vec![
+        laying_dispatch("going-implement", &root),
+        laying_dispatch("gone-implement", &root),
+    ];
+
+    let status = status_of_entry(&work_config(), &entry, None);
+    assert!(status.missing, "the record named a plan nobody could read");
+    assert_eq!(status.unread_workflows, 1);
+    assert_eq!(
+        status.open_tickets(),
+        1,
+        "the readable plan was not counted"
+    );
+    assert!(
+        !status.unreadable(),
+        "a matter with a task at implementing has something to read"
+    );
+
+    let badge = status.badge(64);
+    assert!(
+        badge.starts_with("⚙ going-implement-1 · implementing"),
+        "the row led with the unreadable plan instead of the going one: {badge}"
+    );
+    assert!(
+        badge.contains("⚠ a plan is missing"),
+        "the row dropped the plan nobody could read: {badge}"
+    );
+    let said: Vec<String> = status
+        .lines(64)
+        .iter()
+        .map(|line| line.said.clone())
+        .collect();
+    assert_eq!(
+        said,
+        vec!["going-implement-1 · implementing", "a plan is missing"],
+        "the work screen and the row do not say the same two things"
+    );
+}
+
+/// A plan the record names and nobody can read does not strip the hand off a
+/// run over a matter whose other plan is readable and open
+/// (§FS-005-dispatch.14, §FS-005-dispatch.35): the tasks that did read still
+/// resolve the flags, and that one plan could not be read is said through the
+/// notes this resolution already answers with rather than swallowed.
+#[test]
+fn an_unreadable_plan_beside_a_readable_one_is_noted_and_not_a_silent_refusal() {
+    let tmp = tempfile::tempdir().unwrap();
+    let root = tmp.path().join("panta");
+    fs::create_dir_all(&root).unwrap();
+    fs::write(root.join("states.yaml"), LAID_CALLS_IMPLEMENTING_GOING).unwrap();
+    lay_plan(&root, "going-implement", "implementing", None, false);
+
+    let item = issue_43_item();
+    let mut entry = entry_for(&root, &root.join("widget-10.rhei.md"));
+    entry.project = item.project.clone();
+    entry.plan_id = "widget-10".to_string();
+    entry.dispatches = vec![
+        laying_dispatch("going-implement", &root),
+        laying_dispatch("gone-implement", &root),
+    ];
+    let mut ledger = empty_ledger();
+    ledger.entries.insert(item.id.clone(), entry.clone());
+    let mut dispatcher = issue_43_dispatcher(tmp.path(), ledger);
+
+    let (_, notes) = dispatcher.run_hand_for(&item.id);
+    assert!(
+        notes.iter().any(|note| note.contains("could not be read")),
+        "the resolution returned without saying a plan was unreadable: {notes:?}"
+    );
+
+    // And where there really is nothing to read, there is nothing to resolve
+    // from and nothing to say about a hand.
+    let mut alone = entry.clone();
+    alone.dispatches = vec![laying_dispatch("gone-implement", &root)];
+    let status = dispatcher.status_of(&alone, None);
+    assert!(status.unreadable());
+    assert!(dispatcher.run_hand(&alone, &status).is_none());
+}
+
+/// The legacy fallback fires only where the *widened* reading placed nothing
+/// (§FS-005-dispatch.35). A matter whose work is a plan a workflow laid has
+/// no recipe placement at all, so a fallback applied over the recipe list
+/// alone would read the entry's own plan path beside the laid plan — a file
+/// ephor never wrote for this entry, whose task would then lead the row
+/// (§FS-005-dispatch.19).
+#[test]
+fn the_legacy_fallback_does_not_fire_beside_a_plan_a_workflow_laid() {
+    let tmp = tempfile::tempdir().unwrap();
+    let root = tmp.path().join("panta");
+    fs::create_dir_all(&root).unwrap();
+    fs::write(root.join("states.yaml"), LAID_CALLS_IMPLEMENTING_GOING).unwrap();
+    let laid = lay_plan(&root, "widget-10-implement", "done", None, false);
+    // A readable file at the entry's own plan path, which nothing wrote for
+    // this entry — the shape the fallback used to pick up.
+    let stray = root.join("widget-10.rhei.md");
+    fs::write(
+        &stray,
+        "# Rhei: stray\n**States:** laid-machine\n\n## Tasks\n\n\
+         ### Task stray-1: not this matter's\n**State:** implementing\n\nbody\n",
+    )
+    .unwrap();
+
+    let mut entry = entry_for(&root, &stray);
+    entry.plan_id = "widget-10".to_string();
+    entry.dispatches = vec![laying_dispatch("widget-10-implement", &root)];
+
+    let work = recorded_plans(&entry);
+    assert_eq!(
+        work.plans.iter().map(|plan| &plan.path).collect::<Vec<_>>(),
+        vec![&laid],
+        "the fallback fired beside the plan the workflow laid"
+    );
+
+    let status = status_of_entry(&work_config(), &entry, None);
+    assert_eq!(
+        status.open_tickets(),
+        0,
+        "the stray file's task was counted"
+    );
+    assert_eq!(
+        status.tickets.len(),
+        1,
+        "the laid plan's task is the matter's only work"
+    );
+
+    // And the recipe reading keeps its own contract, which `recipe_roots` and
+    // the drafted reply read: there, the fallback is what a ledger written
+    // before provenance existed resolves through.
+    let plans = recorded_recipe_plans(&entry);
+    assert_eq!(plans.len(), 1);
+    assert_eq!(plans[0].path, stray);
+}
+
 /// The drafted-reply contract is untouched by the widening
 /// (§FS-005-dispatch.13, §FS-005-dispatch.35). `recipe_roots` still names only
 /// the roots ephor wrote a plan in, so a reply a workflow's run left in its
