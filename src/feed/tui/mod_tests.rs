@@ -22,7 +22,14 @@ fn dossier_of(menu: &ActionMenu, workspace: &Path) -> Vec<(String, String)> {
                 .unwrap_or_default(),
         },
     };
-    crate::api::act::dossier_of(&about, &menu.root, workspace, menu.branch.as_ref(), None)
+    crate::api::act::dossier_of(
+        &about,
+        &menu.root,
+        workspace,
+        None,
+        menu.branch.as_ref(),
+        None,
+    )
 }
 
 use crate::branches::Placement;

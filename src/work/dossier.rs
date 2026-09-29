@@ -52,8 +52,10 @@ pub const ORGANIZATION_PLACEHOLDERS: [&str; 2] = ["org", "org_root"];
 /// writes these names into the same namespace a store may be using
 /// ([`written_into_a_ticket`]) — and a second copy of it is a copy that falls
 /// behind.
-pub const SUBJECT_METADATA: [&str; 13] = [
+pub const SUBJECT_METADATA: [&str; 15] = [
     "project",
+    "org",
+    "org_root",
     "source",
     "kind",
     "id",
@@ -213,7 +215,17 @@ impl Subject<'_> {
 
     /// The item as data rather than as prose, for the programs in a state
     /// machine (§FS-005-dispatch.8). The same names a shell action gets in its
-    /// environment, so one vocabulary covers both.
+    /// environment, so one vocabulary covers both: project and source, kind and
+    /// id, repository and number, branch and ticket, url and state, the
+    /// checkout the work belongs to, and the organization the registry places
+    /// the project in together with where that organization is rooted.
+    ///
+    /// Every name is answered here, empty where there is no answer; a value
+    /// with nothing in it is then simply not written onto the ticket, the way a
+    /// matter with no branch carries no `branch` key. That is the half of the
+    /// rule a ticket keeps and a summons does not, because nothing reading a
+    /// ticket has an environment to inherit a missing name from
+    /// (§FS-005-dispatch.6.1).
     pub fn metadata(&self) -> Vec<(&'static str, String)> {
         let values = self.placeholders();
         SUBJECT_METADATA

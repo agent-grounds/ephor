@@ -174,12 +174,20 @@ pub fn dossier_of(
     about: &About,
     root: &Path,
     workspace: &Path,
+    organization: Option<&crate::branches::Organization>,
     branch: Option<&BranchInfo>,
     forest: Option<&crate::forest::Forest>,
 ) -> Vec<(String, String)> {
     match about.item() {
-        Some(item) => dossier::of_item(item, root, workspace, branch, forest),
-        None => dossier::of_branch(about.project(), root, workspace, branch, forest),
+        Some(item) => dossier::of_item(item, root, workspace, organization, branch, forest),
+        None => dossier::of_branch(
+            about.project(),
+            root,
+            workspace,
+            organization,
+            branch,
+            forest,
+        ),
     }
 }
 
@@ -314,13 +322,17 @@ impl Session {
             // repositories folds over the same ones ephor does
             // (§AR-004-forest.1).
             let workspace: &Path = &link.workspace;
-            let forest = self
-                .placement(run.about.project())
-                .map(|placement| placement.forest(workspace));
+            // The placement is held rather than consumed: it answers both the
+            // forest and the organization the registry places the project in,
+            // and reading it twice is how the two could disagree
+            // (§FS-005-dispatch.8).
+            let placement = self.placement(run.about.project());
+            let forest = placement.map(|placement| placement.forest(workspace));
             let carrying = dossier_of(
                 &run.about,
                 &run.root,
                 workspace,
+                placement.and_then(|placement| placement.organization.as_ref()),
                 run.branch.as_ref(),
                 forest.as_ref(),
             );
@@ -658,9 +670,8 @@ impl Session {
             .unwrap_or_else(|| run.workspace.clone());
         let action = &run.entry.action;
 
-        let forest = self
-            .placement(run.about.project())
-            .map(|placement| placement.forest(&workspace));
+        let placement = self.placement(run.about.project());
+        let forest = placement.map(|placement| placement.forest(&workspace));
         let record = jobs::Record {
             version: jobs::VERSION,
             project: run.about.project().to_string(),
@@ -690,6 +701,7 @@ impl Session {
                 &run.about,
                 &run.root,
                 &workspace,
+                placement.and_then(|placement| placement.organization.as_ref()),
                 run.branch.as_ref(),
                 forest.as_ref(),
             ),

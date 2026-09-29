@@ -91,6 +91,12 @@ pub fn build_context(
     Ok(ProviderContext {
         project_id: project_id.to_string(),
         project_root: paths::resolve_path(registry::str_field(project, "root").unwrap_or("")),
+        // Read here and never written back: membership and the root an
+        // organization declares are identity (§REQ-001-boundary.2), and the
+        // summons a provider makes is one more occasion they are read on
+        // (§FS-014-work-root-scopes.1).
+        organization: registry::organization_of(registry_doc, project_id)
+            .map(|(id, root)| crate::branches::Organization { id, root }),
         main_branch: registry::str_field(project, "main_branch")
             .unwrap_or("")
             .to_string(),
@@ -632,6 +638,10 @@ pub fn refresh_shared(registry_doc: &Value, config: &StatusConfig) -> Result<Ref
     let ctx = ProviderContext {
         project_id: String::new(),
         project_root: paths::state_dir(),
+        // No project, so no organization to place it in: both names reach a
+        // shared source's summons defined and empty, beside the empty
+        // `EPHOR_PROJECT` that says the same thing (§FS-005-dispatch.6.1).
+        organization: None,
         main_branch: String::new(),
         tickets: Vec::new(),
         github_user: config.defaults.github_user.clone(),
@@ -825,6 +835,53 @@ fn fetch_one(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A provider's context carries the organization the registry places its
+    /// project in, so the summons a provider makes can be told it
+    /// (§FS-005-dispatch.8).
+    ///
+    /// Membership and the root are absent independently, which is why all
+    /// three answers are asserted here rather than one: an organization that
+    /// declares no `root` still names itself, and a project no row places in
+    /// one has no organization at all rather than an empty one. The empty
+    /// strings a summons ends up carrying are [`crate::seams::dossier`]'s to
+    /// make from this (§FS-005-dispatch.6.1).
+    #[test]
+    fn a_providers_context_is_told_which_organization_the_project_is_placed_in() {
+        let registry = serde_json::json!({
+            "organizations": [
+                { "id": "foundation", "root": "/shared" },
+                { "id": "personal" }
+            ],
+            "projects": [
+                { "id": "demo", "root": "/r/demo", "organization": "foundation" },
+                { "id": "mill", "root": "/r/mill", "organization": "personal" },
+                { "id": "outland", "root": "/r/outland" }
+            ]
+        });
+        let defaults: Defaults = serde_json::from_value(serde_json::json!({})).unwrap();
+        let organization = |project: &str| {
+            build_context(&registry, project, &defaults)
+                .expect("the registry describes the project")
+                .organization
+        };
+
+        assert_eq!(
+            organization("demo"),
+            Some(crate::branches::Organization {
+                id: "foundation".to_string(),
+                root: Some(paths::resolve_path("/shared")),
+            })
+        );
+        assert_eq!(
+            organization("mill"),
+            Some(crate::branches::Organization {
+                id: "personal".to_string(),
+                root: None,
+            })
+        );
+        assert_eq!(organization("outland"), None);
+    }
 
     fn answer_matter(key: &str, at: &str, supplied: bool) -> crate::matter::Matter {
         crate::matter::Matter::of_item(&crate::feed::model::Item {

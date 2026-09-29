@@ -499,9 +499,23 @@ fn summoned(
             .iter()
             .find(|info| info.branch == ask.branch),
     };
+    // The organization the registry places the project in comes from the
+    // placement the ask already carries, the same read every other summons
+    // resolves it through, so a checkout's command cannot be told a different
+    // organization than a menu action on the same project (§FS-005-dispatch.8).
+    let organization = placement.organization.as_ref();
     let mut carrying = match ask.about {
-        Some(item) => dossier::of_item(item, &root, &target, matched, Some(&standing)),
-        None => dossier::of_branch(project, &root, &target, matched, Some(&standing)),
+        Some(item) => {
+            dossier::of_item(item, &root, &target, organization, matched, Some(&standing))
+        }
+        None => dossier::of_branch(
+            project,
+            &root,
+            &target,
+            organization,
+            matched,
+            Some(&standing),
+        ),
     };
     // `EPHOR_BRANCH` is the branch this checkout is *making*. The matter's own
     // answer is the wrong one and on the dispatch's path it is empty, which is
