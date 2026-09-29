@@ -406,11 +406,23 @@ plan, the results, the artifacts and the recorded name of one matter are one
 commit: wherever an error escapes, what that entry had already moved is put
 back and the record still says what it said, so the two never disagree. A root
 that cannot be carried over — an unreachable directory, or either of the
-refusals [§3](#3-one-rhei-per-item-one-ticket-per-dispatch) states — is
-reported and holds back the matters it names and nothing else. It does stop a
+refusals [§3](#3-one-rhei-per-item-one-ticket-per-dispatch) states, or a name
+the carry-over would have to write over — is reported and holds back the
+matters it names and nothing else. It does stop a
 dispatch *of those matters*, because a dispatch that went ahead would open a
 second plan at the digested name and orphan the one already there; every other
 project is carried over and handed its work as usual.
+
+**And it never writes over a file already at the new name.** A carry-over is a
+rename, and a rename onto an occupied name destroys what was there. Whatever is
+already at the digested name is another record of this same matter's work —
+which the same mixed pair of binaries that puts a plan at both names puts there,
+a result or an artifact at a time — so the matter is held and both paths of each
+pair are said, exactly as the refusals above do. It is what makes those refusals
+safe to obey: a reader told to keep one of two plan files and remove the other
+has not been told about the results and the artifacts beside them, and a rule
+that lost those on the next write verb would be a refusal that walked its reader
+into the loss it exists to prevent.
 
 **A root a run is holding waits.** Moving a plan out from under a live run is the
 one way this could lose work, and there is nothing to gain by hurrying it: the
@@ -423,7 +435,7 @@ A laid plan's name is a record and not a lookup — nothing recomputes it — so
 moving it would buy nothing and would break the one path its reader has.
 
 What was carried over is said on the command's own output and carried in `--json`
-([§REQ-002-parity](../requirements/REQ-002-parity.md)), by the verb that carried
+([§REQ-002-parity](../requirements/REQ-002-parity.md#req-002-parity-every-ability-is-reachable-without-the-screen-and-every-answer-has-a-machine-form)), by the verb that carried
 it over. It is a fact only ephor knows and only at that moment: the reader who
 had a path to a plan does not have one now, and a rename nobody was told about
 reads as work that vanished.

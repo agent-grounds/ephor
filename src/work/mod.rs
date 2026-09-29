@@ -4581,9 +4581,10 @@ impl Dispatcher {
     /// The carry-overs this pass will not make, each said in full and each
     /// naming the matters it holds back (§FS-005-dispatch.3).
     ///
-    /// Both shapes are two records of work that only a person can separate, so
-    /// both stop at saying so. Neither reaches past the matters it names: a
-    /// collided root is not a reason to leave an unrelated project behind.
+    /// All three shapes are two records of work that only a person can
+    /// separate, so all three stop at saying so. None of them reaches past the
+    /// matters it names: a collided root is not a reason to leave an unrelated
+    /// project behind.
     fn refused_carry_overs(&self, behind: &[Behind]) -> Vec<Refused> {
         let mut refused: Vec<Refused> = Vec::new();
         // Two records of one plan file — the state the collision this digest
@@ -4644,6 +4645,44 @@ impl Dispatcher {
                     entry.id,
                     old.display(),
                     new.display()
+                ),
+            });
+        }
+        let held: BTreeSet<String> = refused
+            .iter()
+            .flat_map(|one| one.matters.iter().cloned())
+            .collect();
+        // A carry-over is a rename, and a rename onto a name that already
+        // holds a file destroys what is there without a word. Whatever is
+        // already at the new name is another record of this same matter's
+        // work, so which of the two to keep is the reader's to say and nothing
+        // here is moved (§FS-005-dispatch.3.1).
+        for entry in behind {
+            if held.contains(&entry.id) {
+                continue;
+            }
+            let occupied: Vec<String> =
+                runtime::carried_over_paths(&entry.root, &entry.was, &entry.now)
+                    .into_iter()
+                    .filter(|(_, to)| to.exists())
+                    .map(|(from, to)| format!("{} onto {}", from.display(), to.display()))
+                    .collect();
+            if occupied.is_empty() {
+                continue;
+            }
+            refused.push(Refused {
+                matters: vec![entry.id.clone()],
+                says: format!(
+                    "{} cannot be carried over from {} to {}: {} would be written over, \
+                     and a carry-over never writes over a file that is already there — so \
+                     nothing here has been moved. One of each pair was left by an ephor \
+                     that named plans without the digest, and which of two records of the \
+                     same work to keep is yours to say. Keep one of each pair and remove \
+                     the other, and the next dispatch carries the rest over.",
+                    entry.id,
+                    entry.was,
+                    entry.now,
+                    occupied.join(", ")
                 ),
             });
         }
