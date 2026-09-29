@@ -327,18 +327,24 @@ fn list_work(
             status.badge(64),
             style.dim(&title(&entry.title)),
         );
-        // The matter's own plan, where there is one to name. An entry that
-        // is nothing but workflows never had one (§FS-005-dispatch.19), and
-        // printing a path to a file ephor never wrote reads as a loss.
-        if !status.plans.is_empty() {
-            for plan in &status.plans {
+        // The plans ephor wrote itself, where there are any to name. What a
+        // workflow laid is named below with the entry that laid it, so that
+        // the widened reading (§FS-005-dispatch.35) adds nothing to this row
+        // and no plan is printed on two lines.
+        let own: Vec<_> = status.plans.iter().filter(|p| p.laid.is_none()).collect();
+        if !own.is_empty() {
+            for plan in own {
                 println!(
                     "{:<width$}  {}",
                     "",
                     style.dim(&plan.path.display().to_string())
                 );
             }
-        } else if status.missing || entry.plan.is_file() {
+        } else if entry.plan.is_file() {
+            // An entry that is nothing but workflows never had a plan of its
+            // own (§FS-005-dispatch.19), and printing a path to a file ephor
+            // never wrote reads as a loss — which is why a missing laid plan
+            // is said by the badge and not by naming the file it is not.
             println!(
                 "{:<width$}  {}",
                 "",
@@ -346,13 +352,22 @@ fn list_work(
             );
         }
         // What a workflow laid down beside it, each its own plan
-        // (§FS-005-dispatch.19).
+        // (§FS-005-dispatch.19) — named by the file on disk, so the row is
+        // something a reader can open, and by the record's own name where
+        // nobody could read it (§FS-005-dispatch.35).
         for dispatch in entry.dispatches.iter().filter(|d| d.is_workflow()) {
-            let plan = dispatch.plan.as_deref().unwrap_or_default();
+            let name = dispatch.plan.as_deref().unwrap_or_default();
+            let root = dispatch.root.as_ref().unwrap_or(&entry.root);
+            let said = status
+                .plans
+                .iter()
+                .find(|plan| plan.laid.as_deref() == Some(name) && &plan.root == root)
+                .map(|plan| plan.path.display().to_string())
+                .unwrap_or_else(|| name.to_string());
             println!(
                 "{:<width$}  {}",
                 "",
-                style.dim(&format!("{plan}  ({})", dispatch.recipe))
+                style.dim(&format!("{said}  ({})", dispatch.recipe))
             );
         }
     }
@@ -1517,25 +1532,65 @@ fn sync_work(
         }
         match dispatcher.sync(item, dry_run) {
             Ok(Outcome::Current) => {}
-            // Reported, not counted: nothing was written, and the reader still
-            // wants to know their work is about something that is over.
+            // Reported, not counted: nothing was written, and the reader
+            // still wants to know what became of the work their item moved
+            // under.
             Ok(Outcome::Dormant { changes }) => {
-                landed.push(serde_json::json!({
-                    "item": item.id,
-                    "title": item.title,
-                    "outcome": "dormant",
-                    "changes": changes,
-                }));
-                if !args.json {
-                    println!(
-                        "{}\n  {}",
-                        title(&item.title),
-                        Style::detect().dim(&format!(
-                            "{} — no recipe applies to it now; \
-                             `ephor work forget --done` clears it",
-                            changes.join("; ")
-                        ))
-                    );
+                // No recipe applies, which is not the same fact as nothing
+                // being open (§FS-005-dispatch.35). The discriminator is the
+                // plans and never whether a dispatch was a workflow, so a
+                // matter whose work is still going is reported as going —
+                // and is offered nothing that would untrack it.
+                let open = dispatcher
+                    .ledger
+                    .entries
+                    .get(&item.id)
+                    .map(|entry| dispatcher.status_of(entry, None))
+                    .and_then(|status| status.open_at);
+                match &open {
+                    Some(going) => {
+                        landed.push(serde_json::json!({
+                            "item": item.id,
+                            "title": item.title,
+                            "outcome": "underway",
+                            "changes": changes,
+                            "plan": going.plan,
+                            "ticket": going.ticket,
+                            "state": going.state,
+                        }));
+                        if !args.json {
+                            println!(
+                                "{}\n  {}",
+                                title(&item.title),
+                                style.dim(&format!(
+                                    "{} — its work is still going at {} ({} · {})",
+                                    changes.join("; "),
+                                    going.plan.display(),
+                                    going.ticket,
+                                    going.state
+                                ))
+                            );
+                        }
+                    }
+                    None => {
+                        landed.push(serde_json::json!({
+                            "item": item.id,
+                            "title": item.title,
+                            "outcome": "dormant",
+                            "changes": changes,
+                        }));
+                        if !args.json {
+                            println!(
+                                "{}\n  {}",
+                                title(&item.title),
+                                style.dim(&format!(
+                                    "{} — no recipe applies to it now; \
+                                     `ephor work forget --done` clears it",
+                                    changes.join("; ")
+                                ))
+                            );
+                        }
+                    }
                 }
             }
             Ok(outcome) => {
@@ -2499,7 +2554,12 @@ fn forget_work(config: &StatusConfig, args: &crate::cli::WorkForgetArgs) -> Resu
                 return *id == wanted;
             }
             let status = dispatcher.status_of(entry, None);
-            (args.done && status.open_tickets() == 0) || (args.missing && status.missing)
+            // What may be dropped is read from the plans, and never from
+            // which of them ephor wrote (§FS-005-dispatch.35). A plan nobody
+            // can read is not a finished one, so it is `--missing` that
+            // reaches an entry whose laid plan has gone, not `--done`.
+            let done = status.open_tickets() == 0 && status.unread_workflows == 0;
+            (args.done && done) || (args.missing && status.missing)
         })
         .map(|(id, _)| id.clone())
         .collect();

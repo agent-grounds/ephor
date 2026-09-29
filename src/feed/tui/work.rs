@@ -747,6 +747,8 @@ mod tests {
             plans: Vec::new(),
             missing: false,
             workflows: 0,
+            unread_workflows: 0,
+            open_at: None,
             tickets: vec![TicketStatus {
                 running: false,
                 queued: false,

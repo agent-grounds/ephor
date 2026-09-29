@@ -207,12 +207,20 @@ pub struct WorkStatus {
     /// The checkout the runtime is run from.
     pub checkout: PathBuf,
     pub plan: PathBuf,
-    /// Every committed recipe-plan placement for this matter. The singular
-    /// fields above remain the latest placement for compatibility
-    /// (§FS-005-dispatch.4, §REQ-002-parity.4).
+    /// Every committed plan placement for this matter — the ones ephor wrote
+    /// and the ones its workflows laid beside them (§FS-005-dispatch.35). The
+    /// singular fields above remain the latest recipe placement for
+    /// compatibility (§FS-005-dispatch.4, §REQ-002-parity.4).
     pub plans: Vec<RecordedPlan>,
-    /// The plan the ledger points at is gone — reported, never repaired.
+    /// A plan the ledger points at is gone — reported, never repaired. True
+    /// for a recipe plan ephor wrote and lost, and for a laid plan the record
+    /// names that nobody can read (§FS-005-dispatch.35).
     pub missing: bool,
+    /// How many laid plans the record named could not be read
+    /// (§FS-005-dispatch.35). A count of open tickets cannot tell an entry
+    /// whose work is finished from one whose plan is unreadable — both are
+    /// zero — so what may be forgotten is read from this beside it.
+    pub unread_workflows: usize,
     pub tickets: Vec<TicketStatus>,
     /// How many plans a workflow laid down beside this matter's own
     /// (§FS-005-dispatch.19). A count rather than the plans themselves: what
@@ -230,9 +238,24 @@ pub struct WorkStatus {
     /// (§FS-005-dispatch.23). None where no run is live here, and on one
     /// writing normally.
     pub quiet: Option<u64>,
+    /// The one task a report with room for one line should name, and the plan
+    /// it is in (§FS-005-dispatch.35). None where nothing is open, which is
+    /// what tells a matter that is over from a matter no recipe applies to.
+    pub open_at: Option<OpenWork>,
 }
 
-/// One committed recipe-plan placement from the ledger's normalized reading
+/// Where a matter's work still stands, for a sentence that has room for one
+/// (§FS-005-dispatch.35): the plan holding the task, and what that task is
+/// at. The plan is named because it is the thing to go and open — a matter
+/// whose work is a laid workflow plan has no other file that says anything.
+#[derive(Debug, Clone)]
+pub struct OpenWork {
+    pub plan: PathBuf,
+    pub ticket: String,
+    pub state: String,
+}
+
+/// One committed plan placement from the ledger's normalized reading
 /// (§FS-005-dispatch.15.1).
 #[derive(Debug, Clone)]
 pub struct RecordedPlan {
@@ -241,6 +264,27 @@ pub struct RecordedPlan {
     pub branch: Option<String>,
     pub plan_id: String,
     pub path: PathBuf,
+    /// The name the record gave a plan a workflow laid down, where this is
+    /// one (§FS-005-dispatch.35). `None` is a plan ephor wrote itself — the
+    /// one difference the two are told apart by, since a plan ephor promised
+    /// and a plan it only asked a runtime for are not gone in the same sense.
+    pub laid: Option<String>,
+}
+
+/// Every plan the record says is one matter's work, resolved against the disk
+/// (§FS-005-dispatch.35). A matter's work is the plan ephor wrote itself and
+/// every one a workflow laid beside it, and no surface gets to read a
+/// narrower list than another (§FS-005-dispatch.30).
+#[derive(Debug, Clone, Default)]
+pub struct RecordedWork {
+    /// The plans that could be read, in the record's own order: the recipe
+    /// placements first, then what the workflows laid.
+    pub plans: Vec<RecordedPlan>,
+    /// How many laid plans the record named that nobody could read. Counted
+    /// rather than listed because the only question asked of them is whether
+    /// there are any: an entry with one of these is not an entry whose work
+    /// is over, it is an entry whose work cannot be found.
+    pub unread: usize,
 }
 
 impl WorkStatus {
@@ -5267,6 +5311,7 @@ pub fn recorded_recipe_plans(entry: &Entry) -> Vec<RecordedPlan> {
             branch,
             plan_id: entry.plan_id.clone(),
             path,
+            laid: None,
         });
     }
     if plans.is_empty() && entry.plan.is_file() {
@@ -5276,9 +5321,76 @@ pub fn recorded_recipe_plans(entry: &Entry) -> Vec<RecordedPlan> {
             branch: entry.branch.clone(),
             plan_id: entry.plan_id.clone(),
             path: entry.plan.clone(),
+            laid: None,
         });
     }
     plans
+}
+
+/// The plans this matter's workflows laid beside its own, as the record names
+/// them and the disk answers (§FS-005-dispatch.35): the *dispatch's* own root
+/// joined to the name it recorded, resolved to the plan that is actually
+/// there — whose id is the laid plan's, never the entry's.
+///
+/// The same resolution [`WorkAt::going`] and the due sweep already make, in
+/// one place so that what a run reaches and what a reading counts cannot come
+/// apart (§FS-005-dispatch.30). A name nobody can read is not dropped
+/// silently: it is counted, because an entry whose plan has gone is a
+/// different fact from an entry whose work is finished.
+pub fn recorded_workflow_plans(entry: &Entry) -> RecordedWork {
+    let mut work = RecordedWork::default();
+    let mut seen: BTreeSet<PathBuf> = BTreeSet::new();
+    for dispatch in entry
+        .dispatches
+        .iter()
+        .filter(|dispatch| dispatch.is_workflow())
+    {
+        let Some(name) = dispatch.plan.as_deref() else {
+            continue;
+        };
+        let root = dispatch.root.clone().unwrap_or_else(|| entry.root.clone());
+        let output = root.join(name);
+        // One plan laid twice under one name is one plan: a repeat lays the
+        // same workspace again and the record keeps both asks
+        // (§FS-005-dispatch.19), but there is one body of work on disk.
+        if !seen.insert(canonical(&output)) {
+            continue;
+        }
+        let Some(found) = runtime::workflow::laid(&output) else {
+            work.unread += 1;
+            continue;
+        };
+        work.plans.push(RecordedPlan {
+            root,
+            checkout: dispatch
+                .checkout
+                .clone()
+                .unwrap_or_else(|| entry.checkout()),
+            branch: dispatch.branch(entry).map(str::to_string),
+            plan_id: found.plan_id,
+            path: found.path,
+            laid: Some(name.to_string()),
+        });
+    }
+    work
+}
+
+/// The whole of one matter's work, which is what every surface reads it from
+/// (§FS-005-dispatch.35, §FS-005-dispatch.30): the recipe placements and the
+/// laid workflow plans, in the record's own order.
+///
+/// Deliberately not the same function as [`recorded_recipe_plans`] and
+/// deliberately not built on its deduplication. That reading answers the
+/// drafted-reply contract (§FS-005-dispatch.13) and the board's one-plan-per-
+/// root slot, and it collapses placements by root — which is right for the
+/// plan ephor wrote, one per root, and wrong the moment a workflow lays a
+/// second plan in a root the matter's own already stands in.
+pub fn recorded_plans(entry: &Entry) -> RecordedWork {
+    let mut work = recorded_workflow_plans(entry);
+    let mut plans = recorded_recipe_plans(entry);
+    plans.extend(work.plans);
+    work.plans = plans;
+    work
 }
 
 /// An entry's work as it stands, read from the plan (§FS-005-dispatch.4). A
@@ -5346,12 +5458,35 @@ pub fn status_of_entry_seen(
         .iter()
         .map(|dispatch| (dispatch.ticket.as_str(), dispatch.at))
         .collect();
-    let plans = recorded_recipe_plans(entry);
+    // Every plan the record says is this matter's, the ones ephor wrote and
+    // the ones its workflows laid (§FS-005-dispatch.35). A count taken over
+    // the recipe plans alone reports no open tickets while a laid plan on
+    // disk says otherwise, which is the watch reporting on itself
+    // (§FS-005-dispatch.4).
+    let RecordedWork {
+        plans,
+        unread: unread_workflows,
+    } = recorded_plans(entry);
     let mut tickets: Vec<TicketStatus> = Vec::new();
+    // The plan each ticket was read out of, kept beside them so a report with
+    // room for one line can name it (§FS-005-dispatch.35).
+    let mut held_in: Vec<PathBuf> = Vec::new();
     let mut missing = false;
     let mut quiet = None;
     for recorded in &plans {
-        let machine = WorkRoot::open(&recorded.root).ok().flatten();
+        // The machine that answers for this plan's tasks, never assumed to be
+        // the root's (§FS-005-dispatch.28): a laid workspace carries its own,
+        // and the root's would misjudge which of its states are final. A
+        // store declaring a machine that will not read judges nothing.
+        let own = plan::own_machine(&recorded.path);
+        let machine = match own {
+            Ok(Some(store)) => Some(store),
+            Ok(None) => WorkRoot::open(&recorded.root).ok().flatten(),
+            Err(_) => None,
+        };
+        // Where the runtime writes what a ticket left behind: beside the plan
+        // where the plan is a store of its own, and in the root otherwise.
+        let artifacts = plan::own_store(&recorded.path).unwrap_or(&recorded.root);
         let plan = Plan::read(&recorded.path).ok().flatten();
         missing |= plan.is_none();
         // What a run on this root is doing, read once for every ticket asked
@@ -5394,16 +5529,12 @@ pub fn status_of_entry_seen(
                 waiting: ticket.state.as_deref().is_some_and(|state| {
                     machine.as_ref().is_some_and(|root| root.is_gating(state))
                 }),
-                verdict: runtime::results::verdict(&recorded.root, &recorded.plan_id, &ticket.id)
+                verdict: runtime::results::verdict(artifacts, &recorded.plan_id, &ticket.id)
                     .or_else(|| {
                         ticket
                             .cancelled()
                             .then(|| {
-                                runtime::results::result(
-                                    &recorded.root,
-                                    &recorded.plan_id,
-                                    &ticket.id,
-                                )
+                                runtime::results::result(artifacts, &recorded.plan_id, &ticket.id)
                             })
                             .flatten()
                     }),
@@ -5413,8 +5544,21 @@ pub fn status_of_entry_seen(
                 title: ticket.title,
                 state: ticket.state,
             });
+            held_in.push(recorded.path.clone());
         }
     }
+    // What the matter is still at, ranked as the badge ranks it: a task
+    // waiting on a person stands ahead of anything else (§FS-005-dispatch.9),
+    // and otherwise the last one nothing has finished.
+    let open_at = tickets
+        .iter()
+        .position(|ticket| ticket.waiting)
+        .or_else(|| tickets.iter().rposition(|ticket| !ticket.finished))
+        .map(|at| OpenWork {
+            plan: held_in[at].clone(),
+            ticket: tickets[at].id.clone(),
+            state: tickets[at].state.clone().unwrap_or_else(|| "?".to_string()),
+        });
     let advance = tickets.iter().find(|ticket| ticket.waiting).map(|ticket| {
         runtime::advance_command(global, &ticket.id, ticket.state.as_deref().unwrap_or("?"))
     });
@@ -5430,13 +5574,17 @@ pub fn status_of_entry_seen(
         checkout: entry.checkout(),
         plan: entry.plan.clone(),
         plans,
-        // The matter's own plan is missing only where something was meant
-        // to be in it. An entry whose every dispatch laid a plan of its own
-        // never wrote a ticket here (§FS-005-dispatch.19), so there is no
-        // plan to be missing — and reporting one would be ephor alarming a
-        // reader about a file it never said it would write.
-        missing,
+        // A plan is missing where the record named one and nobody can read
+        // it. That is the recipe plan ephor wrote and lost, and — since
+        // §FS-005-dispatch.35 — a laid plan the record points at too: ephor
+        // did not write that one, but it did say where it is, and a file
+        // nobody can read is not evidence the work is over. An entry whose
+        // dispatches named no plan at all still has none to be missing, and
+        // is not alarmed about a file nobody promised (§FS-005-dispatch.19).
+        missing: missing || unread_workflows > 0,
+        unread_workflows,
         tickets,
+        open_at,
         advance,
         changes: item
             .map(|item| entry.changes_since(item))

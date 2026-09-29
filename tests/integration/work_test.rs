@@ -2162,3 +2162,167 @@ fn the_hand_flag_takes_a_comma_separated_list_and_refuses_an_empty_member() {
     .stderr(predicate::str::contains("sonnet,"))
     .stderr(predicate::str::contains("empty"));
 }
+
+/// The machine the plans below run under: `implementing` is work still going,
+/// `done` is over.
+const MIXED_MACHINE: &str = "name: mixed-machine\nversion: 1.0\n\nstates:\n  \
+     implementing:\n    description: Being built.\n  done:\n    description: Over.\n    \
+     final: true\n\ntransitions:\n  - from: implementing\n    to: done\n";
+
+fn mixed_plan(state: &str) -> String {
+    format!(
+        "# Rhei: mixed\n**States:** mixed-machine\n\n## Tasks\n\n\
+         ### Task the-work-1: build it\n**State:** {state}\n\nbody\n"
+    )
+}
+
+/// A ledger holding the three cases `forget` has to tell apart: a recipe plan
+/// ephor wrote and lost, a laid workflow plan that is still going, and a laid
+/// workflow plan nobody can read (§FS-005-dispatch.35).
+fn mixed_ledger(tmp: &Path) -> std::path::PathBuf {
+    let root = tmp.join("mixed/panta");
+    fs::create_dir_all(&root).unwrap();
+    fs::write(root.join("states.yaml"), MIXED_MACHINE).unwrap();
+    let going = root.join("going-implement");
+    fs::create_dir_all(&going).unwrap();
+    fs::write(going.join("index.rhei.md"), mixed_plan("implementing")).unwrap();
+
+    let entry = |plan_id: &str, dispatch: Value| {
+        json!({
+            "project": "demo",
+            "title": format!("acme/widget#{plan_id}"),
+            "root": root,
+            "checkout": tmp.join("mixed"),
+            "branch": "main",
+            "plan_id": plan_id,
+            "plan": root.join(format!("{plan_id}.rhei.md")),
+            "dispatches": [dispatch],
+        })
+    };
+    let ledger = json!({ "version": 1, "entries": {
+        // Its plan is deleted, and ephor wrote that plan: still `--done`.
+        "demo:lost-recipe": entry("lost-recipe", json!({
+            "ticket": "implement-1", "recipe": "implement",
+            "at": "2026-07-28T00:00:00Z", "root": root,
+        })),
+        // Its laid plan is going: neither verb reaches it.
+        "demo:going-workflow": entry("going", json!({
+            "ticket": "", "recipe": "implement",
+            "at": "2026-07-28T00:00:00Z", "root": root, "plan": "going-implement",
+        })),
+        // Its laid plan is gone: `--missing` and nothing else.
+        "demo:gone-workflow": entry("gone", json!({
+            "ticket": "", "recipe": "implement",
+            "at": "2026-07-28T00:00:00Z", "root": root, "plan": "gone-implement",
+        })),
+    }});
+    let path = tmp.join("state/ephor/work.json");
+    fs::create_dir_all(path.parent().unwrap()).unwrap();
+    fs::write(&path, serde_json::to_string_pretty(&ledger).unwrap()).unwrap();
+    path
+}
+
+fn forgotten(tmp: &Path, verb: &str) -> Vec<String> {
+    let output = ephor(tmp)
+        .args(["work", "forget", verb, "--json"])
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    json_output(&output)["forgot"]
+        .as_array()
+        .expect("what was forgotten")
+        .iter()
+        .map(|forgot| forgot["item"].as_str().unwrap().to_string())
+        .collect()
+}
+
+fn ledger_keys(path: &Path) -> Vec<String> {
+    let ledger: Value = serde_json::from_str(&fs::read_to_string(path).unwrap()).unwrap();
+    ledger["entries"]
+        .as_object()
+        .unwrap()
+        .keys()
+        .cloned()
+        .collect()
+}
+
+/// What `forget` selects is read from the plans and never from which of them
+/// ephor wrote (§FS-005-dispatch.35), and the two verbs divide the ledger
+/// between them: `--done` takes the entry whose plan ephor wrote and lost and
+/// leaves the one whose laid plan is going *and* the one whose laid plan is
+/// gone, and `--missing` then takes the gone one. The asymmetry is the point:
+/// ephor promised the recipe plan and only asked for the laid one.
+#[test]
+fn forget_divides_a_mixed_ledger_by_what_the_plans_say() {
+    let tmp = tempdir();
+    fixture(tmp.path(), Value::Null);
+    let ledger = mixed_ledger(tmp.path());
+
+    assert_eq!(forgotten(tmp.path(), "--done"), ["demo:lost-recipe"]);
+    assert_eq!(
+        ledger_keys(&ledger),
+        ["demo:going-workflow", "demo:gone-workflow"]
+    );
+
+    assert_eq!(forgotten(tmp.path(), "--missing"), ["demo:gone-workflow"]);
+    assert_eq!(ledger_keys(&ledger), ["demo:going-workflow"]);
+
+    // And the one whose work is going is reached by neither, on a second pass
+    // as on the first: a reader who runs both verbs still has their work.
+    assert!(forgotten(tmp.path(), "--done").is_empty());
+    assert!(forgotten(tmp.path(), "--missing").is_empty());
+    assert_eq!(ledger_keys(&ledger), ["demo:going-workflow"]);
+}
+
+/// The machine-readable reading grows with the one behind it
+/// (§REQ-002-parity.3, §FS-005-dispatch.35): a laid workflow plan joins the
+/// `plans` array under its own id, its tasks join `tickets`, and the record
+/// of which dispatch laid it stays where it was.
+#[test]
+fn work_list_json_carries_the_plan_a_workflow_laid() {
+    let tmp = tempdir();
+    fixture(tmp.path(), Value::Null);
+    mixed_ledger(tmp.path());
+
+    let output = ephor(tmp.path())
+        .args(["work", "list", "--json"])
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let rows = json_output(&output);
+    let row = rows
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|row| row["item"] == json!("demo:going-workflow"))
+        .expect("the workflow-only entry")
+        .clone();
+
+    let laid = tmp.path().join("mixed/panta/going-implement/index.rhei.md");
+    let plans = row["plans"].as_array().expect("the plans array");
+    assert_eq!(plans.len(), 1, "the laid plan is absent: {row}");
+    assert_eq!(plans[0]["plan"], json!(laid.to_string_lossy()));
+    assert_eq!(plans[0]["plan_id"], json!("going-implement"));
+
+    let tickets = row["tickets"].as_array().expect("the tickets array");
+    assert_eq!(tickets.len(), 1, "the laid task is absent: {row}");
+    assert_eq!(tickets[0]["id"], json!("the-work-1"));
+    assert_eq!(tickets[0]["state"], json!("implementing"));
+    assert_eq!(tickets[0]["finished"], json!(false));
+    assert_eq!(row["missing"], json!(false));
+
+    // The record of the laying is what it was: the name the dispatch wrote
+    // down, not the file it resolved to (§FS-005-dispatch.19).
+    let workflows = row["workflows"].as_array().expect("the workflows array");
+    assert_eq!(workflows.len(), 1);
+    assert_eq!(workflows[0]["plan"], json!("going-implement"));
+    assert_eq!(workflows[0]["entry"], json!("implement"));
+}
