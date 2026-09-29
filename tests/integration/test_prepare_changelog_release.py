@@ -240,6 +240,48 @@ class StampUnreleasedNumbersTests(unittest.TestCase):
                 self.assertEqual(repo.read(), before, outcome)
                 self.assertIn("warning", outcome.text.lower(), outcome)
 
+    def test_stamp_exits_zero_when_the_changelog_cannot_be_read(self) -> None:
+        """Never failing a release has to be true of the changelog too, not only of the forge."""
+        repo = self.repo("### Fixed\n\n- **A bullet with no number.**\n")
+        repo.changelog.write_bytes(b"# Changelog\n\n## Unreleased\n\n- \xff\xfe not utf-8.\n")
+        before = repo.changelog.read_bytes()
+
+        outcome = run_stamp(repo)
+
+        self.assertEqual(outcome.code, 0, outcome)
+        self.assertEqual(repo.changelog.read_bytes(), before, outcome)
+        self.assertIn("warning", outcome.text.lower(), outcome)
+
+    def test_stamp_exits_zero_when_the_changelog_cannot_be_written(self) -> None:
+        """The write is inside the never-fails boundary as much as the read is."""
+        repo = self.repo("### Fixed\n\n- **A bullet with no number.**\n")
+        before = repo.read()
+        refuse = patch.object(
+            prepare_changelog_release,
+            "_write_lines",
+            side_effect=PermissionError("read-only file system"),
+        )
+        with self.resolver({repo.base_sha: [142]}), refuse:
+            outcome = run_stamp(repo)
+
+        self.assertEqual(outcome.code, 0, outcome)
+        self.assertEqual(repo.read(), before, outcome)
+        self.assertIn("warning", outcome.text.lower(), outcome)
+
+    def test_the_warning_carries_the_failing_tool_s_own_words(self) -> None:
+        """The workflow log is the whole report, so a 403 may not read like a timeout."""
+        repo = self.repo("### Fixed\n\n- **A bullet with no number.**\n")
+        refused = subprocess.CalledProcessError(
+            1, ["gh", "api"], stderr="gh: Resource not accessible by integration (HTTP 403)\n"
+        )
+        with patch.object(
+            prepare_changelog_release, "pull_requests_for_commit", side_effect=refused
+        ):
+            outcome = run_stamp(repo)
+
+        self.assertEqual(outcome.code, 0, outcome)
+        self.assertIn("Resource not accessible by integration (HTTP 403)", outcome.text, outcome)
+
 
 if __name__ == "__main__":
     unittest.main()
