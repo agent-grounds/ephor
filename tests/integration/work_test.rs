@@ -2187,6 +2187,13 @@ fn mixed_ledger(tmp: &Path) -> std::path::PathBuf {
     fs::create_dir_all(&going).unwrap();
     fs::write(going.join("index.rhei.md"), mixed_plan("implementing")).unwrap();
 
+    // A dispatch carries the item as it was when it was asked for, and the
+    // ledger will not read without it.
+    let snapshot = json!({
+        "updated_at": "2026-07-27T12:00:00Z",
+        "state": "open",
+        "passed": 0, "failed": 0, "running": 0, "messages": 0
+    });
     let entry = |plan_id: &str, dispatch: Value| {
         json!({
             "project": "demo",
@@ -2203,17 +2210,19 @@ fn mixed_ledger(tmp: &Path) -> std::path::PathBuf {
         // Its plan is deleted, and ephor wrote that plan: still `--done`.
         "demo:lost-recipe": entry("lost-recipe", json!({
             "ticket": "implement-1", "recipe": "implement",
-            "at": "2026-07-28T00:00:00Z", "root": root,
+            "at": "2026-07-28T00:00:00Z", "root": root, "snapshot": snapshot,
         })),
         // Its laid plan is going: neither verb reaches it.
         "demo:going-workflow": entry("going", json!({
             "ticket": "", "recipe": "implement",
             "at": "2026-07-28T00:00:00Z", "root": root, "plan": "going-implement",
+            "snapshot": snapshot,
         })),
         // Its laid plan is gone: `--missing` and nothing else.
         "demo:gone-workflow": entry("gone", json!({
             "ticket": "", "recipe": "implement",
             "at": "2026-07-28T00:00:00Z", "root": root, "plan": "gone-implement",
+            "snapshot": snapshot,
         })),
     }});
     let path = tmp.join("state/ephor/work.json");
