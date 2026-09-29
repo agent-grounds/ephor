@@ -2,7 +2,10 @@
 
 Work that starts with nobody present is bounded by how many roots may be live
 and how many of those may be working, and by nothing else
-([§FS-005-dispatch.24](FS-005-dispatch.md#24-work-nobody-has-to-start-starts-itself)). Neither of those is money. A cheap model at high
+([§FS-005-dispatch.24](FS-005-dispatch.md#24-work-nobody-has-to-start-starts-itself)) — which is a statement about
+**starts**, and not about what a sweep writes on the way to one, nor about
+which matters it is offered to start work on
+([§FS-006-project-interface.7](FS-006-project-interface.md#7-the-projects-own-tasks-are-read-where-they-live)). Neither of those is money. A cheap model at high
 concurrency and an expensive one at low concurrency are indistinguishable to
 every ceiling ephor has, so the only thing that actually stops an overnight
 sweep is the provider's own quota — the vendor's number, arriving as a refusal,
