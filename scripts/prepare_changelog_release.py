@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import datetime as _datetime
 import re
+import subprocess
 import sys
 from pathlib import Path
 from typing import Sequence
@@ -17,6 +18,12 @@ RELEASE_RE = re.compile(
     r"^## (?P<number>[0-9]+)\. \[(?P<version>[0-9]+\.[0-9]+\.[0-9]+)\] — (?P<date>[0-9]{4}-[0-9]{2}-[0-9]{2})\s*$"
 )
 OLDER_RE = re.compile(r"^## (?P<number>[0-9]+)\. Older releases\s*$")
+BULLET_RE = re.compile(r"^\s*-\s")
+CONTINUATION_RE = re.compile(r"^\s+\S")
+# The three spellings a written number takes, and the placeholder that is not one.
+NUMBER_WRITTEN_RE = re.compile(r"(?i)\bPR\s*#\s*[0-9]+\b|\bpull request\s*#\s*[0-9]+\b|/pull/[0-9]+")
+PLACEHOLDER_RE = re.compile(r"(?i)\bPR\s*#\s*TBD\b")
+BLAME_HEADER_RE = re.compile(r"^(?P<sha>[0-9a-f]{40}) [0-9]+ (?P<final>[0-9]+)(?: [0-9]+)?$")
 
 
 class ChangelogError(Exception):
@@ -74,6 +81,131 @@ def prepare_release(changelog: Path, version: str, release_date: str) -> None:
         *older_body,
     ]
     _write_lines(changelog, new_lines)
+
+
+def pull_requests_for_commit(sha: str) -> list[int]:
+    """The pull requests a commit belongs to, asked of the forge. §FS-002-release.2"""
+    result = subprocess.run(
+        ["gh", "api", f"repos/{{owner}}/{{repo}}/commits/{sha}/pulls", "--jq", ".[].number"],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    return [int(token) for token in result.stdout.split()]
+
+
+def stamp_unreleased(changelog: Path) -> None:
+    """Write the numbers the contributors did not. Never fails a release. §FS-002-release.2"""
+    try:
+        lines = _read_lines(changelog)
+        sections = _find_top_level_sections(lines)
+        unreleased = _find_section(lines, sections, UNRELEASED_RE, "## Unreleased")
+        end = next((section for section in sections if section > unreleased), len(lines))
+        blocks = _bullet_blocks(lines, unreleased + 1, end)
+    except ChangelogError as exc:
+        # A release is never failed over stamping, not even by a changelog it
+        # cannot read: `prepare` is the step that is allowed to refuse.
+        print(f"warning: not stamping ## Unreleased: {exc}", file=sys.stderr)
+        return
+
+    resolved: dict[str, list[int]] = {}
+    changed = False
+    for start, stop in blocks:
+        block = lines[start:stop]
+        if NUMBER_WRITTEN_RE.search("".join(block)):
+            continue  # written by hand always beats stamped, and is not verified
+        number = _single_pull_request(changelog, start, stop, block, resolved)
+        if number is None:
+            continue
+        lines[start:stop] = _stamp_block(block, number)
+        changed = True
+
+    if changed:
+        _write_lines(changelog, lines)
+
+
+def _single_pull_request(
+    changelog: Path, start: int, stop: int, block: Sequence[str], resolved: dict[str, list[int]]
+) -> int | None:
+    """The one pull request every non-blank line of the bullet resolves to, or nothing."""
+    first = _line_text(block[0]).strip()
+    try:
+        shas = _blame_shas(changelog, start + 1, stop)
+        numbers = set()
+        for offset, line in enumerate(block):
+            if not line.strip():
+                continue
+            sha = shas.get(start + 1 + offset)
+            if sha is None:
+                numbers.add(None)
+                continue
+            if sha not in resolved:
+                resolved[sha] = pull_requests_for_commit(sha)
+            pulls = resolved[sha]
+            numbers.add(pulls[0] if len(pulls) == 1 else None)
+    except Exception as exc:  # a forge, a token, or a blame this release will not fail over
+        print(f"warning: cannot resolve a pull request for {first!r}: {exc}", file=sys.stderr)
+        return None
+
+    if len(numbers) == 1:
+        only = numbers.pop()
+        if only is not None:
+            return only
+    print(
+        f"warning: leaving {first!r} unstamped — its lines do not all resolve to one pull request",
+        file=sys.stderr,
+    )
+    return None
+
+
+def _stamp_block(block: Sequence[str], number: int) -> list[str]:
+    """`PR #TBD` replaced in place, otherwise appended to the bullet's last written line."""
+    stamped = list(block)
+    for index, line in enumerate(stamped):
+        if PLACEHOLDER_RE.search(line):
+            stamped[index] = PLACEHOLDER_RE.sub(f"PR #{number}", line, count=1)
+            return stamped
+
+    for index in range(len(stamped) - 1, -1, -1):
+        if not stamped[index].strip():
+            continue
+        body = stamped[index].rstrip("\r\n")
+        ending = stamped[index][len(body) :]
+        stamped[index] = f"{body} (PR #{number}){ending}"
+        return stamped
+    return stamped
+
+
+def _bullet_blocks(lines: Sequence[str], start: int, end: int) -> list[tuple[int, int]]:
+    """Each bullet in `lines[start:end]` as a half-open range — the same split the gate makes."""
+    blocks = []
+    index = start
+    while index < end:
+        if not BULLET_RE.match(lines[index]):
+            index += 1
+            continue
+        stop = index + 1
+        while stop < end and CONTINUATION_RE.match(lines[stop]) and not BULLET_RE.match(lines[stop]):
+            stop += 1
+        blocks.append((index, stop))
+        index = stop
+    return blocks
+
+
+def _blame_shas(changelog: Path, start: int, stop: int) -> dict[int, str]:
+    """The commit behind each line of `changelog`, by one-based line number."""
+    result = subprocess.run(
+        ["git", "blame", "--porcelain", "-L", f"{start},{stop}", "--", str(changelog)],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    shas = {}
+    for raw in result.stdout.splitlines():
+        match = BLAME_HEADER_RE.match(raw)
+        if match is not None:
+            shas[int(match.group("final"))] = match.group("sha")
+    return shas
 
 
 def extract_notes(changelog: Path, version: str, output: Path) -> None:
@@ -224,10 +356,14 @@ def main(argv: Sequence[str] | None = None) -> int:
     notes.add_argument("version")
     notes.add_argument("--output", type=Path, required=True)
 
+    subparsers.add_parser("stamp", help="write PR numbers onto Unreleased bullets that carry none")
+
     args = parser.parse_args(argv)
     try:
         if args.command == "prepare":
             prepare_release(args.changelog, args.version, args.date)
+        elif args.command == "stamp":
+            stamp_unreleased(args.changelog)
         elif args.command == "notes":
             extract_notes(args.changelog, args.version, args.output)
         else:

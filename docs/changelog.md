@@ -222,7 +222,7 @@ ships, the previous "latest" section moves verbatim to
   where every line of it resolves to the same single pull request
   ([§FS-002-release.2](functional-spec/FS-002-release.md#2-cutting-a-release)).
   Stamping never fails a release, so a released section may keep a bullet
-  carrying no number at all.
+  carrying no number at all. (PR #140)
 
 - **Every plan file `work dispatch` has written changes name once, and ephor
   moves it for you**
