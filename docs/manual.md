@@ -1719,6 +1719,8 @@ set it themselves: a replay asks nothing.
 |---|---|
 | `EPHOR_PROJECT`, `EPHOR_ROOT` | project id and its registry root |
 | `EPHOR_WORKSPACE` | the checkout the command runs in (also the cwd) |
+| `EPHOR_ORG` | the organization the registry places the project in, empty where it places it in none |
+| `EPHOR_ORG_ROOT` | where that organization is rooted, empty where the organization declares no `root` |
 | `EPHOR_BRANCH`, `EPHOR_TICKET` | provider-recorded branch, or the matched registry branch and its ticket |
 | `EPHOR_ITEM_ID`, `EPHOR_SOURCE`, `EPHOR_KIND` | item identity (`pr`/`ci`/`issue`/`msg`/`status`) |
 | `EPHOR_TITLE`, `EPHOR_URL`, `EPHOR_STATE` | display fields, empty when absent |
@@ -1749,6 +1751,20 @@ renders ([§8.5](#85-a-script-in-front-of-the-agent)) is the ticket metadata
 a source said is written into a ticket and nothing a source said is in the
 environment ephor hands the runtime. A state program that wants such a fact gets
 it from the brief, where a template named it.
+
+Both organization names are **always defined**, and empty is their answer where
+there is none — membership and the root are absent independently, so a project
+in an organization that declares no `root` gets its id and an empty root. They
+are never left unset, because a summoned command inherits the environment ephor
+itself was launched with: an unset name would not be absent but whatever the
+shell that started ephor held, and a project in no organization would read some
+other organization's name as its own. So test them rather than trusting them —
+`[ -n "$EPHOR_ORG" ]` before building anything from either, never
+`${EPHOR_ORG:?}`, which can no longer fire
+([§FS-005-dispatch.6.1](functional-spec/FS-005-dispatch.md#61-the-work-root-is-a-template-and-it-may-reach-above-the-project)).
+A work root template is the one place ephor makes that check for you: one
+naming `{org_root}` with no answer is refused by name rather than rendered
+(§8.4).
 
 Exit codes are read the same way wherever a command is summoned from: `0`
 done, non-zero failed, and `75` **parked** — not applicable now, ask again
@@ -2335,8 +2351,10 @@ what was pushed of it — and a recipe may ask both.
 `{ticket}`, `{state}`, `{gate}`, `{workspace}`, `{root}`, `{project}`,
 `{source}`, `{kind}`, `{id}`, `{id_slug}` — the matter's own id as a name a
 branch and a path will take, which every matter answers
-([§8.18](#818-a-branch-for-work-about-an-item-that-has-none)) — and `{reply}`,
-the file a drafted answer belongs in, named absolutely
+([§8.18](#818-a-branch-for-work-about-an-item-that-has-none)) — `{org}` and
+`{org_root}` — the organization the registry places the project in and where it
+is rooted, each empty where there is none — and `{reply}`, the file a drafted
+answer belongs in, named absolutely
 ([§8.12](#812-an-answer-comes-back-as-a-proposal)). An unknown name is left as
 written, so a typo is visible in the ticket instead of becoming a blank.
 
@@ -2641,6 +2659,8 @@ metadata:
   tasks:
     fix-gate-1:
       project: "widget"
+      org: "acme"
+      org_root: "/home/you/c"
       source: "forge"
       kind: "pr"
       id: "forge:widget/24407"
@@ -2654,6 +2674,14 @@ metadata:
       title: "…"
 ---
 ```
+
+A key whose value is empty is not written at all, so a project the registry
+places in no organization carries no `org` and one whose organization declares
+no `root` carries no `org_root` — exactly as a matter with no branch carries no
+`branch`. That is the opposite of the environment above, and deliberately:
+nothing reading a ticket has an environment to inherit a missing name from, so
+absence here says what it means
+([§FS-005-dispatch.8](functional-spec/FS-005-dispatch.md#8-the-ticket-carries-the-item-as-data-not-only-as-prose)).
 
 Where the recipe kept its brief in a file (§8.3), two more keys join them on
 that ticket — `instruction`, the path as it was rendered, and
