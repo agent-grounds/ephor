@@ -24,8 +24,10 @@ use serde_json::json;
 use support::*;
 
 /// The plan id ephor derives from the item's key, which is also what it hands
-/// the runtime on the command line.
-const PLAN: &str = "acmeforge-app-101";
+/// the runtime on the command line: the readable half of `acmeforge:app/101`
+/// and a digest of the whole key, so that two matters whose keys read alike
+/// still name two plans (§FS-005-dispatch.2, §FS-005-dispatch.3).
+const PLAN: &str = "acmeforge-app-101-e48f01f0";
 
 /// A forge with one pull request of the user's: the gate is red and the last
 /// word in the conversation is somebody else's, so it is both a thing to fix

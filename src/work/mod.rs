@@ -1038,7 +1038,7 @@ pub struct Dispatcher {
 
 impl Dispatcher {
     pub fn load(config: &StatusConfig) -> Result<Dispatcher> {
-        Ok(Dispatcher {
+        let mut dispatcher = Dispatcher {
             registry_doc: crate::feed::commands::load_registry_doc()?,
             global: config.work.clone(),
             projects: config
@@ -1074,7 +1074,16 @@ impl Dispatcher {
             notes: Vec::new(),
             journal: Journal::default(),
             ledger: ledger::load()?,
-        })
+        };
+        // Before anything recomputes a stem: a root named before the digest is
+        // carried over first, so no lookup is ever made against a name the disk
+        // has not caught up to (§FS-005-dispatch.3.1). What moved is said the
+        // way every other fact this dispatcher learns is — in prose and in
+        // `--json` alike (§REQ-002-parity, §FS-006-project-interface.9).
+        for note in dispatcher.carry_over_plan_names()? {
+            dispatcher.note_once(&note);
+        }
+        Ok(dispatcher)
     }
 
     /// What the reader should know about who got this work, each note once.
@@ -2265,7 +2274,12 @@ impl Dispatcher {
                     Some(&existing),
                     &recipe.id,
                 );
-                let prior = existing.last_ticket().map(|ticket| ticket.id);
+                // The last ticket that is about *this* matter, not simply the
+                // last one: a ticket ordered after work about something else
+                // waits that work out (§FS-005-dispatch.5).
+                let prior = existing
+                    .last_ticket_about(&plan_id, &item.id)
+                    .map(|ticket| ticket.id);
                 let mut body = String::new();
                 if !changes.is_empty() {
                     body.push_str(&format!(
@@ -2627,10 +2641,7 @@ impl Dispatcher {
         // named apart from what an earlier run of the same entry left, since
         // two runs of one workflow about one item are two records and not a
         // correction of the first (§FS-005-dispatch.19).
-        let plan_id = free_plan_id(
-            &site.dir,
-            &plan::plan_id(&format!("{}-{}", item.id, entry.id)),
-        );
+        let plan_id = free_plan_id(&site.dir, &plan::laid_plan_id(&item.id, &entry.id));
         let output = site.dir.join(&plan_id);
         // What ephor knows reaches a workflow as files: the paths are fixed
         // here so an answer may name them, and the files themselves are
@@ -4091,6 +4102,11 @@ impl Dispatcher {
         // launches and their failed-start back-off are committed.
         let _autorun = autorun_lock()?;
         self.ledger = ledger::load()?;
+        // The record just reloaded may still be named before the digest — this
+        // sweep's own process may never have read it (§FS-005-dispatch.3.1).
+        for note in self.carry_over_plan_names()? {
+            self.note_once(&note);
+        }
         // What the budgets have spent, read once for the whole sweep: the
         // answer is about the window rather than about any one root
         // (§FS-015-spend-ceiling.1).
@@ -4444,12 +4460,89 @@ impl Dispatcher {
     /// matter it refuses and names both files, because choosing between two
     /// records of the same work is the reader's call (§FS-005-dispatch.3).
     ///
-    /// **The body is `ticket.implement`'s.** This signature is here so that
-    /// §FS-005-dispatch.3.1 can be pinned by a test before it is satisfied by
-    /// any code; moving nothing is the wrong answer, and three tests in
-    /// `mod_tests.rs` say so.
+    /// What is reported is what a reader has lost a path to, so an entry whose
+    /// plan was never written has its recorded name corrected and is not
+    /// reported: there was no file, and so nothing that reads as gone.
     pub fn carry_over_plan_names(&mut self) -> Result<Vec<String>> {
-        Ok(Vec::new())
+        let behind: Vec<(String, String, String)> = self
+            .ledger
+            .entries
+            .iter()
+            .filter_map(|(id, entry)| {
+                let stem = plan::plan_id(id);
+                (entry.plan_id != stem).then(|| (id.clone(), entry.plan_id.clone(), stem))
+            })
+            .collect();
+        if behind.is_empty() {
+            return Ok(Vec::new());
+        }
+        // Two plans about one matter is refused before anything moves, and over
+        // the whole ledger rather than per entry: a refusal leaves the reader
+        // exactly what they had (§FS-005-dispatch.3).
+        for (id, was, now) in &behind {
+            let root = &self.ledger.entries[id].root;
+            let (old, new) = (plan::plan_path_in(root, was), plan::plan_path_in(root, now));
+            if old.is_file() && new.is_file() {
+                return Err(EphorError::Command(format!(
+                    "{id} has a plan at two names: {} and {}. One of them was written by \
+                     an ephor that named plans without the digest, and which of two records \
+                     of the same work to go on with is yours to say — so nothing here has \
+                     been moved. Keep one of the two files and remove the other.",
+                    old.display(),
+                    new.display()
+                )));
+            }
+        }
+        let mut moved = Vec::new();
+        let mut carried = false;
+        for (id, was, now) in behind {
+            let root = self.ledger.entries[&id].root.clone();
+            // A run holding this root waits: moving a plan out from under it is
+            // the one way this could lose work, and the next read carries it
+            // over instead (§FS-005-dispatch.3.1).
+            if runtime::watch::live(&self.global, &root) {
+                continue;
+            }
+            let moves = runtime::carried_over_paths(&root, &was, &now);
+            // The plan, its results, its artifacts and the record move together
+            // under the one rollback the hand-off already has
+            // (§FS-005-dispatch.4).
+            self.begin_handoff();
+            for (from, to) in &moves {
+                self.journal.remember(from)?;
+                self.journal.remember(to)?;
+            }
+            for (from, to) in &moves {
+                std::fs::rename(from, to).map_err(|err| {
+                    EphorError::Command(format!(
+                        "Cannot carry {} over to {}: {err}",
+                        from.display(),
+                        to.display()
+                    ))
+                })?;
+            }
+            let entry = self
+                .ledger
+                .entries
+                .get_mut(&id)
+                .expect("the entry was read from this ledger");
+            entry.plan_id = now.clone();
+            entry.plan = plan::plan_path_in(&root, &now);
+            carried = true;
+            if !moves.is_empty() {
+                moved.push(format!(
+                    "carried the plan of {id} over from {was} to {now} in {}",
+                    root.display()
+                ));
+            }
+        }
+        // Committed here, so the record and the disk never disagree across two
+        // invocations: a name this moved and did not write down is a plan the
+        // next reading command says is missing (§FS-005-dispatch.3.1).
+        if carried {
+            self.save()?;
+        }
+        Ok(moved)
     }
 
     /// Commit the ledger and only then release the work-root pre-images. A

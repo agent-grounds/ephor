@@ -37,7 +37,7 @@ use support::*;
 /// applies to it.
 const ITEM: &str = "acmeforge:acme/widget#7";
 /// The plan ephor derives from that key.
-const PLAN: &str = "acmeforge-acme-widget-7";
+const PLAN: &str = "acmeforge-acme-widget-7-0eaae511";
 /// The recipe's id, which is also the ticket prefix.
 const RECIPE: &str = "desires";
 

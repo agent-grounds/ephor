@@ -326,6 +326,26 @@ const STOP_VERB: &str = "stop";
 const AGENT_FLAG: &str = "--agent";
 const AGENT_MODE_FLAG: &str = "--agent-mode";
 
+/// Every file in a work root that a plan's stem names, paired with where each
+/// belongs once the matter's id renders a different stem (§FS-005-dispatch.3.1).
+///
+/// The plan file, then the results and the artifacts keyed by the same stem —
+/// which files those are and what they are called is the binding's grammar, so
+/// the answer is composed here and the caller moves what it is given
+/// (§REQ-001-boundary.5). Only what is actually there: a matter ephor recorded
+/// and no run ever wrote a plan for has nothing to carry over, and a rename is
+/// not how that is discovered.
+pub fn carried_over_paths(
+    root: &Path,
+    from: &str,
+    to: &str,
+) -> Vec<(std::path::PathBuf, std::path::PathBuf)> {
+    let mut moves = vec![(plan::plan_path_in(root, from), plan::plan_path_in(root, to))];
+    moves.extend(results::carried_over(root, from, to));
+    moves.retain(|(from, _)| from.exists());
+    moves
+}
+
 /// A work ledger written before the plan's field was named for the plan spells
 /// it for the runtime instead. The word is this module's, so the migration
 /// that still reads it is this module's too (§REQ-001-boundary.5): the ledger

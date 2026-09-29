@@ -314,7 +314,7 @@ fn issue_90_named_run_decision_orders_root_live_force_and_warning_eligibility() 
     }
     if let Some(reading) = check_json_reading(&mut failures, "forced valid root", &forced, 0) {
         if reading["runs"][0]["outcome"] != "done"
-            || reading["runs"][0]["plans"] != json!(["acme-app-1"])
+            || reading["runs"][0]["plans"] != json!(["acme-app-1-bad8e85a"])
         {
             failures.push(format!(
                 "--force changed the successful launch or its plan selection: {reading}"
@@ -667,7 +667,7 @@ fn add_root_refused_project(world: &World) {
     let source_plan = PathBuf::from(copied["plan"].as_str().expect("the dispatched plan's path"));
     let second_root = world.path().join("broken/panta");
     fs::create_dir_all(&second_root).expect("the second work root");
-    let second_plan = second_root.join("acme-app-2.rhei.md");
+    let second_plan = second_root.join("acme-app-2-b9d8e6c7.rhei.md");
     fs::copy(source_plan, &second_plan).expect("copy the dispatched plan");
     copied["project"] = json!("broken");
     copied["root"] = json!(second_root);
@@ -687,7 +687,7 @@ fn add_root_refused_project(world: &World) {
         dispatch["checkout"] = json!(world.path().join("broken"));
         dispatch["branch"] = Value::Null;
     }
-    copied["plan_id"] = json!("acme-app-2");
+    copied["plan_id"] = json!("acme-app-2-b9d8e6c7");
     copied["plan"] = json!(second_plan);
     ledger["entries"][OTHER_ITEM] = copied;
     write_json(&ledger_path, &ledger);

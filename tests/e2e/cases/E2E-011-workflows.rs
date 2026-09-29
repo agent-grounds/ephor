@@ -266,17 +266,17 @@ fn assert_dry_run_left_destination_untouched(world: &World) {
         root.join("index.panta.md"),
         root.join(".gitignore"),
         root.join("states.yaml"),
-        root.join(".ephor/acmeforge-app-101-review-change/dossier.md"),
-        root.join(".ephor/acmeforge-app-101-review-change/item.json"),
-        root.join(".ephor/acmeforge-app-101-review-change/values.json"),
-        root.join("acmeforge-app-101-review-change"),
+        root.join(".ephor/acmeforge-app-101-review-change-748e38fe/dossier.md"),
+        root.join(".ephor/acmeforge-app-101-review-change-748e38fe/item.json"),
+        root.join(".ephor/acmeforge-app-101-review-change-748e38fe/values.json"),
+        root.join("acmeforge-app-101-review-change-748e38fe"),
     ] {
         assert!(!path.exists(), "dry run created {}", path.display());
     }
 }
 
 fn assert_destination_carried_paths(world: &World, text: &str) {
-    let carried = work_root(world).join(".ephor/acmeforge-app-101-review-change");
+    let carried = work_root(world).join(".ephor/acmeforge-app-101-review-change-748e38fe");
     for (label, file) in [
         ("values", "values.json"),
         ("dossier", "dossier.md"),
@@ -296,7 +296,7 @@ fn assert_destination_carried_paths(world: &World, text: &str) {
 
 const WORKFLOW_ITEM: &str = "acmeforge:app/101";
 const WORKFLOW_ENTRY: &str = "review-change";
-const WORKFLOW_PLAN: &str = "acmeforge-app-101-review-change";
+const WORKFLOW_PLAN: &str = "acmeforge-app-101-review-change-748e38fe";
 
 fn action_output(world: &World, tail: &[&str]) -> std::process::Output {
     let mut args = vec!["actions", "run", WORKFLOW_ENTRY, "--item", WORKFLOW_ITEM];
@@ -660,7 +660,7 @@ fn issue_43_repeating_an_entry_finds_its_plan_in_a_prior_work_root() {
     );
     let later_plan = later_workspace
         .join("panta")
-        .join("acmeforge-app-101-other-review");
+        .join("acmeforge-app-101-other-review-1406dbf6");
     assert!(later_plan.join("index.rhei.md").is_file());
     let dispatches = workflow_dispatches(&world);
     assert_eq!(dispatches.len(), 2);
@@ -1070,7 +1070,7 @@ fn the_listing_alone_says_which_inputs_name_who_does_the_work() {
         .assert()
         .success();
 
-    let laid = work_root(&world).join("acmeforge-app-101-venue-intake");
+    let laid = work_root(&world).join("acmeforge-app-101-venue-intake-41410b39");
     let given = read_json(&laid.join("values-as-given.json"));
     assert_eq!(given["conference"], json!("ECOOP 2027"));
     // Hands, rendered into the binding's own selector — the workflow's own
@@ -1119,7 +1119,7 @@ fn an_empty_execution_target_lays_as_nobody() {
         .assert()
         .success();
 
-    let laid = work_root(&world).join("acmeforge-app-101-venue-intake");
+    let laid = work_root(&world).join("acmeforge-app-101-venue-intake-41410b39");
     let given = read_json(&laid.join("values-as-given.json"));
     assert_eq!(given["intake_target"], json!(""));
     assert_eq!(
@@ -1213,7 +1213,7 @@ fn values_files_are_merged_and_carried_to_the_runtime() {
     );
     let given = read_json(
         &work_root(&world)
-            .join("acmeforge-app-101-review-change")
+            .join("acmeforge-app-101-review-change-748e38fe")
             .join("values-as-given.json"),
     );
     assert_eq!(
@@ -1326,7 +1326,7 @@ fn a_hand_named_inside_a_list_is_refused_like_any_other() {
         .stderr(predicate::str::contains("nobody"));
     assert!(
         !work_root(&world)
-            .join("acmeforge-app-101-venue-intake")
+            .join("acmeforge-app-101-venue-intake-41410b39")
             .exists(),
         "nothing is written behind a refusal"
     );
@@ -1377,7 +1377,7 @@ fn a_workflow_is_laid_down_beside_the_matters_own_plan() {
             .find(|answer| answer["input"] == input)
             .unwrap_or_else(|| panic!("no answer for {input}"));
         let expected = work_root(&world)
-            .join(".ephor/acmeforge-app-101-review-change")
+            .join(".ephor/acmeforge-app-101-review-change-748e38fe")
             .join(file)
             .to_string_lossy()
             .replace('\\', "/");
@@ -1428,10 +1428,12 @@ fn a_workflow_is_laid_down_beside_the_matters_own_plan() {
 
     // A plan of its own, beside the matter's — never a ticket inside it
     // (§FS-005-dispatch.3).
-    let laid = work_root(&world).join("acmeforge-app-101-review-change");
+    let laid = work_root(&world).join("acmeforge-app-101-review-change-748e38fe");
     assert!(laid.join("index.rhei.md").is_file(), "the plan is on disk");
     assert!(
-        !work_root(&world).join("acmeforge-app-101.rhei.md").exists(),
+        !work_root(&world)
+            .join("acmeforge-app-101-e48f01f0.rhei.md")
+            .exists(),
         "nothing was written into the matter's own plan"
     );
 
@@ -1451,7 +1453,7 @@ fn a_workflow_is_laid_down_beside_the_matters_own_plan() {
     // hidden corner so that enumerating the root steps over it.
     let carried = work_root(&world)
         .join(".ephor")
-        .join("acmeforge-app-101-review-change");
+        .join("acmeforge-app-101-review-change-748e38fe");
     let dossier = std::fs::read_to_string(carried.join("dossier.md")).expect("the dossier");
     assert!(dossier.contains("Widen the retry window"), "{dossier}");
     assert!(
@@ -1477,7 +1479,7 @@ fn a_workflow_is_laid_down_beside_the_matters_own_plan() {
     assert_eq!(laid_down.len(), 1);
     assert_eq!(
         laid_down[0]["plan"],
-        json!("acmeforge-app-101-review-change")
+        json!("acmeforge-app-101-review-change-748e38fe")
     );
     assert_eq!(laid_down[0]["entry"], json!("review-change"));
     // Nothing was appended to the matter's own plan, so it has no tickets.
@@ -1493,7 +1495,7 @@ fn a_workflow_is_laid_down_beside_the_matters_own_plan() {
         .success()
         .stdout(predicate::str::contains("⛬ 1 workflow"))
         .stdout(predicate::str::contains("plan missing").not())
-        .stdout(predicate::str::contains("acmeforge-app-101.rhei.md").not());
+        .stdout(predicate::str::contains("acmeforge-app-101-e48f01f0.rhei.md").not());
 
     // A second laying is a second record, not a correction of the first
     // (§FS-005-dispatch.19).
@@ -1509,7 +1511,7 @@ fn a_workflow_is_laid_down_beside_the_matters_own_plan() {
         .assert()
         .success();
     assert!(work_root(&world)
-        .join("acmeforge-app-101-review-change-2")
+        .join("acmeforge-app-101-review-change-748e38fe-2")
         .join("index.rhei.md")
         .is_file());
 }
@@ -1650,7 +1652,7 @@ fn a_narrowing_binds_the_hand_a_workflow_would_have_used() {
         .failure()
         .stderr(predicate::str::contains("sol"));
     assert!(!work_root(&world)
-        .join("acmeforge-app-101-review-change")
+        .join("acmeforge-app-101-review-change-748e38fe")
         .exists());
 }
 
@@ -1853,8 +1855,20 @@ exit 1
         json_of(&output)
     }
 
+    /// The directory a laying of `fix-issue` about widget `n` lands in. Spelled
+    /// out per matter rather than composed, because the name carries a digest of
+    /// the matter and the entry together (§FS-005-dispatch.2) — which is a thing
+    /// to read off the outside of ephor and not to recompute here.
     fn plan_of(world: &World, n: u32) -> std::path::PathBuf {
-        work_root(world).join(format!("acmeforge-acme-widget-{n}-fix-issue"))
+        let laid = match n {
+            10 => "acmeforge-acme-widget-10-fix-issue-4d33a95f",
+            11 => "acmeforge-acme-widget-11-fix-issue-a80060da",
+            12 => "acmeforge-acme-widget-12-fix-issue-d53bb7b1",
+            13 => "acmeforge-acme-widget-13-fix-issue-1ac2e1cc",
+            20 => "acmeforge-acme-widget-20-fix-issue-46bd1be6",
+            other => panic!("no laid name is written down for widget {other}"),
+        };
+        work_root(world).join(laid)
     }
 
     /// The sweep lays it about every matter it applies to, and the record of
@@ -1949,7 +1963,7 @@ exit 1
         assert_eq!(swept["refused"], 0, "{swept}");
         assert!(swept["items"].as_array().unwrap().is_empty(), "{swept}");
         assert!(!work_root(&world)
-            .join("acmeforge-acme-widget-20-fix-issue")
+            .join("acmeforge-acme-widget-20-fix-issue-46bd1be6")
             .exists());
     }
 
@@ -2037,7 +2051,7 @@ exit 1
             .expect("an operation per root")
             .iter()
             .flat_map(|op| op["tickets"].as_array().cloned().unwrap_or_default())
-            .find(|ticket| ticket["id"] == "acmeforge-acme-widget-13-fix-issue.fix")
+            .find(|ticket| ticket["id"] == "acmeforge-acme-widget-13-fix-issue-1ac2e1cc.fix")
             .unwrap_or_else(|| panic!("the laid plan's task has a row: {board}"));
         assert_eq!(row["state"], "waiting", "{row}");
         assert_eq!(row["doing"], "waiting", "{row}");
@@ -2175,7 +2189,7 @@ exit 1
         assert_eq!(reading["runs"][0]["outcome"], "started", "{reading}");
         assert_eq!(
             reading["runs"][0]["tickets"],
-            json!(["acmeforge-acme-widget-13-fix-issue.fix"]),
+            json!(["acmeforge-acme-widget-13-fix-issue-1ac2e1cc.fix"]),
             "{reading}"
         );
 
@@ -2203,8 +2217,8 @@ exit 1
     /// The plan a workflow laid about `ITEM`, and the matter's own plan id
     /// beside it — two ids in two ledger fields, and only the first was ever
     /// written to disk.
-    const LAID: &str = "acmeforge-acme-widget-13-fix-issue";
-    const OWN: &str = "acmeforge-acme-widget-13";
+    const LAID: &str = "acmeforge-acme-widget-13-fix-issue-1ac2e1cc";
+    const OWN: &str = "acmeforge-acme-widget-13-410b3e4c";
 
     /// The plans the runtime was pointed at, in the order it was asked: the
     /// `--rhei` arguments of every run the stub was asked to detach.
@@ -2867,8 +2881,8 @@ exit 1
         assert_eq!(
             named,
             [
-                "acmeforge-acme-widget-12".to_string(),
-                "acmeforge-acme-widget-13".to_string()
+                "acmeforge-acme-widget-12-420b3fdf".to_string(),
+                "acmeforge-acme-widget-13-410b3e4c".to_string()
             ],
             "{reading}"
         );

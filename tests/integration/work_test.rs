@@ -76,7 +76,8 @@ fn a_red_gate_becomes_a_ticket_that_carries_what_ephor_knew() {
         .unwrap()
         .contains('*'));
 
-    let plan = fs::read_to_string(panta.join("github-prs-acme-widget-42.rhei.md")).unwrap();
+    let plan =
+        fs::read_to_string(panta.join("github-prs-acme-widget-42-922ddbdc.rhei.md")).unwrap();
     // The dossier: what the watch knew, not a link to it (§FS-005-dispatch.2).
     assert!(plan.contains("**States:** ephor-work"), "{plan}");
     assert!(plan.contains("## The item"), "{plan}");
@@ -125,7 +126,8 @@ fn a_red_gate_becomes_a_ticket_that_carries_what_ephor_knew() {
         .assert()
         .success()
         .stdout(predicate::str::contains("1 ticket(s) opened"));
-    let plan = fs::read_to_string(panta.join("github-prs-acme-widget-42.rhei.md")).unwrap();
+    let plan =
+        fs::read_to_string(panta.join("github-prs-acme-widget-42-922ddbdc.rhei.md")).unwrap();
     assert!(plan.contains("### Task answer-1:"), "{plan}");
     assert!(plan.contains("**Prior:** Task fix-gate-1"), "{plan}");
 }
@@ -202,7 +204,7 @@ fn issue_43_a_failed_append_preserves_the_committed_plan_and_shared_root_files()
         .success();
 
     let root = tmp.path().join("demo/panta");
-    let plan = root.join("github-prs-acme-widget-42.rhei.md");
+    let plan = root.join("github-prs-acme-widget-42-922ddbdc.rhei.md");
     let ledger = tmp.path().join("state/ephor/work.json");
     let before = [
         plan.clone(),
@@ -332,7 +334,7 @@ fn an_item_that_moved_reopens_its_own_work_in_the_same_plan() {
 
     let plan = fs::read_to_string(
         tmp.path()
-            .join("demo/panta/github-prs-acme-widget-42.rhei.md"),
+            .join("demo/panta/github-prs-acme-widget-42-922ddbdc.rhei.md"),
     )
     .unwrap();
     // One plan, two tickets, the second following the first
@@ -382,7 +384,7 @@ fn finished_work_is_never_dispatched_and_a_configured_recipe_wins() {
         .success();
     let plan = fs::read_to_string(
         tmp.path()
-            .join("demo/panta/github-prs-acme-widget-42.rhei.md"),
+            .join("demo/panta/github-prs-acme-widget-42-922ddbdc.rhei.md"),
     )
     .unwrap();
     assert!(
@@ -483,7 +485,7 @@ fn an_item_can_be_asked_for_anything_including_what_no_recipe_matches() {
 
     let plan = fs::read_to_string(
         tmp.path()
-            .join("demo/panta/github-prs-acme-widget-42.rhei.md"),
+            .join("demo/panta/github-prs-acme-widget-42-922ddbdc.rhei.md"),
     )
     .unwrap();
     assert!(plan.contains("### Task ask-1:"), "{plan}");
@@ -501,7 +503,7 @@ fn an_item_can_be_asked_for_anything_including_what_no_recipe_matches() {
         .success();
     let plan = fs::read_to_string(
         tmp.path()
-            .join("demo/panta/github-prs-acme-widget-42.rhei.md"),
+            .join("demo/panta/github-prs-acme-widget-42-922ddbdc.rhei.md"),
     )
     .unwrap();
     assert!(plan.contains("### Task ask-2: rename the flag"), "{plan}");
@@ -630,7 +632,8 @@ fn a_rebase_that_stopped_is_the_ticket_and_carries_where_it_got_to() {
         .stdout(predicate::str::contains("1 ticket(s) opened"));
 
     let plan =
-        fs::read_to_string(checkout.join("panta/github-prs-acme-widget-42.rhei.md")).unwrap();
+        fs::read_to_string(checkout.join("panta/github-prs-acme-widget-42-922ddbdc.rhei.md"))
+            .unwrap();
     assert!(plan.contains("### Task rebase-1:"), "{plan}");
     // The situation, not the request to reproduce it.
     assert!(plan.contains("stopped in a conflict"), "{plan}");
@@ -704,12 +707,12 @@ fn an_answer_is_dispatched_without_a_checkout_and_its_reply_comes_back() {
         .stdout(predicate::str::contains("1 ticket(s) opened"));
 
     let root = tmp.path().join("demo/panta");
-    let plan_path = root.join("github-prs-acme-widget-42.rhei.md");
+    let plan_path = root.join("github-prs-acme-widget-42-922ddbdc.rhei.md");
     let plan = fs::read_to_string(&plan_path).unwrap();
     assert!(plan.contains("### Task answer-1:"), "{plan}");
     // The brief names the file the reply goes into, absolutely: the runtime
     // runs from the checkout, not from the work root.
-    let reply = root.join("runtime/ephor/github-prs-acme-widget-42.reply.md");
+    let reply = root.join("runtime/ephor/github-prs-acme-widget-42-922ddbdc.reply.md");
     assert!(
         plan.contains(&reply.to_string_lossy().to_string()),
         "{plan}"
@@ -727,8 +730,9 @@ fn an_answer_is_dispatched_without_a_checkout_and_its_reply_comes_back() {
     // whole — never posting it.
     fs::create_dir_all(reply.parent().unwrap()).unwrap();
     fs::write(&reply, "Yes — the window resets per attempt.\n").unwrap();
-    let proposal = ephor::work::runtime::results::proposal(&root, "github-prs-acme-widget-42")
-        .expect("the run drafted a reply");
+    let proposal =
+        ephor::work::runtime::results::proposal(&root, "github-prs-acme-widget-42-922ddbdc")
+            .expect("the run drafted a reply");
     assert_eq!(proposal.text, "Yes — the window resets per attempt.");
     assert_eq!(proposal.path, reply);
 }
@@ -778,7 +782,7 @@ fn forgetting_an_entry_keeps_the_plan_it_points_at() {
 
     let plan = tmp
         .path()
-        .join("demo/panta/github-prs-acme-widget-42.rhei.md");
+        .join("demo/panta/github-prs-acme-widget-42-922ddbdc.rhei.md");
     ephor(tmp.path())
         .args(["work", "forget", "--item", "github-prs:acme/widget#42"])
         .assert()
@@ -837,7 +841,10 @@ fn work_run_summons_the_runner_from_the_checkout() {
         )),
         "{args}"
     );
-    assert!(args.ends_with("--rhei github-prs-acme-widget-42"), "{args}");
+    assert!(
+        args.ends_with("--rhei github-prs-acme-widget-42-922ddbdc"),
+        "{args}"
+    );
 
     // A runner that fails fails the command; a runner that parks does not.
     ephor(tmp.path())
@@ -1016,7 +1023,7 @@ fn a_project_defaults_the_hand_per_action_and_narrows_who_may_be_asked() {
     run(&["work", "dispatch"]).assert().success();
     let plan_path = tmp
         .path()
-        .join("demo/panta/github-prs-acme-widget-42.rhei.md");
+        .join("demo/panta/github-prs-acme-widget-42-922ddbdc.rhei.md");
     let plan = fs::read_to_string(&plan_path).unwrap();
     // The project's entry for this action, not the site's default for
     // everything — and rendered into the runtime's own selector.
@@ -1133,7 +1140,7 @@ fn an_agent_only_hand_binds_as_flags_on_the_run() {
     // Nothing is pinned on the ticket: the plan language has no line for it.
     let plan_path = tmp
         .path()
-        .join("demo/panta/github-prs-acme-widget-42.rhei.md");
+        .join("demo/panta/github-prs-acme-widget-42-922ddbdc.rhei.md");
     let plan = fs::read_to_string(&plan_path).unwrap();
     assert!(!plan.contains("**Target:**"), "{plan}");
     assert!(!plan.contains("**Model:**"), "{plan}");
@@ -1174,7 +1181,10 @@ fn an_agent_only_hand_binds_as_flags_on_the_run() {
         .success()
         .stdout(predicate::str::contains("agent our-agent at high"));
     let args = fs::read_to_string(&log).unwrap();
-    assert!(args.contains("github-prs-acme-widget-42"), "{args}");
+    assert!(
+        args.contains("github-prs-acme-widget-42-922ddbdc"),
+        "{args}"
+    );
     assert!(
         args.trim_end()
             .ends_with("--agent our-agent --agent-mode high"),
@@ -1292,7 +1302,7 @@ fn the_readers_pick_is_made_at_dispatch_and_spent_by_it() {
     .success();
     let plan_path = tmp
         .path()
-        .join("demo/panta/github-prs-acme-widget-42.rhei.md");
+        .join("demo/panta/github-prs-acme-widget-42-922ddbdc.rhei.md");
     let plan = fs::read_to_string(&plan_path).unwrap();
     assert!(
         plan.contains("**Target:** our-agent[high]:acme:m-picked"),
@@ -1410,7 +1420,8 @@ fn a_rebase_conflict_is_handed_to_the_picked_hand() {
     .stdout(predicate::str::contains("the one it declares"));
 
     let plan =
-        fs::read_to_string(checkout.join("panta/github-prs-acme-widget-42.rhei.md")).unwrap();
+        fs::read_to_string(checkout.join("panta/github-prs-acme-widget-42-922ddbdc.rhei.md"))
+            .unwrap();
     assert!(
         plan.contains("**Target:** our-agent[high]:acme:m-picked"),
         "{plan}"
@@ -1494,7 +1505,9 @@ fn work_dispatched_through_an_organization_root_lands_there_and_is_found_there()
     // The plan is under the organization's root, not under the project's.
     let panta = org_root.join("panta");
     assert!(
-        panta.join("github-prs-acme-widget-42.rhei.md").is_file(),
+        panta
+            .join("github-prs-acme-widget-42-922ddbdc.rhei.md")
+            .is_file(),
         "the plan belongs under the organization root"
     );
     assert!(
@@ -1847,7 +1860,7 @@ fn a_root_the_acting_sweep_passes_over_is_never_headed_as_a_start() {
         "the sweep says which key refused the root: {said}"
     );
     assert!(
-        said.contains("github-prs-acme-widget-42.fix-gate-1"),
+        said.contains("github-prs-acme-widget-42-922ddbdc.fix-gate-1"),
         "what made the root due is still said (§FS-005-dispatch.24): {said}"
     );
     assert!(
@@ -1872,7 +1885,7 @@ fn a_root_the_acting_sweep_passes_over_is_never_headed_as_a_start() {
         "a root that started is headed as it always was: {said}"
     );
     assert!(
-        said.contains("github-prs-acme-widget-42.fix-gate-1"),
+        said.contains("github-prs-acme-widget-42-922ddbdc.fix-gate-1"),
         "and says what it is about: {said}"
     );
 }
@@ -1926,7 +1939,7 @@ fn a_root_whose_launch_was_refused_is_never_headed_as_a_start() {
         "the refusal is said, never swallowed: {said}"
     );
     assert!(
-        said.contains("github-prs-acme-widget-42.fix-gate-1"),
+        said.contains("github-prs-acme-widget-42-922ddbdc.fix-gate-1"),
         "what made the root due is still said (§FS-005-dispatch.24): {said}"
     );
     assert!(
@@ -2022,7 +2035,7 @@ exit 1
 
     let plan = tmp
         .path()
-        .join("demo/panta/github-prs-acme-widget-42-fix-task");
+        .join("demo/panta/github-prs-acme-widget-42-fix-task-7a152a49");
     assert!(plan.join("tasks/01-fix.md").is_file());
     // The record says which entry laid it, which is what the due sweep reads
     // (§FS-005-dispatch.28) and what makes a second sweep lay nothing.
@@ -2034,7 +2047,7 @@ exit 1
     assert_eq!(dispatch["recipe"], json!("fix-task"));
     assert_eq!(
         dispatch["plan"],
-        json!("github-prs-acme-widget-42-fix-task")
+        json!("github-prs-acme-widget-42-fix-task-7a152a49")
     );
 
     let again = ephor(tmp.path())
@@ -2096,7 +2109,7 @@ fn an_array_under_an_action_is_a_list_of_hands_not_a_pair_spelled_out() {
     run(&["work", "dispatch"]).assert().success();
     let plan_path = tmp
         .path()
-        .join("demo/panta/github-prs-acme-widget-42.rhei.md");
+        .join("demo/panta/github-prs-acme-widget-42-922ddbdc.rhei.md");
     let plan = fs::read_to_string(&plan_path).unwrap();
     // The first member, resolved against the roster like any other name.
     assert!(
@@ -2140,7 +2153,7 @@ fn the_hand_flag_takes_a_comma_separated_list_and_refuses_an_empty_member() {
     .success();
     let plan = fs::read_to_string(
         tmp.path()
-            .join("demo/panta/github-prs-acme-widget-42.rhei.md"),
+            .join("demo/panta/github-prs-acme-widget-42-922ddbdc.rhei.md"),
     )
     .unwrap();
     assert!(

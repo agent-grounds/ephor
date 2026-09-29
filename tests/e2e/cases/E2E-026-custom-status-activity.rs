@@ -126,7 +126,7 @@ fn custom_status_answer_unchanged_activity_keeps_dispatched_work_current() {
     refresh(&world);
     let first = world.matter(ITEM);
     dispatch(&world);
-    let plan = world.forest().join("panta/poll-fixed.rhei.md");
+    let plan = world.forest().join("panta/poll-fixed-7b409520.rhei.md");
     let before = fs::read_to_string(&plan).expect("the dispatched plan");
 
     thread::sleep(Duration::from_millis(20));

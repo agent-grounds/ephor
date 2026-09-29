@@ -202,6 +202,27 @@ ships, the previous "latest" section moves verbatim to
 
 ### Changed
 
+- **Every plan file `work dispatch` has written changes name once, and ephor
+  moves it for you**
+  ([§FS-005-dispatch.2](functional-spec/FS-005-dispatch.md#2-the-ticket-carries-what-ephor-knows-not-a-link-to-it),
+  [§FS-005-dispatch.3.1](functional-spec/FS-005-dispatch.md#31-a-plan-named-before-the-digest-is-carried-over)).
+  A plan's stem *is* what `{id_slug}` renders, held additionally to the runtime's
+  rule that a file stem begins with a letter, so
+  `github-prs-acme-widget-42.rhei.md` is now
+  `github-prs-acme-widget-42-922ddbdc.rhei.md`. The first time `ephor work` runs
+  after the upgrade, a plan named before the digest is carried over: the plan
+  file, the results and the artifacts named after its old stem, and ephor's own
+  record of the name all move together, and what moved is said on the command's
+  output and in `--json`. A root a run is holding waits for the next time; a
+  workflow already laid keeps the name it was recorded under, because nothing
+  recomputes it. Where the digested name *and* a pre-digest name each hold a plan
+  about one matter — which only a mixed pair of binaries can produce — the
+  carry-over refuses and names both files rather than choosing between two
+  records of the same work. A workflow laid from now on takes its digest over the
+  matter and the entry as a pair, since joining two ids with a `-` before a
+  reduction that collapses punctuation to a `-` is no name for a pair.
+  (PR #137)
+
 - **An organization block over nobody is named for reaching nobody, not for
   bounding nobody.** `ephor doctor` and the sweep note already said that an
   `organizations` id no registry row places a project in is a binding over
@@ -511,6 +532,22 @@ ships, the previous "latest" section moves verbatim to
   unchanged and stays where it is watched, on the work screen and the operations
   board, which still see every plan a work root holds whoever wrote it.
   (PR #138)
+- **Two matters whose ids differ only in punctuation are two plans, and no
+  ticket waits on work about another matter**
+  ([§FS-005-dispatch.3](functional-spec/FS-005-dispatch.md#3-one-rhei-per-item-one-ticket-per-dispatch),
+  [§FS-005-dispatch.5](functional-spec/FS-005-dispatch.md#5-an-item-that-moved-reopens-its-work)).
+  A plan's file stem was reduced from the matter's id without the digest
+  `{id_slug}` carries, so a task `retry-1` in a plan called `window` and a task
+  `1` in a plan called `window-retry` named one file — and the second matter's
+  ticket was written into the first matter's record and ordered *after* it, so a
+  run would not reach it until work about something else finished. Both
+  dispatches exited saying they had opened the work. The stem now carries the
+  same digest, and a ticket's `**Prior:**` is the last uncancelled ticket that is
+  about the same matter, read from the `id` the ticket itself records — so a plan
+  an older ephor or a hand left holding two matters still orders each matter's
+  work after its own. A ledger a newer ephor wrote is refused by name rather than
+  read forward, since a recorded plan name is now something ephor rewrites in
+  place. (PR #137)
 
 - **A ledger entry whose work is a plan a workflow laid is an entry with work**
   ([§FS-005-dispatch.35](functional-spec/FS-005-dispatch.md#35-what-a-ledger-entry-may-be-forgotten-for-is-read-from-the-plans)).

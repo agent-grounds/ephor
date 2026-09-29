@@ -1082,6 +1082,51 @@ impl Plan {
             .next_back()
     }
 
+    /// The last ticket nothing has cancelled **that is about `matter`**, which
+    /// is what a reopened ticket is ordered after (§FS-005-dispatch.5).
+    ///
+    /// A plan holds one matter's work, so this is usually
+    /// [`Plan::last_ticket`] itself. It is not always: an older ephor named two
+    /// matters' plans alike and wrote both into one file, and a hand can write
+    /// anything — and a ticket ordered after work about something else is held
+    /// until that work finishes, which is the costly half of a shared name
+    /// (§FS-005-dispatch.3). So the matter is read from the ticket rather than
+    /// assumed of the plan.
+    ///
+    /// A ticket recording no matter at all stays eligible: what nobody wrote
+    /// down is no evidence of another matter, and nothing that chains today
+    /// stops chaining.
+    pub fn last_ticket_about(&self, plan_id: &str, matter: &str) -> Option<PlanTicket> {
+        self.tickets()
+            .into_iter()
+            .filter(|ticket| !ticket.id.contains('.') && !ticket.cancelled())
+            .filter(|ticket| {
+                self.matter_of(plan_id, &ticket.id)
+                    .is_none_or(|about| about == matter)
+            })
+            .next_back()
+    }
+
+    /// The matter one ticket is about, as the ticket itself records it
+    /// (§FS-005-dispatch.8): the `id` ephor wrote into this plan's own metadata
+    /// block. None where the ticket records none.
+    ///
+    /// [`Plan::task_meta`] reads the same block for the store's words and
+    /// subtracts every name ephor writes there; this reads one of those names
+    /// and nothing else, which is why the two do not share a body.
+    pub fn matter_of(&self, plan_id: &str, task_id: &str) -> Option<String> {
+        let doc = serde_yaml::from_str::<serde_yaml::Value>(self.frontmatter_yaml()?).ok()?;
+        let tasks = doc.get("metadata").and_then(|node| node.get("tasks"))?;
+        // The bare id is canonical; the plan-qualified spelling is accepted for
+        // the same reason it is there (§FS-006-project-interface.7).
+        let said =
+            entry(tasks, task_id).or_else(|| entry(tasks, &format!("{plan_id}.{task_id}")))?;
+        match entry(said, "id")? {
+            serde_yaml::Value::String(id) if !id.is_empty() => Some(id.clone()),
+            _ => None,
+        }
+    }
+
     /// One ticket by id, as the plan has it.
     pub fn ticket(&self, id: &str) -> Option<PlanTicket> {
         self.tickets().into_iter().find(|ticket| ticket.id == id)
@@ -1532,19 +1577,41 @@ fn unfenced(text: &str) -> impl Iterator<Item = &str> {
     })
 }
 
-/// A rhei id for an item: its own id, reduced to what the runtime's grammar
-/// allows for a file stem, and never empty or leading with a digit.
+/// A rhei id for an item: what `{id_slug}` renders for it, held additionally
+/// to what the runtime's grammar allows for a file stem — never empty and never
+/// leading with anything but an ASCII letter (§FS-005-dispatch.2).
 ///
-/// The reduction itself is [`crate::slug::readable`], which is also the
-/// readable half of `{id_slug}`; the two guards below are this grammar's and
-/// not that field's, which is why the two strings agree for most ids and
-/// deliberately differ for some (§FS-005-dispatch.2).
+/// One reduction, one digest, two grammars. The digest is [`crate::slug`]'s and
+/// is the field's own, so the naming is injective: two matters whose ids read
+/// down to one readable half stay two plans, where a stem without it is a name
+/// both of them answer to and the second matter's work is written into the
+/// first's record (§FS-005-dispatch.3). The guard below is this grammar's and
+/// not that field's, and it is the whole of the difference between the two
+/// strings.
 pub fn plan_id(item_id: &str) -> String {
-    let trimmed = crate::slug::readable(item_id);
-    match trimmed.chars().next() {
-        Some(first) if first.is_ascii_alphabetic() => trimmed,
-        Some(_) => format!("item-{trimmed}"),
-        None => "item".to_string(),
+    file_stem(&crate::slug::id_slug(item_id))
+}
+
+/// A rhei id for one laying of a workflow about an item: the same grammar over
+/// the **pair** of the matter's id and the entry that laid it
+/// (§FS-005-dispatch.2, §FS-005-dispatch.19).
+///
+/// The pair and not the two joined: a reduction that collapses punctuation to a
+/// `-` is not injective over a pair joined by one, so a digest taken over the
+/// join would let two layings about two matters name one directory
+/// (§FS-005-dispatch.3).
+pub fn laid_plan_id(item_id: &str, entry_id: &str) -> String {
+    file_stem(&crate::slug::pair_slug(item_id, entry_id))
+}
+
+/// A rendered name held to the runtime's grammar for a file stem, which refuses
+/// one beginning with anything but an ASCII letter where neither git nor a
+/// filesystem cares (§FS-005-dispatch.2). The guard is this module's word
+/// rather than the field's, so it is spelled here (§REQ-001-boundary.5).
+fn file_stem(slug: &str) -> String {
+    match slug.chars().next() {
+        Some(first) if first.is_ascii_alphabetic() => slug.to_string(),
+        _ => format!("item-{slug}"),
     }
 }
 

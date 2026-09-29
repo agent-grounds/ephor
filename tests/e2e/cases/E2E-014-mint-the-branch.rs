@@ -253,7 +253,7 @@ fn workspace(world: &World) -> PathBuf {
 fn plan(world: &World) -> PathBuf {
     workspace(world)
         .join("panta")
-        .join("acmeforge-acme-widget-95-fix-issue")
+        .join("acmeforge-acme-widget-95-fix-issue-08f3d276")
 }
 
 /// Add the project-owned task shape the ticket reports to the cached feed.
@@ -430,7 +430,7 @@ fn the_dispatch_makes_the_workspace_and_lays_the_plan_inside_it() {
         .expect("the work root")
         .filter_map(|entry| entry.ok())
         .map(|entry| entry.file_name().to_string_lossy().into_owned())
-        .filter(|name| name.starts_with("acmeforge-acme-widget-95-fix-issue"))
+        .filter(|name| name.starts_with("acmeforge-acme-widget-95-fix-issue-08f3d276"))
         .collect();
     assert_eq!(laid.len(), 2, "two runs are two records: {laid:?}");
 }
@@ -453,13 +453,13 @@ fn the_shipped_implement_recipe_mints_the_issue_workspace() {
     let workspace = workspace(&world);
     let plan = workspace
         .join("panta")
-        .join("acmeforge-acme-widget-95.rhei.md");
+        .join("acmeforge-acme-widget-95-4ef7cc9e.rhei.md");
     assert!(workspace.join(".git").exists(), "no working tree");
     assert!(plan.is_file(), "the shipped recipe wrote no plan");
     assert!(!world
         .forest()
         .join("panta")
-        .join("acmeforge-acme-widget-95.rhei.md")
+        .join("acmeforge-acme-widget-95-4ef7cc9e.rhei.md")
         .exists());
 
     let written = std::fs::read_to_string(&plan).expect("the plan");
@@ -529,7 +529,7 @@ fn issue_43_a_recipe_root_places_issue_work_in_the_minted_checkout() {
     configure("{workspace}/issue-panta");
     let expected = workspace(&world)
         .join("issue-panta")
-        .join("acmeforge-acme-widget-95.rhei.md");
+        .join("acmeforge-acme-widget-95-4ef7cc9e.rhei.md");
 
     let offered = world
         .ephor()
@@ -603,7 +603,7 @@ fn issue_43_a_recipe_root_places_issue_work_in_the_minted_checkout() {
         .success();
     let project_plan = world
         .forest()
-        .join("project-panta/acmeforge-acme-widget-95.rhei.md");
+        .join("project-panta/acmeforge-acme-widget-95-4ef7cc9e.rhei.md");
     assert!(project_plan.is_file(), "the second root has no matter plan");
 
     configure("{workspace}/issue-panta");
@@ -701,7 +701,7 @@ fn issue_43_a_recipe_cannot_replace_a_same_id_workflow_offer() {
 
     let expected = world
         .forest()
-        .join("workflow-panta/acmeforge-acme-widget-95-fix-issue");
+        .join("workflow-panta/acmeforge-acme-widget-95-fix-issue-08f3d276");
     let preview = world
         .ephor()
         .args([
@@ -757,7 +757,7 @@ fn issue_43_a_workflow_entry_root_places_a_sweep_at_the_project_root() {
     }));
     let expected = world
         .forest()
-        .join("sweep-panta/acmeforge-acme-widget-95-project-sweep");
+        .join("sweep-panta/acmeforge-acme-widget-95-project-sweep-9ac222cf");
 
     let preview = world
         .ephor()
@@ -879,7 +879,7 @@ fn issue_43_legacy_recipe_survives_a_workflow_lay_in_another_checkout() {
         .success();
     let old_checkout = workspace(&world);
     let old_root = old_checkout.join("legacy-panta");
-    let old_plan = old_root.join("acmeforge-acme-widget-95.rhei.md");
+    let old_plan = old_root.join("acmeforge-acme-widget-95-4ef7cc9e.rhei.md");
     let before_plan = std::fs::read(&old_plan).unwrap();
     let ledger_path = world.path().join("state/ephor/work.json");
     let mut ledger = read_json(&ledger_path);
@@ -1402,7 +1402,7 @@ fn a_matter_with_a_branch_of_its_own_is_placed_through_that_branch() {
     let theirs = world.forest().join("you/ABC-42-retry");
     assert!(
         theirs
-            .join("panta/acmeforge-widget-101-fix-issue/index.rhei.md")
+            .join("panta/acmeforge-widget-101-fix-issue-e2c483c1/index.rhei.md")
             .is_file(),
         "the plan is not in the branch the forge recorded"
     );
@@ -1463,7 +1463,7 @@ fn a_recipe_may_say_the_branch_its_work_belongs_on() {
     // is says the minted branch.
     let plan = workspace(&world)
         .join("panta")
-        .join("acmeforge-acme-widget-95.rhei.md");
+        .join("acmeforge-acme-widget-95-4ef7cc9e.rhei.md");
     let written = std::fs::read_to_string(&plan).expect("the plan");
     assert!(written.contains("fix/issue-95"), "{written}");
     assert!(
@@ -1673,7 +1673,7 @@ fn an_issue_matched_only_to_the_main_branch_mints_its_own_branch() {
     assert!(workspace.join(".git").exists(), "no working tree");
     assert!(
         workspace
-            .join("panta/acmeforge-acme-widget-96-fix-issue/index.rhei.md")
+            .join("panta/acmeforge-acme-widget-96-fix-issue-457543fd/index.rhei.md")
             .is_file(),
         "the plan is not in the minted branch workspace"
     );
@@ -1753,7 +1753,7 @@ fn work_that_only_reads_the_main_attributed_matter_is_laid_outside_the_main_chec
     let world = watching(None, true);
     // Beside the project, exactly where a matter with no branch at all lands.
     let root = world.forest().join("panta");
-    let plan = root.join("acmeforge-acme-widget-96.rhei.md");
+    let plan = root.join("acmeforge-acme-widget-96-4df7cb0b.rhei.md");
 
     // Asked what it would do, it names that plan and makes none of it — so
     // what the reader is shown before dispatching is where the dispatch
@@ -1979,9 +1979,11 @@ fn issue_43_entry_rosters_agree_with_selected_dispatch_roots_and_hands() {
                 .success();
             assert_eq!(
                 json_of(preview.get_output())["items"][0]["plan"],
-                json!(root.join("acmeforge-acme-widget-95.rhei.md"))
+                json!(root.join("acmeforge-acme-widget-95-4ef7cc9e.rhei.md"))
             );
-            assert!(!root.join("acmeforge-acme-widget-95.rhei.md").exists());
+            assert!(!root
+                .join("acmeforge-acme-widget-95-4ef7cc9e.rhei.md")
+                .exists());
         }
         assert_eq!(offer("checkout-fix")["branch"], json!("fix/issue-95"));
         assert_eq!(offer("checkout-fix")["workspace"], json!(workspace(&world)));
@@ -2019,7 +2021,7 @@ fn issue_43_entry_rosters_agree_with_selected_dispatch_roots_and_hands() {
             ])
             .assert()
             .success();
-        let plan = std::fs::read_to_string(root.join("acmeforge-acme-widget-95.rhei.md"))
+        let plan = std::fs::read_to_string(root.join("acmeforge-acme-widget-95-4ef7cc9e.rhei.md"))
             .expect("the selected entry's ticket");
         assert!(
             plan.contains(&format!("**Target:** local-agent:{model}")),
@@ -2063,7 +2065,8 @@ fn issue_43_recipe_and_workflow_roots_place_one_matter_in_multiple_scopes() {
     };
     world.configure(configured("{workspace}/recipe-panta"));
 
-    let checkout_plan = workspace(&world).join("recipe-panta/acmeforge-acme-widget-95.rhei.md");
+    let checkout_plan =
+        workspace(&world).join("recipe-panta/acmeforge-acme-widget-95-4ef7cc9e.rhei.md");
     let preview = world
         .ephor()
         .args([
@@ -2112,7 +2115,7 @@ fn issue_43_recipe_and_workflow_roots_place_one_matter_in_multiple_scopes() {
         .success();
     let project_plan = world
         .forest()
-        .join("project-panta/acmeforge-acme-widget-95.rhei.md");
+        .join("project-panta/acmeforge-acme-widget-95-4ef7cc9e.rhei.md");
     assert!(
         project_plan.is_file(),
         "the project-scoped plan was not written"
@@ -2139,7 +2142,7 @@ fn issue_43_recipe_and_workflow_roots_place_one_matter_in_multiple_scopes() {
         .success();
     assert!(
         workspace(&world)
-            .join("workflow-panta/acmeforge-acme-widget-95-fix-issue/index.rhei.md")
+            .join("workflow-panta/acmeforge-acme-widget-95-fix-issue-08f3d276/index.rhei.md")
             .is_file(),
         "the workflow entry's root did not win"
     );
@@ -2195,7 +2198,7 @@ fn issue_43_recipe_and_workflow_roots_place_one_matter_in_multiple_scopes() {
         .success();
     assert!(world
         .forest()
-        .join("project-default/acmeforge-acme-widget-95.rhei.md")
+        .join("project-default/acmeforge-acme-widget-95-4ef7cc9e.rhei.md")
         .is_file());
 
     world.configure(json!({
@@ -2224,7 +2227,7 @@ fn issue_43_recipe_and_workflow_roots_place_one_matter_in_multiple_scopes() {
         .assert()
         .success();
     assert!(organization_default
-        .join("acmeforge-acme-widget-95.rhei.md")
+        .join("acmeforge-acme-widget-95-4ef7cc9e.rhei.md")
         .is_file());
 
     world.configure(json!({
@@ -2250,7 +2253,7 @@ fn issue_43_recipe_and_workflow_roots_place_one_matter_in_multiple_scopes() {
         .assert()
         .success();
     assert!(workspace(&world)
-        .join("site-default/acmeforge-acme-widget-95.rhei.md")
+        .join("site-default/acmeforge-acme-widget-95-4ef7cc9e.rhei.md")
         .is_file());
 
     // Ad-hoc work has no recipe or entry override and continues to use the
@@ -2270,7 +2273,9 @@ fn issue_43_recipe_and_workflow_roots_place_one_matter_in_multiple_scopes() {
         .args(["work", "ask", "--item", ITEM, "inspect", "this", "--json"])
         .assert()
         .success();
-    assert!(ask_root.join("acmeforge-acme-widget-95.rhei.md").is_file());
+    assert!(ask_root
+        .join("acmeforge-acme-widget-95-4ef7cc9e.rhei.md")
+        .is_file());
 
     // An override uses the established renderer and therefore preserves its
     // named refusal for an unanswered placeholder.
@@ -2481,7 +2486,8 @@ fn issue_43_recipe_dispatch_accepts_a_symlinked_existing_machine() {
         .assert()
         .success();
     assert!(
-        root.join("acmeforge-acme-widget-95.rhei.md").is_file(),
+        root.join("acmeforge-acme-widget-95-4ef7cc9e.rhei.md")
+            .is_file(),
         "recipe work was not recorded"
     );
     assert_link_and_target(&root, &target, &destination, &target_bytes);
@@ -2509,7 +2515,7 @@ fn issue_43_workflow_lay_accepts_a_symlinked_existing_machine() {
         .assert()
         .success();
     assert!(
-        root.join("acmeforge-acme-widget-95-fix-issue/index.rhei.md")
+        root.join("acmeforge-acme-widget-95-fix-issue-08f3d276/index.rhei.md")
             .is_file(),
         "workflow work was not recorded"
     );

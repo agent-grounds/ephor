@@ -1122,6 +1122,18 @@ fn issue_43_item() -> crate::feed::model::Item {
     }
 }
 
+/// The plan file a dispatch of [`issue_43_item`] writes: named from the
+/// matter's id rather than spelled out here, so a stem that carries a digest of
+/// that id is not a literal every reader of this file has to keep current
+/// (§FS-005-dispatch.2).
+fn issue_43_plan(project: &Path) -> PathBuf {
+    project.join("panta").join(format!(
+        "{}{}",
+        plan::plan_id(&issue_43_item().id),
+        plan::PLAN_SUFFIX
+    ))
+}
+
 fn issue_43_dispatcher(root: &Path, ledger: Ledger) -> Dispatcher {
     let mut placements = BTreeMap::new();
     placements.insert("widget".to_string(), Some(placement("widget", root, None)));
@@ -1393,7 +1405,7 @@ fn issue_43_legacy_placement_survives_dispatch_and_failed_batch_save() {
     fs::write(&ledger_path, serde_json::to_vec_pretty(&legacy).unwrap()).unwrap();
     let before_ledger = fs::read(&ledger_path).unwrap();
     let old_root = project.join("panta");
-    let old_plan = old_root.join("forge-widget-42.rhei.md");
+    let old_plan = issue_43_plan(&project);
     let before_plan = fs::read(&old_plan).unwrap();
     let mut dispatcher = issue_43_dispatcher(&project, ledger::load().unwrap());
     let before_memory = serde_json::to_value(&dispatcher.ledger).unwrap();
@@ -1537,7 +1549,7 @@ fn issue_43_failed_save_rolls_back_append_batch_and_memory() {
         .unwrap();
     dispatcher.save().unwrap();
     let committed_ledger = serde_json::to_value(&dispatcher.ledger).unwrap();
-    let plan_path = project.join("panta/forge-widget-42.rhei.md");
+    let plan_path = issue_43_plan(&project);
     let committed_plan = fs::read(&plan_path).unwrap();
 
     fs::create_dir_all(ledger_path.with_extension("json.tmp")).unwrap();
@@ -1612,7 +1624,7 @@ fn issue_43_cleanup_failure_keeps_save_error_and_names_the_path() {
         .unwrap();
 
     let root = project.join("panta");
-    let plan_path = root.join("forge-widget-42.rhei.md");
+    let plan_path = issue_43_plan(&project);
     fs::set_permissions(&plan_path, fs::Permissions::from_mode(0o444)).unwrap();
     fs::set_permissions(&root, fs::Permissions::from_mode(0o555)).unwrap();
     fs::create_dir_all(ledger_path.with_extension("json.tmp")).unwrap();
@@ -3996,7 +4008,7 @@ fn instructed_recipe(brief: Option<&str>, brief_file: Option<&str>) -> Recipe {
 
 /// The plan a dispatch wrote, whole.
 fn plan_text(project: &Path) -> String {
-    fs::read_to_string(project.join("panta/forge-widget-42.rhei.md")).expect("the plan is on disk")
+    fs::read_to_string(issue_43_plan(project)).expect("the plan is on disk")
 }
 
 /// The file's text first and the rendered `brief` after it, with the ticket

@@ -24,7 +24,7 @@ use serde_json::json;
 use support::*;
 
 /// The plan id ephor derives from the item's key.
-const PLAN: &str = "acmeforge-app-101";
+const PLAN: &str = "acmeforge-app-101-e48f01f0";
 
 /// A forge with one pull request of the user's, red gate and all, so that the
 /// shipped `fix-gate` recipe has something to lay a ticket about.
