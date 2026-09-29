@@ -373,6 +373,13 @@ fn task_store(site: &Site) -> Step {
     if !store.is_dir() {
         return Err("dispatch wrote no work root to read back".to_string());
     }
+    // What the seam yields is the *project's* own work, and a plan ephor caused
+    // to exist is not that (§FS-006-project-interface.7) — so the plan the
+    // dispatch left there cannot be this check's fixture, and one the project
+    // wrote is put beside it. Reading it back is also the stronger check: the
+    // row that comes home is a plan nothing here authored.
+    crate::work::runtime::plan::write_project_plan(&store, "scratch", "Read this back")
+        .map_err(|err| err.to_string())?;
     site.expect(&["refresh", "scratch"], 0)?;
     let feed = site.expect(&["feed", "--project", "scratch", "--json"], 0)?;
     let rows: Value = serde_json::from_str(&feed).map_err(|err| format!("feed JSON: {err}"))?;

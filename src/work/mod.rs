@@ -6264,14 +6264,16 @@ pub struct Laid {
     pub report: String,
 }
 
-/// The files ephor writes for a workflow to read, under the work root's own
-/// hidden corner: a dotted name is not a plan, so enumerating the root steps
-/// over it (§FS-005-dispatch.15).
+/// The files ephor writes for a workflow to read, under ephor's own hidden
+/// corner in the work root ([`plan::CARRIED`]): a dotted name is not a plan, so
+/// enumerating the root steps over it (§FS-005-dispatch.15). Writing it is also
+/// what names the plan the runtime renders here as one ephor caused to exist,
+/// so the feed does not offer it back as the project's own work
+/// (§FS-006-project-interface.7).
 fn carried(root: &std::path::Path, plan_id: &str) -> PathBuf {
-    root.join(CARRIED).join(plan_id)
+    root.join(plan::CARRIED).join(plan_id)
 }
 
-const CARRIED: &str = ".ephor";
 const DOSSIER: &str = "dossier.md";
 const ITEM: &str = "item.json";
 const VALUES: &str = "values.json";

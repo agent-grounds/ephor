@@ -684,6 +684,32 @@ the feed shows what is open
 A declared machine that cannot be read reports the store as a source that did
 not answer, exactly like a plan ephor cannot read.
 
+**A plan ephor caused to exist is not read either**, and none of its tasks
+([§FS-006-project-interface.7](functional-spec/FS-006-project-interface.md#7-the-projects-own-tasks-are-read-where-they-live)).
+The store holds the project's work; a plan ephor put there to *do* some of that
+work is ephor's own filing rather than a second piece of it, and offering it
+back would let a recipe over this source mint a checkout per task
+([§8.18](#818-a-branch-for-work-about-an-item-that-has-none)) and then be handed
+its own plans as fresh work. Which plans those are is read from what ephor wrote
+on disk beside them, never from ephor's ledger, in two marks: a plan ephor
+**authored** carries ephor's dossier block, and a plan ephor asked the runtime
+to **render** — which is the runtime's file and not ephor's to write — is named
+by ephor's own hidden corner beside it, `.ephor/<plan id>/`
+([§8.4](#84-where-work-goes-and-what-runs-it)). Deleting the corner restores the
+matter; that is what putting the fact on disk means.
+
+One case is deliberately outside the rule: **a plan the project wrote that a
+dispatch merely appended a ticket to stays a task store's plan, with all its
+tasks — including the one ephor appended.** It carries no block of ephor's and
+has no corner, and appending to somebody's plan is not causing it to exist.
+Authorship is what decides, because the other reading would take a project's own
+tasks off the Tasks row the first time ephor dispatched into their plan.
+
+This narrows the feed and nothing else. Ephor's own work stays exactly as
+visible as it was, on the work screen and on the operations board
+([§8.13](#813-the-operations-board)), which watch every plan a work root holds
+whoever wrote it.
+
 **What a plan says about one of its own tasks is read with it.** A store may
 already keep a block about a task in its own frontmatter — which slice of the
 project's work it belongs to, which customer or environment it is about — keyed
@@ -2463,6 +2489,16 @@ part of dispatch except the running still holds: tickets are written, read and
 reopened, and only running refuses, naming the runner it looked for
 ([§7.5](#75-why-something-is-not-offered)).
 
+**`.ephor/<plan id>/` is ephor's own hidden corner in a work root** — the
+dossier, the item and the values ephor carries for a plan it asked a workflow to
+render, written before the plan is (§8.15). A dotted name is not a plan, so
+enumerating the root steps over it; and because ephor never writes that plan
+itself, the corner is also what names it as one ephor caused to exist, so the
+tasks seam does not offer it back as the project's own work
+([§4.2.5](#425-the-projects-own-tasks)). Delete it and nothing ephor needs is
+lost — the plan is the record — but that plan becomes a task of the project
+again.
+
 **The roster's own settings** come from the person's configuration directory
 and then this work root's overlay at `.agent-grounds/<runner>/settings.json`,
 with `.agents/<runner>/settings.json` the deprecated name it still answers to
@@ -4221,6 +4257,13 @@ matter that has nothing else. No shipped recipe names it: `implement` keeps
 `fix/issue-{number}`, because a store yields one matter per open task in every
 plan it holds and a default here would grow a forest with the store rather than
 with the work.
+
+**And the minting stops at one generation.** The workspace a mint makes gets a
+task store of its own and the dispatch writes its plan inside it, so a recipe
+over this source would otherwise be offered its own plan back on the next
+refresh and mint again. It is not: a plan ephor caused to exist is no task of
+the project ([§4.2.5](#425-the-projects-own-tasks)). You get the one tree per
+task you asked for and no generation after it.
 
 **The item's own branch always wins.** A pull request keeps the branch the
 forge recorded and an item the registry matched keeps the branch it matched;
