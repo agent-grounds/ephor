@@ -408,10 +408,27 @@ impl WorkScreen {
             }
             Some(status) => {
                 lines.push(Line::from(Span::styled("  the plan".to_string(), heading)));
-                lines.push(Line::from(Span::styled(
-                    format!("    {}", status.plan.display()),
-                    dim,
-                )));
+                // The plans this reading actually placed, which since
+                // §FS-005-dispatch.35 is every plan the record says is this
+                // matter's — so a matter whose work a workflow laid is named
+                // by the file that work is in rather than by a path ephor
+                // never wrote at (§FS-005-dispatch.19). The entry's own path
+                // is read only where nothing was placed, which is what this
+                // screen always showed.
+                match status.plans.as_slice() {
+                    [] => lines.push(Line::from(Span::styled(
+                        format!("    {}", status.plan.display()),
+                        dim,
+                    ))),
+                    placed => {
+                        for plan in placed {
+                            lines.push(Line::from(Span::styled(
+                                format!("    {}", plan.path.display()),
+                                dim,
+                            )));
+                        }
+                    }
+                }
                 // An id is how the reader and the runtime agree on which run
                 // they mean, so the operation says it here as the board says it
                 // on its row (§FS-005-dispatch.20).
@@ -421,9 +438,23 @@ impl WorkScreen {
                         Style::default().fg(Color::Cyan),
                     )));
                 }
+                // A plan the record named that nobody could read is said here
+                // as the row says it, so the two readings cannot name
+                // different facts (§REQ-002-parity.3). Where the plan that
+                // could not be read is one this screen placed, it is that
+                // file that is gone. Where the record named a laid plan this
+                // reading could not place at all, the fact is about the
+                // record and never about the path above: for an entry that is
+                // nothing but workflows that path is a file ephor never wrote
+                // there, and no reader may be told it was deleted
+                // (§FS-005-dispatch.19, §FS-005-dispatch.35).
                 if status.missing {
                     lines.push(Line::from(Span::styled(
-                        "    the plan this points at is gone".to_string(),
+                        match status.unread_workflows > 0 {
+                            true => "    a plan this matter's record names could not be read"
+                                .to_string(),
+                            false => "    the plan this points at is gone".to_string(),
+                        },
                         Style::default().fg(Color::Red),
                     )));
                 }
@@ -939,6 +970,44 @@ mod tests {
             Action::DispatchWork { entry, .. } => assert_eq!(entry, workflow.id),
             other => panic!("expected a dispatch, got {}", matches!(other, Action::None)),
         }
+    }
+
+    /// A plan the record named that nobody could read is said as the record's
+    /// own fact, never as a file on this screen having been deleted
+    /// (§FS-005-dispatch.19, §FS-005-dispatch.35). An entry that is nothing
+    /// but workflows never had a plan of its own, so the path this screen
+    /// falls back to naming is one ephor never wrote there — and since
+    /// §FS-005-dispatch.35 such an entry reports as missing, which used to put
+    /// "gone" under exactly that path. Where a plan this screen *placed* is
+    /// the one that could not be read, the old sentence is still the true one.
+    #[test]
+    fn a_plan_the_record_names_and_nobody_could_read_is_not_said_as_a_file_that_went() {
+        let mut unread = status(false);
+        unread.tickets = Vec::new();
+        unread.workflows = 1;
+        unread.unread_workflows = 1;
+        unread.missing = true;
+        let screen = WorkScreen::new(item(), Some(unread), offers(), None, None, Vec::new(), None);
+        let said = text(&screen);
+        assert!(said.contains("could not be read"), "{said}");
+        assert!(!said.contains("the plan this points at is gone"), "{said}");
+
+        // The plan ephor wrote itself and lost is still said as what it is:
+        // this reading placed it, so the path above is the file that went.
+        let mut lost = status(false);
+        lost.tickets = Vec::new();
+        lost.missing = true;
+        lost.plans = vec![crate::work::RecordedPlan {
+            root: lost.root.clone(),
+            checkout: lost.checkout.clone(),
+            branch: None,
+            plan_id: lost.plan_id.clone(),
+            path: lost.plan.clone(),
+            laid: None,
+        }];
+        let screen = WorkScreen::new(item(), Some(lost), offers(), None, None, Vec::new(), None);
+        let said = text(&screen);
+        assert!(said.contains("the plan this points at is gone"), "{said}");
     }
 
     /// Nothing to offer *at all* is a different answer from nothing matching,
