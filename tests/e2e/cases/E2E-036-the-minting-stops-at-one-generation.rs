@@ -263,8 +263,8 @@ fn what_a_dispatch_wrote_is_not_offered_back_as_work() {
         plans_on_disk(&world),
         vec![
             "main/panta/window.rhei.md".to_string(),
-            "task/rhei-window-1-d8a9c768/panta/rhei-window-1.rhei.md".to_string(),
-            "task/rhei-window-2-dba9cc21/panta/rhei-window-2.rhei.md".to_string(),
+            "task/rhei-window-1-d8a9c768/panta/rhei-window-1-d8a9c768.rhei.md".to_string(),
+            "task/rhei-window-2-dba9cc21/panta/rhei-window-2-dba9cc21.rhei.md".to_string(),
         ],
         "the dispatch did not write what this case is about"
     );
@@ -292,8 +292,8 @@ fn what_a_dispatch_wrote_is_not_offered_back_as_work() {
         plans_on_disk(&world),
         vec![
             "main/panta/window.rhei.md".to_string(),
-            "task/rhei-window-1-d8a9c768/panta/rhei-window-1.rhei.md".to_string(),
-            "task/rhei-window-2-dba9cc21/panta/rhei-window-2.rhei.md".to_string(),
+            "task/rhei-window-1-d8a9c768/panta/rhei-window-1-d8a9c768.rhei.md".to_string(),
+            "task/rhei-window-2-dba9cc21/panta/rhei-window-2-dba9cc21.rhei.md".to_string(),
         ],
         "a second generation was minted"
     );
