@@ -41,7 +41,10 @@ line CI and the pre-commit hook run.
   ([§AR-009-surfaces.5.1](../../docs/architecture/AR-009-surfaces.md#51-cargo-chooses-the-executable-the-parity-gate-inspects)).
 - `test_check_changelog_pr_entry.py`, `test_prepare_changelog_release.py` —
   the pull-request changelog gate and the release script
-  ([§FS-002-release.1](../../docs/functional-spec/FS-002-release.md#1-changelog), [§FS-002-release](../../docs/functional-spec/FS-002-release.md#fs-002-release-ephor-releases-from-a-tag-with-a-changelog-entry-per-change)).
+  ([§FS-002-release.1](../../docs/functional-spec/FS-002-release.md#1-changelog), [§FS-002-release.2](../../docs/functional-spec/FS-002-release.md#2-cutting-a-release), [§FS-002-release.6](../../docs/functional-spec/FS-002-release.md#6-the-changelog-gate-runs-before-the-pull-request-exists)).
+- `changelog_git.py` — not a test, and not collected as one: the throwaway git
+  repository those two share. The gate diffs the changelog against a base commit
+  and the stamper blames its bullets, so neither can be shown with a loose file.
 
 Unit tests stay beside the code under `code`'s rule; there is no third kind
 for them.
