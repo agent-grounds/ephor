@@ -221,11 +221,15 @@ ships, the previous "latest" section moves verbatim to
   leaves the record and the disk agreeing and holds back only the matters it
   names. A root a run is holding waits for the next such command; a workflow
   already laid keeps the name it was recorded under, because nothing recomputes
-  it. Two shapes are refused by name rather than resolved, because both are two
+  it. Three shapes are refused by name rather than resolved, because each is two
   records of work only a person can separate: one matter holding a plan at the
   digested name *and* at a pre-digest name, which only a mixed pair of binaries
-  can produce, and one plan file that two matters are both recorded at, which is
-  what the naming this release fixes left wherever it fired. A workflow laid from
+  can produce; one plan file that two matters are both recorded at, which is
+  what the naming this release fixes left wherever it fired; and a carry-over
+  that would write over a file already at the new name, because a rename never
+  destroys what is there — so the results and the artifacts a mixed pair leaves
+  at both stems are held and named the way the plan file is, rather than lost on
+  the next write verb by a reader doing what the first refusal told them. A workflow laid from
   now on takes its digest over the matter and the entry as a pair, since joining
   two ids with a `-` before a reduction that collapses punctuation to a `-` is no
   name for a pair. (PR #137)

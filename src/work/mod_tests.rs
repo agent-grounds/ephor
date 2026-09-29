@@ -5149,3 +5149,78 @@ fn both_names_holding_a_plan_is_refused_by_name() {
     assert_eq!(fs::read_to_string(&new).unwrap(), before.1);
     assert_eq!(dispatcher.ledger.entries[id].plan_id, PRE_DIGEST);
 }
+
+/// A carry-over never writes over a file already at the new name: where a
+/// result is at the pre-digest stem **and** at the digested one, the matter is
+/// refused by name and neither file's bytes move (§FS-005-dispatch.3.1).
+///
+/// This is the shape the both-names refusal walks its reader into. Told to keep
+/// one of two plan files and remove the other, a reader is not told about the
+/// results and the artifacts keyed by the same two stems — so the next write
+/// verb finds one plan and two results, and a rename would destroy the newer of
+/// them silently and for good.
+#[test]
+fn a_carry_over_onto_a_name_that_is_taken_is_refused_by_name() {
+    let tmp = tempfile::tempdir().unwrap();
+    let _ledger_path = ledger::use_test_path(tmp.path().join("state/work.json"));
+    let (id, title, digested) = COLLIDING[0];
+    let (project, root) = root_named_before_the_digest(tmp.path(), id, title);
+
+    // The reader has done what the both-names refusal told them: kept the plan
+    // at the digested name and removed the one at the pre-digest stem. The
+    // results of both ephors are still there, one under each stem.
+    let old_plan = root.join(format!("{PRE_DIGEST}{}", plan::PLAN_SUFFIX));
+    fs::rename(
+        &old_plan,
+        root.join(format!("{digested}{}", plan::PLAN_SUFFIX)),
+    )
+    .unwrap();
+    let old_result = root.join(format!("runtime/results/{PRE_DIGEST}.task-work-1.md"));
+    let new_result = root.join(format!("runtime/results/{digested}.task-work-1.md"));
+    fs::write(&new_result, "what the newer binary's run left").unwrap();
+    let before = (
+        fs::read_to_string(&old_result).unwrap(),
+        fs::read_to_string(&new_result).unwrap(),
+    );
+    let mut dispatcher = issue_43_dispatcher(
+        &project,
+        ledger_naming_the_pre_digest_stem(id, title, &root),
+    );
+
+    let err = dispatcher
+        .carry_over_plan_names()
+        .expect_err("a carry-over that would write over a file is refused, not made");
+
+    let says = err.to_string();
+    assert!(
+        says.contains(&old_result.display().to_string()),
+        "the refusal must name the file it would have moved: {says}"
+    );
+    assert!(
+        says.contains(&new_result.display().to_string()),
+        "the refusal must name the file it would have written over: {says}"
+    );
+
+    // Neither file moved, neither was written over, and the record still says
+    // what it said: a refusal leaves the reader exactly what they had.
+    assert_eq!(fs::read_to_string(&old_result).unwrap(), before.0);
+    assert_eq!(fs::read_to_string(&new_result).unwrap(), before.1);
+    assert_eq!(dispatcher.ledger.entries[id].plan_id, PRE_DIGEST);
+
+    // And once the reader has separated them, the rest is carried over.
+    fs::remove_file(&old_result).unwrap();
+    let moved = dispatcher
+        .carry_over_plan_names()
+        .expect("the root is carried over once no name is taken");
+    assert_eq!(
+        moved.len(),
+        1,
+        "the root was not carried over once the collision was resolved: {moved:?}"
+    );
+    assert_eq!(dispatcher.ledger.entries[id].plan_id, digested);
+    assert_eq!(
+        fs::read_to_string(&new_result).unwrap(),
+        before.1,
+        "the newer result was written over after all"
+    );
+}

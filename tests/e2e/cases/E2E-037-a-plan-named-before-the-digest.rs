@@ -112,11 +112,19 @@ fn rewind(world: &World) -> Vec<Behind> {
         )
         .expect("the plan goes back to its old name");
         for (dir, name) in [
-            ("runtime/results", format!("{was}.look-1.md")),
-            ("runtime/ephor", format!("{was}.reply.md")),
+            ("runtime/results", "look-1.md"),
+            ("runtime/ephor", "reply.md"),
         ] {
             std::fs::create_dir_all(root.join(dir)).expect("the directory");
-            std::fs::write(root.join(dir).join(name), "what the run left\n").expect("the file");
+            let digested = root.join(dir).join(format!("{now}.{name}"));
+            let pre = root.join(dir).join(format!("{was}.{name}"));
+            // All the way back: a file a previous carry-over left at the
+            // digested name is a name the next one would have to write over,
+            // and it refuses that rather than destroying it.
+            match digested.is_file() {
+                true => std::fs::rename(&digested, &pre).expect("the file goes back with the plan"),
+                false => std::fs::write(&pre, "what the run left\n").expect("the file"),
+            }
         }
         entry["plan_id"] = json!(was);
         entry["plan"] = json!(root.join(format!("{was}.rhei.md")).to_string_lossy());
@@ -515,4 +523,116 @@ fn two_records_of_one_plan_file_are_refused_by_name() {
             entry.id
         );
     }
+}
+
+/// A carry-over that would have to write over a file already at the new name
+/// refuses and names both paths, and neither file moves (§FS-005-dispatch.3.1).
+///
+/// It is the shape a reader reaches by obeying the refusal above it: told to
+/// keep one of two plan files and remove the other, they are not told about the
+/// results and the artifacts keyed by the same two stems. A rename would
+/// destroy the newer of each pair silently and for good, so the matter is held
+/// instead — and the reader who separates them is handed their work as usual.
+#[test]
+fn a_carry_over_onto_a_name_that_is_taken_is_refused_by_name() {
+    let world = two_projects();
+    let behind = rewind(&world);
+    let one = first(&world, &behind);
+
+    // What the mixed pair of binaries leaves once the two plan files have been
+    // separated by hand: one plan, and a result under each stem.
+    let taken = one
+        .root
+        .join(format!("runtime/results/{}.look-1.md", one.now));
+    std::fs::write(&taken, "what the newer binary's run left\n").expect("the file");
+    // Scoped to this matter's own root: the refusal reaches the matters it
+    // names and nothing else, so the other project is carried over in the same
+    // run and its files are expected to move.
+    let files = |root: &Path| {
+        let mut found = Vec::new();
+        walk(world.path(), root, &mut found);
+        found.sort();
+        found
+    };
+    let before = files(&one.root);
+
+    let refused = world
+        .ephor()
+        .args([
+            "work",
+            "dispatch",
+            "--project",
+            PROJECT,
+            "--item",
+            &one.id,
+            "--again",
+        ])
+        .assert()
+        .failure()
+        .get_output()
+        .clone();
+    let says = String::from_utf8_lossy(&refused.stdout).into_owned()
+        + &String::from_utf8_lossy(&refused.stderr);
+    for named in [
+        one.id.as_str(),
+        &one.root
+            .join(format!("runtime/results/{}.look-1.md", one.was))
+            .to_string_lossy(),
+        &taken.to_string_lossy(),
+    ] {
+        assert!(
+            says.contains(named),
+            "the refusal does not name {named}:\n{says}"
+        );
+    }
+    assert_eq!(
+        files(&one.root),
+        before,
+        "the refusal wrote over something, or moved it"
+    );
+    let record = read_json(&ledger(&world));
+    let plan = record["entries"][&one.id]["plan"]
+        .as_str()
+        .expect("a recorded plan");
+    assert_eq!(
+        plan,
+        one.root
+            .join(format!("{}.rhei.md", one.was))
+            .to_string_lossy(),
+        "the refusal moved the record without moving the file"
+    );
+    assert!(
+        Path::new(plan).is_file(),
+        "the refusal left a record naming a file that is not there: {plan}"
+    );
+
+    // And once the reader has separated them, the rest is carried over and the
+    // ticket is written: the refusal held the matter, it did not end it.
+    std::fs::remove_file(
+        one.root
+            .join(format!("runtime/results/{}.look-1.md", one.was)),
+    )
+    .expect("the reader keeps one of the pair");
+    world
+        .ephor()
+        .args([
+            "work",
+            "dispatch",
+            "--project",
+            PROJECT,
+            "--item",
+            &one.id,
+            "--again",
+        ])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(format!(
+            "carried the plan of {} over from {} to {}",
+            one.id, one.was, one.now
+        )));
+    assert_eq!(
+        std::fs::read_to_string(&taken).expect("the newer result is still there"),
+        "what the newer binary's run left\n",
+        "the newer result was written over after all"
+    );
 }

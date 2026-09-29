@@ -335,6 +335,10 @@ const AGENT_MODE_FLAG: &str = "--agent-mode";
 /// (§REQ-001-boundary.5). Only what is actually there: a matter ephor recorded
 /// and no run ever wrote a plan for has nothing to carry over, and a rename is
 /// not how that is discovered.
+///
+/// What is said about the destination is said by the caller: a pair whose
+/// destination already holds a file is the caller's refusal to make, because a
+/// rename would destroy it (§FS-005-dispatch.3.1).
 pub fn carried_over_paths(
     root: &Path,
     from: &str,

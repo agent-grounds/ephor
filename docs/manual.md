@@ -4269,14 +4269,18 @@ path its reader has.
 
 A dry run over a root that has not been carried over yet still tells you the
 truth: it reads the plan ephor's record names, says the move it is reporting
-across, and promises the ticket the real dispatch will in fact write. Two
-shapes it will not resolve for you, because both are two records of work only
+across, and promises the ticket the real dispatch will in fact write. Three
+shapes it will not resolve for you, because each is two records of work only
 you can separate: one matter holding a plan at the digested name *and* at a
-pre-digest name, which only a mixed pair of binaries can produce, and one plan
+pre-digest name, which only a mixed pair of binaries can produce; one plan
 file that two matters are both recorded at, which is what the naming this digest
-fixes left wherever it fired. Either is named in full — the matters and the
-files — nothing about them is moved, and every other project is carried over
-and handed its work as usual.
+fixes left wherever it fired; and a carry-over that would have to write over a
+file already at the new name, because a rename never destroys what is there.
+That last one is what you meet after separating the first: keeping one of two
+plan files leaves the results and the artifacts of both stems beside it, and
+those are held and named the same way rather than lost on the next write verb.
+Each is named in full — the matters and the files — nothing about them is
+moved, and every other project is carried over and handed its work as usual.
 
 Because every matter has an id, a template naming `{id_slug}` is **never
 withheld** for want of the field, and what it renders is always a name git will
