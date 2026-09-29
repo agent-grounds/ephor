@@ -43,6 +43,11 @@ const DOSSIER_CLOSE: &str = "<!-- /ephor:dossier -->";
 
 const TASKS_HEADING: &str = "## Tasks";
 
+/// The fence around a plan's frontmatter, which [`Plan::set_metadata`] writes
+/// between the title and the dossier block. The runtime's own grammar, so it is
+/// spelled here and nowhere above this module (§REQ-001-boundary.5).
+const FRONTMATTER_FENCE: &str = "---";
+
 /// The directory a runtime project lives in, under the work root template
 /// (§DA-001-runtime-bound-default). Part of the coupling, and so part of this
 /// module (§REQ-001-boundary.5).
@@ -447,26 +452,74 @@ fn carried_key(root: &Path, path: &Path) -> Option<String> {
     Some(path.parent()?.file_name()?.to_string_lossy().into_owned())
 }
 
-/// Whether the plan file carries ephor's dossier block — the mark every plan
-/// ephor **authored** bears, written by [`Plan::create`] and by no other
+/// Whether the plan file carries ephor's dossier **block** — the mark every
+/// plan ephor **authored** bears, written by [`Plan::create`] and by no other
 /// writer, so the test never has to enumerate the verbs that author one
-/// (§FS-006-project-interface.7). Only the head of the file is read: the block
-/// stands between the title and the tasks, so the scan stops at the tasks
-/// heading and a dossier quoting one cannot be reached before its own opening
-/// marker has been.
+/// (§FS-006-project-interface.7). The mark is the block and not one of its
+/// markers: both the opening and the closing marker, in that order, because a
+/// plan that merely quotes the opening marker in its prose is a plan somebody
+/// wrote about ephor rather than one ephor wrote (§FS-006-project-interface.7).
+///
+/// Only the **head** of the file is read, and the head is what ephor writes
+/// above the dossier and nothing else: the title, the declarations beside it,
+/// and the frontmatter [`Plan::set_metadata`] puts between them and the block.
+/// The first line that is none of those ends the head, so a plan of the
+/// project's own costs a handful of lines however long it is and whether or not
+/// it has a tasks heading at all — a directory workspace's index has none. Only
+/// once the head has borne the opening marker does the reading go on, and then
+/// to the close and nothing else: the dossier is ephor's verbatim copy of the
+/// item, so a heading that would end the head may perfectly well be inside it.
+///
+/// A candidate that is not a readable file is not a plan bearing a mark: the
+/// reader skips it exactly as [`Plan::read`] does, so a dangling entry named
+/// like a plan, or one that vanishes between the listing and this read, no
+/// longer takes its whole store down with it. A file that is there and cannot
+/// be read is still a source that did not answer
+/// (§FS-006-project-interface.7).
 fn carries_dossier_block(path: &Path) -> Result<bool> {
-    let file = fs::File::open(path).map_err(|err| {
-        EphorError::Command(format!("Cannot read plan {}: {err}", path.display()))
-    })?;
+    match head_carries_dossier_block(path) {
+        Ok(found) => Ok(found),
+        // Ask the filesystem only once a read has failed, and ask it about the
+        // path as it is now: what failed is either no plan file at all — a
+        // directory answers the open and not the read — or one that has gone.
+        Err(_) if !path.is_file() => Ok(false),
+        Err(err) => Err(EphorError::Command(format!(
+            "Cannot read plan {}: {err}",
+            path.display()
+        ))),
+    }
+}
+
+/// The scan itself, reporting the filesystem's own failure so that
+/// [`carries_dossier_block`] is the one place that decides what a failure means.
+fn head_carries_dossier_block(path: &Path) -> std::io::Result<bool> {
+    let file = fs::File::open(path)?;
+    // Where the scan is: in the head above the block, inside the plan's
+    // frontmatter, or past the opening marker and looking for its close.
+    let mut in_frontmatter = false;
+    let mut opened = false;
     for line in std::io::BufReader::new(file).lines() {
-        let line = line.map_err(|err| {
-            EphorError::Command(format!("Cannot read plan {}: {err}", path.display()))
-        })?;
-        if line.contains(DOSSIER_OPEN) {
-            return Ok(true);
+        let line = line?;
+        let line = line.trim();
+        // Past the opening marker only its close settles the block, and
+        // nothing inside the dossier may end the scan: the dossier is ephor's
+        // verbatim copy of the item, so a tasks heading may well be in it.
+        if opened {
+            if line == DOSSIER_CLOSE {
+                return Ok(true);
+            }
+            continue;
         }
-        if line.trim() == TASKS_HEADING {
-            break;
+        if in_frontmatter {
+            in_frontmatter = line != FRONTMATTER_FENCE;
+            continue;
+        }
+        if line == DOSSIER_OPEN {
+            opened = true;
+        } else if line == FRONTMATTER_FENCE {
+            in_frontmatter = true;
+        } else if !(line.is_empty() || line.starts_with("# ") || line.starts_with("**")) {
+            return Ok(false);
         }
     }
     Ok(false)
@@ -537,7 +590,16 @@ pub fn task_store_plans_in(dir: &Path) -> Result<Vec<FoundPlan>> {
 /// and its grammar are the runtime's, so they are spelled here and nowhere
 /// above this module (§REQ-001-boundary.5). The self-pass uses it to put
 /// something in a store that is the project's own work.
-pub fn write_project_plan(dir: &Path, plan_id: &str, task: &str) -> Result<PathBuf> {
+///
+/// **It is deliberately the one writer of a plan file in ephor that leaves no
+/// mark, and it may never be used on a real project's store.** The rule tests
+/// the mark rather than enumerating the verbs that author a plan
+/// (§FS-006-project-interface.7), which holds because every verb that authors
+/// one authors it through [`Plan::create`]; a plan this wrote would read as the
+/// project's own however it got there, so it stays inside this crate and is for
+/// standing in for a project in the self-pass's own throwaway site
+/// (§FS-010-doctor.4).
+pub(crate) fn write_project_plan(dir: &Path, plan_id: &str, task: &str) -> Result<PathBuf> {
     let path = dir.join(format!("{plan_id}{PLAN_SUFFIX}"));
     write(
         &path,
@@ -1062,15 +1124,16 @@ impl Plan {
     /// The frontmatter body, as `(start, end)` byte offsets between its
     /// fences. None when the plan has none.
     fn frontmatter(&self) -> Option<(usize, usize)> {
+        let fence = format!("\n{FRONTMATTER_FENCE}\n");
         let header_end = self.header_end();
         let rest = &self.text[header_end..];
-        let open = rest.find("\n---\n")? + header_end + "\n---\n".len();
+        let open = rest.find(&fence)? + header_end + fence.len();
         // Only a block that opens before any content is this plan's
         // frontmatter; a horizontal rule further down is prose.
-        if self.text[header_end..open].trim().len() > "---".len() {
+        if self.text[header_end..open].trim().len() > FRONTMATTER_FENCE.len() {
             return None;
         }
-        let close = self.text[open..].find("\n---\n")? + open + 1;
+        let close = self.text[open..].find(&fence)? + open + 1;
         Some((open, close))
     }
 
@@ -1977,6 +2040,125 @@ states:
                 "appended".to_string(),
                 "laid".to_string(),
                 "theirs".to_string(),
+            ],
+        );
+    }
+
+    /// A store that answered before the mark was read still answers. The
+    /// mark's read opens each candidate, and `discover_plans` recognizes a flat
+    /// plan by its name alone, so an entry named like a plan that is not a
+    /// readable file — a dangling link, a directory carrying the name, a plan
+    /// taken between the listing and the read — would fail the whole recognized
+    /// source where [`Plan::read`] had always skipped it
+    /// (§FS-006-project-interface.7). Both readers agree, and the store's own
+    /// plan beside it is not lost with it.
+    #[test]
+    fn an_entry_named_like_a_plan_that_is_not_a_file_does_not_fail_the_store() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path();
+        fs::write(
+            dir.join("theirs.rhei.md"),
+            "# Rhei: theirs\n\n## Tasks\n\n### Task 1: Widen the retry window\n\
+             **State:** pending\n",
+        )
+        .unwrap();
+        fs::create_dir(dir.join("odd.rhei.md")).unwrap();
+        #[cfg(unix)]
+        std::os::unix::fs::symlink(dir.join("gone.rhei.md"), dir.join("stray.rhei.md")).unwrap();
+
+        let read = task_store_plans_in(dir).expect("the store answers");
+        assert!(
+            ids(&read).contains(&"theirs".to_string()),
+            "{:?}",
+            ids(&read)
+        );
+        assert_eq!(ids(&read), ids(&plans_in(dir)));
+    }
+
+    /// And a plan that is a file and cannot be read is still a source that did
+    /// not answer (§FS-006-project-interface.7): the skip above is about a
+    /// candidate that is no plan file, never about hiding a read that failed.
+    #[test]
+    fn a_plan_that_is_a_file_and_cannot_be_read_still_fails_the_store() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path();
+        fs::write(dir.join("broken.rhei.md"), b"# Rhei: \xff\xfe not text\n").unwrap();
+
+        let err = task_store_plans_in(dir).expect_err("the source did not answer");
+        assert!(err.to_string().contains("broken.rhei.md"), "{err}");
+    }
+
+    /// The mark is ephor's dossier **block** and it stands at the head of the
+    /// plan (§FS-006-project-interface.7). So a plan of the project's own that
+    /// quotes the opening marker in its prose keeps every one of its tasks —
+    /// including a directory workspace, whose index has no tasks heading for a
+    /// scan to stop at — and a block left unclosed is no block; while a plan
+    /// ephor authored is still declined with the frontmatter
+    /// [`Plan::set_metadata`] writes between its title and its block.
+    #[test]
+    fn the_mark_is_the_whole_block_and_only_at_the_head_of_the_plan() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path();
+        fs::write(
+            dir.join("quoted.rhei.md"),
+            format!(
+                "# Rhei: quoted\n\nWhen ephor dispatches it writes {DOSSIER_OPEN} into the\n\
+                 plan, and {DOSSIER_CLOSE} after it.\n\n{TASKS_HEADING}\n\n\
+                 ### Task 1: Say what the marker is\n**State:** pending\n"
+            ),
+        )
+        .unwrap();
+        // A directory workspace exactly as the runtime renders one: the tasks
+        // are files under `tasks/` and the index has no tasks heading at all,
+        // so nothing but the head of the file bounds the scan.
+        fs::create_dir_all(dir.join("workspace/tasks")).unwrap();
+        fs::write(
+            dir.join("workspace/index.rhei.md"),
+            format!("# Rhei: workspace\n\nEvery plan ephor authors carries {DOSSIER_OPEN}.\n"),
+        )
+        .unwrap();
+        fs::write(
+            dir.join("workspace/tasks/01-first.md"),
+            "### Task first: Read the marker as prose\n**State:** pending\n",
+        )
+        .unwrap();
+        fs::write(
+            dir.join("unclosed.rhei.md"),
+            format!(
+                "# Rhei: unclosed\n\n{DOSSIER_OPEN}\n\n{TASKS_HEADING}\n\n\
+                 ### Task 1: Open what is never closed\n**State:** pending\n"
+            ),
+        )
+        .unwrap();
+        // A plan ephor authored, as a dispatch leaves it: the metadata block
+        // the runtime's language puts below the title sits above the dossier,
+        // and the dossier itself quotes the item — whose body may carry any
+        // heading at all, so nothing in there may end the scan.
+        let mut authored = Plan::create(
+            &dir.join("authored.rhei.md"),
+            "ephor-work",
+            "authored",
+            "acmeforge:acme/widget#95\n\n## Tasks\n\nwhat the item's own body said",
+            &ticket("fix-1", "fix", "Fix the red gate.\n"),
+        );
+        authored.set_metadata("fix-1", &[("item", "acmeforge:acme/widget#95".to_string())]);
+        fs::write(&authored.path, authored.text()).unwrap();
+
+        assert_eq!(
+            ids(&task_store_plans_in(dir).unwrap()),
+            vec![
+                "quoted".to_string(),
+                "unclosed".to_string(),
+                "workspace".to_string(),
+            ],
+        );
+        assert_eq!(
+            ids(&plans_in(dir)),
+            vec![
+                "authored".to_string(),
+                "quoted".to_string(),
+                "unclosed".to_string(),
+                "workspace".to_string(),
             ],
         );
     }
