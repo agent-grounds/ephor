@@ -17,6 +17,7 @@ on:
 permissions:
   contents: write
   actions: write   # gh workflow run needs actions:write to dispatch
+  pull-requests: read   # the stamping step asks which pull request a commit belongs to
 
 env:
   CARGO_TERM_COLOR: always
