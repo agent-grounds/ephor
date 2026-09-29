@@ -2882,7 +2882,13 @@ What is asked for is chosen against the item **as it is now**, preferring what
 was asked last while that still applies: a pull request whose gate went green
 and whose reviewer asked a question is no longer a red gate. Where nothing
 applies any more — it merged, it closed — the work is not reopened, and the
-ledger goes on saying the item moved past it.
+ledger goes on saying the item moved past it. What the report then says is
+read from the plans, so it is one of three things and each names the verb
+that fits it: the work is still going in a named plan at a named task and
+nothing is offered; a plan the record names cannot be read, so what the work
+came to is unknown and `ephor work forget --missing` is the verb; or nothing
+is open at all and `ephor work forget --done` clears it
+([§FS-005-dispatch.35](functional-spec/FS-005-dispatch.md#35-what-a-ledger-entry-may-be-forgotten-for-is-read-from-the-plans)).
 
 ### 8.7 The work screen
 
@@ -3222,8 +3228,11 @@ ephor work states
   cannot read is not a finished one, so `--missing` is the verb for an entry
   whose plan is gone, and `--item` names one entry whatever its plans say
   ([§FS-005-dispatch.35](functional-spec/FS-005-dispatch.md#35-what-a-ledger-entry-may-be-forgotten-for-is-read-from-the-plans)).
-  The one exception is a plan **ephor itself wrote** and lost: its absence is
-  ephor's own record of something gone, so `--done` still takes it.
+  Neither sweep drops an entry that still has something open: `--missing` takes
+  the entry whose unreadable plan is all it has left, and leaves one whose other
+  plan holds a task that is not final. The one exception is a plan **ephor
+  itself wrote** and lost: its absence is ephor's own record of something gone,
+  so `--done` still takes it.
 
 ### 8.10 The ledger
 
@@ -5056,8 +5065,11 @@ elsewhere, or install a machine there deliberately.
 **`ephor work list` says `⚠ plan missing`.** A plan the ledger points at was
 deleted — the matter's own, or one a workflow laid beside it, which is a plan
 ephor asked for rather than wrote and which is therefore never read as
-finished. `ephor work forget --missing` drops the entry either way, and
-`--done` will not; dispatching again starts a fresh plan.
+finished. `ephor work forget --missing` drops the entry and `--done` will not;
+dispatching again starts a fresh plan. Where another plan of the same matter is
+still going the row says both — what that plan's task is doing, and that a plan
+is missing — and neither verb drops it: the plan that is going is work, and
+`--item` is the way to untrack it anyway.
 
 **Work looks finished but the item moved on.** That is what `⟳` means. `s` on
 the work screen, or `ephor work sync`, writes the next ticket.
