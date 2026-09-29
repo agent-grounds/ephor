@@ -2287,6 +2287,70 @@ fn forget_divides_a_mixed_ledger_by_what_the_plans_say() {
     assert_eq!(ledger_keys(&ledger), ["demo:going-workflow"]);
 }
 
+/// The rule `--done` obeys is not escapable through the other verb
+/// (§FS-005-dispatch.35). A matter's work is every plan the record says is its
+/// own, so one of them being unreadable while another holds a task that is not
+/// final is not evidence the work is over — and untracking the entry for it
+/// would be the reported harm under a different name. What `--missing` is for
+/// is untouched: an entry whose unreadable plan is all it has left is still
+/// taken, which is the archived-plan case the asymmetry was decided on.
+#[test]
+fn forget_missing_leaves_an_entry_whose_other_laid_plan_is_going() {
+    let tmp = tempdir();
+    fixture(tmp.path(), Value::Null);
+    let root = tmp.path().join("mixed/panta");
+    fs::create_dir_all(&root).unwrap();
+    fs::write(root.join("states.yaml"), MIXED_MACHINE).unwrap();
+    let going = root.join("going-implement");
+    fs::create_dir_all(&going).unwrap();
+    fs::write(going.join("index.rhei.md"), mixed_plan("implementing")).unwrap();
+
+    let snapshot = json!({
+        "updated_at": "2026-07-27T12:00:00Z",
+        "state": "open",
+        "passed": 0, "failed": 0, "running": 0, "messages": 0
+    });
+    let laying = |name: &str| {
+        json!({
+            "ticket": "", "recipe": "implement",
+            "at": "2026-07-28T00:00:00Z", "root": root, "plan": name,
+            "snapshot": snapshot,
+        })
+    };
+    let ledger = json!({ "version": 1, "entries": {
+        "demo:two-plans": {
+            "project": "demo",
+            "title": "acme/widget#12",
+            "root": root,
+            "checkout": tmp.path().join("mixed"),
+            "branch": "main",
+            "plan_id": "two-plans",
+            "plan": root.join("two-plans.rhei.md"),
+            "dispatches": [laying("going-implement"), laying("gone-implement")],
+        },
+    }});
+    let path = tmp.path().join("state/ephor/work.json");
+    fs::create_dir_all(path.parent().unwrap()).unwrap();
+    fs::write(&path, serde_json::to_string_pretty(&ledger).unwrap()).unwrap();
+
+    assert!(forgotten(tmp.path(), "--done").is_empty());
+    assert!(
+        forgotten(tmp.path(), "--missing").is_empty(),
+        "`--missing` untracked a matter whose other plan holds a task at implementing"
+    );
+    assert_eq!(ledger_keys(&path), ["demo:two-plans"]);
+
+    // The plan that is going finishes, and the unreadable one is all that is
+    // left: `--missing` reaches it exactly as it always did.
+    fs::write(going.join("index.rhei.md"), mixed_plan("done")).unwrap();
+    assert!(
+        forgotten(tmp.path(), "--done").is_empty(),
+        "`--done` read an unreadable plan as a finished one"
+    );
+    assert_eq!(forgotten(tmp.path(), "--missing"), ["demo:two-plans"]);
+    assert!(ledger_keys(&path).is_empty());
+}
+
 /// The machine-readable reading grows with the one behind it
 /// (§REQ-002-parity.3, §FS-005-dispatch.35): a laid workflow plan joins the
 /// `plans` array under its own id, its tasks join `tickets`, and the record

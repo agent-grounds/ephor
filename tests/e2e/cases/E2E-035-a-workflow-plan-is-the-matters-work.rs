@@ -451,6 +451,44 @@ fn a_laid_plan_that_is_gone_is_missing_rather_than_done() {
     assert!(entry_keys(&world).is_empty(), "the entry was not dropped");
 }
 
+/// And the report about that entry names the verb that reaches it
+/// (§FS-005-dispatch.35). A plan nobody can read is not a matter that is over,
+/// so the dormant sentence and its `--done` are not what it is offered: the two
+/// readings are one question asked once, and a recommendation that does nothing
+/// is the reported defect one case to the left.
+#[test]
+fn a_matter_whose_plan_cannot_be_read_is_not_offered_the_verb_for_one_that_is_over() {
+    let world = site();
+    fs::remove_dir_all(laid_dir(&world)).expect("take the laid plan away");
+
+    let said = sync(&world);
+    assert!(
+        said.contains("cannot be read"),
+        "sync did not say the plan could not be read:\n{said}"
+    );
+    assert!(
+        said.contains("ephor work forget --missing"),
+        "sync did not name the verb that reaches the entry:\n{said}"
+    );
+    assert!(
+        !said.contains("no recipe applies to it now"),
+        "an unreadable plan was reported as a matter that is over:\n{said}"
+    );
+    assert!(
+        !said.contains("forget --done"),
+        "sync recommended a verb that will not touch this entry:\n{said}"
+    );
+    assert_eq!(sync_outcome(&world), "unread");
+
+    // And what it named does what it says: the sentence and the selection are
+    // the same reading, so the reader who takes the hint is not refused.
+    let forgot = forget(&world, &["--missing"]);
+    assert!(
+        forgot.contains(ITEM),
+        "the verb sync named did not reach the entry:\n{forgot}"
+    );
+}
+
 /// `--item` names one entry and is the escape hatch, whatever its plans say
 /// (§FS-005-dispatch.35).
 #[test]

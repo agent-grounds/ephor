@@ -302,11 +302,41 @@ impl WorkStatus {
         self.tickets.iter().find(|ticket| ticket.waiting)
     }
 
+    /// Whether there is nothing here to read at all: a plan the record named
+    /// could not be read, and no other plan of this matter's answered
+    /// (§FS-005-dispatch.35).
+    ///
+    /// Narrower than [`WorkStatus::missing`], which says only that *some*
+    /// plan the record named could not be read. Since a matter's work is
+    /// every plan the record says is its own, the two came apart: one laid
+    /// plan gone and another going is a matter that is missing a plan and
+    /// still has work to show. A caller asking "is there anything to say
+    /// about this matter" asks this one; a caller reporting on the record
+    /// asks `missing`.
+    pub fn unreadable(&self) -> bool {
+        self.missing && self.tickets.is_empty()
+    }
+
+    /// A row that has something to say and a plan that could not be read says
+    /// both (§FS-005-dispatch.30): the second is a fact about the record and
+    /// never a reason to withhold the first, so the row and the sentence
+    /// `work sync` writes about one matter cannot name different facts.
+    fn warned(&self, said: String) -> String {
+        match self.missing {
+            true => format!("{said}  ⚠ a plan is missing"),
+            false => said,
+        }
+    }
+
     /// One line for a row that has room for one: what the work is doing, or
     /// what it decided, and whether the item has moved under it. `verdict` is
     /// how much of the verdict's own sentence fits where this is going.
     pub fn badge(&self, verdict_width: usize) -> String {
-        if self.missing {
+        // Nothing here to read — not merely a plan the record named that
+        // nobody could (§FS-005-dispatch.35). Where another plan of this
+        // matter's did answer, what it says leads and the unreadable one is
+        // said beside it.
+        if self.unreadable() {
             return "⚠ plan missing".to_string();
         }
         // Work that is entirely workflows has no ticket to badge; what it has
@@ -324,10 +354,10 @@ impl WorkStatus {
             // A ticket the machine opened for itself has no recipe — its
             // "recipe" falls back to its own id, and saying that twice is
             // noise where the point is the question.
-            return match waiting.recipe == waiting.id {
+            return self.warned(match waiting.recipe == waiting.id {
                 true => format!("⚠ waiting on you · {}", waiting.id),
                 false => format!("⚠ {} · waiting on you · {}", waiting.recipe, waiting.id),
-            };
+            });
         }
         let mut badge = match self.tickets.iter().rev().find(|ticket| !ticket.finished) {
             Some(open) => format!(
@@ -350,6 +380,7 @@ impl WorkStatus {
                 None => "· no tickets".to_string(),
             },
         };
+        badge = self.warned(badge);
         if self.stale() {
             badge.push_str(&format!("  ⟳ {}", self.changes.join("; ")));
         }
@@ -362,7 +393,11 @@ impl WorkStatus {
     /// last ticket decided. `verdict` is how much of a verdict's own sentence
     /// fits on a row.
     pub fn lines(&self, verdict_width: usize) -> Vec<WorkLine> {
-        if self.missing {
+        // As the badge reads it: nothing to read is one fact, a plan the
+        // record named that nobody could read is another, and a matter with
+        // both a going plan and an unreadable one gets a row for each
+        // (§FS-005-dispatch.35).
+        if self.unreadable() {
             return vec![WorkLine::said(Tone::Waiting, "⚠", "plan missing")];
         }
         // Work that is entirely workflows has no ticket of its own; what it
@@ -439,6 +474,9 @@ impl WorkStatus {
                 }
                 None => WorkLine::said(Tone::Over, "·", "no tickets"),
             });
+        }
+        if self.missing {
+            lines.push(WorkLine::said(Tone::Waiting, "⚠", "a plan is missing"));
         }
         if self.stale() {
             lines.push(WorkLine::said(
@@ -1439,8 +1477,22 @@ impl Dispatcher {
         entry: &Entry,
         status: &WorkStatus,
     ) -> Option<runtime::roster::HandFlags> {
-        if status.missing {
+        // Nothing readable to resolve a hand from — not merely a plan the
+        // record named that nobody could read (§FS-005-dispatch.35). A
+        // matter's work is every plan the record says is its own, so one
+        // unreadable plan beside a readable one leaves tasks this run would
+        // advance, and the flags they resolve to still ride
+        // (§FS-005-dispatch.14). That the record named a plan nobody could
+        // read is said rather than swallowed, as every other thing that
+        // keeps a hand off a run is.
+        if status.tickets.is_empty() {
             return None;
+        }
+        if status.missing {
+            self.note_once(
+                "a plan this matter's record names could not be read; the hand was resolved \
+                 from the plans that could",
+            );
         }
         let recipes = self.recipes(&entry.project);
         let mut wants: Vec<Option<runtime::roster::HandFlags>> = Vec::new();
@@ -5280,6 +5332,21 @@ fn recipe_roots(entry: &Entry) -> Vec<PathBuf> {
 /// records retain the exact root, checkout and branch used
 /// (§FS-005-dispatch.4, §FS-005-dispatch.15.1).
 pub fn recorded_recipe_plans(entry: &Entry) -> Vec<RecordedPlan> {
+    let mut plans = recipe_placements(entry);
+    if plans.is_empty() {
+        plans.extend(legacy_placement(entry));
+    }
+    plans
+}
+
+/// The recipe placements alone, before the legacy fallback below is
+/// considered. Split out so that the widened reading can apply that fallback
+/// over *its* list rather than over this one: a matter whose only dispatch is
+/// a workflow has no recipe placement at all, so a fallback applied here
+/// would fire beside the plan that workflow laid rather than instead of it,
+/// and the row would name a task out of a file ephor never wrote
+/// (§FS-005-dispatch.19, §FS-005-dispatch.35).
+fn recipe_placements(entry: &Entry) -> Vec<RecordedPlan> {
     let mut plans: Vec<RecordedPlan> = Vec::new();
     for dispatch in entry
         .dispatches
@@ -5314,17 +5381,23 @@ pub fn recorded_recipe_plans(entry: &Entry) -> Vec<RecordedPlan> {
             laid: None,
         });
     }
-    if plans.is_empty() && entry.plan.is_file() {
-        plans.push(RecordedPlan {
-            root: entry.root.clone(),
-            checkout: entry.checkout(),
-            branch: entry.branch.clone(),
-            plan_id: entry.plan_id.clone(),
-            path: entry.plan.clone(),
-            laid: None,
-        });
-    }
     plans
+}
+
+/// The entry's own singular placement, for a record whose dispatches name no
+/// plan this reading can place — a ledger written before provenance existed
+/// (§FS-005-dispatch.4). A fallback and never an addition: it is read only
+/// where nothing else was, so nothing that reads today stops reading and
+/// nothing that reads a plan gains a second one beside it.
+fn legacy_placement(entry: &Entry) -> Option<RecordedPlan> {
+    entry.plan.is_file().then(|| RecordedPlan {
+        root: entry.root.clone(),
+        checkout: entry.checkout(),
+        branch: entry.branch.clone(),
+        plan_id: entry.plan_id.clone(),
+        path: entry.plan.clone(),
+        laid: None,
+    })
 }
 
 /// The plans this matter's workflows laid beside its own, as the record names
@@ -5387,7 +5460,15 @@ pub fn recorded_workflow_plans(entry: &Entry) -> RecordedWork {
 /// second plan in a root the matter's own already stands in.
 pub fn recorded_plans(entry: &Entry) -> RecordedWork {
     let mut work = recorded_workflow_plans(entry);
-    let mut plans = recorded_recipe_plans(entry);
+    let mut plans = recipe_placements(entry);
+    // The legacy fallback fires only where this reading placed nothing at
+    // all, and this reading is the widened one: an entry whose work is a
+    // plan a workflow laid has no recipe placement, and reading its own plan
+    // path beside that laid plan would put a file ephor never wrote into the
+    // matter's work (§FS-005-dispatch.19, §FS-005-dispatch.35).
+    if plans.is_empty() && work.plans.is_empty() {
+        plans.extend(legacy_placement(entry));
+    }
     plans.extend(work.plans);
     work.plans = plans;
     work
