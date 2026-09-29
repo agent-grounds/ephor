@@ -498,8 +498,13 @@ ships, the previous "latest" section moves verbatim to
   `work list --open` shows it, and `work sync` says which plan it is going in
   and what its task is at instead of calling the matter dormant and offering a
   command that would drop it. A laid plan nobody can read is not a finished
-  one either — the entry reports `⚠ plan missing` and `--missing` is the verb
-  for it — while a plan ephor wrote and lost keeps the rule it had. (PR #135)
+  one either — the entry reports `⚠ plan missing`, `sync` says what its work
+  came to is unknown, and `--missing` is the verb both name — while a plan
+  ephor wrote and lost keeps the rule it had. Neither sweep drops an entry
+  that still has something open, so a matter with one plan unreadable and
+  another going is untracked by `--item` and by nothing else; its row says
+  both facts, and a run over it still resolves its hand from the plans that
+  did read. (PR #135)
 
 - **The acting sweep heads each root by the outcome it reached**
   ([§FS-005-dispatch.24.1](functional-spec/FS-005-dispatch.md#241-the-sweep-announces-each-root-by-the-outcome-it-reached)).
