@@ -3228,11 +3228,13 @@ ephor work states
   cannot read is not a finished one, so `--missing` is the verb for an entry
   whose plan is gone, and `--item` names one entry whatever its plans say
   ([§FS-005-dispatch.35](functional-spec/FS-005-dispatch.md#35-what-a-ledger-entry-may-be-forgotten-for-is-read-from-the-plans)).
-  Neither sweep drops an entry that still has something open: `--missing` takes
-  the entry whose unreadable plan is all it has left, and leaves one whose other
-  plan holds a task that is not final. The one exception is a plan **ephor
-  itself wrote** and lost: its absence is ephor's own record of something gone,
-  so `--done` still takes it.
+  Neither sweep drops an entry that still has something open, and nothing is an
+  exception to that: `--missing` takes the entry whose unreadable plan is all it
+  has left, and leaves one whose other plan holds a task that is not final. What
+  a plan **ephor itself wrote** and lost is an exception to is the sentence
+  above it — its absence is ephor's own record of something gone, so it counts
+  as finished rather than as unread, and `--done` takes the entry where nothing
+  else of that matter's is open.
 
 ### 8.10 The ledger
 
