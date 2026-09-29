@@ -927,6 +927,8 @@ fn work_status(tickets: Vec<TicketStatus>) -> WorkStatus {
         missing: false,
         tickets,
         workflows: 0,
+        unread_workflows: 0,
+        open_at: None,
         changes: Vec::new(),
         advance: None,
     }
@@ -4184,4 +4186,302 @@ fn the_recipe_reading_sees_no_workflow_plan_and_falls_back_only_to_the_entrys_ow
     assert_eq!(plans.len(), 1);
     assert_eq!(plans[0].path, plan_path);
     assert_eq!(plans[0].plan_id, "widget-10");
+}
+
+/// Two machines that disagree about one state, so which of them judged a
+/// ticket is readable from the answer. The root's calls `implementing` over;
+/// the one a laid workspace carries does not (§FS-005-dispatch.28).
+const ROOT_CALLS_IMPLEMENTING_OVER: &str = "name: root-machine\nversion: 1.0\n\nstates:\n  \
+     implementing:\n    description: Over, as this root has it.\n    final: true\n  done:\n    \
+     description: Over.\n    final: true\n\ntransitions:\n  - from: implementing\n    to: done\n";
+const LAID_CALLS_IMPLEMENTING_GOING: &str = "name: laid-machine\nversion: 1.0\n\nstates:\n  \
+     implementing:\n    description: Being built.\n  done:\n    description: Over.\n    \
+     final: true\n\ntransitions:\n  - from: implementing\n    to: done\n";
+
+/// A laid plan holding one task, written the way a workflow lays a workspace:
+/// a directory of its own, with an index and — where `machine` says so — a
+/// states document that answers for its tasks rather than the root's.
+fn lay_plan(root: &Path, name: &str, state: &str, machine: Option<&str>, target: bool) -> PathBuf {
+    let dir = root.join(name);
+    fs::create_dir_all(&dir).unwrap();
+    if let Some(machine) = machine {
+        fs::write(dir.join("states.yaml"), machine).unwrap();
+    }
+    let pin = match target {
+        true => "**Target:** claude-code[yolo]\n",
+        false => "",
+    };
+    let index = dir.join("index.rhei.md");
+    fs::write(
+        &index,
+        format!(
+            "# Rhei: laid\n**States:** laid-machine\n\n## Tasks\n\n\
+             ### Task {name}-1: build it\n**State:** {state}\n{pin}\nbody\n"
+        ),
+    )
+    .unwrap();
+    index
+}
+
+/// A ledger dispatch that laid `name` in `root`, which is the only shape the
+/// report's site produces: no ticket of its own, and a plan name to resolve.
+fn laying_dispatch(name: &str, root: &Path) -> ledger::Dispatch {
+    ledger::Dispatch {
+        ticket: String::new(),
+        recipe: "implement".to_string(),
+        at: Utc::now(),
+        plan: Some(name.to_string()),
+        root: Some(root.to_path_buf()),
+        checkout: None,
+        branch: None,
+        pools: Vec::new(),
+        snapshot: Snapshot::default(),
+    }
+}
+
+/// The widened reading finds a laid plan where the record actually names it
+/// (§FS-005-dispatch.35): the *dispatch's* own root joined to the name it
+/// recorded, and under the *laid* plan's id rather than the entry's. The
+/// entry's own `plan_id` names a file nothing ever wrote, so a reading that
+/// went looking there would find the matter's work nowhere.
+#[test]
+fn recorded_plans_resolves_the_laid_plan_at_the_dispatchs_root_under_its_own_id() {
+    let tmp = tempfile::tempdir().unwrap();
+    let root = tmp.path().join("panta");
+    fs::create_dir_all(&root).unwrap();
+    let index = lay_plan(&root, "widget-10-implement", "implementing", None, false);
+
+    let mut entry = entry_for(&root, &root.join("widget-10.rhei.md"));
+    entry.plan_id = "widget-10".to_string();
+    entry.dispatches = vec![laying_dispatch("widget-10-implement", &root)];
+
+    let work = recorded_plans(&entry);
+    assert_eq!(work.unread, 0);
+    assert_eq!(work.plans.len(), 1, "the laid plan was not found");
+    assert_eq!(work.plans[0].path, index);
+    assert_eq!(work.plans[0].plan_id, "widget-10-implement");
+    assert_eq!(work.plans[0].root, root);
+    assert_eq!(work.plans[0].laid.as_deref(), Some("widget-10-implement"));
+}
+
+/// A workflow-only entry has open tickets, and which of them are over is the
+/// laid plan's own machine's answer where the workspace carries one
+/// (§FS-005-dispatch.35, §FS-005-dispatch.28). The two machines here disagree
+/// about `implementing` on purpose: a grounded workspace carries its own
+/// states, and judging its tasks by the root's would call work that is going
+/// finished. Where the workspace declares none, the root's is in force.
+#[test]
+fn a_workflow_only_entrys_tickets_are_judged_by_the_laid_plans_own_machine() {
+    let tmp = tempfile::tempdir().unwrap();
+    let root = tmp.path().join("panta");
+    fs::create_dir_all(&root).unwrap();
+    fs::write(root.join("states.yaml"), ROOT_CALLS_IMPLEMENTING_OVER).unwrap();
+    let index = lay_plan(
+        &root,
+        "widget-10-implement",
+        "implementing",
+        Some(LAID_CALLS_IMPLEMENTING_GOING),
+        false,
+    );
+
+    let mut entry = entry_for(&root, &root.join("widget-10.rhei.md"));
+    entry.plan_id = "widget-10".to_string();
+    entry.dispatches = vec![laying_dispatch("widget-10-implement", &root)];
+
+    let config = work_config();
+    let status = status_of_entry(&config, &entry, None);
+    assert_eq!(status.tickets.len(), 1, "the laid task was not counted");
+    assert_eq!(status.open_tickets(), 1, "the root's machine judged it");
+    assert!(!status.missing);
+    assert_eq!(status.unread_workflows, 0);
+    let open = status.open_at.expect("the matter is still at something");
+    assert_eq!(open.plan, index);
+    assert_eq!(open.ticket, "widget-10-implement-1");
+    assert_eq!(open.state, "implementing");
+
+    // With no machine of its own the workspace is judged by the root's, which
+    // is what `Ok(None)` from the plan's own reading means.
+    fs::remove_file(root.join("widget-10-implement/states.yaml")).unwrap();
+    let status = status_of_entry(&config, &entry, None);
+    assert_eq!(status.open_tickets(), 0, "the root's machine was not asked");
+    assert!(status.open_at.is_none());
+}
+
+/// A workflow plan laid in the root the matter's own plan already stands in
+/// yields both (§FS-005-dispatch.35). This is why the widened reading is a
+/// function of its own: `recorded_recipe_plans` collapses placements by root,
+/// which is right for the one plan ephor writes per root and would lose the
+/// recipe plan's tickets the moment a workflow lays a second beside it.
+#[test]
+fn a_workflow_plan_sharing_a_root_with_the_matters_own_yields_both() {
+    let tmp = tempfile::tempdir().unwrap();
+    let root = tmp.path().join("panta");
+    fs::create_dir_all(&root).unwrap();
+    fs::write(root.join("states.yaml"), LAID_CALLS_IMPLEMENTING_GOING).unwrap();
+    let own = root.join("widget-10.rhei.md");
+    fs::write(
+        &own,
+        "# Rhei: demo\n**States:** laid-machine\n\n## Tasks\n\n\
+         ### Task implement-1: the recipe's own\n**State:** implementing\n\nbody\n",
+    )
+    .unwrap();
+    let laid = lay_plan(&root, "widget-10-implement", "implementing", None, false);
+
+    let mut entry = entry_for(&root, &own);
+    entry.plan_id = "widget-10".to_string();
+    entry.dispatches = vec![
+        ledger::Dispatch {
+            ticket: "implement-1".to_string(),
+            recipe: "implement".to_string(),
+            at: Utc::now(),
+            plan: None,
+            root: Some(root.clone()),
+            checkout: None,
+            branch: None,
+            pools: Vec::new(),
+            snapshot: Snapshot::default(),
+        },
+        laying_dispatch("widget-10-implement", &root),
+    ];
+
+    assert_eq!(
+        recorded_recipe_plans(&entry).len(),
+        1,
+        "the recipe reading is unchanged and still one plan per root"
+    );
+    let work = recorded_plans(&entry);
+    assert_eq!(
+        work.plans.iter().map(|plan| &plan.path).collect::<Vec<_>>(),
+        vec![&own, &laid],
+        "one of the two plans in this root was lost"
+    );
+
+    let status = status_of_entry(&work_config(), &entry, None);
+    let mut ids: Vec<&str> = status.tickets.iter().map(|t| t.id.as_str()).collect();
+    ids.sort();
+    assert_eq!(ids, ["implement-1", "widget-10-implement-1"]);
+    assert_eq!(status.open_tickets(), 2);
+}
+
+/// A laid plan that is gone is unread, not finished (§FS-005-dispatch.35). A
+/// count of open tickets says zero for both, which is why the count of what
+/// could not be read sits beside it — and why the entry reports as missing
+/// rather than as work that is over.
+#[test]
+fn an_absent_laid_plan_is_unread_and_reports_the_entry_as_missing() {
+    let tmp = tempfile::tempdir().unwrap();
+    let root = tmp.path().join("panta");
+    fs::create_dir_all(&root).unwrap();
+
+    let mut entry = entry_for(&root, &root.join("widget-10.rhei.md"));
+    entry.plan_id = "widget-10".to_string();
+    entry.dispatches = vec![laying_dispatch("widget-10-implement", &root)];
+
+    let work = recorded_plans(&entry);
+    assert!(work.plans.is_empty());
+    assert_eq!(work.unread, 1);
+
+    let status = status_of_entry(&work_config(), &entry, None);
+    assert_eq!(status.open_tickets(), 0);
+    assert_eq!(status.unread_workflows, 1);
+    assert!(status.missing, "an unreadable laid plan is a missing plan");
+    assert_eq!(status.badge(64), "⚠ plan missing");
+}
+
+/// The drafted-reply contract is untouched by the widening
+/// (§FS-005-dispatch.13, §FS-005-dispatch.35). `recipe_roots` still names only
+/// the roots ephor wrote a plan in, so a reply a workflow's run left in its
+/// own root is not offered as if a recipe ticket had drafted it — which is
+/// the reason the widened reading had to be a new function.
+#[test]
+fn a_reply_left_in_a_workflow_root_is_not_offered_as_the_matters_proposal() {
+    let tmp = tempfile::tempdir().unwrap();
+    let recipe_root = tmp.path().join("checkout/panta");
+    let workflow_root = tmp.path().join("project/panta");
+    let plan_id = "forge-widget-42";
+    plant(&recipe_root, &format!("{plan_id}.rhei.md"), "recipe work");
+    fs::create_dir_all(&workflow_root).unwrap();
+    lay_plan(&workflow_root, "laid-review", "implementing", None, false);
+
+    let item = issue_43_item();
+    let mut ledger = empty_ledger();
+    let mut entry = entry_for(
+        &recipe_root,
+        &recipe_root.join(format!("{plan_id}.rhei.md")),
+    );
+    entry.project = item.project.clone();
+    entry.plan_id = plan_id.to_string();
+    entry.dispatches = vec![
+        ledger::Dispatch {
+            ticket: "answer-1".to_string(),
+            recipe: "answer".to_string(),
+            at: Utc::now(),
+            plan: None,
+            root: Some(recipe_root.clone()),
+            checkout: None,
+            branch: None,
+            pools: Vec::new(),
+            snapshot: Snapshot::of(&item),
+        },
+        laying_dispatch("laid-review", &workflow_root),
+    ];
+    ledger.entries.insert(item.id.clone(), entry.clone());
+
+    // The widened reading reaches both roots; the recipe reading reaches one.
+    assert_eq!(recorded_plans(&entry).plans.len(), 2);
+    assert_eq!(recipe_roots(&entry), vec![recipe_root.clone()]);
+
+    let reply = runtime::results::reply_path(&workflow_root, plan_id);
+    fs::create_dir_all(reply.parent().unwrap()).unwrap();
+    fs::write(reply, "What the workflow's run drafted.\n").unwrap();
+    let dispatcher = issue_43_dispatcher(tmp.path(), ledger);
+    assert!(
+        dispatcher.proposal(&item).is_none(),
+        "a workflow root's reply was offered as the matter's own"
+    );
+
+    // And the recipe root's reply is still found, so the reading did not
+    // simply stop answering.
+    let reply = runtime::results::reply_path(&recipe_root, plan_id);
+    fs::create_dir_all(reply.parent().unwrap()).unwrap();
+    fs::write(reply, "What the recipe ticket drafted.\n").unwrap();
+    assert_eq!(
+        dispatcher.proposal(&item).expect("the recipe reply").text,
+        "What the recipe ticket drafted."
+    );
+}
+
+/// A laid task now takes part in resolving the hand a run is started with
+/// (§FS-005-dispatch.14, §FS-005-dispatch.30) — and one carrying its own
+/// `**Target:**` line is its own authority, so it contributes nothing and the
+/// run carries no flags on its account. This is the pinned case the
+/// grounded-ticket workspaces this project runs are written in.
+#[test]
+fn a_target_pinned_laid_task_contributes_no_flags_to_the_run() {
+    let tmp = tempfile::tempdir().unwrap();
+    let root = tmp.path().join("panta");
+    fs::create_dir_all(&root).unwrap();
+    fs::write(root.join("states.yaml"), LAID_CALLS_IMPLEMENTING_GOING).unwrap();
+    lay_plan(&root, "widget-10-implement", "implementing", None, true);
+
+    let item = issue_43_item();
+    let mut entry = entry_for(&root, &root.join("widget-10.rhei.md"));
+    entry.project = item.project.clone();
+    entry.plan_id = "widget-10".to_string();
+    entry.dispatches = vec![laying_dispatch("widget-10-implement", &root)];
+    let mut ledger = empty_ledger();
+    ledger.entries.insert(item.id.clone(), entry.clone());
+    let mut dispatcher = issue_43_dispatcher(tmp.path(), ledger);
+
+    let status = dispatcher.status_of(&entry, None);
+    let ticket = status.tickets.first().expect("the laid task is read");
+    assert_eq!(
+        ticket.pinned,
+        Some(plan::Pin::Target),
+        "the laid task's own execution line was not read"
+    );
+    assert!(
+        dispatcher.run_hand(&entry, &status).is_none(),
+        "a run took flags from a task that names its own target"
+    );
 }
