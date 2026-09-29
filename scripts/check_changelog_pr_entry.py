@@ -18,11 +18,13 @@ import sys
 from pathlib import Path
 from typing import NamedTuple, Sequence
 
+# `__file__` is set under `python scripts/...` and under the test harness's
+# load-by-path alike, so this reaches the shared cut from both (§FS-002-release.6).
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-UNRELEASED_RE = re.compile(r"^## Unreleased\s*$")
-TOP_LEVEL_RE = re.compile(r"^##(?!#)\s+")
-BULLET_RE = re.compile(r"^\s*-\s")
-CONTINUATION_RE = re.compile(r"^\s+\S")
+from changelog_unreleased import bullet_blocks, unreleased_range  # noqa: E402
+
+
 HUNK_RE = re.compile(r"^@@ -[0-9]+(?:,[0-9]+)? \+(?P<start>[0-9]+)(?:,[0-9]+)? @@")
 
 # The scanner for "a pull request number is written here". These are the three
@@ -114,22 +116,6 @@ def check_any_bullet(changelog: Path) -> None:
         raise ChangelogPrError("docs/changelog.md ## Unreleased has no bullets at all.\n" + GUIDANCE)
 
 
-def bullet_blocks(lines: Sequence[str], start: int, end: int) -> list[tuple[int, int]]:
-    """Each bullet in `lines[start:end]` as a half-open range: its `- ` line and what continues it."""
-    blocks = []
-    index = start
-    while index < end:
-        if not BULLET_RE.match(lines[index]):
-            index += 1
-            continue
-        stop = index + 1
-        while stop < end and CONTINUATION_RE.match(lines[stop]) and not BULLET_RE.match(lines[stop]):
-            stop += 1
-        blocks.append((index, stop))
-        index = stop
-    return blocks
-
-
 def resolve_base(explicit: str | None) -> tuple[str | None, list[str]]:
     """The commit to compare against, and every candidate tried getting there. §FS-002-release.6"""
     if explicit is not None:
@@ -206,21 +192,11 @@ def _changelog_lines(changelog: Path) -> list[str]:
 
 
 def _unreleased_range(lines: Sequence[str]) -> tuple[int, int]:
-    """The body of `## Unreleased` as a half-open index range, the one scan both checks share."""
-    start = None
-    for index, line in enumerate(lines):
-        if UNRELEASED_RE.match(line):
-            start = index + 1
-            break
-    if start is None:
+    """The body of `## Unreleased`, in this check's own error vocabulary."""
+    section = unreleased_range(lines)
+    if section is None:
         raise ChangelogPrError("missing ## Unreleased section in docs/changelog.md")
-
-    end = len(lines)
-    for index in range(start, len(lines)):
-        if TOP_LEVEL_RE.match(lines[index]):
-            end = index
-            break
-    return start, end
+    return section
 
 
 def _added_lines(base_rev: str, changelog: Path) -> list[tuple[int, str]]:
