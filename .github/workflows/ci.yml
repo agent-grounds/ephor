@@ -58,9 +58,20 @@ jobs:
         run: cargo fmt --all -- --check
 
       # §FS-002-release.1: every pull request is represented in ## Unreleased.
+      # The check is base-relative (§FS-002-release.6), so it needs the pull
+      # request's own base commit — and only that one. `git diff A B` compares two
+      # trees rather than walking history, and on a `pull_request` event the
+      # checkout above is the head branch already merged into that base, so the
+      # two-dot diff is exactly this pull request's net change. One shallow fetch
+      # is therefore enough and the clone stays depth-1.
       - name: changelog PR entry
         if: github.event_name == 'pull_request'
-        run: python scripts/check_changelog_pr_entry.py --pr-number "${{ github.event.pull_request.number }}"
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          git fetch --no-tags --depth=1 origin "$BASE_SHA"
+          python scripts/check_changelog_pr_entry.py \
+            --pr-number "${{ github.event.pull_request.number }}" --base-rev "$BASE_SHA"
 
       - name: python tests
         run: python -m unittest discover -s tests/integration -p 'test_*.py'
