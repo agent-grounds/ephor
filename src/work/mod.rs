@@ -4433,6 +4433,25 @@ impl Dispatcher {
         }
     }
 
+    /// Carry every plan named before the digest over to the name its matter's
+    /// id renders now, once, and say what moved (§FS-005-dispatch.3.1).
+    ///
+    /// Run where the ledger is read, so no stem is recomputed before the root
+    /// it names has been carried over. Decided per entry and out of the entry
+    /// itself — a recorded name that is not the stem of its own id — so it is
+    /// idempotent and needs nothing written down about whether it has run.
+    /// Where both the digested name and a pre-digest name hold a plan about one
+    /// matter it refuses and names both files, because choosing between two
+    /// records of the same work is the reader's call (§FS-005-dispatch.3).
+    ///
+    /// **The body is `ticket.implement`'s.** This signature is here so that
+    /// §FS-005-dispatch.3.1 can be pinned by a test before it is satisfied by
+    /// any code; moving nothing is the wrong answer, and three tests in
+    /// `mod_tests.rs` say so.
+    pub fn carry_over_plan_names(&mut self) -> Result<Vec<String>> {
+        Ok(Vec::new())
+    }
+
     /// Commit the ledger and only then release the work-root pre-images. A
     /// failed atomic store restores the entire unsaved batch and the loaded
     /// in-memory ledger (§FS-005-dispatch.4).

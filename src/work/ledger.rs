@@ -706,6 +706,91 @@ mod compat_tests {
         assert_eq!(written["branch"], "fix/issue-43");
     }
 
+    /// A ledger a newer ephor wrote is refused, and refused by name.
+    ///
+    /// Reading forward has always been safe here: an unknown field is absent
+    /// and the record is otherwise itself. Carrying a plan named before the
+    /// digest over is the first change that makes it unsafe, because it rewrites
+    /// a recorded name in place (§FS-005-dispatch.3.1) — so an older binary does
+    /// not merely miss a field, it recomputes a stem the newer one has already
+    /// moved past and opens a second plan about a matter that has one, which is
+    /// the very thing §FS-005-dispatch.3 forbids. The remedy is to upgrade, and
+    /// nothing in the file says so, so the refusal names the file and both
+    /// versions.
+    ///
+    /// It is a ceiling and not a wall: the version this binary writes still
+    /// reads, which is the first half of the test.
+    #[test]
+    fn a_ledger_from_a_newer_ephor_is_refused_by_name() {
+        let tmp = tempfile::tempdir().unwrap();
+        let entries = serde_json::json!({
+            "github-prs:acme/widget#42": {
+                "project": "widget",
+                "title": "Retry window",
+                "root": "/w/panta",
+                "checkout": "/w",
+                "plan_id": "github-prs-acme-widget-42-922ddbdc",
+                "plan": "/w/panta/github-prs-acme-widget-42-922ddbdc.rhei.md",
+                "dispatches": []
+            }
+        });
+
+        // What this binary writes, it reads.
+        {
+            let path = tmp.path().join("current.json");
+            fs::write(
+                &path,
+                serde_json::to_string_pretty(&serde_json::json!({
+                    "version": version(),
+                    "entries": entries,
+                }))
+                .unwrap(),
+            )
+            .unwrap();
+            let _ledger_path = use_test_path(path);
+            let ledger = load().expect("the version this binary writes still reads");
+            assert_eq!(ledger.version, version());
+            assert_eq!(ledger.entries.len(), 1);
+        }
+
+        // One written by a newer ephor, it refuses.
+        let newer = version() + 1;
+        let path = tmp.path().join("newer.json");
+        fs::write(
+            &path,
+            serde_json::to_string_pretty(&serde_json::json!({
+                "version": newer,
+                "entries": entries,
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+        let _ledger_path = use_test_path(path.clone());
+        let err = load().expect_err("a ledger from a newer ephor is refused");
+
+        // The path's own characters are no evidence about the message, so they
+        // are taken out before the rest of it is read.
+        let says = err.to_string();
+        let shown = path.display().to_string();
+        assert!(
+            says.contains(&shown),
+            "the refusal must name the file: {says}"
+        );
+        let rest = says.replace(&shown, "<the ledger>");
+        assert!(
+            rest.to_lowercase().contains("version"),
+            "the refusal must say what it is about: {says}"
+        );
+        assert!(
+            rest.contains(&newer.to_string()),
+            "the refusal must name the version it found: {says}"
+        );
+        assert!(
+            rest.contains(&version().to_string()),
+            "the refusal must name the version it understands: {says}"
+        );
+    }
+
     /// A ledger written before the runtime was carved out still reads: the
     /// field was named for the runtime and is named for the plan now, and the
     /// migration is what keeps an upgrade from losing the record of what was

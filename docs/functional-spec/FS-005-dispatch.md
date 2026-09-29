@@ -218,14 +218,29 @@ uniqueness, so a cap would buy tidiness only, and how long a branch name may be
 is a rule about branch names rather than about this field
 ([§25](#25-work-about-a-matter-with-no-branch-can-mint-the-branch-it-needs)).
 
-**It is not the name of the matter's plan file, and is not meant to be.** A plan
-file's stem is reduced from the same id by the same slugging, and then held to
-the runtime's own grammar for a file stem, which refuses a stem beginning with a
-digit where neither git nor a filesystem cares
-([§3](#3-one-rhei-per-item-one-ticket-per-dispatch)). So the two strings agree
-for most ids and deliberately differ for some, because they answer to different
-grammars. A reader who finds that out by accident reads it as a bug, which is
-why it is written here.
+**The matter's plan file is named from this field, and not from a second
+reduction of the same id.** A plan file's stem *is* the value above, held
+*additionally* to the runtime's own grammar for a file stem, which refuses a stem
+beginning with anything but an ASCII letter where neither git nor a filesystem
+cares ([§3](#3-one-rhei-per-item-one-ticket-per-dispatch)). So the two strings
+are one string for every id whose readable half begins with a letter, and differ
+in exactly one way where that guard fires — the stem carries `item-` in front of
+what this field renders, and nothing else about it moves:
+
+| the matter's id | its `{id_slug}` | its plan file's stem |
+|---|---|---|
+| `rhei:window.retry-1` | `rhei-window-retry-1-17bbeb3b` | *the same* |
+| `rhei:window-retry.1` | `rhei-window-retry-1-5ff4987f` | *the same* |
+| `2fa:acme/vault#3` | `2fa-acme-vault-3-b0ad6965` | `item-2fa-acme-vault-3-b0ad6965` |
+| `:::` | `item-20bed5dd` | *the same* |
+
+Two grammars, one reduction and one digest. The digest is on the stem for the
+same reason it is on the field, and is the same digest: two unrelated matters
+that read down to one slug stay two. A stem without it is a name more than one
+matter answers to, and where the field's collision would cost a shared branch, a
+stem's costs the record itself — the second matter's work is written into the
+first's plan rather than merely misnamed
+([§3](#3-one-rhei-per-item-one-ticket-per-dispatch)).
 
 **Readable is not the same as best, and defined everywhere is not either.**
 A matter that has a `{number}` renders both fields and neither wins: `fix/issue-95`
@@ -268,6 +283,27 @@ item appends a ticket to that root's plan; dispatching into a different root
 creates the matter plan there. Ticket ids are unique across the matter's whole
 dispatch history, not merely within one root, so two of its plans never name
 different tickets alike.
+
+**And the naming is injective.** A plan's name is a function of the matter's id
+alone — the stem [§2](#2-the-ticket-carries-what-ephor-knows-not-a-link-to-it)
+renders — so two different matters never name one plan, however alike their ids
+read. The rule above bounds a matter to one plan; this is the other direction of
+the same fact, and it is the half that carries the weight. A plan file two
+matters both resolve to is not a misnamed file: it is two matters' work in one
+record, the second matter's ticket ordered behind the first's
+([§5](#5-an-item-that-moved-reopens-its-work)) and held there until work about
+something else is finished — silently, since both dispatches did what they were
+asked.
+
+**Where both names hold a plan about this matter, dispatch refuses and names both
+files.** A root that has been carried over
+([§3.1](#31-a-plan-named-before-the-digest-is-carried-over)) holds one plan per
+matter. A root an older ephor wrote into afterwards can hold two: one at the stem
+[§2](#2-the-ticket-carries-what-ephor-knows-not-a-link-to-it) renders and one at
+the name that ephor computed. Which of the two records of the same work to go on
+with is the reader's call and not dispatch's, so dispatch stops, says both paths,
+and writes no ticket. It is the one refusal this naming adds, and that mixed pair
+is the only way to reach it.
 
 The item first resolves the checkout and branch where its work runs — the same
 resolution actions already use
@@ -320,6 +356,38 @@ checkout, because there is none to make: the remedies are to put the branch in
 that root or to give the project branch workspaces of its own, and both are the
 reader's to choose between.
 
+### 3.1 A plan named before the digest is carried over
+
+A plan whose stem was computed before the digest was part of it is **carried
+over**, once: the plan file, the results and the artifacts keyed by that stem,
+and the recorded plan id all move **together**. Together is the whole of it. Every
+reading command answers from the record rather than from the disk
+([§4](#4-the-ledger-is-ephors-record-and-never-the-truth-about-the-work)), so a
+record naming a file that is no longer there is the one outcome a rename must not
+produce — and a file left behind at a name nothing names any more is the other,
+because a sweep that finds plans by looking would run it
+([§24](#24-work-nobody-has-to-start-starts-itself)).
+
+It is decided per entry and out of the entry itself: a recorded name that is not
+the stem of its own id is carried over, and one that already is, is left alone.
+Nothing is written down about whether it has run, because the question is answered
+by looking — so it is idempotent, and a root some other binary or a hand edit has
+already moved is not skipped for having been touched.
+
+**A root a run is holding waits.** Moving a plan out from under a live run is the
+one way this could lose work, and there is nothing to gain by hurrying it: the
+root is carried over the next time ephor reads its ledger and no run is there.
+
+**A workflow already laid keeps the name it was recorded under**
+([§19](#19-a-workflow-the-runtime-offers-is-an-action-and-its-inputs-are-answered-here)).
+A laid plan's name is a record and not a lookup — nothing recomputes it — so
+moving it would buy nothing and would break the one path its reader has.
+
+What was carried over is said on the command's own output and carried in `--json`
+([§REQ-002-parity](../requirements/REQ-002-parity.md)). It is a fact only ephor
+knows and only at that moment: the reader who had a path to a plan does not have
+one now, and a rename nobody was told about reads as work that vanished.
+
 ## 4. The ledger is ephor's record, and never the truth about the work
 
 ephor keeps a ledger of what it dispatched: the item, the recipe, the plan, and
@@ -368,8 +436,15 @@ green: the next sync may hand the dependent over, without a label edit or a
 person releasing it. Stale work is reopened by appending a ticket to the same plan
 that says what changed since the last one and asks for the difference, ordered
 after it — after the last ticket that was not cancelled
-([§16](#16-work-that-should-not-go-on-is-cancelled-and-the-plan-says-so)),
-since a cancelled prior is one nothing waits out. Not by opening a second plan: the point of the record is that one
+([§16](#16-work-that-should-not-go-on-is-cancelled-and-the-plan-says-so))
+**and that is about this matter**, since a cancelled prior is one nothing waits
+out and a prior about another matter is one this work was never waiting for.
+Which matter a ticket is about is read from the `id` the ticket itself records
+([§8](#8-the-ticket-carries-the-item-as-data-not-only-as-prose)), which is a fact
+about the work and so is read from the plan rather than from the ledger
+([§4](#4-the-ledger-is-ephors-record-and-never-the-truth-about-the-work)); a
+ticket recording no `id` is no evidence of another matter and stays eligible. Not
+by opening a second plan: the point of the record is that one
 item's work reads in one place, in order.
 
 What is asked for is chosen against the item as it now is, preferring what was
