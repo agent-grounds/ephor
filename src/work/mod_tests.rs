@@ -4488,7 +4488,9 @@ fn an_unreadable_plan_beside_a_readable_one_is_noted_and_not_a_silent_refusal() 
 /// no recipe placement at all, so a fallback applied over the recipe list
 /// alone would read the entry's own plan path beside the laid plan — a file
 /// ephor never wrote for this entry, whose task would then lead the row
-/// (§FS-005-dispatch.19).
+/// (§FS-005-dispatch.19). It stays quiet for the plan the record named and
+/// nobody could read as well: the fallback is for a record that names no
+/// plan at all, and a stray file may not answer for one that is gone.
 #[test]
 fn the_legacy_fallback_does_not_fire_beside_a_plan_a_workflow_laid() {
     let tmp = tempfile::tempdir().unwrap();
@@ -4535,6 +4537,26 @@ fn the_legacy_fallback_does_not_fire_beside_a_plan_a_workflow_laid() {
     let plans = recorded_recipe_plans(&entry);
     assert_eq!(plans.len(), 1);
     assert_eq!(plans[0].path, stray);
+
+    // And where the laid plan the record named cannot be read, the record
+    // still named one: the fallback stays quiet, so the stray file does not
+    // answer for the plan that is gone and the entry is left for `--missing`
+    // rather than being made to look as if its work were going.
+    let mut unread = entry.clone();
+    unread.dispatches = vec![laying_dispatch("gone-implement", &root)];
+    let work = recorded_plans(&unread);
+    assert!(
+        work.plans.is_empty(),
+        "the fallback fired beside a laid plan the record named but nobody could read"
+    );
+    assert_eq!(work.unread, 1);
+
+    let status = status_of_entry(&work_config(), &unread, None);
+    assert!(
+        status.tickets.is_empty(),
+        "the stray file's task was counted"
+    );
+    assert!(status.unreadable());
 }
 
 /// The drafted-reply contract is untouched by the widening

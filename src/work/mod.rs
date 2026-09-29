@@ -5465,8 +5465,12 @@ pub fn recorded_plans(entry: &Entry) -> RecordedWork {
     // all, and this reading is the widened one: an entry whose work is a
     // plan a workflow laid has no recipe placement, and reading its own plan
     // path beside that laid plan would put a file ephor never wrote into the
-    // matter's work (§FS-005-dispatch.19, §FS-005-dispatch.35).
-    if plans.is_empty() && work.plans.is_empty() {
+    // matter's work (§FS-005-dispatch.19, §FS-005-dispatch.35). A name
+    // nobody could read counts as placed for this question: the record did
+    // name a plan, so this is not the provenance-less ledger the fallback is
+    // for, and a stray file at the entry's own path would otherwise answer
+    // for the laid plan that is gone.
+    if plans.is_empty() && work.plans.is_empty() && work.unread == 0 {
         plans.extend(legacy_placement(entry));
     }
     plans.extend(work.plans);
