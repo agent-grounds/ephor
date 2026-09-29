@@ -35,7 +35,7 @@ use support::*;
 /// branch, so no shipped recipe covers it and the workflow entry gets its turn.
 const ITEM: &str = "acmeforge:acme/widget#42";
 /// The plan the entry would lay about it, by the id ephor derives.
-const PLAN: &str = "acmeforge-acme-widget-42-two-family-review";
+const PLAN: &str = "acmeforge-acme-widget-42-two-family-review-cc709c97";
 /// The entry's own id, which is what the clause names.
 const ENTRY: &str = "two-family-review";
 

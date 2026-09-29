@@ -4,7 +4,9 @@
 //! and git takes neither: a `:` is forbidden in a ref and a `#` is a comment
 //! everywhere else. So a name is made from it — the readable half for whoever
 //! reads the branch, and a digest of the whole id so that two ids reading down
-//! to one slug stay two names.
+//! to one slug stay two names. The matter's plan file is named from the same
+//! reduction, held additionally to the runtime's own grammar for a file stem
+//! (§FS-005-dispatch.2, §FS-005-dispatch.3).
 //!
 //! Reducing text to a name is pure text work with no store behind it, which is
 //! why it sits in core beside [`crate::ticket_ids`] rather than in whatever
@@ -54,16 +56,35 @@ pub fn fingerprint(text: &str) -> String {
 ///
 /// An id of punctuation alone leaves no readable half, and renders
 /// `item-<digest>` rather than a name beginning with `-`. A leading digit is
-/// kept: git and a filesystem both take one, and holding this to the runtime's
-/// file-stem grammar is what would make it the matter's plan file stem, which
-/// it deliberately is not.
+/// kept: git and a filesystem both take one, and holding this additionally to
+/// the runtime's file-stem grammar is what makes it the matter's plan file
+/// stem — one reduction and one digest under two grammars, which is the whole
+/// of the difference between the two strings.
 pub fn id_slug(id: &str) -> String {
-    let stem = readable(id);
-    let stem = match stem.is_empty() {
+    format!("{}-{}", named(&readable(id)), fingerprint(id))
+}
+
+/// What a name reduced from a pair of ids renders: the readable half of the two
+/// joined, and a [`fingerprint`] of the **pair** (§FS-005-dispatch.2).
+///
+/// Joining two ids with a `-` and reducing the result is not injective over the
+/// pair, because the reduction collapses punctuation to a `-` too: `a-b` and
+/// `b` beside `a` read down to one name. So the digest is taken over a spelling
+/// the pair can be read back out of — the length of the first in front of both
+/// — rather than over the join the readable half is made from.
+pub fn pair_slug(first: &str, second: &str) -> String {
+    let readable = named(&readable(&format!("{first}-{second}")));
+    let over = format!("{}-{first}{second}", first.len());
+    format!("{readable}-{}", fingerprint(&over))
+}
+
+/// A readable half that is a name: `item` where the id held no alphanumeric at
+/// all, so what is rendered never begins with the digest's own separator.
+fn named(readable: &str) -> String {
+    match readable.is_empty() {
         true => "item".to_string(),
-        false => stem,
-    };
-    format!("{stem}-{}", fingerprint(id))
+        false => readable.to_string(),
+    }
 }
 
 #[cfg(test)]
@@ -126,6 +147,34 @@ mod tests {
         }
     }
 
+    /// A name reduced from a pair is a function of the pair and not of the
+    /// string the pair was joined into (§FS-005-dispatch.2). Where the join is
+    /// the same string, the readable half is too and the digest is what keeps
+    /// the two names apart — which is the whole reason the digest is not taken
+    /// over the join.
+    #[test]
+    fn two_pairs_that_join_to_one_string_are_two_names() {
+        // One join, from two different pairs.
+        assert_eq!(
+            format!("{}-{}", "rhei:window.retry-1", "agora"),
+            format!("{}-{}", "rhei:window.retry", "1-agora")
+        );
+        assert_ne!(
+            pair_slug("rhei:window.retry-1", "agora"),
+            pair_slug("rhei:window.retry", "1-agora")
+        );
+        // And the pair's name is still a name, whatever either half held.
+        for (first, second) in [("rhei:window.1", "agora"), (":::", ""), ("", "")] {
+            let name = pair_slug(first, second);
+            assert!(
+                name.chars()
+                    .all(|ch| ch.is_ascii_lowercase() || ch.is_ascii_digit() || ch == '-')
+                    && !name.starts_with('-'),
+                "{first} and {second} rendered {name}"
+            );
+        }
+    }
+
     /// An id with no readable half at all still renders a name, and one
     /// beginning with a digit keeps it — which is where this and the matter's
     /// plan file stem deliberately part company (§FS-005-dispatch.2).
@@ -133,7 +182,7 @@ mod tests {
     fn an_id_with_nothing_readable_is_still_a_name_and_a_digit_stays() {
         assert_eq!(id_slug(":::"), "item-20bed5dd");
         assert_eq!(id_slug(""), "item-811c9dc5");
-        // `plan_id` would write `item-42` here, because the runtime's
+        // `plan_id` writes `item-42-87e38583` here, because the runtime's
         // file-stem grammar refuses a stem beginning with a digit. Neither git
         // nor a filesystem does, so this field keeps it.
         assert_eq!(id_slug("42"), "42-87e38583");

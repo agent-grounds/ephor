@@ -2933,7 +2933,7 @@ is open at all and `ephor work forget --done` clears it
 ```
  ephor — work — #17 Humanize durations in the log reader
   the plan
-    /home/you/c/demo/panta/forge-demo-17.rhei.md
+    /home/you/c/demo/panta/forge-demo-17-4c68d162.rhei.md
 
   what has been asked for
     ✓ fix-gate-1    fix the red gate  [done]
@@ -3284,14 +3284,14 @@ tracking uses:
       "project": "widget",
       "title": "Retry window",
       "root": "/home/you/c/acme/widget/panta",
-      "rhei": "github-prs-acme-widget-42",
-      "plan": "/home/you/c/acme/widget/panta/github-prs-acme-widget-42.rhei.md",
+      "rhei": "github-prs-acme-widget-42-922ddbdc",
+      "plan": "/home/you/c/acme/widget/panta/github-prs-acme-widget-42-922ddbdc.rhei.md",
       "dispatches": [
         { "ticket": "fix-gate-1", "recipe": "fix-gate", "at": "2026-08-12T06:10:00Z",
           "snapshot": { "updated_at": "…", "state": "open", "passed": 12,
                         "failed": 2, "running": 0, "blocked": false, "messages": 3 } },
         { "ticket": "", "recipe": "review-change", "at": "2026-08-12T09:31:00Z",
-          "plan": "github-prs-acme-widget-42-review-change",
+          "plan": "github-prs-acme-widget-42-review-change-47d86789",
           "snapshot": { "…": "…" } }
       ]
     }
@@ -3608,7 +3608,7 @@ them. It is the answer to "what is ephor doing right now", in one place
         ‖ acmeforge-app-101.answer-1  · Retry window on app 101  [fix]  queued
         ✓ 2 finished
     ✋ demo · ~/c/demo/panta   claimed, not scheduled
-        ✋ forge-demo-17.fix-1  · Humanize durations  [fix]  claimed by luna — free it: rhei release forge-demo-17.fix-1
+        ✋ forge-demo-17-4c68d162.fix-1  · Humanize durations  [fix]  claimed by luna — free it: rhei release forge-demo-17-4c68d162.fix-1
 ```
 
 Within one operation the tickets read in order of urgency: what waits on you
@@ -4226,9 +4226,9 @@ work needs:
 ```console
 $ ephor work dispatch --project proj --dry-run
 would open Widen the retry window
-  task-work → …/proj/task/rhei-window-1-d8a9c768/panta/rhei-window-1.rhei.md#task-work-1
+  task-work → …/proj/task/rhei-window-1-d8a9c768/panta/rhei-window-1-d8a9c768.rhei.md#task-work-1
 would open Shorten the reset
-  task-work → …/proj/task/rhei-window-2-dba9cc21/panta/rhei-window-2.rhei.md#task-work-1
+  task-work → …/proj/task/rhei-window-2-dba9cc21/panta/rhei-window-2-dba9cc21.rhei.md#task-work-1
 note: task/rhei-window-1-d8a9c768 is not checked out — the dispatch would make …/proj/task/rhei-window-1-d8a9c768 first.
 note: task/rhei-window-2-dba9cc21 is not checked out — the dispatch would make …/proj/task/rhei-window-2-dba9cc21 first.
 
@@ -4244,6 +4244,24 @@ would silently change what the first already resolves to. So a task `retry-1` in
 a plan called `window` and a task `1` in a plan called `window-retry` mint
 `task/rhei-window-retry-1-17bbeb3b` and `task/rhei-window-retry-1-5ff4987f` —
 two names you must look twice at, and two trees.
+
+**The matter's plan file is named from the same field.** A plan file's stem
+*is* what `{id_slug}` renders, held additionally to the one rule the runtime has
+for a file stem: it must begin with an ASCII letter, and where the field's value
+does not, the stem carries `item-` in front of it. Nothing else about it moves,
+so `rhei:window.1` has its work in `rhei-window-1-d8a9c768.rhei.md` above. One
+reduction, one digest, two grammars — and for the same reason as the branch: two
+matters whose ids read alike are two plans rather than two matters' tickets in
+one file.
+
+**A plan named before the digest is carried over**, the first time `ephor work`
+runs after the upgrade. The plan file, the results and the artifacts named after
+its old stem, and ephor's own record of the name, all move together, and what
+moved is said on the command's output and in `--json` — so a path you had
+written down is a path ephor tells you about. A root a run is holding is left
+alone and carried over the next time there is no run in it. A workflow already
+laid keeps the name it was recorded under: nothing recomputes a laid plan's
+name, so moving it would only break the one path its reader has.
 
 Because every matter has an id, a template naming `{id_slug}` is **never
 withheld** for want of the field, and what it renders is always a name git will

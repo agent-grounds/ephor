@@ -546,6 +546,27 @@ pub fn load() -> Result<Ledger> {
         EphorError::Command(format!("Corrupt work ledger {}: {err}", path.display()))
     };
     let mut document: serde_json::Value = serde_json::from_str(&text).map_err(corrupt)?;
+    // A ledger a newer ephor wrote is refused rather than read forward. Reading
+    // forward was safe while an unknown field was simply absent; it stopped
+    // being safe when a recorded plan name became something ephor rewrites in
+    // place (§FS-005-dispatch.3.1), because this binary would recompute a stem
+    // the newer one has already moved past and open a second plan about a matter
+    // that has one (§FS-005-dispatch.3). The remedy is to upgrade and nothing in
+    // the file says so, so both versions are named.
+    let found = document
+        .get("version")
+        .and_then(serde_json::Value::as_u64)
+        .unwrap_or_else(|| u64::from(version()));
+    if found > u64::from(version()) {
+        return Err(EphorError::Command(format!(
+            "The work ledger {} is at version {found}, and this ephor reads version {}. \
+             A newer ephor wrote it, and reading it here would name plans the way this \
+             version does and open a second plan about work that already has one. \
+             Upgrade ephor, or move that file aside.",
+            path.display(),
+            version()
+        )));
+    }
     crate::work::runtime::migrate_ledger(&mut document);
     serde_json::from_value(document).map_err(corrupt)
 }

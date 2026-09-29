@@ -98,6 +98,35 @@ pub fn proposal(root: &Path, plan_id: &str) -> Option<Proposal> {
     })
 }
 
+/// Every file the runtime keyed by the plan stem `from` under this root, paired
+/// with where the same file belongs under the stem `to` (§FS-005-dispatch.3.1).
+///
+/// A result and an artifact are found by the stem they are named after rather
+/// than by a list of the names the shipped states write: this module reads what
+/// a run left behind and cannot know every file a machine put there, and a file
+/// left at a name nothing names any more is exactly what the carry-over is for.
+///
+/// The stem is matched with its separator, because the name the digest renders
+/// begins with the name it replaces — without the `.` a carried-over file would
+/// be carried over a second time.
+pub fn carried_over(root: &Path, from: &str, to: &str) -> Vec<(PathBuf, PathBuf)> {
+    let mut moves = Vec::new();
+    for dir in [root.join(RESULTS), root.join(ARTIFACTS)] {
+        let Ok(entries) = fs::read_dir(&dir) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let name = entry.file_name().to_string_lossy().into_owned();
+            let Some(rest) = name.strip_prefix(&format!("{from}.")) else {
+                continue;
+            };
+            moves.push((dir.join(&name), dir.join(format!("{to}.{rest}"))));
+        }
+    }
+    moves.sort();
+    moves
+}
+
 /// Record that a proposal was posted, by moving it aside. The file is kept
 /// rather than deleted: it is what was said in the reader's name.
 pub fn mark_posted(root: &Path, plan_id: &str) -> Result<()> {

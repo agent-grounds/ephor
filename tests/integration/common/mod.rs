@@ -368,9 +368,18 @@ pub fn duplicate_root_at(tmp: &Path, item: &str, checkout: &Path, root_name: &st
     let root = checkout.join(root_name);
     fs::create_dir_all(&root).unwrap();
     fs::copy(source_root.join("states.yaml"), root.join("states.yaml")).unwrap();
-    let plan_id = format!("github-prs-acme-widget-{label}");
+    // Named the way ephor names it, from the matter's own id: the stem carries
+    // a digest of that id, so a fixture that spelled it would be a second
+    // reduction of the same thing and would go stale with the first
+    // (§FS-005-dispatch.2).
+    let plan_id = ephor::work::runtime::plan::plan_id(item);
+    let _ = label;
     let plan = root.join(format!("{plan_id}.rhei.md"));
-    fs::copy(source_root.join("github-prs-acme-widget-42.rhei.md"), &plan).unwrap();
+    fs::copy(
+        source_root.join("github-prs-acme-widget-42-922ddbdc.rhei.md"),
+        &plan,
+    )
+    .unwrap();
 
     let mut copied = original;
     copied["root"] = json!(root);

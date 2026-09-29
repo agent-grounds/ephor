@@ -28,7 +28,7 @@ use serde_json::{json, Value};
 use support::*;
 
 /// The plan id ephor derives from the item's key.
-const PLAN: &str = "acmeforge-app-101";
+const PLAN: &str = "acmeforge-app-101-e48f01f0";
 const ITEM: &str = "acmeforge:app/101";
 
 /// A forge with one pull request of the reader's own, so there is a matter to
