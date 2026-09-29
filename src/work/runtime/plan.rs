@@ -74,8 +74,11 @@ pub const IGNORE: &str = ".gitignore";
 /// cannot drift apart.
 pub const CARRIED: &str = ".ephor";
 
-/// What a plan file is called: `<plan id>` and this.
-pub(super) const PLAN_SUFFIX: &str = ".rhei.md";
+/// What a plan file is called: `<plan id>` and this. The runtime's own word,
+/// so it is spelled here and referred to by this name everywhere else
+/// (§REQ-001-boundary.5) — including by a test that has to name the file a
+/// carry-over moved (§FS-005-dispatch.3.1).
+pub(crate) const PLAN_SUFFIX: &str = ".rhei.md";
 
 /// The older flat-plan spelling accepted by the task-store reader. It lives
 /// here with the rest of the binding's grammar rather than in the caller
@@ -2901,35 +2904,109 @@ metadata:
         assert!(plan.text().contains(DOSSIER_CLOSE));
     }
 
-    /// These four strings are on disk in every plan the runtime has ever laid,
-    /// so they are pinned as literals rather than derived: the reduction moved
-    /// to [`crate::slug::readable`] and none of them moved with it
-    /// (§FS-005-dispatch.2).
+    /// Two matters whose ids differ only in punctuation read down to one
+    /// readable half and must still be two plans: a stem they shared would put
+    /// the second matter's work into the first's record rather than merely
+    /// misname a file (§FS-005-dispatch.3).
+    ///
+    /// The stems are pinned as literals rather than derived, and they are the
+    /// literals §FS-005-dispatch.2 pins: a moved digit is a matter that every
+    /// later dispatch resolves to a second plan, and it should be caught here
+    /// rather than by a run that cannot find its own work.
     #[test]
-    fn an_items_id_becomes_a_file_the_runtime_will_accept() {
+    fn two_matters_that_read_down_to_one_slug_are_two_plans() {
+        // The report's own pair. The readable half is the same string, which
+        // is the whole reason the digest is not a tiebreaker.
         assert_eq!(
-            plan_id("github-prs:acme/widget#42"),
-            "github-prs-acme-widget-42"
+            crate::slug::readable("rhei:window.retry-1"),
+            crate::slug::readable("rhei:window-retry.1")
         );
-        assert_eq!(plan_id("forge:repo/123"), "forge-repo-123");
-        assert_eq!(plan_id("42"), "item-42");
-        assert_eq!(plan_id("///"), "item");
+        assert_ne!(
+            plan_id("rhei:window.retry-1"),
+            plan_id("rhei:window-retry.1")
+        );
+        assert_eq!(
+            plan_id("rhei:window.retry-1"),
+            "rhei-window-retry-1-17bbeb3b"
+        );
+        assert_eq!(
+            plan_id("rhei:window-retry.1"),
+            "rhei-window-retry-1-5ff4987f"
+        );
+        // And the pair the collision was first found on, a forge matter whose
+        // id differs from another's by one character's class.
+        assert_ne!(
+            plan_id("github-issues:acme/app#1"),
+            plan_id("github-issues:acme/app-1")
+        );
+        assert_eq!(
+            plan_id("github-issues:agent-grounds/ephor#127"),
+            "github-issues-agent-grounds-ephor-127-c1c7a9e5"
+        );
     }
 
-    /// And this is deliberately not what `{id_slug}` renders. The two guards
-    /// above are the runtime's file-stem grammar, which refuses a stem
-    /// beginning with a digit where neither git nor a filesystem cares — so
-    /// the two strings agree for most ids and part company for some, and a
-    /// reader who found that out by accident would read it as a bug
-    /// (§FS-005-dispatch.2).
+    /// The stem *is* `{id_slug}`, held additionally to the runtime's file-stem
+    /// grammar — one reduction and one digest under two grammars, which is what
+    /// makes §FS-005-dispatch.2's claim about the two strings checkable rather
+    /// than merely written.
+    ///
+    /// The grammar is the whole of the difference: where the field's value
+    /// begins with an ASCII letter the two are one string, and where it does
+    /// not the stem is that value with `item-` in front of it. No stem ever
+    /// begins with anything else, whatever the id held.
     #[test]
-    fn a_plan_file_stem_is_not_the_name_a_branch_is_minted_from() {
-        let id = "rhei:window.1";
-        assert_eq!(plan_id(id), "rhei-window-1");
-        assert_eq!(crate::slug::id_slug(id), "rhei-window-1-d8a9c768");
-        assert!(crate::slug::id_slug(id).starts_with(&plan_id(id)));
-        // Where the grammars disagree the strings do too, and only there.
-        assert_eq!(plan_id("42"), "item-42");
-        assert_eq!(crate::slug::id_slug("42"), "42-87e38583");
+    fn a_plan_stem_is_the_field_held_to_the_runtimes_grammar() {
+        for id in [
+            "rhei:window.1",
+            "rhei:window.retry-1",
+            "github-prs:acme/widget#42",
+            "forge:repo/123",
+            "2fa:acme/vault#3",
+            "42",
+            ":::",
+            "///",
+            "",
+            "  spaced  out  ",
+            "HEAD",
+        ] {
+            let field = crate::slug::id_slug(id);
+            let stem = plan_id(id);
+            let expected = match field.starts_with(|ch: char| ch.is_ascii_alphabetic()) {
+                true => field.clone(),
+                false => format!("item-{field}"),
+            };
+            assert_eq!(stem, expected, "{id}");
+            // The grammar this file stem answers to, on every id: a name that
+            // leads with a letter, and nothing in it a stem may not carry.
+            assert!(
+                stem.starts_with(|ch: char| ch.is_ascii_alphabetic()),
+                "{id} gave the stem {stem}"
+            );
+            assert!(
+                stem.chars()
+                    .all(|ch| ch.is_ascii_lowercase() || ch.is_ascii_digit() || ch == '-'),
+                "{id} gave the stem {stem}"
+            );
+        }
+        // The four strings the earlier contract pinned, as they read now. They
+        // are on disk in plans the runtime laid before the digest, which is
+        // what §FS-005-dispatch.3.1 carries over rather than leaves behind.
+        assert_eq!(
+            plan_id("github-prs:acme/widget#42"),
+            "github-prs-acme-widget-42-922ddbdc"
+        );
+        assert_eq!(plan_id("forge:repo/123"), "forge-repo-123-11912849");
+        assert_eq!(plan_id("42"), "item-42-87e38583");
+        assert_eq!(plan_id("///"), "item-1d37d324");
+        // And the one row of §FS-005-dispatch.2's table where the two strings
+        // are not the same string.
+        assert_eq!(
+            crate::slug::id_slug("2fa:acme/vault#3"),
+            "2fa-acme-vault-3-b0ad6965"
+        );
+        assert_eq!(
+            plan_id("2fa:acme/vault#3"),
+            "item-2fa-acme-vault-3-b0ad6965"
+        );
     }
 }

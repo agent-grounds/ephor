@@ -4656,3 +4656,484 @@ fn a_target_pinned_laid_task_contributes_no_flags_to_the_run() {
         "a run took flags from a task that names its own target"
     );
 }
+
+// ---------------------------------------------------------------------------
+// agent-grounds/ephor#127 — a plan's name is a function of the matter's id
+// (§FS-005-dispatch.2, §FS-005-dispatch.3, §FS-005-dispatch.3.1,
+// §FS-005-dispatch.5).
+// ---------------------------------------------------------------------------
+
+/// The two matters the report is about, as the feed keys them: their ids differ
+/// only in where the punctuation falls, so the readable half of each is the
+/// same string.
+const COLLIDING: [(&str, &str, &str); 2] = [
+    (
+        "rhei:window.retry-1",
+        "Widen the retry window",
+        "rhei-window-retry-1-17bbeb3b",
+    ),
+    (
+        "rhei:window-retry.1",
+        "Shorten the reset",
+        "rhei-window-retry-1-5ff4987f",
+    ),
+];
+
+/// The stem both of them are reduced to where the digest is not part of it.
+const PRE_DIGEST: &str = "rhei-window-retry-1";
+
+fn matter(id: &str, title: &str) -> crate::feed::model::Item {
+    crate::feed::model::Item {
+        id: id.to_string(),
+        project: "widget".to_string(),
+        source: "rhei".to_string(),
+        kind: crate::feed::model::ItemKind::Task,
+        role: None,
+        title: title.to_string(),
+        url: None,
+        state: Some("pending".to_string()),
+        needs_response: false,
+        updated_at: chrono::DateTime::parse_from_rfc3339("2026-09-29T03:40:00Z")
+            .unwrap()
+            .with_timezone(&Utc),
+        raw: serde_json::json!({}),
+    }
+}
+
+/// Every plan file in a work root, by file name and sorted, so an assertion
+/// reads as the listing a person would get.
+fn plans_in(root: &Path) -> Vec<String> {
+    let mut found: Vec<String> = fs::read_dir(root)
+        .map(|entries| {
+            entries
+                .filter_map(|entry| entry.ok())
+                .map(|entry| entry.file_name().to_string_lossy().into_owned())
+                .filter(|name| name.ends_with(plan::PLAN_SUFFIX))
+                .collect()
+        })
+        .unwrap_or_default();
+    found.sort();
+    found
+}
+
+/// The ticket section whose own heading is about `title`. The sections are
+/// taken after the `### Task ` heading and matched on that heading alone: the
+/// metadata block above them records every matter's title, so a match anywhere
+/// in the text would let the preamble answer for a ticket.
+fn ticket_about(text: &str, title: &str) -> Option<String> {
+    text.split("### Task ")
+        .skip(1)
+        .find(|section| {
+            section
+                .lines()
+                .next()
+                .is_some_and(|heading| heading.contains(title))
+        })
+        .map(String::from)
+}
+
+/// A plan on disk at `stem`, with one ticket recording `id` as its matter —
+/// the state a collision leaves behind, built out of a real dispatch rather
+/// than hand-written plan syntax so the metadata block is the one ephor writes.
+fn plan_about(dispatcher: &mut Dispatcher, root: &Path, id: &str, at_stem: &str) -> PathBuf {
+    let elsewhere = matter(id, "Work about something else");
+    dispatcher
+        .dispatch(&elsewhere, &issue_43_recipe("task-work"), None, false)
+        .expect("the other matter is dispatched");
+    let written = root.join(format!("{}{}", plan::plan_id(id), plan::PLAN_SUFFIX));
+    let wanted = root.join(format!("{at_stem}{}", plan::PLAN_SUFFIX));
+    if written != wanted {
+        fs::rename(&written, &wanted).expect("the other matter's plan is moved to this stem");
+    }
+    dispatcher.ledger.entries.remove(id);
+    wanted
+}
+
+/// A root holding one matter's plan, result and proposed reply at the stem it
+/// had before the digest, and a ledger entry naming that stem — what every
+/// machine that has run `ephor work dispatch` has on disk
+/// (§FS-005-dispatch.3.1). Returns the work root.
+fn root_named_before_the_digest(tmp: &Path, id: &str, title: &str) -> (PathBuf, PathBuf) {
+    let project = tmp.join("widget");
+    let root = project.join("panta");
+    fs::create_dir_all(&root).unwrap();
+    let plan = root.join(format!("{PRE_DIGEST}{}", plan::PLAN_SUFFIX));
+    fs::write(&plan, format!("# Rhei: {title}\n\n## Tasks\n")).unwrap();
+    let results = root.join("runtime/results");
+    fs::create_dir_all(&results).unwrap();
+    fs::write(
+        results.join(format!("{PRE_DIGEST}.task-work-1.md")),
+        "## Result\n\nthe window was widened\n",
+    )
+    .unwrap();
+    let artifacts = root.join("runtime/ephor");
+    fs::create_dir_all(&artifacts).unwrap();
+    fs::write(
+        artifacts.join(format!("{PRE_DIGEST}.reply.md")),
+        "a reply nobody has posted\n",
+    )
+    .unwrap();
+    let _ = id;
+    (project, root)
+}
+
+/// A ledger holding one entry for `id`, recording the pre-digest stem.
+fn ledger_naming_the_pre_digest_stem(id: &str, title: &str, root: &Path) -> Ledger {
+    let mut ledger = empty_ledger();
+    ledger.entries.insert(
+        id.to_string(),
+        Entry {
+            project: "widget".to_string(),
+            title: title.to_string(),
+            url: None,
+            root: root.to_path_buf(),
+            checkout: root.parent().unwrap().to_path_buf(),
+            branch: None,
+            plan_id: PRE_DIGEST.to_string(),
+            plan: root.join(format!("{PRE_DIGEST}{}", plan::PLAN_SUFFIX)),
+            dispatches: Vec::new(),
+            pool: None,
+        },
+    );
+    ledger
+}
+
+/// The report itself, end to end (agent-grounds/ephor#127). Two matters whose
+/// ids differ only in punctuation, dispatched into **one shared work root**
+/// with nothing minted and really written: two plan files, one ticket each, and
+/// neither ticket ordered behind the other.
+///
+/// A shared stem does not merely misname a file. The second matter's ticket is
+/// written into the first matter's record and ordered after it
+/// (§FS-005-dispatch.5), so a run will not reach it until work about something
+/// else is finished — and both dispatches exit saying they opened the work
+/// (§FS-005-dispatch.3).
+#[test]
+fn two_matters_that_read_down_to_one_slug_get_two_plans() {
+    let tmp = tempfile::tempdir().unwrap();
+    let _ledger_path = ledger::use_test_path(tmp.path().join("state/work.json"));
+    let project = tmp.path().join("widget");
+    fs::create_dir_all(&project).unwrap();
+    let root = project.join("panta");
+
+    let mut dispatcher = issue_43_dispatcher(&project, empty_ledger());
+    for (id, title, _) in COLLIDING {
+        dispatcher
+            .dispatch(
+                &matter(id, title),
+                &issue_43_recipe("task-work"),
+                None,
+                false,
+            )
+            .expect("both matters are handed over");
+    }
+    dispatcher.save().unwrap();
+
+    // One plan per matter, and the names §FS-005-dispatch.2 pins.
+    assert_eq!(
+        plans_in(&root),
+        vec![
+            format!("{}{}", COLLIDING[0].2, plan::PLAN_SUFFIX),
+            format!("{}{}", COLLIDING[1].2, plan::PLAN_SUFFIX),
+        ],
+        "two matters that read down to one slug share a plan file"
+    );
+
+    for (id, title, stem) in COLLIDING {
+        let path = root.join(format!("{stem}{}", plan::PLAN_SUFFIX));
+        let text = fs::read_to_string(&path).expect("this matter has a plan of its own");
+        assert!(text.contains(title), "{stem} is not about {title}");
+        assert_eq!(
+            text.matches("### Task ").count(),
+            1,
+            "{stem} carries more than this matter's own ticket:\n{text}"
+        );
+        assert!(
+            !text.contains("**Prior:**"),
+            "this matter's only ticket waits on another matter's:\n{text}"
+        );
+        // And the other matter is nowhere in it, neither as an id nor as a
+        // title: the plan is the record of one matter's work.
+        let other = COLLIDING.iter().find(|(other, _, _)| *other != id).unwrap();
+        assert!(!text.contains(other.0), "{stem} records {}", other.0);
+        assert!(!text.contains(other.1), "{stem} is about {} too", other.1);
+
+        // What ephor recorded and what is on disk are the same file.
+        let entry = &dispatcher.ledger.entries[id];
+        assert_eq!(entry.plan_id, stem);
+        assert_eq!(entry.plan, path);
+    }
+}
+
+/// A ticket's `**Prior:**` never names a ticket about a different matter
+/// (§FS-005-dispatch.5). Injective stems make the reported symptom unreachable,
+/// but that is a consequence rather than a guarantee: a plan can still hold a
+/// ticket about another matter — an older ephor wrote one, or a hand did — and
+/// the ordering is read from the `id` the ticket itself records
+/// (§FS-005-dispatch.8) rather than from whichever ticket came last.
+///
+/// A reopen of the *same* matter still chains, which is the half that says this
+/// is a filter and not a removal.
+#[test]
+fn a_prior_never_names_a_ticket_about_another_matter() {
+    let tmp = tempfile::tempdir().unwrap();
+    let _ledger_path = ledger::use_test_path(tmp.path().join("state/work.json"));
+    let project = tmp.path().join("widget");
+    fs::create_dir_all(&project).unwrap();
+    let root = project.join("panta");
+    let (id, title, _) = COLLIDING[0];
+
+    // A plan standing where this matter's work belongs, holding one ticket
+    // about something else entirely.
+    let mut dispatcher = issue_43_dispatcher(&project, empty_ledger());
+    let path = plan_about(&mut dispatcher, &root, "rhei:other.9", &plan::plan_id(id));
+    let before = fs::read_to_string(&path).unwrap();
+    assert!(
+        before.contains("rhei:other.9"),
+        "the fixture must hold a ticket about another matter:\n{before}"
+    );
+
+    // This matter's first ticket is appended to it, and waits on nothing. The
+    // sections are taken after the heading so that the metadata block above
+    // them — which records every matter's title — cannot answer for a ticket.
+    dispatcher
+        .dispatch(
+            &matter(id, title),
+            &issue_43_recipe("task-work"),
+            None,
+            false,
+        )
+        .expect("this matter is handed over");
+    let text = fs::read_to_string(&path).unwrap();
+    let mine = ticket_about(&text, title).expect("this matter's ticket was written");
+    assert!(
+        !mine.contains("**Prior:**"),
+        "this matter's ticket waits on a ticket about another matter:\n{mine}"
+    );
+    let mine_id = mine.split(':').next().unwrap().trim().to_string();
+
+    // And a reopen of this same matter does chain, to this matter's own last
+    // ticket and to no other.
+    dispatcher
+        .dispatch(
+            &matter(id, title),
+            &issue_43_recipe("task-work"),
+            None,
+            false,
+        )
+        .expect("this matter is reopened");
+    let text = fs::read_to_string(&path).unwrap();
+    let last = text
+        .split("### Task ")
+        .skip(1)
+        .last()
+        .expect("a reopened ticket was written")
+        .to_string();
+    assert!(
+        last.contains(&format!("**Prior:** Task {mine_id}")),
+        "a reopen did not chain to this matter's own last ticket ({mine_id}):\n{last}"
+    );
+}
+
+/// A plan named before the digest is carried over, once: the plan file, the
+/// result the runtime wrote and the reply nobody posted all move to the stem
+/// the matter's id renders now, and the recorded name moves with them
+/// (§FS-005-dispatch.3.1).
+///
+/// Together is the whole of it. A record naming a file that is not there is the
+/// one outcome a rename must not produce, and a file left behind at a name
+/// nothing names any more is the other. The plan's own bytes are untouched, and
+/// a second pass moves nothing — the question is answered by looking, so there
+/// is nothing written down about whether it has run.
+#[test]
+fn a_plan_named_before_the_digest_is_carried_over() {
+    let tmp = tempfile::tempdir().unwrap();
+    let _ledger_path = ledger::use_test_path(tmp.path().join("state/work.json"));
+    let (id, title, digested) = COLLIDING[0];
+    let (project, root) = root_named_before_the_digest(tmp.path(), id, title);
+    let was = fs::read_to_string(root.join(format!("{PRE_DIGEST}{}", plan::PLAN_SUFFIX))).unwrap();
+    let mut dispatcher = issue_43_dispatcher(
+        &project,
+        ledger_naming_the_pre_digest_stem(id, title, &root),
+    );
+
+    let moved = dispatcher
+        .carry_over_plan_names()
+        .expect("a root named before the digest is carried over");
+
+    // The plan, under its new name and with its bytes unchanged.
+    let now = root.join(format!("{digested}{}", plan::PLAN_SUFFIX));
+    assert_eq!(
+        plans_in(&root),
+        vec![format!("{digested}{}", plan::PLAN_SUFFIX)],
+        "the plan was not carried over, or was left behind at both names"
+    );
+    assert_eq!(
+        fs::read_to_string(&now).unwrap(),
+        was,
+        "the plan's bytes moved"
+    );
+
+    // The runtime's result and the reply nobody posted, keyed by the same stem.
+    assert!(
+        root.join(format!("runtime/results/{digested}.task-work-1.md"))
+            .exists(),
+        "the recorded result was not carried over"
+    );
+    assert!(
+        !root
+            .join(format!("runtime/results/{PRE_DIGEST}.task-work-1.md"))
+            .exists(),
+        "the recorded result was left behind at its old name"
+    );
+    assert!(
+        root.join(format!("runtime/ephor/{digested}.reply.md"))
+            .exists(),
+        "the unposted reply was not carried over"
+    );
+    assert!(
+        !root
+            .join(format!("runtime/ephor/{PRE_DIGEST}.reply.md"))
+            .exists(),
+        "the unposted reply was left behind at its old name"
+    );
+
+    // And ephor's own record moved in the same step, so nothing reads as gone.
+    let entry = &dispatcher.ledger.entries[id];
+    assert_eq!(entry.plan_id, digested);
+    assert_eq!(entry.plan, now);
+
+    // It is a fact only ephor knows, so it is said (§REQ-002-parity).
+    assert_eq!(
+        moved.len(),
+        1,
+        "what was carried over was not reported: {moved:?}"
+    );
+    let said = &moved[0];
+    assert!(
+        said.contains(PRE_DIGEST),
+        "the report does not say what moved: {said}"
+    );
+    assert!(
+        said.contains(digested),
+        "the report does not say where it went: {said}"
+    );
+
+    // Idempotent: a second pass finds nothing left to do and says so.
+    let again = dispatcher
+        .carry_over_plan_names()
+        .expect("a second pass is a no-op");
+    assert!(
+        again.is_empty(),
+        "a carried-over root was carried over twice: {again:?}"
+    );
+    assert_eq!(
+        plans_in(&root),
+        vec![format!("{digested}{}", plan::PLAN_SUFFIX)]
+    );
+    assert_eq!(dispatcher.ledger.entries[id].plan_id, digested);
+}
+
+/// A root a run is holding waits (§FS-005-dispatch.3.1). Moving a plan out from
+/// under a live run is the one way the carry-over could lose work, and there is
+/// nothing to gain by hurrying it — so nothing moves while the root's run lock
+/// is held, and the next pass with no run there moves it.
+#[test]
+fn a_root_a_run_is_holding_is_carried_over_later() {
+    let tmp = tempfile::tempdir().unwrap();
+    let _ledger_path = ledger::use_test_path(tmp.path().join("state/work.json"));
+    let (id, title, digested) = COLLIDING[0];
+    let (project, root) = root_named_before_the_digest(tmp.path(), id, title);
+    let mut dispatcher = issue_43_dispatcher(
+        &project,
+        ledger_naming_the_pre_digest_stem(id, title, &root),
+    );
+
+    // A run is there, in the only way the watch can tell (§FS-005-dispatch.15.2).
+    fs::create_dir_all(root.join(".rhei")).unwrap();
+    fs::write(root.join(".rhei/run.lock"), "").unwrap();
+    let holder = fs::File::open(root.join(".rhei/run.lock")).unwrap();
+    holder.lock().unwrap();
+    assert!(
+        runtime::watch::live(&dispatcher.global, &root),
+        "the fixture did not make the root read as live"
+    );
+
+    let held = dispatcher
+        .carry_over_plan_names()
+        .expect("a held root is not an error");
+    assert!(
+        held.is_empty(),
+        "a held root was reported as carried over: {held:?}"
+    );
+    assert_eq!(
+        plans_in(&root),
+        vec![format!("{PRE_DIGEST}{}", plan::PLAN_SUFFIX)],
+        "a plan was moved out from under a live run"
+    );
+    assert_eq!(dispatcher.ledger.entries[id].plan_id, PRE_DIGEST);
+
+    // The run ends, and the next pass carries it over.
+    holder.unlock().unwrap();
+    drop(holder);
+    let moved = dispatcher
+        .carry_over_plan_names()
+        .expect("the root is carried over once no run is there");
+    assert_eq!(
+        moved.len(),
+        1,
+        "the root was not carried over later: {moved:?}"
+    );
+    assert_eq!(
+        plans_in(&root),
+        vec![format!("{digested}{}", plan::PLAN_SUFFIX)]
+    );
+    assert_eq!(dispatcher.ledger.entries[id].plan_id, digested);
+}
+
+/// Where the digested name **and** a pre-digest name each hold a plan about one
+/// matter, the carry-over refuses and names both files (§FS-005-dispatch.3).
+///
+/// Only a mixed pair of binaries reaches this: an older ephor writing into a
+/// root that has already been carried over recomputes the pre-digest stem and
+/// opens a second plan. Which of two records of the same work to go on with is
+/// the reader's call and not ephor's, so it stops, says both paths, and moves
+/// and writes nothing.
+#[test]
+fn both_names_holding_a_plan_is_refused_by_name() {
+    let tmp = tempfile::tempdir().unwrap();
+    let _ledger_path = ledger::use_test_path(tmp.path().join("state/work.json"));
+    let (id, title, digested) = COLLIDING[0];
+    let (project, root) = root_named_before_the_digest(tmp.path(), id, title);
+    let old = root.join(format!("{PRE_DIGEST}{}", plan::PLAN_SUFFIX));
+    let new = root.join(format!("{digested}{}", plan::PLAN_SUFFIX));
+    fs::write(&new, format!("# Rhei: {title}\n\n## Tasks\n")).unwrap();
+    let before = (
+        fs::read_to_string(&old).unwrap(),
+        fs::read_to_string(&new).unwrap(),
+    );
+    let mut dispatcher = issue_43_dispatcher(
+        &project,
+        ledger_naming_the_pre_digest_stem(id, title, &root),
+    );
+
+    let err = dispatcher
+        .carry_over_plan_names()
+        .expect_err("two plans about one matter is refused, not resolved");
+
+    let says = err.to_string();
+    assert!(
+        says.contains(&old.display().to_string()),
+        "the refusal must name the plan it found at the old stem: {says}"
+    );
+    assert!(
+        says.contains(&new.display().to_string()),
+        "the refusal must name the plan it found at the new stem: {says}"
+    );
+
+    // And nothing moved, nothing was written, and the record still says what it
+    // said: a refusal leaves the reader exactly what they had.
+    assert_eq!(fs::read_to_string(&old).unwrap(), before.0);
+    assert_eq!(fs::read_to_string(&new).unwrap(), before.1);
+    assert_eq!(dispatcher.ledger.entries[id].plan_id, PRE_DIGEST);
+}
