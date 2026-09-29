@@ -11,6 +11,12 @@ import sys
 from pathlib import Path
 from typing import Sequence
 
+# `__file__` is set under `python scripts/...` and under the test harness's
+# load-by-path alike, so this reaches the shared cut from both (§FS-002-release.2).
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+from changelog_unreleased import bullet_blocks, unreleased_range  # noqa: E402
+
 
 VERSION_RE = re.compile(r"^[0-9]+\.[0-9]+\.[0-9]+$")
 UNRELEASED_RE = re.compile(r"^## Unreleased\s*$")
@@ -18,8 +24,6 @@ RELEASE_RE = re.compile(
     r"^## (?P<number>[0-9]+)\. \[(?P<version>[0-9]+\.[0-9]+\.[0-9]+)\] — (?P<date>[0-9]{4}-[0-9]{2}-[0-9]{2})\s*$"
 )
 OLDER_RE = re.compile(r"^## (?P<number>[0-9]+)\. Older releases\s*$")
-BULLET_RE = re.compile(r"^\s*-\s")
-CONTINUATION_RE = re.compile(r"^\s+\S")
 # The three spellings a written number takes, and the placeholder that is not one.
 NUMBER_WRITTEN_RE = re.compile(r"(?i)\bPR\s*#\s*[0-9]+\b|\bpull request\s*#\s*[0-9]+\b|/pull/[0-9]+")
 PLACEHOLDER_RE = re.compile(r"(?i)\bPR\s*#\s*TBD\b")
@@ -98,10 +102,10 @@ def stamp_unreleased(changelog: Path) -> None:
     """Write the numbers the contributors did not. Never fails a release. §FS-002-release.2"""
     try:
         lines = _read_lines(changelog)
-        sections = _find_top_level_sections(lines)
-        unreleased = _find_section(lines, sections, UNRELEASED_RE, "## Unreleased")
-        end = next((section for section in sections if section > unreleased), len(lines))
-        blocks = _bullet_blocks(lines, unreleased + 1, end)
+        section = unreleased_range(lines)
+        if section is None:
+            raise ChangelogError("missing ## Unreleased section")
+        blocks = bullet_blocks(lines, *section)
     except ChangelogError as exc:
         # A release is never failed over stamping, not even by a changelog it
         # cannot read: `prepare` is the step that is allowed to refuse.
@@ -176,22 +180,6 @@ def _stamp_block(block: Sequence[str], number: int) -> list[str]:
     return stamped
 
 
-def _bullet_blocks(lines: Sequence[str], start: int, end: int) -> list[tuple[int, int]]:
-    """Each bullet in `lines[start:end]` as a half-open range — the same split the gate makes."""
-    blocks = []
-    index = start
-    while index < end:
-        if not BULLET_RE.match(lines[index]):
-            index += 1
-            continue
-        stop = index + 1
-        while stop < end and CONTINUATION_RE.match(lines[stop]) and not BULLET_RE.match(lines[stop]):
-            stop += 1
-        blocks.append((index, stop))
-        index = stop
-    return blocks
-
-
 def _blame_shas(changelog: Path, start: int, stop: int) -> dict[int, str]:
     """The commit behind each line of `changelog`, by one-based line number."""
     result = subprocess.run(
@@ -228,6 +216,13 @@ def extract_notes(changelog: Path, version: str, output: Path) -> None:
 
 
 def _find_top_level_sections(lines: Sequence[str]) -> list[int]:
+    """Every `## ` heading, for `prepare` and `notes` — deliberately not the shared scan.
+
+    `stamp` reads `## Unreleased` through `changelog_unreleased.unreleased_range`,
+    because the gate has to agree with it about where a stampable bullet lives.
+    `prepare` and `notes` want every top-level section rather than one range, and
+    are outside this rule, so they keep the walk they have always had.
+    """
     return [index for index, line in enumerate(lines) if line.startswith("## ") and not line.startswith("### ")]
 
 
