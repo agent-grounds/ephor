@@ -8,6 +8,7 @@
 //! (§FS-005-dispatch.4).
 
 use std::fs;
+use std::io::BufRead;
 use std::path::{Path, PathBuf};
 
 use crate::error::{EphorError, Result};
@@ -58,6 +59,15 @@ pub const STATES: &str = "states.yaml";
 
 /// The ignore file ephor writes around its own work root.
 pub const IGNORE: &str = ".gitignore";
+
+/// Ephor's own hidden corner inside a work root: `.ephor/<plan id>/`, holding
+/// the dossier, item and values ephor carries for a plan it asked the runtime
+/// to render. A dotted name is not a plan, so enumerating the root steps over
+/// it (§FS-005-dispatch.15) — and its presence is what names such a plan as one
+/// ephor caused to exist (§FS-006-project-interface.7). One home for the name,
+/// here with the rest of the work root's grammar, so the writer and the reader
+/// cannot drift apart.
+pub const CARRIED: &str = ".ephor";
 
 /// What a plan file is called: `<plan id>` and this.
 pub(super) const PLAN_SUFFIX: &str = ".rhei.md";
@@ -419,12 +429,74 @@ fn discover_plans(dir: &Path, task_store: bool) -> Result<Vec<FoundPlan>> {
     Ok(found)
 }
 
+/// The name ephor's hidden corner for a plan is keyed by: the plan's own name
+/// as the writer knew it — the directory of a rendered workspace, the file stem
+/// of a flat plan. Deliberately not [`FoundPlan::plan_id`], which the
+/// task-store reader truncates at the first dot for the feed's sake: the corner
+/// was written under the whole name, so a flat plan laid as `a.b.rhei.md` must
+/// be looked up as `a.b` rather than as `a` (§FS-006-project-interface.7). For
+/// a rendered directory workspace the two agree.
+fn carried_key(root: &Path, path: &Path) -> Option<String> {
+    let name = path.file_name()?.to_string_lossy().into_owned();
+    if path.parent() == Some(root) {
+        let stem = name
+            .strip_suffix(PLAN_SUFFIX)
+            .or_else(|| name.strip_suffix(COMPAT_PLAN_SUFFIX))?;
+        return Some(stem.to_string());
+    }
+    Some(path.parent()?.file_name()?.to_string_lossy().into_owned())
+}
+
+/// Whether the plan file carries ephor's dossier block — the mark every plan
+/// ephor **authored** bears, written by [`Plan::create`] and by no other
+/// writer, so the test never has to enumerate the verbs that author one
+/// (§FS-006-project-interface.7). Only the head of the file is read: the block
+/// stands between the title and the tasks, so the scan stops at the tasks
+/// heading and a dossier quoting one cannot be reached before its own opening
+/// marker has been.
+fn carries_dossier_block(path: &Path) -> Result<bool> {
+    let file = fs::File::open(path).map_err(|err| {
+        EphorError::Command(format!("Cannot read plan {}: {err}", path.display()))
+    })?;
+    for line in std::io::BufReader::new(file).lines() {
+        let line = line.map_err(|err| {
+            EphorError::Command(format!("Cannot read plan {}: {err}", path.display()))
+        })?;
+        if line.contains(DOSSIER_OPEN) {
+            return Ok(true);
+        }
+        if line.trim() == TASKS_HEADING {
+            break;
+        }
+    }
+    Ok(false)
+}
+
+/// Whether ephor caused this plan to exist, read from what ephor wrote on disk
+/// beside it and never from the ledger (§FS-006-project-interface.7,
+/// §FS-005-dispatch.4). Two marks, because ephor stands in two relations to the
+/// two plan shapes: the dossier block in a plan it authored, and its own hidden
+/// corner beside a plan the runtime rendered for it, which is never ephor's to
+/// write (§REQ-001-boundary.1). A plan the project wrote that a dispatch merely
+/// appended a ticket to bears neither — appending does not rewrite a plan that
+/// has no block — and so stays the project's own (§FS-006-project-interface.7).
+fn ephor_caused(root: &Path, path: &Path) -> Result<bool> {
+    if let Some(key) = carried_key(root, path) {
+        if root.join(CARRIED).join(key).exists() {
+            return Ok(true);
+        }
+    }
+    carries_dossier_block(path)
+}
+
 /// Every plan a work root holds, whoever wrote it (§FS-005-dispatch.15): the
 /// `*.rhei.md` files and the directory workspaces among its direct non-hidden
 /// children, exactly where the runtime looks for them. One directory listing,
 /// no file read, no runner asked — recognizing a plan is this module's
 /// grammar (§AR-007-runtime.1), and the callers get ids and paths, never the
-/// suffix.
+/// suffix. Ephor's own plans are among them: the work screen and the operations
+/// board watch every plan a work root holds, and only the feed-facing
+/// [`task_store_plans_in`] declines the ones ephor caused to exist.
 pub fn plans_in(dir: &Path) -> Vec<FoundPlan> {
     let mut found = discover_plans(dir, false).unwrap_or_default();
     found.sort_by(|a, b| a.plan_id.cmp(&b.plan_id));
@@ -436,12 +508,46 @@ pub fn plans_in(dir: &Path) -> Vec<FoundPlan> {
 /// flat compatibility spelling. Unlike probing discovery, failure to list a
 /// recognized store remains a source failure (§FS-006-project-interface.7,
 /// §AR-007-runtime.1).
+///
+/// **A plan ephor caused to exist is not among them**
+/// (§FS-006-project-interface.7): the store holds the project's work, and a
+/// plan ephor put there to do some of that work is ephor's own filing rather
+/// than a second piece of it. Without the test a recipe selecting this source
+/// and minting a checkout per task is offered its own plans back on the next
+/// read and mints again (§FS-005-dispatch.25). Unlike [`plans_in`] this reads
+/// the head of each candidate, which is what the mark costs; the seam reads the
+/// whole plan a moment later anyway.
 pub fn task_store_plans_in(dir: &Path) -> Result<Vec<FoundPlan>> {
-    let mut found = discover_plans(dir, true)?;
+    let mut found = Vec::new();
+    for plan in discover_plans(dir, true)? {
+        if !ephor_caused(dir, &plan.path)? {
+            found.push(plan);
+        }
+    }
     // This is the flat reader's existing order, retained while directory
     // workspaces join it.
     found.sort_by(|a, b| a.path.cmp(&b.path));
     Ok(found)
+}
+
+/// Write a plan such as a **project** writes for itself: a title, one open task
+/// under the runtime's built-in default machine, and no dossier block — so the
+/// task-store reader takes it for what it is rather than declining it as one
+/// ephor caused to exist (§FS-006-project-interface.7). Both the file's name
+/// and its grammar are the runtime's, so they are spelled here and nowhere
+/// above this module (§REQ-001-boundary.5). The self-pass uses it to put
+/// something in a store that is the project's own work.
+pub fn write_project_plan(dir: &Path, plan_id: &str, task: &str) -> Result<PathBuf> {
+    let path = dir.join(format!("{plan_id}{PLAN_SUFFIX}"));
+    write(
+        &path,
+        &format!(
+            "# Rhei: {}\n\n{TASKS_HEADING}\n\n### Task 1: {}\n**State:** pending\n",
+            one_line(plan_id),
+            one_line(task),
+        ),
+    )?;
+    Ok(path)
 }
 
 /// The `name:` of a states document — the shallowest one, so a state called

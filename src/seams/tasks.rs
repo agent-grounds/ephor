@@ -122,7 +122,10 @@ pub fn read_reporting(store: &Store, project: &str) -> Result<(Vec<Item>, Vec<St
 /// named it and ephor does not get to rename it (§FS-007-matters.1).
 ///
 /// A task in a final state is not read (§FS-006-project-interface.7): the
-/// machine applicable to its plan says which states those are.
+/// machine applicable to its plan says which states those are. Neither is any
+/// task of a plan ephor caused to exist — the reader declines those plans
+/// outright, so the seam is never offered ephor's own filing back as the
+/// project's work (§FS-006-project-interface.7, §FS-005-dispatch.25).
 fn plans(store: &Store, project: &str) -> Result<(Vec<Item>, Vec<String>), String> {
     use crate::work::runtime::plan::{self, WorkRoot};
 
