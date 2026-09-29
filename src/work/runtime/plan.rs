@@ -476,7 +476,18 @@ fn carried_key(root: &Path, path: &Path) -> Option<String> {
 /// longer takes its whole store down with it. A file that is there and cannot
 /// be read is still a source that did not answer
 /// (§FS-006-project-interface.7).
+///
+/// The skip is asked twice, before the open and after a failure, because the
+/// two see different things and neither covers the other: asking first is the
+/// only thing that stops a candidate whose `open(2)` never returns — a named
+/// pipe with no writer — from hanging the sweep, since nothing has failed for
+/// the classification to read; and asking after is the only thing that sees a
+/// plan taken between the two, or a directory, which answers the open on Linux
+/// and fails the line read instead (§FS-006-project-interface.7).
 fn carries_dossier_block(path: &Path) -> Result<bool> {
+    if !path.is_file() {
+        return Ok(false);
+    }
     match head_carries_dossier_block(path) {
         Ok(found) => Ok(found),
         // Ask the filesystem only once a read has failed, and ask it about the
@@ -2086,6 +2097,50 @@ states:
 
         let err = task_store_plans_in(dir).expect_err("the source did not answer");
         assert!(err.to_string().contains("broken.rhei.md"), "{err}");
+    }
+
+    /// And a candidate whose open would never return is skipped before it is
+    /// opened (§FS-006-project-interface.7). Classifying a failure cannot cover
+    /// this one, because nothing fails: a named pipe named like a plan waits
+    /// for a writer that never comes, and the sweep this machine runs
+    /// unattended would wait with it where a stat had always skipped it.
+    ///
+    /// The reader is called on a worker thread and its answer taken with a
+    /// bound, so a regression goes red rather than hanging the suite; the
+    /// thread is left behind when it blocks, which costs nothing in a process
+    /// that is ending either way.
+    #[test]
+    #[cfg(unix)]
+    fn a_candidate_whose_open_would_block_does_not_hang_the_store() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path().to_path_buf();
+        fs::write(
+            dir.join("theirs.rhei.md"),
+            "# Rhei: theirs\n\n## Tasks\n\n### Task 1: Widen the retry window\n\
+             **State:** pending\n",
+        )
+        .unwrap();
+        let made = std::process::Command::new("mkfifo")
+            .arg(dir.join("pipe.rhei.md"))
+            .status()
+            .map(|status| status.success())
+            .unwrap_or(false);
+        if !made {
+            // No `mkfifo` to be had: there is no pipe to skip, and a tool this
+            // machine lacks is not a defect of the reader.
+            return;
+        }
+
+        let (tell, hear) = std::sync::mpsc::channel();
+        let read = dir.clone();
+        std::thread::spawn(move || {
+            let _ = tell.send(task_store_plans_in(&read).map(|found| ids(&found)));
+        });
+        let read = hear
+            .recv_timeout(std::time::Duration::from_secs(20))
+            .expect("the store answers rather than waiting on the pipe")
+            .expect("the store answers");
+        assert!(read.contains(&"theirs".to_string()), "{read:?}");
     }
 
     /// The mark is ephor's dossier **block** and it stands at the head of the
