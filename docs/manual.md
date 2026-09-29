@@ -3062,9 +3062,13 @@ ephor work forget [--item ID | --done | --missing]
 ephor work states
 ```
 
-- **`list`** reads each ticket's state out of its plan every time. The ledger
+- **`list`** reads each ticket's state out of its plan every time — every plan
+  the record says is that matter's, the one ephor wrote and every one a
+  workflow laid beside it. The ledger
   never caches it — a watch reporting on itself is the one thing this must not
-  do. `--open` hides work that is finished and current.
+  do. `--open` hides work that is finished and current, so a matter whose laid
+  workflow plan is still going is open work and is shown
+  ([§FS-005-dispatch.35](functional-spec/FS-005-dispatch.md#35-what-a-ledger-entry-may-be-forgotten-for-is-read-from-the-plans)).
 - **`dispatch`** is the sweep: every item that matches a recipe and has no work
   yet. It takes the *first* matching recipe unless `--recipe` names one. It
   skips items that already have work — naming `--recipe` asks for that work
@@ -3213,7 +3217,13 @@ ephor work states
   there, `lay` makes it before writing — and `--dry-run` makes nothing at all
   and names the workspace it would have made.
 - **`forget`** drops ledger entries only. The plans stay on disk: they are the
-  record of what was done.
+  record of what was done. `--done` drops entries whose plans are all
+  finished, the matter's own and every one a workflow laid beside it; a plan it
+  cannot read is not a finished one, so `--missing` is the verb for an entry
+  whose plan is gone, and `--item` names one entry whatever its plans say
+  ([§FS-005-dispatch.35](functional-spec/FS-005-dispatch.md#35-what-a-ledger-entry-may-be-forgotten-for-is-read-from-the-plans)).
+  The one exception is a plan **ephor itself wrote** and lost: its absence is
+  ephor's own record of something gone, so `--done` still takes it.
 
 ### 8.10 The ledger
 
@@ -5043,9 +5053,11 @@ or install ephor's with `ephor work states > <root>/states.yaml`.
 project is at `work.root` with plans and no state machine. Point `work.root`
 elsewhere, or install a machine there deliberately.
 
-**`ephor work list` says `⚠ plan missing`.** The plan the ledger points at was
-deleted. `ephor work forget --missing` drops the entry; dispatching again
-starts a fresh plan.
+**`ephor work list` says `⚠ plan missing`.** A plan the ledger points at was
+deleted — the matter's own, or one a workflow laid beside it, which is a plan
+ephor asked for rather than wrote and which is therefore never read as
+finished. `ephor work forget --missing` drops the entry either way, and
+`--done` will not; dispatching again starts a fresh plan.
 
 **Work looks finished but the item moved on.** That is what `⟳` means. `s` on
 the work screen, or `ephor work sync`, writes the next ticket.
