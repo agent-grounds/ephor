@@ -101,16 +101,21 @@ def pull_requests_for_commit(sha: str) -> list[int]:
 def stamp_unreleased(changelog: Path) -> None:
     """Write the numbers the contributors did not. Never fails a release. §FS-002-release.2"""
     try:
-        lines = _read_lines(changelog)
-        section = unreleased_range(lines)
-        if section is None:
-            raise ChangelogError("missing ## Unreleased section")
-        blocks = bullet_blocks(lines, *section)
-    except ChangelogError as exc:
-        # A release is never failed over stamping, not even by a changelog it
-        # cannot read: `prepare` is the step that is allowed to refuse.
-        print(f"warning: not stamping ## Unreleased: {exc}", file=sys.stderr)
-        return
+        _stamp(changelog)
+    except Exception as exc:
+        # Never failing a release is a property of this whole step, not of a
+        # list of statements inside it: a refused token, a changelog that will
+        # not decode, a filesystem that will not take the write. `prepare` is
+        # the step that is allowed to refuse, and it is untouched by this.
+        print(f"warning: not stamping ## Unreleased: {_reason(exc)}", file=sys.stderr)
+
+
+def _stamp(changelog: Path) -> None:
+    lines = _read_lines(changelog)
+    section = unreleased_range(lines)
+    if section is None:
+        raise ChangelogError("missing ## Unreleased section")
+    blocks = bullet_blocks(lines, *section)
 
     resolved: dict[str, list[int]] = {}
     changed = False
@@ -148,7 +153,7 @@ def _single_pull_request(
             pulls = resolved[sha]
             numbers.add(pulls[0] if len(pulls) == 1 else None)
     except Exception as exc:  # a forge, a token, or a blame this release will not fail over
-        print(f"warning: cannot resolve a pull request for {first!r}: {exc}", file=sys.stderr)
+        print(f"warning: cannot resolve a pull request for {first!r}: {_reason(exc)}", file=sys.stderr)
         return None
 
     if len(numbers) == 1:
@@ -160,6 +165,22 @@ def _single_pull_request(
         file=sys.stderr,
     )
     return None
+
+
+def _reason(exc: Exception) -> str:
+    """What went wrong, in the failing tool's own words where it left any. §FS-002-release.2
+
+    The warnings go to the workflow log and nowhere else, so that log is the
+    whole of the release's report on a stamping failure. `CalledProcessError`
+    omits `stderr` from its `str()`, which is what makes a 403, a rate limit and
+    an unreachable forge read identically there.
+    """
+    captured = getattr(exc, "stderr", None)
+    if isinstance(captured, bytes):
+        captured = captured.decode("utf-8", errors="replace")
+    if isinstance(captured, str) and captured.strip():
+        return f"{exc}: {captured.strip()}"
+    return str(exc)
 
 
 def _stamp_block(block: Sequence[str], number: int) -> list[str]:
