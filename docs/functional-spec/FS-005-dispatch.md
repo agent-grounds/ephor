@@ -459,7 +459,14 @@ pair are said, exactly as the refusals above do. It is what makes those refusals
 safe to obey: a reader told to keep one of two plan files and remove the other
 has not been told about the results and the artifacts beside them, and a rule
 that lost those on the next write verb would be a refusal that walked its reader
-into the loss it exists to prevent.
+into the loss it exists to prevent. What is held back that way is a record of
+work, and the plan's writer sidecar is not one: it holds nothing, nothing outside
+the runtime names it and nothing ever removes it, so one already at the digested
+name where no plan stands is stale and the rename replaces it — holding a matter
+back for an empty lock file, under a message asking which of two records of its
+work to keep, would be a refusal nobody could act on. Where a plan *does* stand
+at that name, its writer may be holding the sidecar beside it, and that one is
+held back with the plan.
 
 **A root a run is holding waits.** Moving a plan out from under a live run is the
 one way this could lose work, and there is nothing to gain by hurrying it: the

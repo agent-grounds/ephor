@@ -92,18 +92,22 @@ const COMPAT_PLAN_SUFFIX: &str = ".panta.md";
 /// (§REQ-001-boundary.5).
 const SIDECAR_SUFFIX: &str = ".lock";
 
-/// The lines of a plan that hold a reference keyed by a plan's stem
-/// (§FS-005-dispatch.3.1): the result block the runtime writes when a ticket
-/// finishes, and the three fields that name a ticket across plans — an
-/// ordering, an export a ticket reads, and an export it declines. A stem in any
-/// other line is prose, a title, or what ephor recorded about the item, and a
-/// carry-over leaves all three alone.
-const STEM_KEYED: [&str; 4] = [
-    "**Result:**",
-    "**Prior:**",
-    "**Consumes:**",
-    "**Excludes:**",
-];
+/// How the runtime writes the result block of a ticket that has finished
+/// (§FS-005-dispatch.3.1): one block-quote marker and one space before the
+/// field, over a line whose leading whitespace is passed and nothing else. Read
+/// exactly as the runtime reads it, and so spelled here (§REQ-001-boundary.5):
+/// a line quoted twice — a ticket's prose quoting a plan it is reporting on —
+/// and an unquoted `**Result:**` are neither of them a result block there, so
+/// neither is a reference a carry-over may rewrite.
+const RESULT_BLOCK: &str = "> **Result:**";
+
+/// The task metadata fields that name a ticket across plans
+/// (§FS-005-dispatch.3.1): an ordering, an export a ticket reads, and an export
+/// it declines. The runtime reads each from the trimmed line and never behind a
+/// quote marker, at any depth, so neither does this. A stem in any other line
+/// is prose, a title, or what ephor recorded about the item, and a carry-over
+/// leaves all three alone.
+const STEM_KEYED_FIELDS: [&str; 3] = ["**Prior:**", "**Consumes:**", "**Excludes:**"];
 
 /// The one plan file of a plan rendered as a directory: the index that names
 /// it. Part of the coupling, and so part of this module
@@ -389,7 +393,8 @@ pub fn sources_in(root: &Path) -> Result<Vec<PathBuf>> {
 /// A plan's bytes with every reference keyed by the stem `from` naming `to`
 /// instead, and nothing else about them changed (§FS-005-dispatch.3.1).
 ///
-/// Only the lines that hold such a reference are read — [`STEM_KEYED`] — and
+/// Only the lines that hold such a reference are read — a [`RESULT_BLOCK`] and
+/// the [`STEM_KEYED_FIELDS`], each in the shape the runtime reads it in — and
 /// inside one, only a stem that begins where an id or a path may begin. A stem
 /// also appears in prose and in a title, and both are sentences that stay true
 /// whatever the plan is called now, so a replacement over the text at large
@@ -414,15 +419,22 @@ pub fn stem_references_rewritten(text: &str, from: &str, to: &str) -> String {
     out
 }
 
-/// Whether this line carries a reference keyed by a plan's stem. A result
-/// block is written as a block quote, so the quote markers are read past
-/// before the field is looked for.
+/// Whether this line carries a reference keyed by a plan's stem — in the shape
+/// the runtime reads that reference in, and in no other (§FS-005-dispatch.3.1).
+///
+/// Each field is held to its own rule rather than all four to one, because the
+/// runtime has two: a result block is a block quote and is read behind exactly
+/// one marker, while the three metadata fields are read from the trimmed line
+/// and never behind a marker at all. Anything looser reaches a line the runtime
+/// reads as prose — a quoted result block in a ticket's own body is a record of
+/// what another plan said, and rewriting it would edit the plan rather than
+/// carry it over.
 fn stem_keyed(line: &str) -> bool {
-    let mut rest = line.trim();
-    while let Some(quoted) = rest.strip_prefix('>') {
-        rest = quoted.trim_start();
-    }
-    STEM_KEYED.iter().any(|field| rest.starts_with(field))
+    let rest = line.trim_start();
+    rest.starts_with(RESULT_BLOCK)
+        || STEM_KEYED_FIELDS
+            .iter()
+            .any(|field| rest.starts_with(field))
 }
 
 /// One line's occurrences of `<from>.` replaced by `<to>.`, where the stem

@@ -361,30 +361,63 @@ pub fn reads_as_gone(path: &Path) -> bool {
     !plan::is_writer_sidecar(path)
 }
 
-/// Every plan in a work root whose bytes name the stem `from`, paired with the
-/// bytes it has once they name `to` instead (§FS-005-dispatch.3.1).
+/// Whether a file already at a carry-over's destination is a record of somebody's
+/// work, so that a rename onto it would destroy something
+/// (§FS-005-dispatch.3.1). The same fact as [`reads_as_gone`], seen from the
+/// other end of the pair: the plan's writer sidecar holds no work, nothing
+/// outside the runtime names one and the runtime never removes one, so one met
+/// at the destination on its own is stale and the rename replaces it.
+pub fn holds_work(path: &Path) -> bool {
+    !plan::is_writer_sidecar(path)
+}
+
+/// What the plans in a work root say about a stem that is moving
+/// (§FS-005-dispatch.3.1): the ones whose bytes change, and what the reader is
+/// told about a source that could not be read.
 ///
 /// Composed here for the same reason the move set is: which lines of a plan
 /// hold a reference keyed by a stem is the binding's grammar, and the caller
-/// writes what it is given (§REQ-001-boundary.5). Only the plans that really
-/// change are returned, so the caller journals nothing it does not touch — and
-/// the plan the same carry-over is moving is among them, because its own result
-/// block is a reference like any other.
-pub fn references_rewritten(root: &Path, from: &str, to: &str) -> Result<Vec<(PathBuf, String)>> {
-    let mut rewritten = Vec::new();
+/// writes what it is given (§REQ-001-boundary.5).
+#[derive(Default)]
+pub struct Rewrites {
+    /// Each plan that really changes, with the bytes it has once it names the
+    /// new stem — so the caller journals nothing it does not touch. The plan
+    /// the same carry-over is moving is among them, because its own result
+    /// block is a reference like any other.
+    pub plans: Vec<(PathBuf, String)>,
+    /// Every source that was passed over, said in full: it stops nothing, but
+    /// it is a fact only ephor has at that moment (§REQ-002-parity).
+    pub passed_over: Vec<String>,
+}
+
+/// Every plan in a work root whose bytes name the stem `from`, paired with the
+/// bytes it has once they name `to` instead (§FS-005-dispatch.3.1).
+pub fn references_rewritten(root: &Path, from: &str, to: &str) -> Result<Rewrites> {
+    let mut found = Rewrites::default();
     for path in plan::sources_in(root)? {
-        let text = std::fs::read_to_string(&path).map_err(|err| {
-            crate::error::EphorError::Command(format!(
-                "Cannot read {} to carry the references in it over: {err}",
-                path.display()
-            ))
-        })?;
+        let text = match std::fs::read_to_string(&path) {
+            Ok(text) => text,
+            // A source that cannot be read holds no reference the runtime
+            // reads either, so it is passed over rather than made a refusal:
+            // what cannot move stops only itself, and a file this carry-over
+            // has nothing to do with would otherwise refuse the root's every
+            // turn (§FS-005-dispatch.3.1).
+            Err(err) => {
+                found.passed_over.push(format!(
+                    "{} was passed over while what names {from} was carried over: {err}. \
+                     Nothing the runtime reads is in a source it cannot read, so the rest \
+                     of this carry-over was made.",
+                    path.display()
+                ));
+                continue;
+            }
+        };
         let now = plan::stem_references_rewritten(&text, from, to);
         if now != text {
-            rewritten.push((path, now));
+            found.plans.push((path, now));
         }
     }
-    Ok(rewritten)
+    Ok(found)
 }
 
 /// A work ledger written before the plan's field was named for the plan spells
