@@ -248,10 +248,16 @@ is a name a person reads and `acmeforge-acme-widget-95-4ef7cc9e` is one they
 tolerate, so `{number}` stays the right choice wherever the matter has one.
 `{id_slug}` is for the matter that has nothing else. A slugged *title* would read
 better still and is deliberately not offered here: a name minted from free text
-moves when the matter is retitled, and where rendering is the resolution
-([§25](#25-work-about-a-matter-with-no-branch-can-mint-the-branch-it-needs)) a
-retitle would silently resolve the same matter to a second workspace. It is
-tracked at agent-grounds/ephor#126 rather than left as an omission.
+moves when the matter is retitled, and a rendering that moves stops resolving one
+item's work to one place ([§5](#5-an-item-that-moved-reopens-its-work)). What
+such a retitle would cost is not a second workspace but a second **plan** for one
+matter: the first is left on disk with whatever it held, the ledger is repointed
+at the second ([§4](#4-the-ledger-is-ephors-record-and-never-the-truth-about-the-work)),
+both roots go on being enumerated and both go on being returned as due, and the
+guard against two runs colliding is keyed on the checkout rather than on the
+matter, so it holds neither. The refusal and the rule it follows are written down
+at [§DF-002-path-fields-stable](../decisions/functional/DF-002-path-fields-stable.md#df-002-path-fields-stable-a-field-that-decides-a-path-holds-still-while-the-work-lasts)
+rather than left as an omission.
 
 **And one hazard belongs to the field rather than to any caller of it.** Because
 `{id_slug}` is never absent, a recipe naming it serves *every* matter its
@@ -637,6 +643,13 @@ is *named by* a path is both at once, and is read as both: the path it names is
 under this rule, and the text that path holds is prose under the other
 ([§34](#34-a-brief-may-be-kept-in-the-file-that-owns-it)).
 
+A name whose answer will not keep is refused in the same position for the
+neighbouring reason — a root rendered from a field this matter can change while
+its work is open is a path that moves under work that is still open, where prose
+carries such a field the way it carries any other
+([§DF-002-path-fields-stable](../decisions/functional/DF-002-path-fields-stable.md#df-002-path-fields-stable-a-field-that-decides-a-path-holds-still-while-the-work-lasts),
+[§8](#8-the-ticket-carries-the-item-as-data-not-only-as-prose)).
+
 **A script's environment is neither, and is told the gap rather than refused
 on it.** A summons carries the organization and its root as `EPHOR_ORG` and
 `EPHOR_ORG_ROOT` ([§8](#8-the-ticket-carries-the-item-as-data-not-only-as-prose)),
@@ -743,6 +756,20 @@ back together is tracked at agent-grounds/ephor#117 — but the promise this poi
 makes is the one it keeps: a name that is in both sets means the same thing in
 both, and a name in only one says so here rather than being discovered by a
 script that read nothing where it expected a value.
+
+**And a name joins the half a path is rendered from only if its answer keeps.**
+The promise just made is about meaning; this is the behaviour half of the same
+distinction. A field this matter can change while its work is open may be named
+in prose, where the dossier is a record of what the matter looked like when the
+work was asked for
+([§2](#2-the-ticket-carries-what-ephor-knows-not-a-link-to-it)), and is refused
+where a path names it, because there the rendering is the resolution and a value
+that moved repoints work that is still open
+([§DF-002-path-fields-stable](../decisions/functional/DF-002-path-fields-stable.md#df-002-path-fields-stable-a-field-that-decides-a-path-holds-still-while-the-work-lasts),
+[§6.1](#61-the-work-root-is-a-template-and-it-may-reach-above-the-project)). That
+is a condition on joining the vocabulary rather than a claim about the names
+already in it: three of them do not meet it today, and they are named where the
+rule is recorded rather than left for a reader to find.
 
 Two consequences. A ticket that is appended to a plan **adds** its metadata
 rather than replacing what is there, because the runtime keeps its own
@@ -2686,6 +2713,19 @@ arriving later would silently change what the first already resolves to. Hence
 `rhei:window.retry-1` and `rhei:window-retry.1` mint `task/rhei-window-retry-1-17bbeb3b`
 and `task/rhei-window-retry-1-5ff4987f` — two names a reader must look twice at,
 and two trees.
+
+Here, "from that matter's own id and from nothing else" is the construction and
+collision guarantee of `{id_slug}`: what a rendering answers may depend on the
+matter it is about and on no other matter. That is why the digest is
+unconditional rather than a tiebreaker — a digest appearing only on a collision
+would be a function of the population, and there is nowhere to ask whether one
+was needed — and it is why two ids that read down to one slug stay two. It does
+not constrain a template that explicitly names another field of the same matter.
+Whether a field that *this* matter can change while its work lasts may be named,
+and where, is a separate question, answered where the vocabulary is specified
+([§8](#8-the-ticket-carries-the-item-as-data-not-only-as-prose),
+[§6.1](#61-the-work-root-is-a-template-and-it-may-reach-above-the-project)) and
+not here.
 
 **No shipped recipe names it, and nothing defaults to it.** `implement` keeps
 `fix/issue-{number}`. A store yields one matter per open task in every plan it
