@@ -1182,6 +1182,13 @@ fi"#,
 /// than as a bad branch, and a rendering git will not take as a branch is
 /// answered here rather than by the checkout, which makes the directories
 /// leading to a workspace before it runs git at all (§FS-005-dispatch.25).
+///
+/// `{title_slug}` is one such name, and it is here because it is refused by
+/// decision rather than by accident: a field that resolves a path answers the
+/// same while the work lasts, and a slugged title does not
+/// (§DF-002-path-fields-stable). This case is what keeps that decision — the
+/// day the field joins the vocabulary, the refusal stops firing and the pinned
+/// list below stops matching, so reversing the decision cannot be quiet.
 #[test]
 fn a_template_that_will_not_do_is_refused_by_name_and_makes_nothing() {
     let world = watching(Some("fix/issue-{number}"), true);
@@ -1200,6 +1207,7 @@ fn a_template_that_will_not_do_is_refused_by_name_and_makes_nothing() {
             "work": { "recipes": [
                 recipe("by-sprint", "fix/{sprint}"),
                 recipe("by-title", "fix/{title}"),
+                recipe("by-title-slug", "task/{title_slug}"),
             ] }
         } },
         "work": { "runner": "acme-runtime" }
@@ -1223,6 +1231,31 @@ fn a_template_that_will_not_do_is_refused_by_name_and_makes_nothing() {
              {project}, {repo}, {root}, {source}, {state}, {ticket}, {title}, {url}, \
              {meta.<key>}.",
         ));
+    // A slugged title is refused the same way and for the same reason as any
+    // other name the vocabulary has not got: the decision not to offer it is
+    // recorded rather than built, so what keeps it is this refusal and the
+    // list, which names `{id_slug}` and no slug of the title
+    // (§DF-002-path-fields-stable).
+    world
+        .ephor()
+        .args([
+            "work",
+            "dispatch",
+            "--item",
+            ITEM,
+            "--recipe",
+            "by-title-slug",
+        ])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains(
+            "not a field a branch template may name",
+        ))
+        .stderr(predicate::str::contains(
+            "it may name: {gate}, {id}, {id_slug}, {kind}, {number}, {org}, {org_root}, \
+             {project}, {repo}, {root}, {source}, {state}, {ticket}, {title}, {url}, \
+             {meta.<key>}.",
+        ));
     // The issue's title holds spaces, which git refuses in a branch name.
     world
         .ephor()
@@ -1232,6 +1265,10 @@ fn a_template_that_will_not_do_is_refused_by_name_and_makes_nothing() {
         .stderr(predicate::str::contains("git will not take"));
     assert!(
         !world.forest().join("fix").exists(),
+        "a refused template left directories behind"
+    );
+    assert!(
+        !world.forest().join("task").exists(),
         "a refused template left directories behind"
     );
 }
