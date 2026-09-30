@@ -4765,12 +4765,26 @@ fn plan_about(dispatcher: &mut Dispatcher, root: &Path, id: &str, at_stem: &str)
 /// had before the digest, and a ledger entry naming that stem — what every
 /// machine that has run `ephor work dispatch` has on disk
 /// (§FS-005-dispatch.3.1). Returns the work root.
+///
+/// The plan's first ticket has finished, so the plan's own bytes carry the
+/// result block the runtime writes — keyed to the plan's stem, and the one
+/// record inside a plan that a rename can leave naming nothing. Beside it are
+/// the two things the runtime leaves in a root that ephor never wrote: the
+/// plan's writer sidecar, which is named after the plan's path, and a past run's
+/// transcript, which is named after the invocation.
 fn root_named_before_the_digest(tmp: &Path, id: &str, title: &str) -> (PathBuf, PathBuf) {
     let project = tmp.join("widget");
     let root = project.join("panta");
     fs::create_dir_all(&root).unwrap();
     let plan = root.join(format!("{PRE_DIGEST}{}", plan::PLAN_SUFFIX));
-    fs::write(&plan, format!("# Rhei: {title}\n\n## Tasks\n")).unwrap();
+    fs::write(&plan, finished_plan_at_the_pre_digest_stem(title)).unwrap();
+    // rhei's per-plan writer lock: a permanent sibling sidecar of the plan's
+    // path, so it is named after the path and not after the work.
+    fs::write(
+        root.join(format!("{PRE_DIGEST}{}.lock", plan::PLAN_SUFFIX)),
+        "",
+    )
+    .unwrap();
     let results = root.join("runtime/results");
     fs::create_dir_all(&results).unwrap();
     fs::write(
@@ -4785,8 +4799,53 @@ fn root_named_before_the_digest(tmp: &Path, id: &str, title: &str) -> (PathBuf, 
         "a reply nobody has posted\n",
     )
     .unwrap();
+    let logs = root.join("runtime/logs");
+    fs::create_dir_all(&logs).unwrap();
+    fs::write(logs.join(past_runs_transcript()), "what the agent said\n").unwrap();
     let _ = id;
     (project, root)
+}
+
+/// The plan a machine has on disk once this matter's first ticket has finished,
+/// at the stem it had before the digest (§FS-005-dispatch.3.1).
+///
+/// Two places in it begin with the stem, and only one of them is a reference to
+/// it: the result block names the ticket and links the file written under that
+/// name, while the ticket's prose names the plan file this matter had before the
+/// digest — a sentence that stays true whatever the plan is called now, and that
+/// a carry-over replacing every occurrence of the stem would make false.
+fn finished_plan_at_the_pre_digest_stem(title: &str) -> String {
+    format!(
+        "# Rhei: {title}\n\
+         **States:** ephor-work\n\n\
+         ## Tasks\n\n\
+         ### Task task-work-1: {title}\n\
+         **State:** done\n\
+         **Provides:** finding\n\n\
+         The window resets per attempt, which is not what the docs say.\n\
+         Before the digest this matter's plan was {PRE_DIGEST}{}.\n\n\
+         > **Result:** \
+         [{PRE_DIGEST}.task-work-1](runtime/results/{PRE_DIGEST}.task-work-1.md)\n",
+        plan::PLAN_SUFFIX,
+    )
+}
+
+/// A transcript a past run left under `runtime/logs/`. It has the stem inside its
+/// name but does not begin with it — the invocation it is named after does — which
+/// is why the carry-over leaves it where it is (§FS-005-dispatch.3.1).
+fn past_runs_transcript() -> String {
+    format!("task-{PRE_DIGEST}.task-work-1-fix-cld.log")
+}
+
+/// The one edit a carry-over may make inside a plan's bytes: the result block's
+/// label and the path it links, both moved from `from` to `to`
+/// (§FS-005-dispatch.3.1). Applied to the bytes a plan had before, this is the
+/// whole of what it may have afterwards.
+fn with_the_result_block_at(text: &str, ticket: &str, from: &str, to: &str) -> String {
+    text.replace(
+        &format!("[{from}.{ticket}](runtime/results/{from}.{ticket}.md)"),
+        &format!("[{to}.{ticket}](runtime/results/{to}.{ticket}.md)"),
+    )
 }
 
 /// A ledger holding one entry for `id`, recording the pre-digest stem.
@@ -4948,15 +5007,17 @@ fn a_prior_never_names_a_ticket_about_another_matter() {
 }
 
 /// A plan named before the digest is carried over, once: the plan file, the
-/// result the runtime wrote and the reply nobody posted all move to the stem
-/// the matter's id renders now, and the recorded name moves with them
-/// (§FS-005-dispatch.3.1).
+/// result the runtime wrote and the reply nobody posted all move to the stem the
+/// matter's id renders now, the result block inside the plan is rewritten to name
+/// them there, and the recorded name moves with them (§FS-005-dispatch.3.1).
 ///
-/// Together is the whole of it. A record naming a file that is not there is the
-/// one outcome a rename must not produce, and a file left behind at a name
-/// nothing names any more is the other. The plan's own bytes are untouched, and
-/// a second pass moves nothing — the question is answered by looking, so there
-/// is nothing written down about whether it has run.
+/// Together is the whole of it, and that includes the bytes. A record naming a
+/// file that is not there is the one outcome a rename must not produce — and the
+/// plan's own result block is such a record, so the plan's bytes do change. They
+/// change **only** where they name the stem: the ticket's prose, which names the
+/// file this matter had before the digest, is a sentence that is still true and is
+/// left alone. A second pass moves nothing — the question is answered by looking,
+/// so there is nothing written down about whether it has run.
 #[test]
 fn a_plan_named_before_the_digest_is_carried_over() {
     let tmp = tempfile::tempdir().unwrap();
@@ -4973,17 +5034,24 @@ fn a_plan_named_before_the_digest_is_carried_over() {
         .carry_over_plan_names()
         .expect("a root named before the digest is carried over");
 
-    // The plan, under its new name and with its bytes unchanged.
+    // The plan, under its new name, with the one record inside it that names the
+    // stem rewritten and nothing else in the file touched.
     let now = root.join(format!("{digested}{}", plan::PLAN_SUFFIX));
     assert_eq!(
         plans_in(&root),
         vec![format!("{digested}{}", plan::PLAN_SUFFIX)],
         "the plan was not carried over, or was left behind at both names"
     );
+    let only_the_stem = with_the_result_block_at(&was, "task-work-1", PRE_DIGEST, digested);
+    assert_ne!(
+        only_the_stem, was,
+        "the fixture plan carries no result block, so this assertion pins nothing"
+    );
     assert_eq!(
         fs::read_to_string(&now).unwrap(),
-        was,
-        "the plan's bytes moved"
+        only_the_stem,
+        "the plan's bytes are not its old bytes with the result block moved to the \
+         new stem and nothing else changed"
     );
 
     // The runtime's result and the reply nobody posted, keyed by the same stem.
@@ -5044,6 +5112,134 @@ fn a_plan_named_before_the_digest_is_carried_over() {
         vec![format!("{digested}{}", plan::PLAN_SUFFIX)]
     );
     assert_eq!(dispatcher.ledger.entries[id].plan_id, digested);
+}
+
+/// A plan the carry-over is **not** moving is rewritten too, where it names the
+/// stem that moved: its ordering and the export it consumes are the same kind of
+/// record as the moved plan's own result block (§FS-005-dispatch.3.1).
+///
+/// The runtime resolves an ordering and a consumed export across the whole
+/// project, so a reference left at the old stem names a ticket in no plan — and
+/// the refusal that follows is about the **root**, which is how one carried-over
+/// matter takes every plan beside it down. The export the reference reads moves in
+/// the same commit, because rewriting a consumer to read a file nobody moved would
+/// answer the validation and lose the work.
+#[test]
+fn a_plan_beside_the_one_carried_over_is_rewritten_where_it_names_the_old_stem() {
+    let tmp = tempfile::tempdir().unwrap();
+    let _ledger_path = ledger::use_test_path(tmp.path().join("state/work.json"));
+    let (id, title, digested) = COLLIDING[0];
+    let (project, root) = root_named_before_the_digest(tmp.path(), id, title);
+
+    // The export the finished ticket handed on, keyed by the same stem under a
+    // third runtime directory that no list of names in ephor mentions.
+    let handed_on = root.join(format!("runtime/exports/{PRE_DIGEST}.task-work-1"));
+    fs::create_dir_all(&handed_on).unwrap();
+    fs::write(handed_on.join("finding.md"), "what the ticket found\n").unwrap();
+
+    // Another matter's plan, which nothing moves, waiting on the ticket that is
+    // about to be renamed under it and reading what that ticket produced.
+    let beside = root.join(format!("other-matter{}", plan::PLAN_SUFFIX));
+    fs::write(
+        &beside,
+        format!(
+            "# Rhei: another matter entirely\n\
+             **States:** ephor-work\n\n\
+             ## Tasks\n\n\
+             ### Task other-1: something unrelated\n\
+             **State:** fix\n\
+             **Prior:** Task {PRE_DIGEST}.task-work-1\n\
+             **Consumes:** {PRE_DIGEST}.task-work-1:finding\n\n\
+             Nothing to do with the plan that is carried over, except \
+             that it waits on it.\n"
+        ),
+    )
+    .unwrap();
+    let was_beside = fs::read_to_string(&beside).unwrap();
+    let mut dispatcher = issue_43_dispatcher(
+        &project,
+        ledger_naming_the_pre_digest_stem(id, title, &root),
+    );
+
+    dispatcher
+        .carry_over_plan_names()
+        .expect("a root named before the digest is carried over");
+
+    // The plan beside it is still where it was, and every reference in it that
+    // named the old stem names the new one — and nothing else in it moved.
+    let expected = was_beside
+        .replace(
+            &format!("**Prior:** Task {PRE_DIGEST}.task-work-1"),
+            &format!("**Prior:** Task {digested}.task-work-1"),
+        )
+        .replace(
+            &format!("**Consumes:** {PRE_DIGEST}.task-work-1:finding"),
+            &format!("**Consumes:** {digested}.task-work-1:finding"),
+        );
+    assert_eq!(
+        fs::read_to_string(&beside).unwrap(),
+        expected,
+        "the plan beside the one carried over still names the stem that moved, \
+         or was rewritten somewhere it does not name it"
+    );
+
+    // And the export those references read moved with the ticket that wrote it.
+    assert!(
+        root.join(format!("runtime/exports/{digested}.task-work-1/finding.md"))
+            .exists(),
+        "the export the ticket handed on was not carried over"
+    );
+    assert!(
+        !root
+            .join(format!("runtime/exports/{PRE_DIGEST}.task-work-1"))
+            .exists(),
+        "the export the ticket handed on was left behind at its old name"
+    );
+}
+
+/// The plan's writer sidecar moves with the plan, and what a past run wrote about
+/// itself does not (§FS-005-dispatch.3.1).
+///
+/// A file left behind at a name nothing names any more is the second outcome the
+/// rule forbids, and the runtime's per-plan sidecar is the one in plain sight: it
+/// is named after the plan's path rather than after the work, so it sits beside
+/// the plan in the work root and matches neither half of a move set swept out of
+/// the runtime directory. A transcript is the case the same reasoning leaves
+/// alone: it is named after the invocation that wrote it, that invocation ran
+/// under the old name, and renaming it would falsify the only thing it says.
+#[test]
+fn the_plans_writer_sidecar_moves_with_it_and_a_past_runs_transcript_stays() {
+    let tmp = tempfile::tempdir().unwrap();
+    let _ledger_path = ledger::use_test_path(tmp.path().join("state/work.json"));
+    let (id, title, digested) = COLLIDING[0];
+    let (project, root) = root_named_before_the_digest(tmp.path(), id, title);
+    let mut dispatcher = issue_43_dispatcher(
+        &project,
+        ledger_naming_the_pre_digest_stem(id, title, &root),
+    );
+
+    dispatcher
+        .carry_over_plan_names()
+        .expect("a root named before the digest is carried over");
+
+    assert!(
+        root.join(format!("{digested}{}.lock", plan::PLAN_SUFFIX))
+            .exists(),
+        "the plan's writer sidecar was not carried over"
+    );
+    assert!(
+        !root
+            .join(format!("{PRE_DIGEST}{}.lock", plan::PLAN_SUFFIX))
+            .exists(),
+        "the plan's writer sidecar was left behind at a name nothing names any more"
+    );
+    assert!(
+        root.join("runtime/logs")
+            .join(past_runs_transcript())
+            .exists(),
+        "a past run's transcript was moved; it is named after the invocation that \
+         wrote it, not after the stem"
+    );
 }
 
 /// A root a run is holding waits (§FS-005-dispatch.3.1). Moving a plan out from

@@ -380,6 +380,34 @@ produce — and a file left behind at a name nothing names any more is the other
 because a sweep that finds plans by looking would run it
 ([§24](#24-work-nobody-has-to-start-starts-itself)).
 
+**Together includes the bytes, not only the names.** A plan's own text carries its
+stem: the result block the runtime writes when a ticket finishes names
+`<stem>.<ticket>` and links the file it wrote under that name. So does the text of
+every *other* plan in the root that waits on this one or reads what it produced —
+an ordering or a consumed export naming `<stem>.<ticket>` resolves across the whole
+project, and the plan it is written in is one the carry-over is not moving. Move
+the files and leave those references and each of them is a record naming something
+that is no longer there; the runtime then refuses the **root** it is asked to
+validate rather than the one plan, so a matter that was carried over takes every
+plan beside it down — and it does so at some later command, because the move
+itself reported success. They are rewritten in the same commit as the renames, and
+**only they are**: a stem also appears in prose, in a title and in what ephor
+recorded about the item, and a plan whose bytes changed anywhere else would have
+been edited rather than carried over.
+
+**What moves is what the stem names, wherever it sits.** Under the work root's
+runtime directory, every entry whose name begins with the stem and its separator
+moves with the plan, whichever directory below it holds one — a result, an
+artifact ephor's own states wrote, an export one ticket handed another — because
+this rule cannot know every file a machine put there and finds them by the name
+instead. The plan's writer sidecar moves too: it is named after the plan's path
+rather than after the work, so it belongs to the path, and a sidecar left at the
+old name is the second forbidden outcome in plain sight. What the same rule leaves
+alone is what a past run wrote about itself — its transcripts and its spawn
+records, named after the invocation rather than after the stem. That run happened
+under the old name and nothing reads those by it, so renaming them would falsify
+the only thing they say.
+
 It is decided per entry and out of the entry itself: a recorded name that is not
 the stem of its own id is carried over, and one that already is, is left alone.
 Nothing is written down about whether it has run, because the question is answered
@@ -412,6 +440,15 @@ matters it names and nothing else. It does stop a
 dispatch *of those matters*, because a dispatch that went ahead would open a
 second plan at the digested name and orphan the one already there; every other
 project is carried over and handed its work as usual.
+
+**A reference it cannot rewrite stops its own entry**, exactly as a file it cannot
+move does: the commit unwinds, the record still says what it said, and what is
+reported names the file it could not write. Refusing every carry-over that has a
+reference in it would be worse than the damage it avoids — this is a one-time
+migration, so a root refused for that reason stays refused, and the dispatch of
+its matters stays stopped, which is the whole of what this rule exists to
+prevent. So the rewrite is made, and only what genuinely cannot be written is
+reported.
 
 **And it never writes over a file already at the new name.** A carry-over is a
 rename, and a rename onto an occupied name destroys what was there. Whatever is
