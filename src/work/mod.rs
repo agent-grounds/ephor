@@ -4689,8 +4689,16 @@ impl Dispatcher {
         refused
     }
 
-    /// One entry's plan, its results, its artifacts and the recorded name,
-    /// moved together and committed on their own (§FS-005-dispatch.3.1).
+    /// One entry's plan, everything the stem names, the references inside the
+    /// plans that name it and the recorded name, moved together and committed
+    /// on their own (§FS-005-dispatch.3.1).
+    ///
+    /// Together includes the bytes: a plan's own result block, and an ordering
+    /// or a consumed export in a plan beside it, are records of where a file
+    /// is, so moving the file and leaving the record is the one outcome a
+    /// rename must not produce. The rewrite is made inside this same hand-off,
+    /// which is why a reference that cannot be written stops this entry exactly
+    /// as a file that cannot be moved does.
     ///
     /// Its own hand-off, so wherever an error escapes the record and the disk
     /// agree: what this entry had already moved is put back and the ledger is
@@ -4718,6 +4726,25 @@ impl Dispatcher {
                 return Err(self.unwind(why));
             }
         }
+        // Read after the moves, so the plan that has just been renamed is read
+        // where it is now and its own record is rewritten with the rest.
+        let rewrites = match runtime::references_rewritten(&behind.root, &behind.was, &behind.now) {
+            Ok(rewrites) => rewrites,
+            Err(why) => return Err(self.unwind(why)),
+        };
+        for (path, text) in &rewrites {
+            if let Err(why) = self.journal.remember(path) {
+                return Err(self.unwind(why));
+            }
+            if let Err(err) = std::fs::write(path, text) {
+                let why = EphorError::Command(format!(
+                    "Cannot rewrite what {} says about {}: {err}",
+                    path.display(),
+                    behind.was
+                ));
+                return Err(self.unwind(why));
+            }
+        }
         let entry = self
             .ledger
             .entries
@@ -4729,15 +4756,19 @@ impl Dispatcher {
         // What is reported is what a reader has lost a path to, so an entry
         // whose plan was never written has its recorded name corrected and is
         // not reported: there was no file, and so nothing that reads as gone.
-        Ok((!moves.is_empty()).then(|| {
-            format!(
-                "carried the plan of {} over from {} to {} in {}",
-                behind.id,
-                behind.was,
-                behind.now,
-                behind.root.display()
-            )
-        }))
+        // A sidecar is not such a file either — nobody holds a path to one.
+        Ok(moves
+            .iter()
+            .any(|(from, _)| runtime::reads_as_gone(from))
+            .then(|| {
+                format!(
+                    "carried the plan of {} over from {} to {} in {}",
+                    behind.id,
+                    behind.was,
+                    behind.now,
+                    behind.root.display()
+                )
+            }))
     }
 
     /// Put back what this hand-off had already moved, restore the ledger it

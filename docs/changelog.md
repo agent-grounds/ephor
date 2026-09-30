@@ -562,6 +562,25 @@ ships, the previous "latest" section moves verbatim to
 
 ### Fixed
 
+- **A carried-over plan no longer leaves the records that name it behind**
+  ([§FS-005-dispatch.3.1](functional-spec/FS-005-dispatch.md#31-a-plan-named-before-the-digest-is-carried-over)).
+  Carrying a plan named before the digest over to the stem its matter's id
+  renders now moved the files and nothing else, so every reference keyed to the
+  old stem was left naming something that was no longer there: the plan's own
+  result block, and the ordering and the consumed export of every plan beside it
+  that waited on this one. The runtime refuses the **root** it is asked to
+  validate rather than the one plan, so one carried-over matter took every plan
+  in the work root down — silently, because the move itself reported success and
+  the damage surfaced at some later command. The carry-over now rewrites those
+  references in the same commit as the renames, and only them: a stem in prose
+  or in a title is a sentence that is still true and is left alone. Two things
+  the move set missed come with it — an export one ticket handed another, now
+  found by sweeping every directory the runtime keeps rather than the two ephor
+  reads itself, and the plan's writer sidecar, which is named after the plan's
+  path and so is renamed with it rather than removed. A reference that cannot be
+  written stops its own entry exactly as an unmovable file does, and the refusal
+  names the file. (PR #144)
+
 - **A recipe over a project's own tasks that mints a checkout each no longer
   feeds itself**
   ([§FS-006-project-interface.7](functional-spec/FS-006-project-interface.md#7-the-projects-own-tasks-are-read-where-they-live),

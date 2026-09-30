@@ -21,7 +21,7 @@ pub mod roster;
 pub mod watch;
 pub mod workflow;
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use crate::capabilities;
 use crate::error::Result;
@@ -329,12 +329,12 @@ const AGENT_MODE_FLAG: &str = "--agent-mode";
 /// Every file in a work root that a plan's stem names, paired with where each
 /// belongs once the matter's id renders a different stem (§FS-005-dispatch.3.1).
 ///
-/// The plan file, then the results and the artifacts keyed by the same stem —
-/// which files those are and what they are called is the binding's grammar, so
-/// the answer is composed here and the caller moves what it is given
-/// (§REQ-001-boundary.5). Only what is actually there: a matter ephor recorded
-/// and no run ever wrote a plan for has nothing to carry over, and a rename is
-/// not how that is discovered.
+/// The plan file, its writer sidecar, then everything the runtime keyed by the
+/// same stem — which files those are and what they are called is the binding's
+/// grammar, so the answer is composed here and the caller moves what it is
+/// given (§REQ-001-boundary.5). Only what is actually there: a matter ephor
+/// recorded and no run ever wrote a plan for has nothing to carry over, and a
+/// rename is not how that is discovered.
 ///
 /// What is said about the destination is said by the caller: a pair whose
 /// destination already holds a file is the caller's refusal to make, because a
@@ -344,10 +344,47 @@ pub fn carried_over_paths(
     from: &str,
     to: &str,
 ) -> Vec<(std::path::PathBuf, std::path::PathBuf)> {
-    let mut moves = vec![(plan::plan_path_in(root, from), plan::plan_path_in(root, to))];
+    let was = plan::plan_path_in(root, from);
+    let now = plan::plan_path_in(root, to);
+    let mut moves = vec![(plan::sidecar_of(&was), plan::sidecar_of(&now)), (was, now)];
     moves.extend(results::carried_over(root, from, to));
     moves.retain(|(from, _)| from.exists());
     moves
+}
+
+/// Whether a file in a carry-over's move set is one whose absence a reader
+/// would notice (§FS-005-dispatch.3.1). The plan and everything a run wrote
+/// are; the plan's writer sidecar is not, because nothing outside the runtime
+/// ever names it — so a root whose only move is that sidecar has nothing to
+/// report.
+pub fn reads_as_gone(path: &Path) -> bool {
+    !plan::is_writer_sidecar(path)
+}
+
+/// Every plan in a work root whose bytes name the stem `from`, paired with the
+/// bytes it has once they name `to` instead (§FS-005-dispatch.3.1).
+///
+/// Composed here for the same reason the move set is: which lines of a plan
+/// hold a reference keyed by a stem is the binding's grammar, and the caller
+/// writes what it is given (§REQ-001-boundary.5). Only the plans that really
+/// change are returned, so the caller journals nothing it does not touch — and
+/// the plan the same carry-over is moving is among them, because its own result
+/// block is a reference like any other.
+pub fn references_rewritten(root: &Path, from: &str, to: &str) -> Result<Vec<(PathBuf, String)>> {
+    let mut rewritten = Vec::new();
+    for path in plan::sources_in(root)? {
+        let text = std::fs::read_to_string(&path).map_err(|err| {
+            crate::error::EphorError::Command(format!(
+                "Cannot read {} to carry the references in it over: {err}",
+                path.display()
+            ))
+        })?;
+        let now = plan::stem_references_rewritten(&text, from, to);
+        if now != text {
+            rewritten.push((path, now));
+        }
+    }
+    Ok(rewritten)
 }
 
 /// A work ledger written before the plan's field was named for the plan spells

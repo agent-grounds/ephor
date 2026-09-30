@@ -85,6 +85,26 @@ pub(crate) const PLAN_SUFFIX: &str = ".rhei.md";
 /// (§AR-007-runtime.1).
 const COMPAT_PLAN_SUFFIX: &str = ".panta.md";
 
+/// What the runtime hangs off a plan's path while a writer holds it: a
+/// permanent sibling sidecar, named after the **path** rather than after the
+/// work, so it belongs to the path and moves when the path does
+/// (§FS-005-dispatch.3.1). Part of the coupling, so it is spelled here
+/// (§REQ-001-boundary.5).
+const SIDECAR_SUFFIX: &str = ".lock";
+
+/// The lines of a plan that hold a reference keyed by a plan's stem
+/// (§FS-005-dispatch.3.1): the result block the runtime writes when a ticket
+/// finishes, and the three fields that name a ticket across plans — an
+/// ordering, an export a ticket reads, and an export it declines. A stem in any
+/// other line is prose, a title, or what ephor recorded about the item, and a
+/// carry-over leaves all three alone.
+const STEM_KEYED: [&str; 4] = [
+    "**Result:**",
+    "**Prior:**",
+    "**Consumes:**",
+    "**Excludes:**",
+];
+
 /// The one plan file of a plan rendered as a directory: the index that names
 /// it. Part of the coupling, and so part of this module
 /// (§REQ-001-boundary.5).
@@ -327,6 +347,115 @@ impl WorkRoot {
 /// (§FS-005-dispatch.5).
 pub fn plan_path_in(dir: &Path, plan_id: &str) -> PathBuf {
     dir.join(format!("{plan_id}{PLAN_SUFFIX}"))
+}
+
+/// The writer sidecar of a plan at this path (§FS-005-dispatch.3.1). It is
+/// named after the path, so where the path goes it goes: a carry-over renames
+/// it rather than removing it, because the rename keeps the file a writer
+/// really holding it is holding, and a removal would let a second writer take a
+/// fresh one at the new name.
+pub fn sidecar_of(plan: &Path) -> PathBuf {
+    let mut path = plan.as_os_str().to_os_string();
+    path.push(SIDECAR_SUFFIX);
+    PathBuf::from(path)
+}
+
+/// Whether this path is a plan's writer sidecar — the one file in a
+/// carry-over's move set whose absence no reader can notice, because nothing
+/// outside the runtime ever names it (§FS-005-dispatch.3.1).
+pub fn is_writer_sidecar(path: &Path) -> bool {
+    path.file_name()
+        .and_then(|name| name.to_str())
+        .is_some_and(|name| name.ends_with(&format!("{PLAN_SUFFIX}{SIDECAR_SUFFIX}")))
+}
+
+/// Every file in a work root that holds plan text: each plan the root holds,
+/// and, for one rendered as a directory, the task files beside its index
+/// (§FS-005-dispatch.28). What a carry-over reads to find the references keyed
+/// by the stem it is moving (§FS-005-dispatch.3.1).
+pub fn sources_in(root: &Path) -> Result<Vec<PathBuf>> {
+    let mut sources = Vec::new();
+    for found in plans_in(root) {
+        for part in task_files(&found.path)? {
+            sources.push(part.path);
+        }
+        sources.push(found.path);
+    }
+    sources.sort();
+    sources.dedup();
+    Ok(sources)
+}
+
+/// A plan's bytes with every reference keyed by the stem `from` naming `to`
+/// instead, and nothing else about them changed (§FS-005-dispatch.3.1).
+///
+/// Only the lines that hold such a reference are read — [`STEM_KEYED`] — and
+/// inside one, only a stem that begins where an id or a path may begin. A stem
+/// also appears in prose and in a title, and both are sentences that stay true
+/// whatever the plan is called now, so a replacement over the text at large
+/// would rewrite a record that was never wrong.
+pub fn stem_references_rewritten(text: &str, from: &str, to: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut fence: Option<String> = None;
+    for line in text.split_inclusive('\n') {
+        let (body, eol) = match line.strip_suffix('\n') {
+            Some(body) => (body, "\n"),
+            None => (line, ""),
+        };
+        // A fenced block is an example rather than a reference: the runtime
+        // does not read a ticket out of one, so neither does this.
+        if outside_a_fence(&mut fence, body) && stem_keyed(body) {
+            out.push_str(&stem_rewritten(body, from, to));
+        } else {
+            out.push_str(body);
+        }
+        out.push_str(eol);
+    }
+    out
+}
+
+/// Whether this line carries a reference keyed by a plan's stem. A result
+/// block is written as a block quote, so the quote markers are read past
+/// before the field is looked for.
+fn stem_keyed(line: &str) -> bool {
+    let mut rest = line.trim();
+    while let Some(quoted) = rest.strip_prefix('>') {
+        rest = quoted.trim_start();
+    }
+    STEM_KEYED.iter().any(|field| rest.starts_with(field))
+}
+
+/// One line's occurrences of `<from>.` replaced by `<to>.`, where the stem
+/// begins at a boundary — so `[a.t]`, `(runtime/results/a.t.md)`, `Task a.t`
+/// and a comma-separated list are all reached, and a longer id that merely ends
+/// in the stem is left as it is.
+fn stem_rewritten(line: &str, from: &str, to: &str) -> String {
+    let needle = format!("{from}.");
+    let mut out = String::with_capacity(line.len());
+    let mut at = 0;
+    while let Some(found) = line[at..].find(&needle) {
+        let start = at + found;
+        out.push_str(&line[at..start]);
+        if begins_an_id(line[..start].chars().next_back()) {
+            out.push_str(to);
+            out.push('.');
+        } else {
+            out.push_str(&needle);
+        }
+        at = start + needle.len();
+    }
+    out.push_str(&line[at..]);
+    out
+}
+
+/// Whether an id or a path may begin after this character: anything that
+/// cannot itself be part of one. `/` is such a character, because the file a
+/// result block links is named after the stem inside a directory.
+fn begins_an_id(before: Option<char>) -> bool {
+    match before {
+        None => true,
+        Some(ch) => !(ch.is_alphanumeric() || matches!(ch, '-' | '_' | '.')),
+    }
 }
 
 /// Whether a runtime project has any plans in it: a `*.rhei.md` file, or a
@@ -1547,34 +1676,39 @@ fn tickets_in(text: &str) -> Vec<PlanTicket> {
 /// The lines of a document that are not inside a fenced block.
 fn unfenced(text: &str) -> impl Iterator<Item = &str> {
     let mut fence: Option<String> = None;
-    text.lines().filter(move |line| {
-        let trimmed = line.trim_start();
-        let marker = trimmed
-            .chars()
-            .next()
-            .filter(|ch| *ch == '`' || *ch == '~')
-            .map(|ch| {
-                trimmed
-                    .chars()
-                    .take_while(|candidate| *candidate == ch)
-                    .collect::<String>()
-            })
-            .filter(|run| run.len() >= 3);
-        match (&fence, marker) {
-            (None, Some(open)) => {
-                fence = Some(open);
-                false
-            }
-            (Some(open), Some(close))
-                if close.len() >= open.len() && close.starts_with(&open[..1]) =>
-            {
-                fence = None;
-                false
-            }
-            (Some(_), _) => false,
-            (None, None) => true,
+    text.lines()
+        .filter(move |line| outside_a_fence(&mut fence, line))
+}
+
+/// Whether this line is content rather than a fence marker or a line inside a
+/// fenced block, advancing the fence it is read under. One reader of the fence
+/// rule, so what the ticket reader skips and what a carry-over declines to
+/// rewrite cannot drift apart.
+fn outside_a_fence(fence: &mut Option<String>, line: &str) -> bool {
+    let trimmed = line.trim_start();
+    let marker = trimmed
+        .chars()
+        .next()
+        .filter(|ch| *ch == '`' || *ch == '~')
+        .map(|ch| {
+            trimmed
+                .chars()
+                .take_while(|candidate| *candidate == ch)
+                .collect::<String>()
+        })
+        .filter(|run| run.len() >= 3);
+    match (&*fence, marker) {
+        (None, Some(open)) => {
+            *fence = Some(open);
+            false
         }
-    })
+        (Some(open), Some(close)) if close.len() >= open.len() && close.starts_with(&open[..1]) => {
+            *fence = None;
+            false
+        }
+        (Some(_), _) => false,
+        (None, None) => true,
+    }
 }
 
 /// A rhei id for an item: what `{id_slug}` renders for it, held additionally

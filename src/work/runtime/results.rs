@@ -12,6 +12,12 @@ use std::path::{Path, PathBuf};
 
 use crate::error::{EphorError, Result};
 
+/// Where the runtime keeps everything a run left behind, relative to the work
+/// root. The directories below it are the runtime's to name and can be added
+/// to, so a carry-over sweeps them rather than a list of the ones this module
+/// reads itself (§FS-005-dispatch.3.1).
+const RUNTIME: &str = "runtime";
+
 /// Where the shipped states put what a run wrote, relative to the work root.
 const ARTIFACTS: &str = "runtime/ephor";
 
@@ -98,20 +104,33 @@ pub fn proposal(root: &Path, plan_id: &str) -> Option<Proposal> {
     })
 }
 
-/// Every file the runtime keyed by the plan stem `from` under this root, paired
-/// with where the same file belongs under the stem `to` (§FS-005-dispatch.3.1).
+/// Every entry the runtime keyed by the plan stem `from` under this root,
+/// paired with where the same entry belongs under the stem `to`
+/// (§FS-005-dispatch.3.1).
 ///
-/// A result and an artifact are found by the stem they are named after rather
-/// than by a list of the names the shipped states write: this module reads what
-/// a run left behind and cannot know every file a machine put there, and a file
-/// left at a name nothing names any more is exactly what the carry-over is for.
+/// Swept out of **every** directory the runtime keeps rather than out of a list
+/// of the two this module reads itself: a result, an artifact ephor's own states
+/// wrote, an export one ticket handed another — this module reads what a run
+/// left behind and cannot know every file a machine put there, and a file left
+/// at a name nothing names any more is exactly what the carry-over is for. A
+/// directory named after the stem moves whole, which is how an export's
+/// contents come with it.
 ///
 /// The stem is matched with its separator, because the name the digest renders
 /// begins with the name it replaces — without the `.` a carried-over file would
-/// be carried over a second time.
+/// be carried over a second time. That same separator is what leaves a past
+/// run's transcript alone: it is named after the invocation, so the stem is
+/// inside its name rather than at the start of it.
 pub fn carried_over(root: &Path, from: &str, to: &str) -> Vec<(PathBuf, PathBuf)> {
     let mut moves = Vec::new();
-    for dir in [root.join(RESULTS), root.join(ARTIFACTS)] {
+    let Ok(kept) = fs::read_dir(root.join(RUNTIME)) else {
+        return moves;
+    };
+    for dir in kept.flatten() {
+        let dir = dir.path();
+        if !dir.is_dir() {
+            continue;
+        }
         let Ok(entries) = fs::read_dir(&dir) else {
             continue;
         };
