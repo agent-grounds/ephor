@@ -5420,3 +5420,421 @@ fn a_carry_over_onto_a_name_that_is_taken_is_refused_by_name() {
         "the newer result was written over after all"
     );
 }
+
+/// A line that merely looks like one of those records is left exactly as it was:
+/// the carry-over rewrites what the runtime reads as a reference and **only**
+/// that (§FS-005-dispatch.3.1).
+///
+/// The runtime has two rules and each field is held to its own. A result block is
+/// a block quote read behind exactly one marker, so a ticket's prose quoting the
+/// result block of the plan it reports on — the shape every report about a plan
+/// has, this one included — is a record of what another plan said rather than a
+/// reference, and an unquoted `**Result:**` is not a result block either. The
+/// three metadata fields are read from the trimmed line and never behind a marker
+/// at any depth, so a quoted one is prose too. A plan whose bytes changed in any
+/// of those places would have been edited rather than carried over, which is the
+/// same guarantee as the moved plan's own prose sentence.
+#[test]
+fn a_line_the_runtime_does_not_read_as_a_reference_is_left_alone() {
+    let tmp = tempfile::tempdir().unwrap();
+    let _ledger_path = ledger::use_test_path(tmp.path().join("state/work.json"));
+    let (id, title, digested) = COLLIDING[0];
+    let (project, root) = root_named_before_the_digest(tmp.path(), id, title);
+
+    // A plan in the same root whose body quotes what another plan records, and
+    // names a field of its own that the runtime reads as nothing.
+    let quoting = root.join(format!("quoting{}", plan::PLAN_SUFFIX));
+    fs::write(
+        &quoting,
+        format!(
+            "# Rhei: a report about the plan beside it\n\
+             **States:** ephor-work\n\n\
+             ## Tasks\n\n\
+             ### Task quoting-1: what the report said\n\
+             **State:** fix\n\n\
+             The report quoted the finished ticket's own record verbatim, and the \
+             ordering above it:\n\n\
+             >     > **Result:** \
+             [{PRE_DIGEST}.task-work-1](runtime/results/{PRE_DIGEST}.task-work-1.md)\n\
+             >     **Prior:** Task {PRE_DIGEST}.task-work-1\n\n\
+             A field nobody quoted is not a result block to the runtime either:\n\n\
+             **Result:** \
+             [{PRE_DIGEST}.task-work-1](runtime/results/{PRE_DIGEST}.task-work-1.md)\n"
+        ),
+    )
+    .unwrap();
+    let was_quoting = fs::read_to_string(&quoting).unwrap();
+    let mut dispatcher = issue_43_dispatcher(
+        &project,
+        ledger_naming_the_pre_digest_stem(id, title, &root),
+    );
+
+    dispatcher
+        .carry_over_plan_names()
+        .expect("a root named before the digest is carried over");
+
+    assert_eq!(
+        fs::read_to_string(&quoting).unwrap(),
+        was_quoting,
+        "a line the runtime does not read as a reference was rewritten, so a plan \
+         was edited rather than carried over"
+    );
+
+    // And the one line in the root that *is* a reference moved, so the fixture
+    // is not passing by making the carry-over do nothing at all.
+    assert!(
+        fs::read_to_string(root.join(format!("{digested}{}", plan::PLAN_SUFFIX)))
+            .unwrap()
+            .contains(&format!("> **Result:** [{digested}.task-work-1]")),
+        "the moved plan's own result block was not carried over"
+    );
+}
+
+/// A stem-keyed line inside a fenced block is an example and is left alone
+/// (§FS-005-dispatch.3.1).
+///
+/// The runtime makes every line inside a fence text before a field or a result
+/// block is recognised, so it reads no reference out of one — a plan explaining
+/// what a finished ticket's record looks like is documentation, and rewriting it
+/// would edit the plan rather than carry it over. Pinned on a bare fence, which
+/// is the shape both readers agree on.
+#[test]
+fn a_stem_keyed_line_inside_a_fence_is_left_alone() {
+    let tmp = tempfile::tempdir().unwrap();
+    let _ledger_path = ledger::use_test_path(tmp.path().join("state/work.json"));
+    let (id, title, _) = COLLIDING[0];
+    let (project, root) = root_named_before_the_digest(tmp.path(), id, title);
+
+    let showing = root.join(format!("showing{}", plan::PLAN_SUFFIX));
+    fs::write(
+        &showing,
+        format!(
+            "# Rhei: what a finished ticket's record looks like\n\
+             **States:** ephor-work\n\n\
+             ## Tasks\n\n\
+             ### Task showing-1: the shape, for a reader\n\
+             **State:** fix\n\n\
+             A finished ticket records where its result went, and the ticket after \
+             it waits on the ticket by name:\n\n\
+             ```\n\
+             > **Result:** \
+             [{PRE_DIGEST}.task-work-1](runtime/results/{PRE_DIGEST}.task-work-1.md)\n\
+             **Prior:** Task {PRE_DIGEST}.task-work-1\n\
+             ```\n\n\
+             Neither line above claims anything.\n"
+        ),
+    )
+    .unwrap();
+    let was_showing = fs::read_to_string(&showing).unwrap();
+    let mut dispatcher = issue_43_dispatcher(
+        &project,
+        ledger_naming_the_pre_digest_stem(id, title, &root),
+    );
+
+    dispatcher
+        .carry_over_plan_names()
+        .expect("a root named before the digest is carried over");
+
+    assert_eq!(
+        fs::read_to_string(&showing).unwrap(),
+        was_showing,
+        "a fenced example was rewritten, so a plan was edited rather than carried over"
+    );
+}
+
+/// A plan source the carry-over cannot read stops nothing, and the reader is told
+/// (§FS-005-dispatch.3.1).
+///
+/// What cannot move stops only itself, and a source whose bytes are not text
+/// holds no reference the runtime reads either — so refusing the entry for it
+/// would hold a matter back over a file the carry-over has nothing to do with,
+/// every turn, on a migration that is meant to happen once. The refusal is kept
+/// for a reference that was read and could not be written back.
+#[test]
+fn a_plan_source_that_cannot_be_read_stops_nothing_and_is_said() {
+    let tmp = tempfile::tempdir().unwrap();
+    let _ledger_path = ledger::use_test_path(tmp.path().join("state/work.json"));
+    let (id, title, digested) = COLLIDING[0];
+    let (project, root) = root_named_before_the_digest(tmp.path(), id, title);
+
+    // A plan file in the root whose bytes are not text and which names nothing
+    // about the stem that is moving.
+    let unreadable = root.join(format!("unrelated{}", plan::PLAN_SUFFIX));
+    fs::write(&unreadable, [b'#', b' ', 0xff, b'\n']).unwrap();
+    let mut dispatcher = issue_43_dispatcher(
+        &project,
+        ledger_naming_the_pre_digest_stem(id, title, &root),
+    );
+
+    let moved = dispatcher
+        .carry_over_plan_names()
+        .expect("a source that cannot be read is not a refusal");
+
+    assert_eq!(
+        moved.len(),
+        1,
+        "a source the carry-over cannot read held the matter back: {moved:?}"
+    );
+    assert_eq!(
+        plans_in(&root),
+        vec![
+            format!("{digested}{}", plan::PLAN_SUFFIX),
+            format!("unrelated{}", plan::PLAN_SUFFIX),
+        ],
+        "the plan was not carried over past a source that cannot be read"
+    );
+    assert_eq!(dispatcher.ledger.entries[id].plan_id, digested);
+
+    // It is a fact only ephor has, so it is said, and it names the file
+    // (§REQ-002-parity).
+    assert!(
+        dispatcher
+            .notes()
+            .iter()
+            .any(|note| note.contains(&unreadable.display().to_string())),
+        "the source that was passed over was not named: {:?}",
+        dispatcher.notes()
+    );
+}
+
+/// An entry that moved nothing a reader misses but rewrote a plan still says so
+/// (§FS-005-dispatch.3.1, §REQ-002-parity).
+///
+/// A rewritten reference is a path a reader had, in the bytes rather than in a
+/// name, so the carry-over that changed it is as much a fact only ephor has as a
+/// rename is — and the ticket this rule comes from was filed because the damage
+/// was silent when it happened. The other half stands with it: a root whose only
+/// move is the writer sidecar and whose plans name nothing has nothing to report,
+/// and reports nothing.
+#[test]
+fn an_entry_that_only_rewrote_a_plan_is_still_reported() {
+    let tmp = tempfile::tempdir().unwrap();
+    let _ledger_path = ledger::use_test_path(tmp.path().join("state/work.json"));
+    let (id, title, digested) = COLLIDING[0];
+    let (project, root) = root_named_before_the_digest(tmp.path(), id, title);
+
+    // This matter's plan and everything a run wrote for it are gone — a root a
+    // hand has cleaned out — so the only thing left to move is the writer
+    // sidecar, which no reader ever names.
+    fs::remove_file(root.join(format!("{PRE_DIGEST}{}", plan::PLAN_SUFFIX))).unwrap();
+    fs::remove_file(root.join(format!("runtime/results/{PRE_DIGEST}.task-work-1.md"))).unwrap();
+    fs::remove_file(root.join(format!("runtime/ephor/{PRE_DIGEST}.reply.md"))).unwrap();
+    // And another matter's plan, which nothing moves, waits on the ticket that
+    // was written under the old stem.
+    let beside = root.join(format!("other-matter{}", plan::PLAN_SUFFIX));
+    fs::write(
+        &beside,
+        format!(
+            "# Rhei: another matter entirely\n\
+             **States:** ephor-work\n\n\
+             ## Tasks\n\n\
+             ### Task other-1: something unrelated\n\
+             **State:** fix\n\
+             **Prior:** Task {PRE_DIGEST}.task-work-1\n\n\
+             It waits on a ticket whose stem is about to move.\n"
+        ),
+    )
+    .unwrap();
+
+    // A second matter whose root holds the sidecar and nothing else: no plan
+    // there names the stem, so nothing about it is a fact a reader could want.
+    let (quiet_id, quiet_title, _) = COLLIDING[1];
+    let quiet = tmp.path().join("quiet/widget/panta");
+    fs::create_dir_all(&quiet).unwrap();
+    fs::write(
+        quiet.join(format!("{PRE_DIGEST}{}.lock", plan::PLAN_SUFFIX)),
+        "",
+    )
+    .unwrap();
+    let mut ledger = ledger_naming_the_pre_digest_stem(id, title, &root);
+    ledger
+        .entries
+        .extend(ledger_naming_the_pre_digest_stem(quiet_id, quiet_title, &quiet).entries);
+    let mut dispatcher = issue_43_dispatcher(&project, ledger);
+
+    let moved = dispatcher
+        .carry_over_plan_names()
+        .expect("both roots are carried over");
+
+    assert!(
+        fs::read_to_string(&beside)
+            .unwrap()
+            .contains(&format!("**Prior:** Task {digested}.task-work-1")),
+        "the plan beside it still names the stem that moved"
+    );
+    assert_eq!(
+        moved.len(),
+        1,
+        "a carry-over that rewrote a plan was silent, or one that moved only a \
+         sidecar spoke: {moved:?}"
+    );
+    assert!(
+        moved[0].contains(&root.display().to_string()),
+        "what was reported is not the root whose plan was rewritten: {}",
+        moved[0]
+    );
+    assert_eq!(
+        dispatcher.ledger.entries[quiet_id].plan_id,
+        plan::plan_id(quiet_id)
+    );
+}
+
+/// A writer's sidecar already at the digested name does not hold the matter back:
+/// it holds no work, so the rename replaces it (§FS-005-dispatch.3.1).
+///
+/// The refusal it would otherwise fall into asks a person which of two records of
+/// the same work to keep, and an empty advisory lock is not a record of work.
+/// Nothing removes one either — the runtime calls it permanent — so the matter
+/// would stay refused, and its dispatch stopped, until a hand deleted a file
+/// nobody reads. The plan behind a live writer is refused by its own pair, so a
+/// sidecar met at the new name on its own is stale by construction.
+#[test]
+fn a_writer_sidecar_at_the_digested_name_does_not_hold_the_matter_back() {
+    let tmp = tempfile::tempdir().unwrap();
+    let _ledger_path = ledger::use_test_path(tmp.path().join("state/work.json"));
+    let (id, title, digested) = COLLIDING[0];
+    let (project, root) = root_named_before_the_digest(tmp.path(), id, title);
+    let taken = root.join(format!("{digested}{}.lock", plan::PLAN_SUFFIX));
+    fs::write(&taken, "what an older run left").unwrap();
+    let mut dispatcher = issue_43_dispatcher(
+        &project,
+        ledger_naming_the_pre_digest_stem(id, title, &root),
+    );
+
+    let moved = dispatcher
+        .carry_over_plan_names()
+        .expect("a sidecar at the new name is not a refusal");
+
+    assert_eq!(
+        moved.len(),
+        1,
+        "an empty lock file held the matter back: {moved:?}"
+    );
+    assert_eq!(
+        plans_in(&root),
+        vec![format!("{digested}{}", plan::PLAN_SUFFIX)],
+        "the plan was not carried over"
+    );
+    assert!(
+        fs::read_to_string(&taken).unwrap().is_empty(),
+        "the sidecar the plan brought with it is not the one at the new name"
+    );
+    assert!(
+        !root
+            .join(format!("{PRE_DIGEST}{}.lock", plan::PLAN_SUFFIX))
+            .exists(),
+        "the plan's writer sidecar was left behind at a name nothing names any more"
+    );
+    assert_eq!(dispatcher.ledger.entries[id].plan_id, digested);
+}
+
+/// What a carry-over wrote over is put back when the commit unwinds
+/// (§FS-005-dispatch.4, §FS-005-dispatch.3.1).
+///
+/// A sidecar at the digested name is the one file a carry-over may replace, so
+/// the entry's hand-off is what has to hold: the file is journalled before the
+/// rename like every other destination, and an error anywhere after it puts the
+/// bytes back. Without that, the one pair let past the collision refusal would be
+/// the one pair a failed carry-over loses.
+#[cfg(unix)]
+#[test]
+fn a_sidecar_written_over_comes_back_when_the_carry_over_unwinds() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let tmp = tempfile::tempdir().unwrap();
+    let _ledger_path = ledger::use_test_path(tmp.path().join("state/work.json"));
+    let (id, title, digested) = COLLIDING[0];
+    let (project, root) = root_named_before_the_digest(tmp.path(), id, title);
+    let taken = root.join(format!("{digested}{}.lock", plan::PLAN_SUFFIX));
+    fs::write(&taken, "what an older run left").unwrap();
+    let was_taken = fs::read_to_string(&taken).unwrap();
+
+    // The plan and its sidecar move first and the results after them, so a
+    // results directory nothing may be written in fails this entry once the
+    // sidecar has already been written over.
+    let results = root.join("runtime/results");
+    fs::set_permissions(&results, fs::Permissions::from_mode(0o555)).unwrap();
+    let mut dispatcher = issue_43_dispatcher(
+        &project,
+        ledger_naming_the_pre_digest_stem(id, title, &root),
+    );
+
+    let err = dispatcher
+        .carry_over_plan_names()
+        .expect_err("a result that cannot move stops its own entry");
+
+    fs::set_permissions(&results, fs::Permissions::from_mode(0o755)).unwrap();
+    assert!(
+        err.to_string().contains(
+            &results
+                .join(format!("{PRE_DIGEST}.task-work-1.md"))
+                .display()
+                .to_string()
+        ),
+        "the refusal does not name the file it could not carry over: {err}"
+    );
+    assert_eq!(
+        fs::read_to_string(&taken).unwrap(),
+        was_taken,
+        "the file the carry-over wrote over was not put back"
+    );
+    assert_eq!(
+        plans_in(&root),
+        vec![format!("{PRE_DIGEST}{}", plan::PLAN_SUFFIX)],
+        "the plan did not come back to the name the record still gives it"
+    );
+    assert!(
+        root.join(format!("{PRE_DIGEST}{}.lock", plan::PLAN_SUFFIX))
+            .exists(),
+        "the plan's own writer sidecar did not come back"
+    );
+    assert_eq!(dispatcher.ledger.entries[id].plan_id, PRE_DIGEST);
+}
+
+/// A sidecar the carry-over may replace is one no writer can be holding: where a
+/// plan stands at the new name, the matter is held and the pair is said
+/// (§FS-005-dispatch.3.1).
+///
+/// The sidecar is exempt from the collision refusal because an empty lock file
+/// holds no work — but it is what a writer takes to say it is writing the plan
+/// beside it, so replacing one while that plan is there could leave two writers
+/// each holding a lock on the plan. A hand that renamed a plan to the digested
+/// name and left the old lock behind is how a root reaches this, so the exemption
+/// is read off the plan rather than off the file's emptiness.
+#[test]
+fn a_sidecar_under_a_plan_that_stands_at_the_new_name_still_holds_the_matter_back() {
+    let tmp = tempfile::tempdir().unwrap();
+    let _ledger_path = ledger::use_test_path(tmp.path().join("state/work.json"));
+    let (id, title, digested) = COLLIDING[0];
+    let (project, root) = root_named_before_the_digest(tmp.path(), id, title);
+
+    // What a hand repairing this root by itself leaves: the plan carried over to
+    // the digested name, its writer's sidecar beside it, and the old lock file
+    // still there. The record has not been moved, so ephor still has the entry.
+    fs::rename(
+        root.join(format!("{PRE_DIGEST}{}", plan::PLAN_SUFFIX)),
+        root.join(format!("{digested}{}", plan::PLAN_SUFFIX)),
+    )
+    .unwrap();
+    let writing = root.join(format!("{digested}{}.lock", plan::PLAN_SUFFIX));
+    fs::write(&writing, "").unwrap();
+    let mut dispatcher = issue_43_dispatcher(
+        &project,
+        ledger_naming_the_pre_digest_stem(id, title, &root),
+    );
+
+    let err = dispatcher
+        .carry_over_plan_names()
+        .expect_err("a sidecar beside a plan that stands there is not replaced");
+
+    assert!(
+        err.to_string().contains(&writing.display().to_string()),
+        "the refusal does not name the sidecar it would have written over: {err}"
+    );
+    assert!(
+        root.join(format!("{PRE_DIGEST}{}.lock", plan::PLAN_SUFFIX))
+            .exists(),
+        "the old sidecar was moved onto a sidecar a writer may hold"
+    );
+    assert_eq!(dispatcher.ledger.entries[id].plan_id, PRE_DIGEST);
+}

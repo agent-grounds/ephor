@@ -4661,9 +4661,20 @@ impl Dispatcher {
             if held.contains(&entry.id) {
                 continue;
             }
+            // Where a plan stands at the new name, a writer may be holding the
+            // sidecar beside it, and replacing that is the one way this could
+            // let two writers think they hold one plan. Where no plan stands
+            // there, nothing can be writing one (§FS-005-dispatch.3.1).
+            let a_plan_stands_there = plan::plan_path_in(&entry.root, &entry.now).is_file();
             let occupied: Vec<String> =
                 runtime::carried_over_paths(&entry.root, &entry.was, &entry.now)
                     .into_iter()
+                    // What is held back is a record of work, and a writer's
+                    // sidecar is not one: it holds nothing and nothing ever
+                    // removes it, so a stale one at the new name would
+                    // otherwise refuse this matter for good, under a message
+                    // asking which of two records of the work to keep.
+                    .filter(|(_, to)| a_plan_stands_there || runtime::holds_work(to))
                     .filter(|(_, to)| to.exists())
                     .map(|(from, to)| format!("{} onto {}", from.display(), to.display()))
                     .collect();
@@ -4732,7 +4743,7 @@ impl Dispatcher {
             Ok(rewrites) => rewrites,
             Err(why) => return Err(self.unwind(why)),
         };
-        for (path, text) in &rewrites {
+        for (path, text) in &rewrites.plans {
             if let Err(why) = self.journal.remember(path) {
                 return Err(self.unwind(why));
             }
@@ -4753,22 +4764,30 @@ impl Dispatcher {
         entry.plan_id = behind.now.clone();
         entry.plan = plan::plan_path_in(&behind.root, &behind.now);
         self.save()?;
+        // A source this carry-over could not read is said on its own: it held
+        // the carry-over back from nothing, so it is neither a refusal nor part
+        // of what moved (§FS-005-dispatch.3.1).
+        for said in rewrites.passed_over {
+            self.note_once(&said);
+        }
         // What is reported is what a reader has lost a path to, so an entry
         // whose plan was never written has its recorded name corrected and is
         // not reported: there was no file, and so nothing that reads as gone.
-        // A sidecar is not such a file either — nobody holds a path to one.
-        Ok(moves
-            .iter()
-            .any(|(from, _)| runtime::reads_as_gone(from))
-            .then(|| {
-                format!(
-                    "carried the plan of {} over from {} to {} in {}",
-                    behind.id,
-                    behind.was,
-                    behind.now,
-                    behind.root.display()
-                )
-            }))
+        // A sidecar is not such a file either — nobody holds a path to one. A
+        // reference rewritten in a plan beside it is: the path a reader had is
+        // in those bytes, so an entry that moved only a sidecar and rewrote a
+        // plan still says so.
+        Ok((moves.iter().any(|(from, _)| runtime::reads_as_gone(from))
+            || !rewrites.plans.is_empty())
+        .then(|| {
+            format!(
+                "carried the plan of {} over from {} to {} in {}",
+                behind.id,
+                behind.was,
+                behind.now,
+                behind.root.display()
+            )
+        }))
     }
 
     /// Put back what this hand-off had already moved, restore the ledger it
