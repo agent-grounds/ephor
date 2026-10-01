@@ -39,6 +39,9 @@ line CI and the pre-commit hook run.
 - `test_check_parity.py` — Cargo-aware parity executable selection, standalone
   build fallback, and actionable operational failures
   ([§AR-009-surfaces.5.1](../../docs/architecture/AR-009-surfaces.md#51-cargo-chooses-the-executable-the-parity-gate-inspects)).
+- `test_grund_pin_entrypoints.py` — the pinned grund and the entrypoint blocks
+  it generates ([§FS-002-release.7](../../docs/functional-spec/FS-002-release.md#7-a-pinned-checker-and-the-blocks-it-generates-move-together)). The generator half runs the pinned binary, so
+  it skips with a `harness:` message where that binary is not installed.
 - `test_check_changelog_pr_entry.py`, `test_prepare_changelog_release.py` —
   the pull-request changelog gate and the release script
   ([§FS-002-release.1](../../docs/functional-spec/FS-002-release.md#1-changelog), [§FS-002-release.2](../../docs/functional-spec/FS-002-release.md#2-cutting-a-release), [§FS-002-release.6](../../docs/functional-spec/FS-002-release.md#6-the-changelog-gate-runs-before-the-pull-request-exists)).

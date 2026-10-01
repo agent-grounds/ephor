@@ -208,6 +208,20 @@ ships, the previous "latest" section moves verbatim to
 
 ### Changed
 
+- **The pinned checker and the blocks it writes move together**
+  ([§FS-002-release.7](functional-spec/FS-002-release.md#7-a-pinned-checker-and-the-blocks-it-generates-move-together)).
+  A checker this repository pins is now required to be a concrete published
+  release, the checked-in `CLAUDE.md` and `.claude/CLAUDE.md` managed blocks to
+  be that release's own output, and CI's install step, cache identity and
+  compatibility note to name the same pairing as the documented contributor
+  setup and the PATH-based local gates. Until now CI held an older grund than
+  anyone's machine did, so `grund check` was green in the job and red in the
+  pre-commit hook on an otherwise untouched checkout, and the repository never
+  said which version a contributor should install.
+  `tests/integration/test_grund_pin_entrypoints.py` holds the tree to it by
+  running the pinned generator over scratch copies of both entrypoints rather
+  than restating the template. (PR #TBD)
+
 - **The changelog gate asks for a bullet, not for a number nobody can know yet**
   ([§FS-002-release.1](functional-spec/FS-002-release.md#1-changelog),
   [§FS-002-release.6](functional-spec/FS-002-release.md#6-the-changelog-gate-runs-before-the-pull-request-exists)).

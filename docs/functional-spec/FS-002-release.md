@@ -92,3 +92,26 @@ Where no base can be resolved — a fork clone that has never fetched this
 repository — the hook falls back to requiring that `## Unreleased` carries a
 bullet, and says which of the two checks it ran. The local gate never refuses a
 push that CI would have passed.
+
+## 7. A pinned checker and the blocks it generates move together
+
+A checker this repository pins is a concrete published version — a tag that
+exists and an artifact installable by exact number — never a development build
+and never whatever is newest. Every checked-in managed entrypoint block is then
+that version's own output: `CLAUDE.md` and `.claude/CLAUDE.md` carry what the
+pinned generator writes, and every byte outside the block's markers survives the
+regeneration untouched.
+
+The pin is not one value. CI's install step, the cache identity it keys on, and
+the comment that explains the compatibility name one pairing — the release and
+the block version it speaks — and they move in a single change. The contributor
+setup and the PATH-based local gates name that same release, so the hook a
+person runs before pushing reaches the verdict the job will. A tree where they
+disagree is green only because CI is the one holding the older checker, and the
+local gate stops handing anything over ([§GOAL-004-handover](../goals.md#goal-004-handover-routine-moves-leave-the-persons-hands)): the person is back
+to reading two answers and deciding which one counted.
+
+Compatibility is promised for the pinned release and for no other. Moving the
+pin is a deliberate change that regenerates the blocks in the same commit; a
+contributor on an older checker is told the block is unsupported and upgrades,
+and nothing is claimed about a version this repository has not pinned.
