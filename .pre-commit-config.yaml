@@ -68,9 +68,17 @@ repos:
       # (§FS-002-release.7):
       #     cargo install grund --version 0.14.0 --locked
       # Another version reaches another verdict on an untouched tree.
+      #
+      # `local-section-citation` is held out, and only that code. The same
+      # selection is in `.github/workflows/ci.yml` and the `justfile`, and it
+      # has to stay that way: a code held out here and checked there is one
+      # tree with two verdicts, which is the failure this pinning exists to
+      # stop. It flags a bare section number written in prose, a rule grund
+      # 0.13.0 did not carry; the sites it names are the editorial pass
+      # recorded in pull request 146, and finishing it deletes this flag.
       - id: grund-check
         name: grund check
-        entry: grund check
+        entry: grund check --ignore local-section-citation
         language: system
         pass_filenames: false
         always_run: true

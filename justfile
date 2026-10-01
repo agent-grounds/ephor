@@ -36,9 +36,17 @@ boundary:
 parity:
     python3 scripts/check_parity.py
 
-# Validate the grund tree (citations resolve, canonical formatting)
+# Validate the grund tree (citations resolve, canonical formatting).
+# `local-section-citation` is held out, and only that code, exactly as CI and
+# the pre-commit hook hold it out: the selection has to be identical in all
+# three or a contributor's gate and the job reach different verdicts on one
+# tree (§FS-002-release.7). It flags a bare section number written in prose,
+# which the grund 0.13.0 gate this tree is leaving behind does not carry as a
+# rule at all. The sites it names want a per-site decision between escaping the
+# token and writing the citation out - the editorial pass recorded in pull
+# request 146, whose completion deletes this flag.
 grund:
-    grund check
+    grund check --ignore local-section-citation
     grund fmt --check
 
 # Hold every file to the budget its reader sets (§FS-012-file-size.2)
