@@ -273,7 +273,10 @@ pub fn sweep(args: &RebaseArgs, projects: &Projects, act: Act) -> Result<ExitCod
                 .unwrap_or_else(|_| "null".to_string())
         );
     } else {
-        print!("{report}");
+        // The terminal gets prose, nested replays and all; the document is
+        // what `--report` writes and what the reading carries
+        // (§FS-011-command-line.11.1).
+        print!("{}", say(projects.said(), &rows, &reached, &gate));
     }
     // The same contract `--report` has for one checkout: one file, holding
     // what this run came to.
@@ -834,7 +837,9 @@ fn summary(rows: &[Swept], reached: &[Reached]) -> String {
 }
 
 /// The whole sweep as markdown: one line per checkout, whichever end it came
-/// to, and the conflicts in full beneath.
+/// to, and the conflicts in full beneath. What `--report <path>` writes and
+/// what the `report` field of a reading carries, never what a terminal is
+/// handed — [`say`] is (§FS-011-command-line.11.1).
 fn report(said: &str, rows: &[Swept], reached: &[Reached], gate: &crate::scope::Gate) -> String {
     let mut out = format!("# rebase sweep over {said}\n\n");
     for project in reached {
@@ -885,6 +890,98 @@ fn report(said: &str, rows: &[Swept], reached: &[Reached], gate: &crate::scope::
         out.push_str(&format!("{held}\n"));
     }
     out
+}
+
+/// The whole sweep as prose, for a reader whose terminal renders no markup
+/// (§FS-011-command-line.11.1).
+///
+/// The same sweep [`report`] tells, line for line: the two differ in their
+/// frame — a heading and a nested document there, a name and an indent here —
+/// and in nothing else (§REQ-002-parity.3). The summary the document ends with
+/// is this one's headline, because a reader watching a sweep run is told what
+/// it came to before forty lines of it rather than after.
+///
+/// A replay nested inside this report takes the form of the document carrying
+/// it, so the conflicts below are each repository's prose indented one level
+/// under the checkout it belongs to — never the markdown the same replay
+/// writes into the file beside it (§FS-011-command-line.11.1).
+fn say(said: &str, rows: &[Swept], reached: &[Reached], gate: &crate::scope::Gate) -> String {
+    let mut out = format!("rebase sweep over {said} — {}.\n", summary(rows, reached));
+    for project in reached {
+        if let Some(why) = &project.refusal {
+            out.push_str(&format!(
+                "{SAYS_INDENT}{}: not reached. No checkout of this project was \
+                 replayed: {why}.\n",
+                project.project
+            ));
+            continue;
+        }
+        out.push_str(&format!(
+            "{SAYS_INDENT}{}: the main branch's checkout is `ephor update`'s, and is \
+             not swept.\n",
+            project.project
+        ));
+        let mine: Vec<&Swept> = rows
+            .iter()
+            .filter(|row| row.project == project.project)
+            .collect();
+        if mine.is_empty() {
+            out.push_str(&format!(
+                "{NESTED_INDENT}No branch checkout is on disk here.\n"
+            ));
+            continue;
+        }
+        for row in mine {
+            out.push_str(&format!("{NESTED_INDENT}{}\n", says(row)));
+        }
+    }
+    let stopped: Vec<&Swept> = rows
+        .iter()
+        .filter(|row| matches!(row.outcome, Outcome::Conflicted(_)))
+        .collect();
+    if !stopped.is_empty() {
+        out.push_str("The checkouts it stopped on:\n");
+        for row in stopped {
+            if let Some(rebase) = row.outcome.replay() {
+                nested(&mut out, &rebase.say());
+            }
+            if let Some(ticket) = &row.ticket {
+                out.push_str(&format!("{SAYS_INDENT}Written up as {ticket}\n"));
+            }
+            // The ticket is the extra and the conflict above is the report, so
+            // a write-up that could not be made is said here rather than
+            // swallowing what it was about (§REQ-001-boundary.1).
+            if let Some(note) = &row.note {
+                out.push_str(&format!(
+                    "{SAYS_INDENT}No ticket was opened for this one: {note}\n"
+                ));
+            }
+        }
+    }
+    if let Some(held) = gate.says() {
+        out.push_str(&format!("{held}\n"));
+    }
+    out
+}
+
+/// How far a project's own line sits in from the sweep's headline, and how far
+/// one of its checkouts sits in from that (§FS-011-command-line.11.1). The
+/// same two steps the replay's prose uses, so a replay nested under a checkout
+/// goes on reading as part of it.
+const SAYS_INDENT: &str = "  ";
+const NESTED_INDENT: &str = "    ";
+
+/// A report carried inside this one, indented one level under the line it
+/// belongs to (§FS-011-command-line.11.1). A blank line stays blank rather
+/// than becoming an indent with nothing after it.
+fn nested(out: &mut String, report: &str) {
+    for line in report.lines() {
+        if line.trim().is_empty() {
+            out.push('\n');
+        } else {
+            out.push_str(&format!("{SAYS_INDENT}{line}\n"));
+        }
+    }
 }
 
 /// One checkout's line: the branch, what became of it, and where.

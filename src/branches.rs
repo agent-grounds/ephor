@@ -113,7 +113,8 @@ const MARK: &str = "\u{1}workspace\u{1}";
 
 /// What the project type declares about the repositories of a checkout
 /// (§AR-004-forest.2). A repository the type says to skip is not tracking the
-/// branch, so it is not part of the forest a branch workspace folds over.
+/// branch, so it is not part of the forest a branch workspace folds over —
+/// unless every row says so, for the reason the filter below gives.
 fn declarations(registry_doc: &Value, project: &Value) -> Vec<Declaration> {
     let Some(type_id) = registry::str_field(project, "type") else {
         return Vec::new();
@@ -121,9 +122,25 @@ fn declarations(registry_doc: &Value, project: &Value) -> Vec<Declaration> {
     let Ok(project_type) = registry::get_project_type(registry_doc, type_id) else {
         return Vec::new();
     };
-    registry::array_field(project_type, "repos")
+    let rows = registry::array_field(project_type, "repos");
+    let tracking: Vec<&Value> = rows
         .iter()
         .filter(|repo| repo.get("update_mode").and_then(Value::as_str) != Some("skip"))
+        .collect();
+    // A row carrying `update_mode: skip` still declares its repository — what
+    // it says is not to *update* it, which is `ephor update`'s business and
+    // not this fold's — so a project all of whose rows say so has a declared
+    // forest and not one probed off the disk (§AR-004-forest.2). A project
+    // mixing the two folds over the rows it tracks and no others, so a
+    // vendored tree never joins a checkout that is whole without it
+    // (§FS-006-project-interface.8).
+    let declaring = if tracking.is_empty() {
+        rows.iter().collect()
+    } else {
+        tracking
+    };
+    declaring
+        .into_iter()
         .filter_map(|repo| {
             Some(Declaration {
                 path: registry::str_field(repo, "path")?.to_string(),

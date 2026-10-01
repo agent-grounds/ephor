@@ -110,6 +110,11 @@ impl Replay {
 pub struct RepoReplay {
     /// The repository's path relative to the checkout (`.` for the root).
     pub repo: String,
+    /// What a report calls it for a person — its role, the handle its
+    /// declaration gave it, or its path (§FS-011-command-line.11.2). Beside
+    /// `repo` and not instead of it: the machine form goes on carrying the
+    /// path, because that is what a program opens a directory with.
+    pub name: String,
     /// The remote it was fetched from and measured against. Carried per
     /// repository rather than per rebase because a forest's repositories need
     /// not agree on one (§AR-004-forest.2), and a report naming a remote the
@@ -125,6 +130,85 @@ pub struct RepoReplay {
     pub replay: Replay,
 }
 
+impl RepoReplay {
+    /// The branch a report says it was on, where git could say which.
+    pub fn said_branch(&self) -> &str {
+        self.branch.as_deref().unwrap_or("(unknown branch)")
+    }
+
+    /// What this repository came to, said once for both readers
+    /// (§FS-011-command-line.11.1).
+    ///
+    /// `onto` is the ref it was measured against, resolved by the caller
+    /// because under [`Onto::Upstream`] it is this repository's own and not
+    /// the rebase's (§FS-004-quick-actions.8). `at` is where the working tree
+    /// is, which the sentences about a conflict send a reader to.
+    pub fn came_to(&self, onto: &str, at: &Path) -> Came {
+        let branch = self.said_branch();
+        match &self.replay {
+            Replay::Current => Came::plain(format!("Already on top of `{onto}`.")),
+            Replay::Rebased(commits) => Came::plain(format!(
+                "Replayed onto `{onto}`; it had trailed by {commits} commit(s).",
+            )),
+            Replay::Unpublished => Came::plain(format!(
+                "Nothing published — `{branch}` has no copy on `{}` to replay onto, \
+                 so this repository was left as it is.",
+                self.remote
+            )),
+            // The two dispositions say different things because they leave
+            // different worlds behind, and a reader sent to find a conflicted
+            // working tree that is not there would doubt the report
+            // (§FS-005-dispatch.12).
+            Replay::Conflicted { paths, restored } => Came::over(
+                match restored {
+                    false => "**The rebase stopped in a conflict.** The repository is left \
+                              mid-rebase, with these paths unmerged:"
+                        .to_string(),
+                    true => "**The rebase stopped in a conflict and was put back.** The \
+                             repository is on the commit it started from and its working \
+                             tree is clean; nobody was waiting on this replay, so the \
+                             conflict is this report rather than a tree somebody finds \
+                             broken. These paths are what it stopped on:"
+                        .to_string(),
+                },
+                paths,
+                match restored {
+                    false => format!(
+                        "Resolve them in `{}`, `git add` each one, then \
+                         `git rebase --continue`.",
+                        at.display()
+                    ),
+                    true => format!(
+                        "To resolve it, replay it again in `{}` — \
+                         `ephor rebase --checkout .` — and the conflict comes back \
+                         where resolving it needs it.",
+                        at.display()
+                    ),
+                },
+            ),
+            // What `git status` said, which is git's own words about this
+            // working tree and so is quoted rather than rewritten.
+            Replay::Dirty(paths) => Came::quoting(
+                "Uncommitted work — nothing was touched here. Commit it or stash it, \
+                 then rebase again.",
+                &paths.join("\n"),
+            ),
+            Replay::Refused(message) => Came::quoting("git refused:", message),
+        }
+    }
+}
+
+/// A declared repository with no working tree on disk: the path a program
+/// opens it with, and what a report calls it for a person. A pair rather than
+/// a path, for the reason [`RepoReplay::name`] is one — the reading goes on
+/// publishing the path, and the two tellings name it (§AR-004-forest.1,
+/// §FS-011-command-line.11.2).
+#[derive(Debug, Clone)]
+pub struct AbsentRepo {
+    pub repo: String,
+    pub name: String,
+}
+
 /// One rebase of one checkout: every repository under it, in order.
 #[derive(Debug, Clone)]
 pub struct Rebase {
@@ -138,7 +222,7 @@ pub struct Rebase {
     /// than the reader has (§AR-004-forest.1); they gate nothing, because a
     /// workspace that is not there is a checkout question
     /// (§FS-004-quick-actions.7).
-    pub absent: Vec<String>,
+    pub absent: Vec<AbsentRepo>,
 }
 
 impl Rebase {
@@ -220,7 +304,10 @@ impl Rebase {
             "summary": self.summary(),
             "rebased": self.rebased(),
             "conflicted": self.conflicted().len(),
-            "absent": self.absent,
+            // The paths a program opens a directory with, as the published
+            // shape declares them, however the two tellings name them
+            // (§REQ-002-parity.4).
+            "absent": self.absent.iter().map(|repo| &repo.repo).collect::<Vec<_>>(),
             "repos": self
                 .repos
                 .iter()
@@ -306,8 +393,10 @@ impl Rebase {
         parts.join(", ")
     }
 
-    /// The whole outcome as markdown — what a state machine hands the agent
-    /// that resolves it, and what the reader sees on their terminal.
+    /// The whole outcome as markdown: what `--report <path>` writes, what the
+    /// `report` field of a reading carries, and what a sweep writing a file
+    /// nests (§FS-011-command-line.11.1). Not what a terminal is handed —
+    /// [`Self::say`] is.
     pub fn report(&self) -> String {
         let mut out = format!(
             "# rebase onto {} in {}\n\n",
@@ -320,85 +409,36 @@ impl Rebase {
             return out;
         }
         for repo in &self.repos {
-            let branch = repo.branch.as_deref().unwrap_or("(unknown branch)");
-            // The ref this repository used, which under §FS-004-quick-actions.8
-            // is its own and not the rebase's. The fallback is only for arms
-            // that never had a ref — a base rebase names the base it aimed at,
-            // and a per-repository ref that was never resolved has no
-            // `<remote>/…` spelling to fake.
-            let onto = repo.onto.clone().unwrap_or_else(|| match &self.onto {
-                Onto::Base(base) => format!("{}/{base}", repo.remote),
-                Onto::Upstream => self.onto.label().to_string(),
-            });
-            out.push_str(&format!("## {} — {branch}\n\n", repo.repo));
-            match &repo.replay {
-                Replay::Current => {
-                    out.push_str(&format!("Already on top of `{onto}`.\n\n"));
-                }
-                Replay::Rebased(commits) => {
-                    out.push_str(&format!(
-                        "Replayed onto `{onto}`; it had trailed by {commits} commit(s).\n\n",
-                    ));
-                }
-                Replay::Unpublished => {
-                    out.push_str(&format!(
-                        "Nothing published — `{branch}` has no copy on `{}` to replay onto, \
-                         so this repository was left as it is.\n\n",
-                        repo.remote
-                    ));
-                }
-                // The two dispositions say different things because they
-                // leave different worlds behind, and a reader sent to find a
-                // conflicted working tree that is not there would doubt the
-                // report (§FS-005-dispatch.12).
-                Replay::Conflicted { paths, restored } => {
-                    out.push_str(match restored {
-                        false => {
-                            "**The rebase stopped in a conflict.** The repository is left \
-                                  mid-rebase, with these paths unmerged:\n\n"
-                        }
-                        true => {
-                            "**The rebase stopped in a conflict and was put back.** The \
-                                 repository is on the commit it started from and its working \
-                                 tree is clean; nobody was waiting on this replay, so the \
-                                 conflict is this report rather than a tree somebody finds \
-                                 broken. These paths are what it stopped on:\n\n"
-                        }
-                    });
-                    for file in paths {
-                        out.push_str(&format!("- `{file}`\n"));
-                    }
-                    out.push_str(&match restored {
-                        false => format!(
-                            "\nResolve them in `{}`, `git add` each one, then \
-                             `git rebase --continue`.\n\n",
-                            self.checkout.join(&repo.repo).display()
-                        ),
-                        true => format!(
-                            "\nTo resolve it, replay it again in `{}` — \
-                             `ephor rebase --checkout .` — and the conflict comes back \
-                             where resolving it needs it.\n\n",
-                            self.checkout.join(&repo.repo).display()
-                        ),
-                    });
-                }
-                Replay::Dirty(paths) => {
-                    out.push_str(
-                        "Uncommitted work — nothing was touched here. Commit it or stash it, \
-                         then rebase again.\n\n```\n",
-                    );
-                    for path in paths {
-                        out.push_str(&format!("{path}\n"));
-                    }
-                    out.push_str("```\n\n");
-                }
-                Replay::Refused(message) => {
-                    out.push_str(&format!("git refused:\n\n```\n{message}\n```\n\n"));
-                }
+            // The name, not the path: a section headed `## .` is wrong for
+            // every reader of this document (§FS-011-command-line.11.2).
+            out.push_str(&format!("## {} — {}\n\n", repo.name, repo.said_branch()));
+            let came = repo.came_to(&self.onto_of(repo), &self.checkout.join(&repo.repo));
+            out.push_str(&came.sentence);
+            match came.verbatim {
+                Some(message) => out.push_str(&format!("\n\n```\n{message}\n```\n\n")),
+                None => out.push_str("\n\n"),
+            }
+            for path in &came.paths {
+                out.push_str(&format!("- `{path}`\n"));
+            }
+            if let Some(closing) = &came.closing {
+                out.push_str(&format!("\n{closing}\n\n"));
             }
         }
         self.report_absent(&mut out);
         out
+    }
+
+    /// The ref this repository was measured against, which under
+    /// §FS-004-quick-actions.8 is its own and not the rebase's. The fallback is
+    /// only for arms that never had a ref — a base rebase names the base it
+    /// aimed at, and a per-repository ref that was never resolved has no
+    /// `<remote>/…` spelling to fake.
+    fn onto_of(&self, repo: &RepoReplay) -> String {
+        repo.onto.clone().unwrap_or_else(|| match &self.onto {
+            Onto::Base(base) => format!("{}/{base}", repo.remote),
+            Onto::Upstream => self.onto.label().to_string(),
+        })
     }
 
     /// The whole outcome as prose, for a reader whose terminal renders no
@@ -411,12 +451,48 @@ impl Rebase {
     /// repository keeps its own line rather than being collapsed into a count
     /// (§AR-004-forest.1). The repository is called what a report calls it for
     /// a person (§FS-011-command-line.11.2).
-    ///
-    /// Declared here and still answering with the markdown document: the shape
-    /// of the contract is settled, and what it renders is the change this
-    /// stands in front of.
     pub fn say(&self) -> String {
-        self.report()
+        if self.repos.is_empty() {
+            let mut out = format!(
+                "no git repository under {} — nothing was done.\n",
+                self.checkout.display()
+            );
+            self.say_absent(&mut out);
+            return out;
+        }
+        let all = self.repos.len();
+        let repositories = if all == 1 {
+            "repository"
+        } else {
+            "repositories"
+        };
+        let mut out = format!(
+            "rebase onto {} in {} — {all} {repositories}.\n",
+            self.onto.label(),
+            self.checkout.display()
+        );
+        for repo in &self.repos {
+            let came = repo.came_to(&self.onto_of(repo), &self.checkout.join(&repo.repo));
+            out.push_str(&format!(
+                "{SAYS_INDENT}{} — {}: {}\n",
+                repo.name,
+                repo.said_branch(),
+                came.sentence
+            ));
+            // git's words, the paths it stopped on, and what to do about
+            // them, kept under the line they belong to. Indented rather than
+            // fenced, so `fatal:` never reads as ephor's own and a path never
+            // reads as a list item (§FS-011-command-line.11.1).
+            if let Some(message) = came.verbatim {
+                indented(&mut out, message.lines());
+            }
+            indented(&mut out, came.paths.iter().map(String::as_str));
+            if let Some(closing) = &came.closing {
+                indented(&mut out, std::iter::once(closing.as_str()));
+            }
+        }
+        self.say_absent(&mut out);
+        out
     }
 
     /// The same report, as a paragraph of somebody else's document
@@ -436,11 +512,22 @@ impl Rebase {
     /// repositories than the reader has (§AR-004-forest.1). Making them is a
     /// checkout's move, not a rebase's (§FS-004-quick-actions.7).
     fn report_absent(&self, out: &mut String) {
-        for name in &self.absent {
+        for repo in &self.absent {
             out.push_str(&format!(
-                "## {name}\n\nNo working tree here — the checkout is missing this repository, \
-                 so nothing was measured or replayed. Checking it out is its own move.\n\n"
+                "## {}\n\n{ABSENT}\n\n",
+                // Named the way the ladder says, like every other fold: there
+                // is no `Repo` on disk to ask, so the forest's own labels are
+                // what this reads (§FS-011-command-line.11.2).
+                repo.name
             ));
+        }
+    }
+
+    /// The same, for the reader whose terminal renders nothing: one line per
+    /// declared repository the disk has not got (§AR-004-forest.1).
+    fn say_absent(&self, out: &mut String) {
+        for repo in &self.absent {
+            out.push_str(&format!("{SAYS_INDENT}{}: {ABSENT}\n", repo.name));
         }
     }
 }
@@ -889,6 +976,9 @@ pub fn rebase(forest: &Forest, onto: &Onto, stopped: Stopped) -> Rebase {
                 replay_one(&repo.path, &repo.remote, base.as_deref(), onto, stopped);
             RepoReplay {
                 repo: repo.name.clone(),
+                // Asked of the forest, which is where a declaration was read
+                // (§FS-011-command-line.11.2).
+                name: forest.label(&repo.name).to_string(),
                 remote: repo.remote.clone(),
                 branch: git(&repo.path, &["rev-parse", "--abbrev-ref", "HEAD"])
                     .map(|name| name.trim().to_string()),
@@ -902,8 +992,17 @@ pub fn rebase(forest: &Forest, onto: &Onto, stopped: Stopped) -> Rebase {
         onto: onto.clone(),
         repos: outcomes,
         // Declared and not on disk: nothing to fold over, and said so rather
-        // than quietly answering for fewer repositories (§AR-004-forest.1).
-        absent: forest.absent.clone(),
+        // than quietly answering for fewer repositories (§AR-004-forest.1) —
+        // by the name the ladder gives it, since there is no working tree to
+        // carry a role (§FS-011-command-line.11.2).
+        absent: forest
+            .absent
+            .iter()
+            .map(|path| AbsentRepo {
+                repo: path.clone(),
+                name: forest.label(path).to_string(),
+            })
+            .collect(),
     }
 }
 
@@ -1076,21 +1175,61 @@ pub struct RepoCreated {
 /// spoke — its own message, which a frame quotes rather than rewrites.
 ///
 /// Written once so that the markdown form and the prose form differ in their
-/// frame and in nothing else, and so that a sixth [`Created`] arm has one
-/// place to be said rather than two, and fails to compile until it is.
+/// frame and in nothing else, and so that a sixth [`Created`] arm — or a
+/// seventh [`Replay`] one — has one place to be said rather than two, and
+/// fails to compile until it is.
 pub struct Came {
     pub sentence: String,
     pub verbatim: Option<String>,
+    /// Paths the outcome is about that git did not say in a message of its
+    /// own — the files a conflict stopped on. A markdown bullet in one frame
+    /// and an indented line in the other; empty for every outcome that names
+    /// none, which is every [`Created`] arm.
+    pub paths: Vec<String>,
+    /// What to do about those paths, said after them. None where there is
+    /// nothing to add — again every [`Created`] arm, so the checkout report's
+    /// bytes do not move.
+    pub closing: Option<String>,
+}
+
+impl Came {
+    /// One sentence and nothing else.
+    fn plain(sentence: String) -> Came {
+        Came {
+            sentence,
+            verbatim: None,
+            paths: Vec::new(),
+            closing: None,
+        }
+    }
+
+    /// One sentence, and git's own words under it — carried whole and framed
+    /// by whichever rendering is asking.
+    fn quoting(sentence: &str, message: &str) -> Came {
+        Came {
+            sentence: sentence.to_string(),
+            verbatim: Some(message.to_string()),
+            paths: Vec::new(),
+            closing: None,
+        }
+    }
+
+    /// One sentence, the paths it is about, and what to do about them.
+    fn over(sentence: String, paths: &[String], closing: String) -> Came {
+        Came {
+            sentence,
+            verbatim: None,
+            paths: paths.to_vec(),
+            closing: Some(closing),
+        }
+    }
 }
 
 impl RepoCreated {
     /// What this repository came to, said once for both readers
     /// (§FS-011-command-line.11.1).
     pub fn came_to(&self, branch: &str) -> Came {
-        let plain = |sentence: String| Came {
-            sentence,
-            verbatim: None,
-        };
+        let plain = Came::plain;
         match &self.created {
             Created::Tracking => plain(format!(
                 "A working tree on `{branch}`, tracking the branch the forge has."
@@ -1122,10 +1261,7 @@ impl RepoCreated {
             }
             // git's own words are the answer here, so they are carried whole
             // and framed by whichever rendering is asking.
-            Created::Refused(message) => Came {
-                sentence: "git refused:".to_string(),
-                verbatim: Some(message.clone()),
-            },
+            Created::Refused(message) => Came::quoting("git refused:", message),
         }
     }
 }
@@ -1136,6 +1272,26 @@ impl RepoCreated {
 /// way to show a quotation to a reader whose terminal renders nothing.
 const SAYS_INDENT: &str = "  ";
 const VERBATIM_INDENT: &str = "      ";
+
+/// Put what belongs under a repository's line under it — git's own words, the
+/// paths a conflict stopped on, and what to do about them
+/// (§FS-011-command-line.11.1). A blank line stays blank rather than becoming
+/// an indent with nothing after it.
+fn indented<'a>(out: &mut String, lines: impl Iterator<Item = &'a str>) {
+    for line in lines {
+        if line.trim().is_empty() {
+            out.push('\n');
+        } else {
+            out.push_str(&format!("{VERBATIM_INDENT}{line}\n"));
+        }
+    }
+}
+
+/// What both tellings say about a declared repository with no working tree:
+/// one sentence, because making it is a checkout's move and not a rebase's
+/// (§AR-004-forest.1, §FS-004-quick-actions.7).
+const ABSENT: &str = "No working tree here — the checkout is missing this repository, so nothing \
+                      was measured or replayed. Checking it out is its own move.";
 
 /// One workspace being made: every repository that belongs under it, in order.
 #[derive(Debug, Clone)]
@@ -1311,13 +1467,7 @@ impl Creation {
             // rather than fenced, so `fatal:` never reads as ephor's own
             // (§FS-011-command-line.11.1).
             if let Some(message) = came.verbatim {
-                for line in message.lines() {
-                    if line.trim().is_empty() {
-                        out.push('\n');
-                    } else {
-                        out.push_str(&format!("{VERBATIM_INDENT}{line}\n"));
-                    }
-                }
+                indented(&mut out, message.lines());
             }
         }
         out
@@ -1838,7 +1988,8 @@ mod tests {
             Stopped::Leave,
         );
         assert_eq!(outcome.repos.len(), 1);
-        assert_eq!(outcome.absent, vec!["gone".to_string()]);
+        assert_eq!(outcome.absent.len(), 1);
+        assert_eq!(outcome.absent[0].repo, "gone");
         assert_eq!(outcome.summary(), "1 not on disk");
         assert!(outcome.report().contains("## gone"));
         assert!(outcome.report().contains("No working tree here"));
@@ -2410,6 +2561,7 @@ mod tests {
                 onto: Onto::Base("main".to_string()),
                 repos: vec![RepoReplay {
                     repo: "app".to_string(),
+                    name: "app".to_string(),
                     remote: ORIGIN.to_string(),
                     branch: None,
                     onto: None,
@@ -2755,9 +2907,10 @@ mod tests {
 
     /// A replay said by hand, so what follows is about the two renderings
     /// rather than about what git did on the day.
-    fn replayed(repo: &str, branch: &str, replay: Replay) -> RepoReplay {
+    fn replayed(repo: &str, name: &str, branch: &str, replay: Replay) -> RepoReplay {
         RepoReplay {
             repo: repo.to_string(),
+            name: name.to_string(),
             remote: ORIGIN.to_string(),
             branch: Some(branch.to_string()),
             onto: Some(format!("{ORIGIN}/main")),
@@ -2765,12 +2918,20 @@ mod tests {
         }
     }
 
+    /// `absent` is the paths, named by nothing — the shape of a row whose
+    /// declaration gave it neither role nor handle.
     fn rebase_of(repos: Vec<RepoReplay>, absent: Vec<String>) -> Rebase {
         Rebase {
             checkout: PathBuf::from("/w/proj/fix/one"),
             onto: onto("main"),
             repos,
-            absent,
+            absent: absent
+                .into_iter()
+                .map(|path| AbsentRepo {
+                    name: path.clone(),
+                    repo: path,
+                })
+                .collect(),
         }
     }
 
@@ -2810,7 +2971,7 @@ mod tests {
     fn every_disposition_of_a_replay_reaches_a_terminal_as_prose() {
         for (name, phrase) in EVERY_DISPOSITION {
             let said = rebase_of(
-                vec![replayed(".", "fix/one", disposition(name))],
+                vec![replayed(".", "the project", "fix/one", disposition(name))],
                 Vec::new(),
             )
             .say();
@@ -2830,9 +2991,9 @@ mod tests {
     fn what_git_said_in_a_replay_is_kept_indented_and_never_fenced() {
         let said = rebase_of(
             vec![
-                replayed(".", "fix/one", disposition("refused")),
-                replayed("ce", "fix/one", disposition("conflicted")),
-                replayed("ee", "fix/one", disposition("dirty")),
+                replayed(".", "the project", "fix/one", disposition("refused")),
+                replayed("ce", "ce", "fix/one", disposition("conflicted")),
+                replayed("ee", "ee", "fix/one", disposition("dirty")),
             ],
             Vec::new(),
         )
@@ -2998,8 +3159,8 @@ mod tests {
     fn the_markdown_form_of_a_replay_stays_markdown() {
         let report = rebase_of(
             vec![
-                replayed(".", "fix/one", disposition("dirty")),
-                replayed("ce", "fix/one", disposition("refused")),
+                replayed(".", "the project", "fix/one", disposition("dirty")),
+                replayed("ce", "ce", "fix/one", disposition("refused")),
             ],
             vec!["ee".to_string()],
         )

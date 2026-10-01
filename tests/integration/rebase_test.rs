@@ -161,7 +161,9 @@ fn uncommitted_work_stops_it_rather_than_being_stashed() {
 /// was asked of every repository that is there, and the missing tree is a
 /// question for `ephor checkout` rather than an outcome of this run
 /// (§FS-004-quick-actions.7). A machine reading the code alone sends this to
-/// `land`, and the report it was handed says which repository is not here.
+/// `land`, and the report it was handed says which repository is not here —
+/// on a terminal, as the prose line the ladder names it on rather than as a
+/// markdown section (§FS-011-command-line.11.1, §FS-011-command-line.11.2).
 #[test]
 fn a_declared_repository_that_is_not_on_disk_does_not_fail_the_rebase() {
     let tmp = tempdir();
@@ -216,8 +218,8 @@ fn a_declared_repository_that_is_not_on_disk_does_not_fail_the_rebase() {
         .assert()
         .success()
         .stdout(predicates::str::contains("Replayed onto `origin/master`"))
-        .stdout(predicates::str::contains("## plugins"))
-        .stdout(predicates::str::contains("## docs-site"))
+        .stdout(predicates::str::contains("plugins — Plugin repository"))
+        .stdout(predicates::str::contains("docs-site — Documentation site"))
         .stdout(predicates::str::contains("No working tree here"));
 }
 
