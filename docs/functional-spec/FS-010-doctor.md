@@ -32,7 +32,7 @@ probe's answer and never `doctor`'s ([§FS-006-project-interface.12](FS-006-proj
 prints the sentence the probe wrote, per project, in the report a person reads
 and in the machine form a program reads alike ([§REQ-002-parity.3](../requirements/REQ-002-parity.md#3-every-reading-answers-a-program)). It is news
 rather than a fault, so it moves neither the project's health nor the exit code
-(§5) — a deprecated path stops the project doing nothing, and the ladder has no
+([§FS-010-doctor.5](FS-010-doctor.md#5-the-answer-is-in-the-exit-code)) — a deprecated path stops the project doing nothing, and the ladder has no
 rung for it ([§FS-006-project-interface.10](FS-006-project-interface.md#10-capability-rung-by-rung)).
 
 ## 2. The ladder is answerable on its own

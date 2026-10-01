@@ -59,9 +59,9 @@ the plan language ([§AR-007-runtime](AR-007-runtime.md#ar-007-runtime-the-runti
 order is the implementation plan's; this page only fixes where each piece
 belongs when it lands.
 
-What §2 enforces today is the part of core that is already pure: the matter
+What [§AR-001-layers.2](AR-001-layers.md#2-where-literals-live) enforces today is the part of core that is already pure: the matter
 model, attribution, ticket keys, the feed's item and gate types. `Forest` is
-core by §1 and not yet core by structure — it asks the git prober what is on
+core by [§AR-001-layers.1](AR-001-layers.md#1-the-layers) and not yet core by structure — it asks the git prober what is on
 disk — and it joins the enforced list when that prober moves to sources. The
 list is in the script and it never shrinks: a module that has been made pure
 stays pure.

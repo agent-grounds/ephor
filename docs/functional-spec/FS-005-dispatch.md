@@ -34,7 +34,7 @@ selector says which items it applies to — kind, role, whether the gate is red,
 whether a response is owed, which source reported it — and the brief is what
 the ticket asks for, in the reader's own words. Those words may be written
 inline or kept in a file the recipe names, which is the same brief arriving by
-another door ([§34](#34-a-brief-may-be-kept-in-the-file-that-owns-it)).
+another door ([§FS-005-dispatch.34](FS-005-dispatch.md#34-a-brief-may-be-kept-in-the-file-that-owns-it)).
 
 Recipes are how the same watch serves different projects: what to do about a
 red gate in one repository is not what to do about it in another, and neither
@@ -54,7 +54,7 @@ registry places in that organization; and that project's
 `projects.<id>.work.recipes`. The middle scope is not there for symmetry with
 the other two. It is the scope whose membership already decides which projects
 share a work root
-([§6.1](#61-the-work-root-is-a-template-and-it-may-reach-above-the-project))
+([§FS-005-dispatch.6.1](FS-005-dispatch.md#61-the-work-root-is-a-template-and-it-may-reach-above-the-project))
 and what they may spend
 ([§FS-015-spend-ceiling.1](FS-015-spend-ceiling.md#1-two-ceilings-in-the-three-scopes-the-registry-already-nests)),
 and a way of being worked is the third thing those same projects share — so it
@@ -70,7 +70,7 @@ organization's, then the project's — and a recipe reusing an earlier one's id
 replaces it *where it already stands* rather than moving to the end. The later
 writer decides what the recipe says; the first writer decided where it sits in
 the menu, and position is the order dispatch offers in
-([§32.3](#323-where-the-sweep-happens-and-what-it-is)). The rule is one rule at
+([§FS-005-dispatch.32.3](FS-005-dispatch.md#323-where-the-sweep-happens-and-what-it-is)). The rule is one rule at
 every tier, not a rule about the tier that was added last: it is what a
 configured recipe replacing a shipped one has always done, and saying it once
 here is what keeps a third scope from being a fourth answer.
@@ -104,7 +104,7 @@ refused by name with the configuration needed to proceed. An issue or pull
 request that already has a forge branch, or a registry branch of its own —
 never the project's configured main branch, which is the trunk every
 workspace is grown from and not a matter's own
-([§25](#25-work-about-a-matter-with-no-branch-can-mint-the-branch-it-needs))
+([§FS-005-dispatch.25](FS-005-dispatch.md#25-work-about-a-matter-with-no-branch-can-mint-the-branch-it-needs))
 — keeps that branch, and a configured recipe named `implement` replaces this
 default with its own branch semantics.
 
@@ -116,7 +116,7 @@ wrote
 ([§FS-006-project-interface.9](FS-006-project-interface.md#9-offers-the-projects-actions)),
 selected by the same language, ordered by the same provenance, and refused in
 the same sentence — marked as work to hand over and saying who would get it
-([§14](#14-who-does-the-work-is-chosen-and-defaulted-per-project))
+([§FS-005-dispatch.14](FS-005-dispatch.md#14-who-does-the-work-is-chosen-and-defaulted-per-project))
 before the key is pressed, because that is the difference the reader is
 choosing between: an entry that runs something here, and an entry that opens a
 ticket asking somebody else.
@@ -129,7 +129,7 @@ only where it would work
 ([§FS-004-quick-actions.2](FS-004-quick-actions.md#2-offered-only-where-it-would-work)):
 work about a change is offered where the change is on the machine, and never
 about an item that is finished
-([§6](#6-dispatch-is-offered-where-it-would-work-and-refuses-where-it-would-not)).
+([§FS-005-dispatch.6](FS-005-dispatch.md#6-dispatch-is-offered-where-it-would-work-and-refuses-where-it-would-not)).
 An issue with an unfinished first-class dependency is likewise offered no
 recipe or workflow: the prerequisite ticket is the work to schedule, and
 handing the dependent over creates concurrent work whose own forge says it
@@ -142,7 +142,7 @@ what the entry hands over when it cannot finish, not a second thing to do
 about the row: the key that replays a branch and the ticket about the conflict
 it stops at are one operation under one name
 ([§FS-004-quick-actions.6](FS-004-quick-actions.md#6-a-branch-that-trails-its-main-branch-is-offered-the-rebase),
-[§12](#12-work-an-algorithm-can-finish-does-not-start-with-a-model)), and a
+[§FS-005-dispatch.12](FS-005-dispatch.md#12-work-an-algorithm-can-finish-does-not-start-with-a-model)), and a
 menu offering both would be asking the reader to tell two spellings of one
 thing apart. Because they are one name, they are gated as one: what a recipe
 applies to and what the entry that dispatches it is offered on cannot be
@@ -151,13 +151,13 @@ apply here.
 
 Handing work over from the menu is the same handing-over the work screen does
 — one plan, one ticket, one ledger entry
-([§3](#3-one-rhei-per-item-one-ticket-per-dispatch),
-[§4](#4-the-ledger-is-ephors-record-and-never-the-truth-about-the-work)) —
+([§FS-005-dispatch.3](FS-005-dispatch.md#3-one-rhei-per-item-one-ticket-per-dispatch),
+[§FS-005-dispatch.4](FS-005-dispatch.md#4-the-ledger-is-ephors-record-and-never-the-truth-about-the-work)) —
 because where the reader pressed is not a fact about the work. And with no
 runner bound the entries are still there: a ticket is written whether or not
 anything can run it, and where the entry would say who gets it, it says
 instead that nobody can be asked
-([§14](#14-who-does-the-work-is-chosen-and-defaulted-per-project)).
+([§FS-005-dispatch.14](FS-005-dispatch.md#14-who-does-the-work-is-chosen-and-defaulted-per-project)).
 
 **What a brief may name.** The words are the reader's, and the names in them
 are the matter's: `{title}`, `{repo}`, `{number}`, `{branch}` and the rest of
@@ -216,13 +216,13 @@ alone leaves no readable half at all, and renders `item-<digest>` rather than a
 name beginning with `-`. Nothing is truncated: the digest already carries the
 uniqueness, so a cap would buy tidiness only, and how long a branch name may be
 is a rule about branch names rather than about this field
-([§25](#25-work-about-a-matter-with-no-branch-can-mint-the-branch-it-needs)).
+([§FS-005-dispatch.25](FS-005-dispatch.md#25-work-about-a-matter-with-no-branch-can-mint-the-branch-it-needs)).
 
 **The matter's plan file is named from this field, and not from a second
 reduction of the same id.** A plan file's stem *is* the value above, held
 *additionally* to the runtime's own grammar for a file stem, which refuses a stem
 beginning with anything but an ASCII letter where neither git nor a filesystem
-cares ([§3](#3-one-rhei-per-item-one-ticket-per-dispatch)). So the two strings
+cares ([§FS-005-dispatch.3](FS-005-dispatch.md#3-one-rhei-per-item-one-ticket-per-dispatch)). So the two strings
 are one string for every id whose readable half begins with a letter, and differ
 in exactly one way where that guard fires — the stem carries `item-` in front of
 what this field renders, and nothing else about it moves:
@@ -240,7 +240,7 @@ that read down to one slug stay two. A stem without it is a name more than one
 matter answers to, and where the field's collision would cost a shared branch, a
 stem's costs the record itself — the second matter's work is written into the
 first's plan rather than merely misnamed
-([§3](#3-one-rhei-per-item-one-ticket-per-dispatch)).
+([§FS-005-dispatch.3](FS-005-dispatch.md#3-one-rhei-per-item-one-ticket-per-dispatch)).
 
 **Readable is not the same as best, and defined everywhere is not either.**
 A matter that has a `{number}` renders both fields and neither wins: `fix/issue-95`
@@ -249,10 +249,10 @@ tolerate, so `{number}` stays the right choice wherever the matter has one.
 `{id_slug}` is for the matter that has nothing else. A slugged *title* would read
 better still and is deliberately not offered here: a name minted from free text
 moves when the matter is retitled, and a rendering that moves stops resolving one
-item's work to one place ([§5](#5-an-item-that-moved-reopens-its-work)). What
+item's work to one place ([§FS-005-dispatch.5](FS-005-dispatch.md#5-an-item-that-moved-reopens-its-work)). What
 such a retitle would cost is not merely a second workspace but a second
 **plan** for one matter: the first is left on disk with whatever it held, the
-ledger is repointed at the second ([§4](#4-the-ledger-is-ephors-record-and-never-the-truth-about-the-work)),
+ledger is repointed at the second ([§FS-005-dispatch.4](FS-005-dispatch.md#4-the-ledger-is-ephors-record-and-never-the-truth-about-the-work)),
 both roots go on being enumerated and both go on being returned as due, and the
 guard against two runs colliding is keyed on the execution root — one per
 checkout under the default root — rather than on the matter, so it holds
@@ -264,13 +264,13 @@ rather than left as an omission.
 selector admits — which is the field doing what it was asked for, and also means
 a too-wide `sources` or `kinds` list mints branches where a `{number}` template
 would have been quietly withheld
-([§25](#25-work-about-a-matter-with-no-branch-can-mint-the-branch-it-needs)). One
+([§FS-005-dispatch.25](FS-005-dispatch.md#25-work-about-a-matter-with-no-branch-can-mint-the-branch-it-needs)). One
 case of that is not a wide selector at all: a recipe over a project's own tasks
 ([§FS-006-project-interface.7](FS-006-project-interface.md#7-the-projects-own-tasks-are-read-where-they-live))
 that mints a workspace gets a task store made inside it, dispatch writes its plan
 into that store, and the next refresh reads that plan as a new task matter
 matching the same recipe. The ledger keys work per item, so no task is dispatched
-twice ([§4](#4-the-ledger-is-ephors-record-and-never-the-truth-about-the-work)),
+twice ([§FS-005-dispatch.4](FS-005-dispatch.md#4-the-ledger-is-ephors-record-and-never-the-truth-about-the-work)),
 but the matters a dispatch created are different items and nothing here bounds
 them. Bounding it would change what the tasks seam yields, which is a contract of
 its own: it is tracked at agent-grounds/ephor#125 and is not settled by this
@@ -278,7 +278,7 @@ point.
 
 The same rule is why a brief kept in a file is read when the ticket is written
 rather than named for the run to open
-([§34](#34-a-brief-may-be-kept-in-the-file-that-owns-it)): a path is a link,
+([§FS-005-dispatch.34](FS-005-dispatch.md#34-a-brief-may-be-kept-in-the-file-that-owns-it)): a path is a link,
 and a link is the opening move handed back.
 
 ## 3. One rhei per item, one ticket per dispatch
@@ -291,13 +291,13 @@ dispatch history, not merely within one root, so two of its plans never name
 different tickets alike.
 
 **And the naming is injective.** A plan's name is a function of the matter's id
-alone — the stem [§2](#2-the-ticket-carries-what-ephor-knows-not-a-link-to-it)
+alone — the stem [§FS-005-dispatch.2](FS-005-dispatch.md#2-the-ticket-carries-what-ephor-knows-not-a-link-to-it)
 renders — so two different matters never name one plan, however alike their ids
 read. The rule above bounds a matter to one plan; this is the other direction of
 the same fact, and it is the half that carries the weight. A plan file two
 matters both resolve to is not a misnamed file: it is two matters' work in one
 record, the second matter's ticket ordered behind the first's
-([§5](#5-an-item-that-moved-reopens-its-work)) and held there until work about
+([§FS-005-dispatch.5](FS-005-dispatch.md#5-an-item-that-moved-reopens-its-work)) and held there until work about
 something else is finished — silently, since both dispatches did what they were
 asked.
 
@@ -307,7 +307,7 @@ non-injective naming left behind wherever it fired, one file carrying two
 matters' tickets and two ledger entries recorded at it. Giving the file to
 whichever of them sorts first would leave the other's record naming a file that
 is not there, which is the one outcome a rename must not produce
-([§3.1](#31-a-plan-named-before-the-digest-is-carried-over)) — so nothing about
+([§FS-005-dispatch.3.1](FS-005-dispatch.md#31-a-plan-named-before-the-digest-is-carried-over)) — so nothing about
 those two matters moves, and which of the file's tickets belongs to which matter
 is the reader's to say. It is the mirror of the refusal below: two files naming
 one matter, and two matters naming one file, are both two records only a person
@@ -315,9 +315,9 @@ can separate.
 
 **Where both names hold a plan about this matter, dispatch refuses and names both
 files.** A root that has been carried over
-([§3.1](#31-a-plan-named-before-the-digest-is-carried-over)) holds one plan per
+([§FS-005-dispatch.3.1](FS-005-dispatch.md#31-a-plan-named-before-the-digest-is-carried-over)) holds one plan per
 matter. A root an older ephor wrote into afterwards can hold two: one at the stem
-[§2](#2-the-ticket-carries-what-ephor-knows-not-a-link-to-it) renders and one at
+[§FS-005-dispatch.2](FS-005-dispatch.md#2-the-ticket-carries-what-ephor-knows-not-a-link-to-it) renders and one at
 the name that ephor computed. Which of the two records of the same work to go on
 with is the reader's call and not dispatch's, so dispatch stops, says both paths,
 and writes no ticket. It is the one refusal this naming adds, and that mixed pair
@@ -325,7 +325,7 @@ is the only way to reach it.
 
 The item first resolves the checkout and branch where its work runs — the same
 resolution actions already use
-([§FS-004-quick-actions.1](FS-004-quick-actions.md#1-a-quick-action-belongs-to-the-source-that-found-the-problem)) — and then [§6.1](#61-the-work-root-is-a-template-and-it-may-reach-above-the-project)
+([§FS-004-quick-actions.1](FS-004-quick-actions.md#1-a-quick-action-belongs-to-the-source-that-found-the-problem)) — and then [§FS-005-dispatch.6.1](FS-005-dispatch.md#61-the-work-root-is-a-template-and-it-may-reach-above-the-project)
 selects the root where its plan is recorded. Work about a branch runs in that
 branch's working tree: it is where the change is, where the tools run, and
 where the runtime will put the agent, even when the configured scope records
@@ -363,7 +363,7 @@ loading the plan at all — which on the one writer nobody is watching
 ([§FS-004-quick-actions.6.1](FS-004-quick-actions.md#61-the-same-replay-over-every-checkout-nobody-is-holding))
 means a ticket that can never be worked and a checkout passed over on it
 forever. A brief read out of a file is an embedded document like any other and
-is flattened the same way ([§34](#34-a-brief-may-be-kept-in-the-file-that-owns-it)).
+is flattened the same way ([§FS-005-dispatch.34](FS-005-dispatch.md#34-a-brief-may-be-kept-in-the-file-that-owns-it)).
 
 A project that keeps a single checkout for every branch is not exempt from
 that. Its root is the branch's working tree only while it is standing on the
@@ -380,11 +380,11 @@ A plan whose stem was computed before the digest was part of it is **carried
 over**, once: the plan file, the results and the artifacts keyed by that stem,
 and the recorded plan id all move **together**. Together is the whole of it. Every
 reading command answers from the record rather than from the disk
-([§4](#4-the-ledger-is-ephors-record-and-never-the-truth-about-the-work)), so a
+([§FS-005-dispatch.4](FS-005-dispatch.md#4-the-ledger-is-ephors-record-and-never-the-truth-about-the-work)), so a
 record naming a file that is no longer there is the one outcome a rename must not
 produce — and a file left behind at a name nothing names any more is the other,
 because a sweep that finds plans by looking would run it
-([§24](#24-work-nobody-has-to-start-starts-itself)).
+([§FS-005-dispatch.24](FS-005-dispatch.md#24-work-nobody-has-to-start-starts-itself)).
 
 **Together includes the bytes, not only the names.** A plan's own text carries its
 stem: the result block the runtime writes when a ticket finishes names
@@ -424,12 +424,12 @@ already moved is not skipped for having been touched.
 before.** The verbs that recompute a stem are the ones that write with it — the
 dispatch, the workflow lay, and the sweep that starts runs — and those are
 where the carry-over runs. Every reading command answers from the recorded name
-([§4](#4-the-ledger-is-ephors-record-and-never-the-truth-about-the-work)) and is
+([§FS-005-dispatch.4](FS-005-dispatch.md#4-the-ledger-is-ephors-record-and-never-the-truth-about-the-work)) and is
 therefore already consistent with the disk, so moving files beneath one would
 buy nothing it has not got; what it would cost is the two promises this rule
 must not break, a run held above one project writing nothing without `--act`
 ([§FS-011-command-line.10](FS-011-command-line.md#10-a-mutating-verb-above-one-project-reports-and-acts-under---act))
-and a dry run writing nothing at all ([§26](#26-an-ordering-already-made-can-be-read-and-a-limit-bounds-what-runs)).
+and a dry run writing nothing at all ([§FS-005-dispatch.26](FS-005-dispatch.md#26-an-ordering-already-made-can-be-read-and-a-limit-bounds-what-runs)).
 A run that only reports must still report the truth, so where a root has not
 been carried over yet it reads the plan the record names and says the move it
 is reporting across — the ticket it promises is the ticket the next real
@@ -440,7 +440,7 @@ plan, the results, the artifacts and the recorded name of one matter are one
 commit: wherever an error escapes, what that entry had already moved is put
 back and the record still says what it said, so the two never disagree. A root
 that cannot be carried over — an unreachable directory, or either of the
-refusals [§3](#3-one-rhei-per-item-one-ticket-per-dispatch) states, or a name
+refusals [§FS-005-dispatch.3](FS-005-dispatch.md#3-one-rhei-per-item-one-ticket-per-dispatch) states, or a name
 the carry-over would have to write over — is reported and holds back the
 matters it names and nothing else. It does stop a
 dispatch *of those matters*, because a dispatch that went ahead would open a
@@ -480,7 +480,7 @@ root is carried over the next time a verb entitled to write in it runs and no
 run is there.
 
 **A workflow already laid keeps the name it was recorded under**
-([§19](#19-a-workflow-the-runtime-offers-is-an-action-and-its-inputs-are-answered-here)).
+([§FS-005-dispatch.19](FS-005-dispatch.md#19-a-workflow-the-runtime-offers-is-an-action-and-its-inputs-are-answered-here)).
 A laid plan's name is a record and not a lookup — nothing recomputes it — so
 moving it would buy nothing and would break the one path its reader has.
 
@@ -538,13 +538,13 @@ green: the next sync may hand the dependent over, without a label edit or a
 person releasing it. Stale work is reopened by appending a ticket to the same plan
 that says what changed since the last one and asks for the difference, ordered
 after it — after the last ticket that was not cancelled
-([§16](#16-work-that-should-not-go-on-is-cancelled-and-the-plan-says-so))
+([§FS-005-dispatch.16](FS-005-dispatch.md#16-work-that-should-not-go-on-is-cancelled-and-the-plan-says-so))
 **and that is about this matter**, since a cancelled prior is one nothing waits
 out and a prior about another matter is one this work was never waiting for.
 Which matter a ticket is about is read from the `id` the ticket itself records
-([§8](#8-the-ticket-carries-the-item-as-data-not-only-as-prose)), which is a fact
+([§FS-005-dispatch.8](FS-005-dispatch.md#8-the-ticket-carries-the-item-as-data-not-only-as-prose)), which is a fact
 about the work and so is read from the plan rather than from the ledger
-([§4](#4-the-ledger-is-ephors-record-and-never-the-truth-about-the-work)); a
+([§FS-005-dispatch.4](FS-005-dispatch.md#4-the-ledger-is-ephors-record-and-never-the-truth-about-the-work)); a
 ticket recording no `id` is no evidence of another matter and stays eligible. Not
 by opening a second plan: the point of the record is that one
 item's work reads in one place, in order.
@@ -591,7 +591,7 @@ merged pull request is asking it to invent something to do.
 
 Where a plan is written is configuration rather than a constant. `root` is a
 whole template, rendered from the vocabulary the ticket itself is rendered from
-([§2](#2-the-ticket-carries-what-ephor-knows-not-a-link-to-it)) — the item's
+([§FS-005-dispatch.2](FS-005-dispatch.md#2-the-ticket-carries-what-ephor-knows-not-a-link-to-it)) — the item's
 own fields, the resolved checkout, and the project root. It is selected in this
 order: the entry being used, the selected recipe, `projects.<id>.work.root`,
 `organizations.<org-id>.work.root`, then the site's `work.root`. The first one
@@ -605,7 +605,7 @@ it is written in.** `organizations.<org-id>.work.recipes` sits beside
 `organizations.<org-id>.work.root` and is read in the opposite direction: a
 root is one answer, so the innermost scope that writes one ends the question,
 while a recipe list is an ordered menu that accumulates outward in and is read
-at every scope ([§1](#1-a-recipe-decides-which-items-deserve-work-and-what-to-ask-for)).
+at every scope ([§FS-005-dispatch.1](FS-005-dispatch.md#1-a-recipe-decides-which-items-deserve-work-and-what-to-ask-for)).
 The ladder above is also why a *recipe's* own `root` is not a fourth tier of
 the ladder: it is read at the recipe rung wherever the recipe was written, so
 an organization recipe carrying `root` beats `projects.<id>.work.root` in the
@@ -614,7 +614,7 @@ the scopes and is not: it is the second rung of a ladder whose rungs were never
 the scopes.
 
 **One of the names answers for every matter.** `{id_slug}` is the matter's own
-id as a name a path will take (§2), so a root naming it gives each matter a work
+id as a name a path will take ([§FS-005-dispatch.2](FS-005-dispatch.md#2-the-ticket-carries-what-ephor-knows-not-a-link-to-it)), so a root naming it gives each matter a work
 root of its own — expressible for a matter with no `{number}` and no `{repo}`,
 which is where a per-matter root was unreachable before.
 
@@ -638,10 +638,10 @@ root* — because what it would otherwise write is a directory literally called
 been, and either one is work laid down somewhere nobody meant. The refusal is
 about the *path*: the dossier and a recipe's brief are prose, and carry an
 empty organization the way they carry any other field a matter has not got
-([§2](#2-the-ticket-carries-what-ephor-knows-not-a-link-to-it)). A brief that
+([§FS-005-dispatch.2](FS-005-dispatch.md#2-the-ticket-carries-what-ephor-knows-not-a-link-to-it)). A brief that
 is *named by* a path is both at once, and is read as both: the path it names is
 under this rule, and the text that path holds is prose under the other
-([§34](#34-a-brief-may-be-kept-in-the-file-that-owns-it)).
+([§FS-005-dispatch.34](FS-005-dispatch.md#34-a-brief-may-be-kept-in-the-file-that-owns-it)).
 
 A name whose answer will not keep is refused in the same position for the
 neighbouring reason — a root rendered from a field this matter can change while
@@ -656,7 +656,7 @@ rule is recorded
 
 **A script's environment is neither, and is told the gap rather than refused
 on it.** A summons carries the organization and its root as `EPHOR_ORG` and
-`EPHOR_ORG_ROOT` ([§8](#8-the-ticket-carries-the-item-as-data-not-only-as-prose)),
+`EPHOR_ORG_ROOT` ([§FS-005-dispatch.8](FS-005-dispatch.md#8-the-ticket-carries-the-item-as-data-not-only-as-prose)),
 and carries them *present and empty* where there is no answer — a project the
 registry places in no organization, or an organization that declares no `root`.
 It cannot refuse the way a path does, because there is nothing to refuse: the
@@ -720,7 +720,7 @@ under the same names its context takes in a shell action
 project and source, kind and item id, repository and number, branch and ticket,
 url and state, the checkout the work belongs to, and the organization the
 registry places that project in together with where the organization is rooted
-([§6.1](#61-the-work-root-is-a-template-and-it-may-reach-above-the-project)).
+([§FS-005-dispatch.6.1](FS-005-dispatch.md#61-the-work-root-is-a-template-and-it-may-reach-above-the-project)).
 One vocabulary, whether the thing reading it is a shell command in a menu or a
 program in a state machine.
 
@@ -738,7 +738,7 @@ fact two ways would be two vocabularies.
 
 Each half says a missing answer its own way, and neither invents a third.
 A summons defines both names always and leaves them empty where there is no
-answer ([§6.1](#61-the-work-root-is-a-template-and-it-may-reach-above-the-project)),
+answer ([§FS-005-dispatch.6.1](FS-005-dispatch.md#61-the-work-root-is-a-template-and-it-may-reach-above-the-project)),
 because an undefined name there is inherited rather than absent. A ticket
 writes no key for a value it has not got, so a project the registry places in
 no organization carries no `org` and an organization that declares no `root`
@@ -752,7 +752,7 @@ used to read as though it were one of each.** What a template may name as
 list above is an **enumerated** one, and a name joins it deliberately rather than
 by joining the placeholders. `{id_slug}` is the case that made the difference
 visible — it is a placeholder every template may name
-([§2](#2-the-ticket-carries-what-ephor-knows-not-a-link-to-it)) and it is not in
+([§FS-005-dispatch.2](FS-005-dispatch.md#2-the-ticket-carries-what-ephor-knows-not-a-link-to-it)) and it is not in
 the list above, so a program in a state machine cannot read it as data and a
 brief or a branch template can. `{org}` and `{org_root}` are in the same position
 from the other direction. Nothing here says that is *right* — bringing the two
@@ -766,11 +766,11 @@ The promise just made is about meaning; this is the behaviour half of the same
 distinction. A field this matter can change while its work is open may be named
 in prose, where the dossier is a record of what the matter looked like when the
 work was asked for
-([§2](#2-the-ticket-carries-what-ephor-knows-not-a-link-to-it)), and is refused
+([§FS-005-dispatch.2](FS-005-dispatch.md#2-the-ticket-carries-what-ephor-knows-not-a-link-to-it)), and is refused
 where a path names it, because there the rendering is the resolution and a value
 that moved repoints work that is still open
 ([§DF-002-path-fields-stable](../decisions/functional/DF-002-path-fields-stable.md#df-002-path-fields-stable-a-field-that-decides-a-path-holds-still-while-the-work-lasts),
-[§6.1](#61-the-work-root-is-a-template-and-it-may-reach-above-the-project)). That
+[§FS-005-dispatch.6.1](FS-005-dispatch.md#61-the-work-root-is-a-template-and-it-may-reach-above-the-project)). That
 is a condition on joining the vocabulary rather than a claim about the names
 already in it: three of them do not meet it today, and they are named where the
 rule is recorded rather than left for a reader to find.
@@ -782,7 +782,7 @@ plan. And what is written is identifiers only — the prose stays in the dossier
 which is where a reader is looking. One thing here identifies the ask rather
 than the item: where the brief was read out of a file, the ticket also records
 which file and which version of it
-([§34.2](#342-which-text-a-ticket-was-given-is-recorded-on-the-ticket)).
+([§FS-005-dispatch.34.2](FS-005-dispatch.md#342-which-text-a-ticket-was-given-is-recorded-on-the-ticket)).
 
 **Identifiers only admits one open map: what the source said about this
 matter.** A source may know something about one matter that ephor has no field
@@ -798,7 +798,7 @@ consequence of the size: a value with a line break in it is prose however
 short, and prose is neither a path segment, nor a variable a script can read a
 line at a time, nor anything a selector compares — the dossier is where a
 paragraph about a matter goes. What survives the bound is what a selector ([§FS-005-dispatch.31.1](FS-005-dispatch.md#311-and-it-can-ask-what-the-matters-own-source-said-about-it)), a brief or a template
-([§1](#1-a-recipe-decides-which-items-deserve-work-and-what-to-ask-for)) and a
+([§FS-005-dispatch.1](FS-005-dispatch.md#1-a-recipe-decides-which-items-deserve-work-and-what-to-ask-for)) and a
 summoned command's environment ([§FS-006-project-interface.3](FS-006-project-interface.md#3-a-summons-environment-in-exit-code-and-answer-out)) may name.
 
 **The bound holds of the map, wherever the map is read.** It is not one
@@ -954,7 +954,7 @@ over is the situation rather than the request to reproduce it — the repository
 is left where the algorithm left it, mid-rebase with the conflict in the
 working tree, because that is the state resolving it needs, and the ticket says
 which repository, which files, and which two sides
-([§2](#2-the-ticket-carries-what-ephor-knows-not-a-link-to-it)).
+([§FS-005-dispatch.2](FS-005-dispatch.md#2-the-ticket-carries-what-ephor-knows-not-a-link-to-it)).
 
 **Left where it stopped is a rule about a replay with a successor.** *The
 state resolving it needs* names somebody who is coming, and what makes them
@@ -981,7 +981,7 @@ begun, which is the one thing worse than the drift any of this corrects.
 
 A move that costs no model costs no screen either: the replay runs beneath
 the interface as a job, and what the reader would have watched is in its log
-([§17](#17-a-move-that-needs-nobody-runs-beneath-the-screen)).
+([§FS-005-dispatch.17](FS-005-dispatch.md#17-a-move-that-needs-nobody-runs-beneath-the-screen)).
 
 The rebase is the first of these, not the shape of the only one. Any recipe
 whose opening move is deterministic makes that move before it costs a model,
@@ -999,7 +999,7 @@ a decision, a mention carrying a request
 ([§FS-003-feed-categories.4](FS-003-feed-categories.md#4-a-conversation-is-answered-in-whatever-form-the-forge-recorded-it)) — is dispatched like any other: the ticket
 carries the discussions as its dossier, and asks the runtime for a
 **proposed answer**, drafted in the matter's context. The shipped answer
-recipe is this shape, and an ask in the reader's own words (§10) may request
+recipe is this shape, and an ask in the reader's own words ([§FS-005-dispatch.10](FS-005-dispatch.md#10-what-ephor-offers-is-not-a-limit-on-what-can-be-asked)) may request
 one for anything.
 
 Three things distinguish it. **It needs no checkout**: the work is about the
@@ -1007,7 +1007,7 @@ conversation, so the plan is written where the matter resolves — the branch
 workspace where one exists, because sitting in the change makes a better
 answer, and the project root otherwise — and the checkout-able rung is not
 required ([§FS-006-project-interface.10](FS-006-project-interface.md#10-capability-rung-by-rung)). **The proposal is a file, never a
-post**: §7 holds — the runtime writes the proposed reply into the plan's
+post**: [§FS-005-dispatch.7](FS-005-dispatch.md#7-handing-over-work-is-the-readers-move-and-stays-inside-the-machine) holds — the runtime writes the proposed reply into the plan's
 results, ephor reads it back and surfaces it beside the discussion it
 answers, and nothing reaches the channel by itself. **Posting is one
 deliberate move, where the channel can carry it**: on a channel that
@@ -1097,7 +1097,7 @@ list of one resolves and dispatches exactly as the bare name did. The seven
 steps themselves are untouched: they displace one another in the same order
 and still answer exactly once, and what the answering step hands on is the
 list it carried rather than a name. Choosing among that list is a later stage
-with a different question in front of it (§29), and the two are kept apart on
+with a different question in front of it ([§FS-005-dispatch.29](FS-005-dispatch.md#29-headroom-is-reported-to-ephor-and-vetoes-a-member-it-never-reorders)), and the two are kept apart on
 purpose — a step answers *whose work this is*, which is the author's judgment
 about the matter, and the stage below answers *which of them can be reached
 right now*, which is a fact about the world and no judgment at all. So a step
@@ -1110,7 +1110,7 @@ The order inside a list is the author's, and it ranks by **fitness rather than
 by equality**: the first name is first because it is the right hand for this
 work, and each name after it is what to do when the one before it cannot be
 had. That is the whole reason the stage below may veto a member and may never
-reorder the survivors (§29) — a rule that sorted this list by anything else
+reorder the survivors ([§FS-005-dispatch.29](FS-005-dispatch.md#29-headroom-is-reported-to-ephor-and-vetoes-a-member-it-never-reorders)) — a rule that sorted this list by anything else
 would be overruling the only judgment in it.
 
 The first step is **made at the moment of dispatch and spent by it**. In the
@@ -1202,7 +1202,7 @@ only found them somewhere else.
 
 The watch can say what is being done about any one item — the lines its work
 stands on beneath its row
-([§23](#23-work-stands-on-rows-of-its-own-beneath-the-row-it-is-about)), the
+([§FS-005-dispatch.23](FS-005-dispatch.md#23-work-stands-on-rows-of-its-own-beneath-the-row-it-is-about)), the
 work screen behind `w` — but "what is ephor doing right now" should
 not require visiting every row that might hold a piece of the answer. So
 there is an **operations board**: one screen, reachable from anywhere in the
@@ -1225,7 +1225,7 @@ project's own checkout and again in each branch workspace on disk, since
 the work root is per branch workspace and each one is its own execution
 root, and again at its organization's root where the template reaches
 above the project
-([§6.1](#61-the-work-root-is-a-template-and-it-may-reach-above-the-project))
+([§FS-005-dispatch.6.1](FS-005-dispatch.md#61-the-work-root-is-a-template-and-it-may-reach-above-the-project))
 — and every plan found in one is watched, whoever wrote it. A plan
 written by hand, a project's own planning tickets, and a run somebody
 started in another terminal on a root ephor never dispatched into are
@@ -1250,7 +1250,7 @@ lock when a run dies, however it dies. The board probes the lock without
 ever waiting on it — the runtime acquires it blockingly, so a probe that
 queued would park the watch behind the very run it is asking about. Which
 tickets a live run holds is read from what that run itself writes as it
-works ([§15.2](#152-what-a-run-is-doing-is-read-from-the-runs-own-stream)),
+works ([§FS-005-dispatch.15.2](FS-005-dispatch.md#152-what-a-run-is-doing-is-read-from-the-runs-own-stream)),
 and where a runner writes no such stream, from the journal and the logs it
 leaves behind.
 
@@ -1299,7 +1299,7 @@ running under a run that came later.
 **Watching only, and deliberately so.** The board starts nothing, stops
 nothing, and intervenes in nothing — and it stays that way now that something
 *can* be started beneath the screen
-([§17](#17-a-move-that-needs-nobody-runs-beneath-the-screen)): what starts a
+([§FS-005-dispatch.17](FS-005-dispatch.md#17-a-move-that-needs-nobody-runs-beneath-the-screen)): what starts a
 job is the menu entry the reader pressed, and the board is only where it is
 then seen. Interfering with a live run remains out — it needs a channel to
 the run that exists only while a run serves one, and a board that hinted at
@@ -1310,7 +1310,7 @@ jobs** — and that is the board being right, not broken ([§REQ-001-boundary.1]
 the operations a *runtime* has are runs, and where nothing can run there are
 none, said in the workable rung's own words ([§FS-006-project-interface.10](FS-006-project-interface.md#10-capability-rung-by-rung)). A
 job needs no runtime to exist
-([§17](#17-a-move-that-needs-nobody-runs-beneath-the-screen)) — it is ephor
+([§FS-005-dispatch.17](FS-005-dispatch.md#17-a-move-that-needs-nobody-runs-beneath-the-screen)) — it is ephor
 running a command, which is the one thing that never depended on a binding —
 so it keeps its row while the runtime's half of the board says why it is
 empty. The tickets themselves stay readable
@@ -1327,7 +1327,7 @@ them. The row itself says the machine could not be read, **naming the plans
 it happened to**, in so many words: a count left silently at zero would read
 as nothing done, which is exactly the guess the withholding exists to avoid.
 Which machine that was is the plan's own question
-([§28](#28-a-workflow-entry-can-ask-for-the-same-thing-a-recipe-can)), so a
+([§FS-005-dispatch.28](FS-005-dispatch.md#28-a-workflow-entry-can-ask-for-the-same-thing-a-recipe-can)), so a
 plan judged by a machine of its own is never among them — a row that said
 otherwise would deny a count the work beside it really earned.
 
@@ -1345,7 +1345,7 @@ are a fixed handful per root: each plan file the last enumeration found,
 the root's own directory — a plan appearing or vanishing is a directory
 event — and the artifacts the runtime moves as it works: the one it writes
 on every slot it takes or releases, and the live run's own stream
-([§15.2](#152-what-a-run-is-doing-is-read-from-the-runs-own-stream)), which
+([§FS-005-dispatch.15.2](FS-005-dispatch.md#152-what-a-run-is-doing-is-read-from-the-runs-own-stream)), which
 is one more name in the same fixed handful and never a sweep of everything
 the runtime ever wrote; the bound runner is
 asked to list its plans only about a root that holds an operation, and
@@ -1362,7 +1362,7 @@ passed. The walk is bounded by where work is configured to live, not by
 what the disk holds: it visits the project checkouts and the branch
 workspaces ephor already resolves, to the fixed depth a branch name can
 nest, and — where the template names an organization
-([§6.1](#61-the-work-root-is-a-template-and-it-may-reach-above-the-project))
+([§FS-005-dispatch.6.1](FS-005-dispatch.md#61-the-work-root-is-a-template-and-it-may-reach-above-the-project))
 — the root of the organization the project belongs to, which lies inside
 no checkout and would otherwise be written to and never looked at again.
 It costs one directory listing per candidate work root — it never
@@ -1425,7 +1425,7 @@ doing, and what the last one did.
 above, and they are the two a reader of a **finished** run wants: whether that
 run moved anything. The autorun sweep asks exactly that before starting another
 run on the same root
-([§24](#24-work-nobody-has-to-start-starts-itself)), so this record answers a
+([§FS-005-dispatch.24](FS-005-dispatch.md#24-work-nobody-has-to-start-starts-itself)), so this record answers a
 question about a run nobody is watching as well as one about the run in front of
 somebody. The reading is the same reading either way — one run's own word about
 one run — which is why the sweep gets no witness of its own.
@@ -1433,7 +1433,7 @@ one run — which is why the sweep gets no witness of its own.
 **And it is read where work is shown, not only on the board.** The reader
 looking at a matter's rows sees the same word the board would show, because
 this is one reading narrowed to one matter rather than a second one of its
-own ([§23](#23-work-stands-on-rows-of-its-own-beneath-the-row-it-is-about)).
+own ([§FS-005-dispatch.23](FS-005-dispatch.md#23-work-stands-on-rows-of-its-own-beneath-the-row-it-is-about)).
 
 ## 16. Work that should not go on is cancelled, and the plan says so
 
@@ -1456,13 +1456,13 @@ language reserves a ticket's state, after it is written, to the runtime's
 own verbs — the compare-and-swap, the artifact checks, the callbacks, the
 audit trail — and a state line ephor rewrote by hand would be a plan the
 runtime can no longer vouch for
-([§4](#4-the-ledger-is-ephors-record-and-never-the-truth-about-the-work),
+([§FS-005-dispatch.4](FS-005-dispatch.md#4-the-ledger-is-ephors-record-and-never-the-truth-about-the-work),
 [§DA-005-cancel-is-the-runtimes-move](../decisions/architectural/DA-005-cancel-is-the-runtimes-move.md#da-005-cancel-is-the-runtimes-move-cancelling-a-ticket-asks-the-runtime-and-never-rewrites-the-state-line)). So ephor asks the runtime for the
 transition, captured rather than watched, and what comes back is what the
 reader is told: the ticket cancelled, or the runtime's own refusal in its
 own sentence. It follows that with no runner bound cancelling is refused in
 the workable rung's words like running is
-([§14](#14-who-does-the-work-is-chosen-and-defaulted-per-project)): the
+([§FS-005-dispatch.14](FS-005-dispatch.md#14-who-does-the-work-is-chosen-and-defaulted-per-project)): the
 plan is still readable and hand-editable, and nobody is there to make the
 move.
 
@@ -1470,18 +1470,18 @@ move.
 in the order, marked as cancelled with its reason beneath it — the same
 reading a finished ticket gets. Nothing is deleted: the plan is the record
 of what was decided about this item
-([§3](#3-one-rhei-per-item-one-ticket-per-dispatch)), and taking an ask
+([§FS-005-dispatch.3](FS-005-dispatch.md#3-one-rhei-per-item-one-ticket-per-dispatch)), and taking an ask
 back is a decision too.
 
 Cancelling refuses where the move would be wrong, and says why in one
 sentence before anything is asked of the runtime. A ticket a **live run
 holds** is that run's to finish: pulling the state out from under an agent
 is interfering with a run, which is the later section
-([§15](#15-every-operation-is-visible-in-one-place)), and the refusal names
+([§FS-005-dispatch.15](FS-005-dispatch.md#15-every-operation-is-visible-in-one-place)), and the refusal names
 the run. A **finished** ticket has nothing left to cancel. A machine that
 declares **no abandonment state** is refused with the machine and its file
 named, exactly as a recipe naming a state the machine lacks is
-([§6](#6-dispatch-is-offered-where-it-would-work-and-refuses-where-it-would-not)):
+([§FS-005-dispatch.6](FS-005-dispatch.md#6-dispatch-is-offered-where-it-would-work-and-refuses-where-it-would-not)):
 a ticket moved into a state the machine does not have leaves a plan the
 runtime refuses to run at all. The machine ephor ships and the examples
 beside it declare the state and a transition into it from anywhere, so a
@@ -1494,12 +1494,12 @@ runtime's own checks are the last word.
 Order follows from the state's name. A ticket **ordered after** one now
 cancelled will not start — the abandonment state satisfies no `**Prior:**`,
 which is what its spelling is for
-([§11](#11-a-failure-that-is-not-the-changes-fault-is-restarted-not-fixed))
+([§FS-005-dispatch.11](FS-005-dispatch.md#11-a-failure-that-is-not-the-changes-fault-is-restarted-not-fixed))
 — so cancelling says which open tickets those are, and cancelling them too
 is one more keystroke; ephor does not decide for them. And a ticket ephor
 appends afterwards — a reopen, a second ask — is ordered after the last
 ticket that is **not** cancelled
-([§5](#5-an-item-that-moved-reopens-its-work)), so ephor's own chain never
+([§FS-005-dispatch.5](FS-005-dispatch.md#5-an-item-that-moved-reopens-its-work)), so ephor's own chain never
 hangs off abandoned work.
 
 ## 17. A move that needs nobody runs beneath the screen
@@ -1513,17 +1513,17 @@ next item, cannot start the second move, cannot even see that the first one is
 still going, because the screen that would say so has been given away. Then it
 asks for a keypress to hand the screen back. The reader paid the interface for
 a command that never needed it
-([§12](#12-work-an-algorithm-can-finish-does-not-start-with-a-model)).
+([§FS-005-dispatch.12](FS-005-dispatch.md#12-work-an-algorithm-can-finish-does-not-start-with-a-model)).
 
 So a menu entry that does not need the reader runs as a **job**: started
 beneath the screen, with the interface staying exactly where it was, and the
 job taking a row of its own among the operations
-([§15](#15-every-operation-is-visible-in-one-place)). What was a takeover
+([§FS-005-dispatch.15](FS-005-dispatch.md#15-every-operation-is-visible-in-one-place)). What was a takeover
 becomes a line saying the work started and a row saying it is going.
 
 **Which entries these are, the entry says.** ephor's own deterministic moves
 are jobs by construction — the rebase is the whole argument of
-[§12](#12-work-an-algorithm-can-finish-does-not-start-with-a-model), and a
+[§FS-005-dispatch.12](FS-005-dispatch.md#12-work-an-algorithm-can-finish-does-not-start-with-a-model), and a
 move that costs no model has no reader to cost either. Everything a person or
 a project wrote keeps the terminal unless it asks otherwise, because a menu
 entry has always been allowed to *be* the reader's session — `lazygit`, an
@@ -1548,7 +1548,7 @@ job that is going says what it is doing right now, because "still running" and
 
 **Liveness is the lock, exactly as it is for a run.** A job holds one for as
 long as it runs, and the operating system releases it when the job dies,
-however it dies ([§15](#15-every-operation-is-visible-in-one-place)); the
+however it dies ([§FS-005-dispatch.15](FS-005-dispatch.md#15-every-operation-is-visible-in-one-place)); the
 board probes it and never waits on it. Nothing consults a process table, and
 nothing believes a record that says a job started: a job ephor started and
 then crashed alongside is not running, and the lock says so without being
@@ -1580,9 +1580,9 @@ with nowhere to land is news that is lost.
 
 **Only what has ended lands there.** A job still going is already marked
 running where it could be started again
-([§21](#21-what-is-already-going-is-shown-where-it-could-be-started-again))
+([§FS-005-dispatch.21](FS-005-dispatch.md#21-what-is-already-going-is-shown-where-it-could-be-started-again))
 and holds a row among the operations
-([§15](#15-every-operation-is-visible-in-one-place)), and a third live mark
+([§FS-005-dispatch.15](FS-005-dispatch.md#15-every-operation-is-visible-in-one-place)), and a third live mark
 on the tree would be one fact said three times. A job that has ended is no
 longer an operation and leaves the board — an inbox that accumulated every
 finished thing would be the pile this section exists to avoid — while its
@@ -1591,7 +1591,7 @@ to be swept.
 
 **What the move hands over, it still hands over.** A rebase that stops in a
 conflict dispatches its ticket exactly as it did when the reader was watching
-([§12](#12-work-an-algorithm-can-finish-does-not-start-with-a-model)), and
+([§FS-005-dispatch.12](FS-005-dispatch.md#12-work-an-algorithm-can-finish-does-not-start-with-a-model)), and
 that ticket is a run with a row of its own. The job ends; the work does not.
 
 ## 18. The work screen says when, and folds away what is over
@@ -1602,8 +1602,8 @@ what the reader brought to it. "Did I already press this?", "is that the job I
 started a minute ago, or the one from yesterday?" — those are questions about
 time, and a screen that will not answer them sends the reader to the ledger
 and the job directory to read timestamps that were on disk the whole while
-([§4](#4-the-ledger-is-ephors-record-and-never-the-truth-about-the-work),
-[§17](#17-a-move-that-needs-nobody-runs-beneath-the-screen)).
+([§FS-005-dispatch.4](FS-005-dispatch.md#4-the-ledger-is-ephors-record-and-never-the-truth-about-the-work),
+[§FS-005-dispatch.17](FS-005-dispatch.md#17-a-move-that-needs-nobody-runs-beneath-the-screen)).
 
 So **every row that already happened says when**, in the age the watch
 already spells on its rows rather than a clock time the reader has to
@@ -1611,7 +1611,7 @@ subtract from: a screen read at a glance is read in "12m ago", not in
 "14:22". A ticket says when it was **asked for** — the ledger's record of the
 dispatch, not anything the plan holds, since the plan is the runtime's and
 tracks what the work reached rather than when it was handed over
-([§4](#4-the-ledger-is-ephors-record-and-never-the-truth-about-the-work)). A
+([§FS-005-dispatch.4](FS-005-dispatch.md#4-the-ledger-is-ephors-record-and-never-the-truth-about-the-work)). A
 job says when it **ran**, and how long it took; a job still going says how
 long it has been going, which is the same question asked of a thing that has
 not finished, and the only answer there is.
@@ -1621,11 +1621,11 @@ plan by hand was never dispatched, so nothing knows when it was asked for,
 and that row simply carries no age. The plan file's own modification time
 would be ephor inventing a fact about work it did not start, which is the
 same refusal the board makes about rows it did not write
-([§15](#15-every-operation-is-visible-in-one-place)).
+([§FS-005-dispatch.15](FS-005-dispatch.md#15-every-operation-is-visible-in-one-place)).
 
 **What is over folds away.** Tickets accumulate, and are meant to: a reopen,
 a second ask, a cancel, months of work about one long-lived change, all of it
-kept ([§16](#16-work-that-should-not-go-on-is-cancelled-and-the-plan-says-so)).
+kept ([§FS-005-dispatch.16](FS-005-dispatch.md#16-work-that-should-not-go-on-is-cancelled-and-the-plan-says-so)).
 But a reader opening this screen is looking at what is still going, and the
 finished and the cancelled push it down the screen a row at a time until it is
 off it. So the screen leads with the tickets that are still open and collects
@@ -1646,7 +1646,7 @@ A binding brings more than a place to put tickets. It carries **workflows** —
 named, parameterized plans that lay down tasks of their own, under a machine of
 their own, with fan-out and gates ephor never wrote — and a reader who has one
 is in exactly the position
-[§1](#1-a-recipe-decides-which-items-deserve-work-and-what-to-ask-for)
+[§FS-005-dispatch.1](FS-005-dispatch.md#1-a-recipe-decides-which-items-deserve-work-and-what-to-ask-for)
 describes: the thing worth doing about this row is already written down, and
 doing it means leaving, remembering a vocabulary, and coming back. So a
 workflow is an entry in the same menu, selected by the same language, ordered
@@ -1665,7 +1665,7 @@ no workflows, in the *workable* rung's own words
 ([§FS-006-project-interface.10](FS-006-project-interface.md#10-capability-rung-by-rung)), and nothing else
 changes: the plans a workflow already laid down go on being found by looking
 and read from disk, like every other plan there
-([§15](#15-every-operation-is-visible-in-one-place)).
+([§FS-005-dispatch.15](FS-005-dispatch.md#15-every-operation-is-visible-in-one-place)).
 
 **Asking what the runtime offers is an operation, not a best-effort probe.** A
 bound runtime's workflow-listing summons that cannot start or cannot reserve
@@ -1696,7 +1696,7 @@ same rule settling two entries that share an id.
 
 **A workflow no entry names is still asked for.** Requiring configuration
 before a workflow can be used once is the cost
-[§10](#10-what-ephor-offers-is-not-a-limit-on-what-can-be-asked) exists to
+[§FS-005-dispatch.10](FS-005-dispatch.md#10-what-ephor-offers-is-not-a-limit-on-what-can-be-asked) exists to
 refuse — but a menu carrying every workflow the machine can find, on every row,
 is [§FS-004-quick-actions.2](FS-004-quick-actions.md#2-offered-only-where-it-would-work) broken at
 scale: most of them have nothing to do with the item, and a reader who has to
@@ -1714,7 +1714,7 @@ own default; and, where an input is required and still unanswered, the reader
 — asked, or refused by name where nobody is there to ask. Explicit `--set`
 answers therefore displace values-file answers, and both displace the entry,
 hand, and workflow defaults. The order is
-[§14](#14-who-does-the-work-is-chosen-and-defaulted-per-project)'s, deliberately,
+[§FS-005-dispatch.14](FS-005-dispatch.md#14-who-does-the-work-is-chosen-and-defaulted-per-project)'s, deliberately,
 so that one resolution order covers everything a dispatch has to settle.
 
 The command-line laying surface accepts repeatable `--values <file>` options.
@@ -1730,7 +1730,7 @@ never provides a way around that policy.
 
 What the entry says is data, not prose: a string is rendered with the item's
 fields where it names them, exactly as a brief is
-([§1](#1-a-recipe-decides-which-items-deserve-work-and-what-to-ask-for)), and
+([§FS-005-dispatch.1](FS-005-dispatch.md#1-a-recipe-decides-which-items-deserve-work-and-what-to-ask-for)), and
 anything that is not a string is passed on as it stands, because an input that
 wants a number, a flag, or a list of them is not served by a sentence. Where a
 list or a record holds strings, those are rendered too — the fields an item
@@ -1738,8 +1738,8 @@ carries are as useful inside a structure as beside one.
 
 **What ephor knows reaches a workflow as files, not only as words.** The
 dossier and the identifiers are already written for exactly this
-([§2](#2-the-ticket-carries-what-ephor-knows-not-a-link-to-it),
-[§8](#8-the-ticket-carries-the-item-as-data-not-only-as-prose)), and a workflow
+([§FS-005-dispatch.2](FS-005-dispatch.md#2-the-ticket-carries-what-ephor-knows-not-a-link-to-it),
+[§FS-005-dispatch.8](FS-005-dispatch.md#8-the-ticket-carries-the-item-as-data-not-only-as-prose)), and a workflow
 has no place in its plan for either — so an entry may answer an input with the
 dossier or with the item's identifiers, and what the workflow is given is a
 path to a file ephor has already written, or that file's contents where the
@@ -1763,12 +1763,12 @@ edited in the shape it actually has. Where the values it can take are known,
 one is picked from them rather than spelled: a flag has two, an input that
 names who does the work has the roster, already narrowed and already saying
 who is unavailable and why
-([§14](#14-who-does-the-work-is-chosen-and-defaulted-per-project),
+([§FS-005-dispatch.14](FS-005-dispatch.md#14-who-does-the-work-is-chosen-and-defaulted-per-project),
 [§DA-006-hands-fill-a-workflows-targets](../decisions/architectural/DA-006-hands-fill-a-workflows-targets.md#da-006-hands-fill-a-workflows-targets-who-a-workflows-agents-are-is-ephors-answer-not-the-workflows)),
 and an input whose own check is a plain set of words has those words. An input
 wanting several of them is answered several at a time, from the same set.
 Everything else is one line typed on its own row, which is
-[§10](#10-what-ephor-offers-is-not-a-limit-on-what-can-be-asked)'s ask with
+[§FS-005-dispatch.10](FS-005-dispatch.md#10-what-ephor-offers-is-not-a-limit-on-what-can-be-asked)'s ask with
 the input's name already on it. What ephor reads out of a check is a
 convenience and never a second authority: a value the offered set does not
 hold can still be typed, and the binding remains the one thing that validates
@@ -1782,13 +1782,13 @@ missing, rather than laying a workflow down with a hole in it. Where nobody is
 there to ask — a dispatch of every matching item at once — the entry refuses
 and names the inputs it could not answer, because a workflow written with a
 hole in it is a piece of work that looks scheduled and never happens
-([§6](#6-dispatch-is-offered-where-it-would-work-and-refuses-where-it-would-not)).
+([§FS-005-dispatch.6](FS-005-dispatch.md#6-dispatch-is-offered-where-it-would-work-and-refuses-where-it-would-not)).
 
 **Who does the work is ephor's answer, not the workflow's.** A workflow's
 inputs are mostly its agents: which one reviews, which one adjudicates, which
 one writes — each defaulted to a model its author happened to have. Left alone,
 those defaults are a hole in everything
-[§14](#14-who-does-the-work-is-chosen-and-defaulted-per-project) and
+[§FS-005-dispatch.14](FS-005-dispatch.md#14-who-does-the-work-is-chosen-and-defaulted-per-project) and
 [§FS-006-project-interface.9](FS-006-project-interface.md#9-offers-the-projects-actions) settle: the
 project's table stops applying, the reader's pick stops applying, and a project
 that narrowed which hands may see its code is narrowed right up to the moment a
@@ -1808,31 +1808,31 @@ Each of those resolutions carries the pool its work would be bought against,
 so **which pools a laying needs is a fact about the laying** — computed from
 the answers rather than declared anywhere, recorded with the laying, and read
 back from that record by whatever decides later
-([§33](#33-work-that-needs-several-pools-at-once-is-admitted-whole)).
+([§FS-005-dispatch.33](FS-005-dispatch.md#33-work-that-needs-several-pools-at-once-is-admitted-whole)).
 
 **What it writes is a plan beside the item's, not a ticket inside it.** A
 workflow lays down a plan of its own; it cannot be appended to the item's
-([§3](#3-one-rhei-per-item-one-ticket-per-dispatch)), and pretending otherwise
+([§FS-005-dispatch.3](FS-005-dispatch.md#3-one-rhei-per-item-one-ticket-per-dispatch)), and pretending otherwise
 would mean rewriting somebody else's workflow into ephor's shape and losing
 what made it worth having. It is written into the item's own work root all the
 same, and everything that follows from that is the point: the operations board
 finds it by looking, like every other plan there
-([§15](#15-every-operation-is-visible-in-one-place)); it shares the root's one
+([§FS-005-dispatch.15](FS-005-dispatch.md#15-every-operation-is-visible-in-one-place)); it shares the root's one
 run, so a workflow and a ticket about the same change queue rather than edit
 the same tree at once; and the ledger records the dispatch against the plan it
 made, which is the fact that was missing — the record says the item, the entry,
 the plan, and what the item looked like
-([§4](#4-the-ledger-is-ephors-record-and-never-the-truth-about-the-work)), and
+([§FS-005-dispatch.4](FS-005-dispatch.md#4-the-ledger-is-ephors-record-and-never-the-truth-about-the-work)), and
 gains a plan of its own beside a ticket of its own, which is an addition and
 costs nothing to what is already written
 ([§FS-006-project-interface.11](FS-006-project-interface.md#11-the-interface-is-versioned)). An item that
 moved is offered the workflow again rather than a ticket appended to it
-([§5](#5-an-item-that-moved-reopens-its-work)), ordered after what came before
+([§FS-005-dispatch.5](FS-005-dispatch.md#5-an-item-that-moved-reopens-its-work)), ordered after what came before
 and named apart from it, because two runs of one workflow about one item are
 two records and not a correction of the first.
 
 **Instantiating writes files; running is the move after it.** Everything
-[§7](#7-handing-over-work-is-the-readers-move-and-stays-inside-the-machine)
+[§FS-005-dispatch.7](FS-005-dispatch.md#7-handing-over-work-is-the-readers-move-and-stays-inside-the-machine)
 guarantees holds here and holds for the same reason: what a key press does is
 write a plan, and what runs it is the reader, from the board where every other
 operation is run. A workflow lays down more than a ticket does — a directory,
@@ -1876,7 +1876,7 @@ nothing is written.
 
 **What comes back is what the plan says, and no more.** A ticket ephor wrote
 carries the shape a verdict and a proposed answer are read out of
-([§13](#13-a-communication-is-work-too-and-its-answer-comes-back-as-a-proposal));
+([§FS-005-dispatch.13](FS-005-dispatch.md#13-a-communication-is-work-too-and-its-answer-comes-back-as-a-proposal));
 a workflow answers to its author, not to ephor, and reading a verdict out of
 one would be ephor inventing a fact about work it did not shape. So workflow
 work is read at the altitude every plan is read at — its states, what is
@@ -1891,10 +1891,10 @@ run is exactly the kind of fact a watch exists to say out loud.
 
 Pressing the key that runs the runtime hands it the whole interface for as
 long as the run takes — and a run takes as long as the work does. Everything
-[§17](#17-a-move-that-needs-nobody-runs-beneath-the-screen) says about a
+[§FS-005-dispatch.17](FS-005-dispatch.md#17-a-move-that-needs-nobody-runs-beneath-the-screen) says about a
 replay holds here with more force: the work was handed over precisely so that
 nobody had to stay
-([§7](#7-handing-over-work-is-the-readers-move-and-stays-inside-the-machine)),
+([§FS-005-dispatch.7](FS-005-dispatch.md#7-handing-over-work-is-the-readers-move-and-stays-inside-the-machine)),
 ephor is the half that remembers, and a screen given away to one run cannot
 watch the other items, cannot start the next move, and cannot even say that
 the first one is still going. A run that the reader *wants* to watch is the
@@ -1904,7 +1904,7 @@ So **a run starts detached**: where the binding can, the runtime is started in
 a session of its own, outliving the screen and the terminal that started it,
 and what the reader gets is one line saying the run began and what it is
 called. The root turns live on the board
-([§15](#15-every-operation-is-visible-in-one-place)) from the lock, as every
+([§FS-005-dispatch.15](FS-005-dispatch.md#15-every-operation-is-visible-in-one-place)) from the lock, as every
 run does — nothing new is watched, because nothing about "is a run live here"
 changed. A move that needs nobody does not suddenly need somebody staying,
 and a run is the longest such move ephor makes.
@@ -1923,7 +1923,7 @@ read from the artifacts the binding leaves beside its lock, never from
 anything ephor remembers having started: a run somebody started in another
 terminal, on a root ephor never dispatched into, has the same identity and is
 reached the same way
-([§15](#15-every-operation-is-visible-in-one-place)). An id is how the reader
+([§FS-005-dispatch.15](FS-005-dispatch.md#15-every-operation-is-visible-in-one-place)). An id is how the reader
 and the runtime agree on which run they mean, so the board says it on the
 row, the work screen says it on the operation, and the command line prints it
 with the rest ([§FS-011-command-line.8](FS-011-command-line.md#8-what-is-going-is-said-and-the-way-in-is-printed)).
@@ -1933,19 +1933,19 @@ start — a reader of the run's files and a client of its control — is opened
 on the run, and leaving that surface detaches and never stops the run: the
 reflex that ends a foreground command must not end a run another screen may
 also be watching. The surface is something the reader types into, so by
-[§17](#17-a-move-that-needs-nobody-runs-beneath-the-screen)'s own rule it
+[§FS-005-dispatch.17](FS-005-dispatch.md#17-a-move-that-needs-nobody-runs-beneath-the-screen)'s own rule it
 takes the reader's terminal — or a window of the reader's own, where one is
-bound ([§22](#22-a-window-of-the-readers-own-where-one-is-bound)). What the
+bound ([§FS-005-dispatch.22](FS-005-dispatch.md#22-a-window-of-the-readers-own-where-one-is-bound)). What the
 surface can do — answer a question the run parked, release a gate, intervene
 — is the binding's, unchanged, and ephor adds nothing to it and takes nothing
 from it.
 
 **Stopping stays out of the screen.** The board starts nothing and stops
-nothing ([§15](#15-every-operation-is-visible-in-one-place)), and a detached
+nothing ([§FS-005-dispatch.15](FS-005-dispatch.md#15-every-operation-is-visible-in-one-place)), and a detached
 run does not change that: where a run can be stopped, the row carries the
 runner's own command for stopping it, in the runner's own words, exactly as a
 claim carries the command that releases it
-([§10](#10-what-ephor-offers-is-not-a-limit-on-what-can-be-asked)). A key that
+([§FS-005-dispatch.10](FS-005-dispatch.md#10-what-ephor-offers-is-not-a-limit-on-what-can-be-asked)). A key that
 stopped a run would be a channel to the run ephor promised never to hold.
 
 **A question a detached run asks still reaches the reader.** A run with
@@ -1953,7 +1953,7 @@ nobody at its terminal waits at a human gate rather than exiting — that is
 the binding's own contract, and it is the right one, because the person who
 releases the gate is expected to arrive later. ephor reads the wait exactly
 as it reads a parked ticket
-([§9](#9-work-that-stops-for-a-person-says-so-where-the-person-is-looking)):
+([§FS-005-dispatch.9](FS-005-dispatch.md#9-work-that-stops-for-a-person-says-so-where-the-person-is-looking)):
 the ticket says *waiting on you* wherever the reader is looking, and the way
 to answer is to attach.
 
@@ -1980,37 +1980,37 @@ been going and what it is at right now — the job's own last line, the ticket
 a run holds and the state it is in, *waiting on you* where the ticket it
 opened is parked, with a run still on the root or without one, *queued* where
 the root's run will reach it — in the words the board already uses
-([§15](#15-every-operation-is-visible-in-one-place),
-[§18](#18-the-work-screen-says-when-and-folds-away-what-is-over)), because
+([§FS-005-dispatch.15](FS-005-dispatch.md#15-every-operation-is-visible-in-one-place),
+[§FS-005-dispatch.18](FS-005-dispatch.md#18-the-work-screen-says-when-and-folds-away-what-is-over)), because
 this is the board's reading narrowed to one row, not a second reading.
 
 **What counts as going is found by looking, here too.** A command entry is
 running where a job started from that entry, about this subject, still holds
 its lock — so a job records which entry it came from and, on a branch row,
 which branch, or nothing could ever match it back
-([§17](#17-a-move-that-needs-nobody-runs-beneath-the-screen)); the checkout
+([§FS-005-dispatch.17](FS-005-dispatch.md#17-a-move-that-needs-nobody-runs-beneath-the-screen)); the checkout
 row is running where the job that is making the workspace is. An entry that
 hands work over is running where the ticket it would open, or the plan it
 would lay, is open and its root is live or will reach it — the very facts the
 work's own lines beneath the row are made of
-([§9](#9-work-that-stops-for-a-person-says-so-where-the-person-is-looking),
-[§23](#23-work-stands-on-rows-of-its-own-beneath-the-row-it-is-about)) —
+([§FS-005-dispatch.9](FS-005-dispatch.md#9-work-that-stops-for-a-person-says-so-where-the-person-is-looking),
+[§FS-005-dispatch.23](FS-005-dispatch.md#23-work-stands-on-rows-of-its-own-beneath-the-row-it-is-about)) —
 and a ticket the run parked counts, live root or not, because a question
 standing on this subject is exactly what a second dispatch must not be laid
 beside.
 An entry whose program runs in a window of the reader's own is running while
 that window holds it
-([§22](#22-a-window-of-the-readers-own-where-one-is-bound)). Nothing here is
+([§FS-005-dispatch.22](FS-005-dispatch.md#22-a-window-of-the-readers-own-where-one-is-bound)). Nothing here is
 remembered from the keypress: a second ephor opening the same menu sees the
 same rows, and a job that died is not running, whatever started it.
 
 **Pressing a running entry opens it; it never starts it again.** The key on a
 row that says *running* goes to the thing that is running: a job's log,
-followed as it writes ([§17](#17-a-move-that-needs-nobody-runs-beneath-the-screen));
+followed as it writes ([§FS-005-dispatch.17](FS-005-dispatch.md#17-a-move-that-needs-nobody-runs-beneath-the-screen));
 a run of the runtime, attached
-([§20](#20-a-run-of-the-runtime-starts-beneath-the-screen-and-is-watched-by-attaching));
+([§FS-005-dispatch.20](FS-005-dispatch.md#20-a-run-of-the-runtime-starts-beneath-the-screen-and-is-watched-by-attaching));
 a program in its own window, that window brought forward
-([§22](#22-a-window-of-the-readers-own-where-one-is-bound)). A second copy is
+([§FS-005-dispatch.22](FS-005-dispatch.md#22-a-window-of-the-readers-own-where-one-is-bound)). A second copy is
 not what a reader pressing a row that says *running* meant, and where
 somebody does mean it the command line starts it and the refusal is the
 lock's own sentence. The footer says *open* on such a row, not *run*, because
@@ -2024,7 +2024,7 @@ what a person reading it would have opened ([§REQ-002-parity.2](../requirements
 ## 22. A window of the reader's own, where one is bound
 
 Two kinds of thing above want a terminal: the surface that attaches to a run
-([§20](#20-a-run-of-the-runtime-starts-beneath-the-screen-and-is-watched-by-attaching)),
+([§FS-005-dispatch.20](FS-005-dispatch.md#20-a-run-of-the-runtime-starts-beneath-the-screen-and-is-watched-by-attaching)),
 and the program an entry *is* — an editor, a pager, a coding agent's own
 session ([§FS-006-project-interface.9](FS-006-project-interface.md#9-offers-the-projects-actions)). ephor has one terminal and is sitting
 in it. Handing it over works everywhere, and stays the floor: ephor leaves,
@@ -2053,19 +2053,19 @@ and the terminal is handed over as it always was. Where SSH suppressed an
 automatic GUI binding, the line says that SSH permits automatic tmux but not
 an automatic GUI window. A window is the reader's: ephor opens it and brings
 it forward, and never closes it or ends what is in it
-([§15](#15-every-operation-is-visible-in-one-place)).
+([§FS-005-dispatch.15](FS-005-dispatch.md#15-every-operation-is-visible-in-one-place)).
 
 **An entry may ask for a window.** An offer or a configured action says
 `window` as it already says `background`
 ([§FS-006-project-interface.9](FS-006-project-interface.md#9-offers-the-projects-actions)): its program runs in a window of its own
 instead of taking the terminal, and ephor stays where it was. Such a program
 is an operation while it runs — it holds a lock as a job does
-([§17](#17-a-move-that-needs-nobody-runs-beneath-the-screen)), its record
+([§FS-005-dispatch.17](FS-005-dispatch.md#17-a-move-that-needs-nobody-runs-beneath-the-screen)), its record
 keeps the window's handle, and the window is its inspection where a log
 would have been, because what it writes is on that screen and nowhere else.
 That is what makes a coding agent started from the menu a row that says
 *running* and opens to the agent
-([§21](#21-what-is-already-going-is-shown-where-it-could-be-started-again)),
+([§FS-005-dispatch.21](FS-005-dispatch.md#21-what-is-already-going-is-shown-where-it-could-be-started-again)),
 rather than a program ephor handed the terminal to and forgot. Where no
 window can be opened, the entry takes the terminal as it always did, and
 says so.
@@ -2073,7 +2073,7 @@ says so.
 **Attaching goes to a window where one is bound.** The surface on a run
 opens in a window when there is one to open, and in the terminal otherwise;
 either way leaving it detaches and the run goes on
-([§20](#20-a-run-of-the-runtime-starts-beneath-the-screen-and-is-watched-by-attaching)).
+([§FS-005-dispatch.20](FS-005-dispatch.md#20-a-run-of-the-runtime-starts-beneath-the-screen-and-is-watched-by-attaching)).
 
 ## 23. Work stands on rows of its own, beneath the row it is about
 
@@ -2095,13 +2095,13 @@ and the work is where a key can reach it.
 **What each line says** is what the board and the work screen already say, in
 their words, because this is that reading narrowed to one matter and not a
 third one of its own
-([§15](#15-every-operation-is-visible-in-one-place),
-[§18](#18-the-work-screen-says-when-and-folds-away-what-is-over)): the ticket's
+([§FS-005-dispatch.15](FS-005-dispatch.md#15-every-operation-is-visible-in-one-place),
+[§FS-005-dispatch.18](FS-005-dispatch.md#18-the-work-screen-says-when-and-folds-away-what-is-over)): the ticket's
 recipe and the state it is in, and how long since it was asked for, where the
 ledger knows — a ticket nobody dispatched carries no age rather than a guessed
 one. A ticket the runtime parked says *waiting on you* and stands first among
 them, since it is the one part nobody else will move
-([§9](#9-work-that-stops-for-a-person-says-so-where-the-person-is-looking)).
+([§FS-005-dispatch.9](FS-005-dispatch.md#9-work-that-stops-for-a-person-says-so-where-the-person-is-looking)).
 
 **A ticket a run has in hand says so, and says it at a glance.** *Open* and
 *being worked on right now* are different facts, and a row that spelled them
@@ -2111,10 +2111,10 @@ marker and one colour, and the only way to tell them apart was to leave for
 another screen — which is the sweep this project exists to retire
 ([§GOAL-003-nothing-lost](../goals.md#goal-003-nothing-lost-the-watch-is-trusted-enough-to-retire-the-sweep)). So a ticket a live run holds is marked apart from one
 merely open, read from the run's own record of itself
-([§15.2](#152-what-a-run-is-doing-is-read-from-the-runs-own-stream)) and
+([§FS-005-dispatch.15.2](FS-005-dispatch.md#152-what-a-run-is-doing-is-read-from-the-runs-own-stream)) and
 phrased as the board phrases it, because this is that reading narrowed to one
 matter and not a third one of its own
-([§15](#15-every-operation-is-visible-in-one-place)). A ticket on a root whose
+([§FS-005-dispatch.15](FS-005-dispatch.md#15-every-operation-is-visible-in-one-place)). A ticket on a root whose
 run is live but busy elsewhere is *queued*, for the same reason the board says
 so: it will get its turn without anyone doing anything. And a live run that has
 gone quiet carries the badge it carries there — a long tool call is legitimately
@@ -2125,22 +2125,22 @@ already probes and the record the run already writes, said on the row the
 reader is already looking at.
 
 **What is over is one line, not many.** Tickets accumulate and are all kept
-([§16](#16-work-that-should-not-go-on-is-cancelled-and-the-plan-says-so)), and
+([§FS-005-dispatch.16](FS-005-dispatch.md#16-work-that-should-not-go-on-is-cancelled-and-the-plan-says-so)), and
 a tree that grew a line per finished ticket would bury the matters between
 them. So where a plan holds nothing open, its work is one line for what the
 last ticket decided — the verdict, or *cancelled* — and where it holds
 something open, what is over is not on the tree at all: the work screen is
 where the whole record is read
-([§18](#18-the-work-screen-says-when-and-folds-away-what-is-over)). An item
-that has moved under its work says so on a line of its own, in the words §5
+([§FS-005-dispatch.18](FS-005-dispatch.md#18-the-work-screen-says-when-and-folds-away-what-is-over)). An item
+that has moved under its work says so on a line of its own, in the words [§FS-005-dispatch.5](FS-005-dispatch.md#5-an-item-that-moved-reopens-its-work)
 gives it, because that is a fact about the work and not about the matter
-([§5](#5-an-item-that-moved-reopens-its-work)).
+([§FS-005-dispatch.5](FS-005-dispatch.md#5-an-item-that-moved-reopens-its-work)).
 
 **The keys are the work's, on the row the work is on.** On such a line,
 cancel takes *that* ticket back — named, with no second screen to choose it on
-([§16](#16-work-that-should-not-go-on-is-cancelled-and-the-plan-says-so)) —
+([§FS-005-dispatch.16](FS-005-dispatch.md#16-work-that-should-not-go-on-is-cancelled-and-the-plan-says-so)) —
 attach watches the run holding it
-([§20](#20-a-run-of-the-runtime-starts-beneath-the-screen-and-is-watched-by-attaching)),
+([§FS-005-dispatch.20](FS-005-dispatch.md#20-a-run-of-the-runtime-starts-beneath-the-screen-and-is-watched-by-attaching)),
 and the plan opens for reading. What the line is *about* is still the matter,
 so the keys that go to the matter — its thread, its gate is not among them,
 its work screen, its menu — go there from here too. A key means one thing at
@@ -2151,10 +2151,10 @@ displaced.
 
 **A line is offered only where the move behind it would work.** Cancelling is
 the runtime's move and is refused in the runtime rung's words with nothing
-bound ([§16](#16-work-that-should-not-go-on-is-cancelled-and-the-plan-says-so));
+bound ([§FS-005-dispatch.16](FS-005-dispatch.md#16-work-that-should-not-go-on-is-cancelled-and-the-plan-says-so));
 attaching needs a run actually holding the root, read at the keypress from the
 lock and never remembered
-([§15](#15-every-operation-is-visible-in-one-place)); a line for work that is
+([§FS-005-dispatch.15](FS-005-dispatch.md#15-every-operation-is-visible-in-one-place)); a line for work that is
 over has no ticket to take back. Each says so in one sentence rather than
 appearing to act.
 
@@ -2173,7 +2173,7 @@ So **a recipe may say that the work it asks for needs nobody to start it**,
 and a ticket written from such a recipe gets its run without anyone pressing
 anything. The reader's deliberate act moves one step earlier and is made
 once: adopting the recipe, rather than starting each of its tickets
-([§7](#7-handing-over-work-is-the-readers-move-and-stays-inside-the-machine)).
+([§FS-005-dispatch.7](FS-005-dispatch.md#7-handing-over-work-is-the-readers-move-and-stays-inside-the-machine)).
 Everything a recipe already decides — which items deserve work, what to ask
 for, whose hand does it — is the same decision, and *and do not wait for me*
 belongs beside it.
@@ -2183,16 +2183,16 @@ recipe that says nothing about this is started by the reader, and so is
 every menu entry, every workflow entry that did not say it, and every plan
 somebody wrote by hand. The setting is written on the thing that hands work
 over — a recipe, or an entry that lays a workflow down
-([§28](#28-a-workflow-entry-can-ask-for-the-same-thing-a-recipe-can)) — and
+([§FS-005-dispatch.28](FS-005-dispatch.md#28-a-workflow-entry-can-ask-for-the-same-thing-a-recipe-can)) — and
 nowhere else, because the reader who trusts one kind of work to start itself
 has said nothing about the rest.
 
 **Starting is a sweep, and the sweep reads the world.** What starts a run is
 not a memory of having dispatched something — that would be the ledger
 deciding what exists, which is the one thing it never does
-([§4](#4-the-ledger-is-ephors-record-and-never-the-truth-about-the-work)) —
+([§FS-005-dispatch.4](FS-005-dispatch.md#4-the-ledger-is-ephors-record-and-never-the-truth-about-the-work)) —
 but the same looking every other reading here does
-([§15](#15-every-operation-is-visible-in-one-place)): a root is **due** when
+([§FS-005-dispatch.15](FS-005-dispatch.md#15-every-operation-is-visible-in-one-place)): a root is **due** when
 a plan in it holds a ticket that is open, unclaimed, not parked on a
 question, and from a recipe that asked to run itself — and no run is live in
 the checkout that root's work would run in. A ticket a hand wrote into such a
@@ -2214,9 +2214,9 @@ was supplied.
 tree.** A root a run already holds is left alone: the runtime schedules one
 run per root, the live run reaches a ticket written beneath it, and a second
 run there would only wait for the first
-([§15](#15-every-operation-is-visible-in-one-place)). But the root is not what
+([§FS-005-dispatch.15](FS-005-dispatch.md#15-every-operation-is-visible-in-one-place)). But the root is not what
 is really being shared. A run is made *in a checkout*
-([§3](#3-one-rhei-per-item-one-ticket-per-dispatch)), and two work roots over
+([§FS-005-dispatch.3](FS-005-dispatch.md#3-one-rhei-per-item-one-ticket-per-dispatch)), and two work roots over
 one tree — a second panta beside the first, or a root somebody pointed
 elsewhere — are two agents editing the same files. So the invariant is over
 the checkout, not the root: a root is left alone when a run holds it **or**
@@ -2246,7 +2246,7 @@ held work root is passed over in, and it is never forced. `--force` is the
 reader's word about a run they asked for by name; it reaches no sweep, and it
 does not reach this one. A third such writer is the unattended dispatch itself
 where its recipe mints a checkout per matter
-([§25](#25-work-about-a-matter-with-no-branch-can-mint-the-branch-it-needs)):
+([§FS-005-dispatch.25](FS-005-dispatch.md#25-work-about-a-matter-with-no-branch-can-mint-the-branch-it-needs)):
 minting a tree and writing a plan into it is the permissive half's *writing a
 file*, so no ceiling here counts it — and it is bounded where it must be,
 at what the sweep is offered rather than at what it opens, because a writer
@@ -2256,7 +2256,7 @@ at all ([§FS-006-project-interface.7](FS-006-project-interface.md#7-the-project
 **A run the reader asks for by name is refused by name.** `ephor work run` on
 a plan whose checkout a live run holds starts nothing and says *a run is live
 in this checkout*, naming the run — its own id where it published one
-([§20](#20-a-run-of-the-runtime-starts-beneath-the-screen-and-is-watched-by-attaching)),
+([§FS-005-dispatch.20](FS-005-dispatch.md#20-a-run-of-the-runtime-starts-beneath-the-screen-and-is-watched-by-attaching)),
 the root holding it where it did not — so the reader is sent to the run that
 is in the way rather than to a guess. A run this same invocation has just
 started counts: one command over two work roots in one tree starts one of
@@ -2317,9 +2317,9 @@ command-line ceiling.
 
 **The organization tier carries more than a ceiling.** `work.root` is read at
 these same three scopes and by the same registry membership
-([§6.1](#61-the-work-root-is-a-template-and-it-may-reach-above-the-project)),
+([§FS-005-dispatch.6.1](FS-005-dispatch.md#61-the-work-root-is-a-template-and-it-may-reach-above-the-project)),
 and so is `work.recipes`
-([§1](#1-a-recipe-decides-which-items-deserve-work-and-what-to-ask-for)), so an
+([§FS-005-dispatch.1](FS-005-dispatch.md#1-a-recipe-decides-which-items-deserve-work-and-what-to-ask-for)), so an
 organization block is where the budget its projects share, the place their work
 goes, and the way they are worked are all written. The three are read
 differently and have to be. Every ceiling is evaluated and the outermost full
@@ -2408,11 +2408,11 @@ counts toward the flight ceilings — it exists, and that is what those numbers
 count — and toward `max_active` too *unless* nothing in it is being worked and
 something in it is somebody's turn: no open ticket witnessed held by the run,
 and at least one open ticket in a state the machine in force calls gating
-([§9](#9-work-that-stops-for-a-person-says-so-where-the-person-is-looking)) or
+([§FS-005-dispatch.9](FS-005-dispatch.md#9-work-that-stops-for-a-person-says-so-where-the-person-is-looking)) or
 whose poll declares whose answer it waits for — one fact, differing only in who
 resumes it. It is judged per plan by the machine answering for that plan, as
 every reading of what a ticket is doing is
-([§15](#15-every-operation-is-visible-in-one-place)); a plan whose machine
+([§FS-005-dispatch.15](FS-005-dispatch.md#15-every-operation-is-visible-in-one-place)); a plan whose machine
 cannot be read makes its root active, because a misreading must cost a slot
 rather than hand one out. And the ceilings gate starts, not what is under way
 already: parked roots resuming together can carry active work above
@@ -2445,11 +2445,11 @@ reading's `failed` count.
 
 **The sweep is safe where the key was.** Everything dispatch refuses before
 writing a ticket, starting refuses before running one
-([§6](#6-dispatch-is-offered-where-it-would-work-and-refuses-where-it-would-not)):
+([§FS-005-dispatch.6](FS-005-dispatch.md#6-dispatch-is-offered-where-it-would-work-and-refuses-where-it-would-not)):
 a branch that is not in the working tree the plan is about is not run in,
 whatever the directory holds
-([§3](#3-one-rhei-per-item-one-ticket-per-dispatch)). And what it starts is
-the run [§20](#20-a-run-of-the-runtime-starts-beneath-the-screen-and-is-watched-by-attaching)
+([§FS-005-dispatch.3](FS-005-dispatch.md#3-one-rhei-per-item-one-ticket-per-dispatch)). And what it starts is
+the run [§FS-005-dispatch.20](FS-005-dispatch.md#20-a-run-of-the-runtime-starts-beneath-the-screen-and-is-watched-by-attaching)
 already describes — detached, identified by the binding, watched by
 attaching. Nothing about how a run is seen, stopped, or answered changes
 because nobody pressed the key that began it.
@@ -2458,7 +2458,7 @@ because nobody pressed the key that began it.
 leaves.** Synchronizing moved work may start its due run, and the final due
 sweep starts work born anywhere else; a run detached at either position
 survives the service's completion, stop, and restart on the terms
-[§20](#20-a-run-of-the-runtime-starts-beneath-the-screen-and-is-watched-by-attaching)
+[§FS-005-dispatch.20](FS-005-dispatch.md#20-a-run-of-the-runtime-starts-beneath-the-screen-and-is-watched-by-attaching)
 gives every detached run. A later activation reads the world again and still
 starts nothing in a checkout whose earlier run is live: surviving the launcher
 changes none of the opt-in, eligibility, exclusion, ceiling, or back-off guards
@@ -2470,11 +2470,11 @@ otherwise be retried by every sweep for as long as the ticket stays open,
 which is a loop nobody asked for and the most expensive kind of quiet. So a
 failed start is remembered as ephor's own record of what ephor did (never as
 work state — that is still the plan's
-([§4](#4-the-ledger-is-ephors-record-and-never-the-truth-about-the-work))),
+([§FS-005-dispatch.4](FS-005-dispatch.md#4-the-ledger-is-ephors-record-and-never-the-truth-about-the-work))),
 and that root is left alone for a while, longer each time it fails. The
 failure itself is not swallowed: it lands under the row it was about, the
 way a job's outcome does
-([§17](#17-a-move-that-needs-nobody-runs-beneath-the-screen)), so a reader
+([§FS-005-dispatch.17](FS-005-dispatch.md#17-a-move-that-needs-nobody-runs-beneath-the-screen)), so a reader
 who never pressed anything still learns that the thing they did not press
 did not happen.
 
@@ -2494,14 +2494,14 @@ rather than left to be reconciled.** The paragraph above holds that what starts
 a run is a looking and not a memory, and then remembers one thing: a start that
 failed. This remembers a second, of the same kind and for the same reason — it
 is ephor's record of what ephor did, never the work's state, which is still the
-plan's ([§4](#4-the-ledger-is-ephors-record-and-never-the-truth-about-the-work)).
+plan's ([§FS-005-dispatch.4](FS-005-dispatch.md#4-the-ledger-is-ephors-record-and-never-the-truth-about-the-work)).
 Two exceptions to one sentence are two too many to leave to inference, so the
 sentence is read with both in it: the sweep reads the world for what is *due*,
 and consults its own record only for what it has already tried and got nothing
 for.
 
 **The witness is the finished run's own record of itself**
-([§15.2](#152-what-a-run-is-doing-is-read-from-the-runs-own-stream)). A root
+([§FS-005-dispatch.15.2](FS-005-dispatch.md#152-what-a-run-is-doing-is-read-from-the-runs-own-stream)). A root
 the sweep is considering has no live run, by the invariant above, so the record
 there is the last run's and is over. Nothing is inferred from the work: an open
 ticket count compared across sweeps would be work state cached in the ledger
@@ -2509,7 +2509,7 @@ under another name, and a healthy run's ordinary act is moving a ticket from
 one state to another while leaving it open, so a count-based reading would rest
 exactly the roots that are working. Nor is it the run's exit status, which
 cannot tell a run that advanced two tickets and then stopped from one that
-advanced nothing at all. §15.2 already requires that the record say how each
+advanced nothing at all. [§FS-005-dispatch.15.2](FS-005-dispatch.md#152-what-a-run-is-doing-is-read-from-the-runs-own-stream) already requires that the record say how each
 slot ended rather than leave the end to be deduced, and already scopes itself
 to the live run *and to what the last one did*; this is that second half read
 by the sweep rather than only beneath a row.
@@ -2537,7 +2537,7 @@ field, and one interval would be counting two unrelated things. It holds three
 facts and nothing else — which run was judged, so no run is ever counted twice;
 how many judged runs in a row advanced nothing; and when the last verdict was
 taken, which is what the rest is dated from. Nothing about tickets, states, or
-work ([§4](#4-the-ledger-is-ephors-record-and-never-the-truth-about-the-work)),
+work ([§FS-005-dispatch.4](FS-005-dispatch.md#4-the-ledger-is-ephors-record-and-never-the-truth-about-the-work)),
 and the record is dropped whole the moment a run there advances, mirroring what
 a successful start already does to the failed-start record. A verdict is taken
 only by a sweep that acts: a report held at the gate writes no ledger
@@ -2551,12 +2551,12 @@ is always tried again eventually. But past three consecutive runs that advanced
 nothing the root stops being rested and stops being admitted at all, until a run
 advances there or somebody starts one by hand, and every sweep from then on says
 so in the row where it used to say *started*. That is
-[§11](#11-a-failure-that-is-not-the-changes-fault-is-restarted-not-fixed)'s own
+[§FS-005-dispatch.11](FS-005-dispatch.md#11-a-failure-that-is-not-the-changes-fault-is-restarted-not-fixed)'s own
 fourth clause arriving here: past a small number of restarts the infrastructure
 is the thing that is wrong, and no amount of retrying is going to be the fix.
 Nothing is written into a plan or a ticket for it and nothing on the operations
 board changes — whether a *ticket* waits on a person is the machine's word and
-stays [§9](#9-work-that-stops-for-a-person-says-so-where-the-person-is-looking)'s.
+stays [§FS-005-dispatch.9](FS-005-dispatch.md#9-work-that-stops-for-a-person-says-so-where-the-person-is-looking)'s.
 This is ephor's word about its own starting, and the reading it corrects is the
 sweep's own, which is the reading that was wrong.
 
@@ -2588,7 +2588,7 @@ now somebody's turn — or the exclusion the reader asked for. Passing a root ov
 is not a failed launch and does not raise the reading's `failed` count. A root whose plan needs
 pools this site cannot have together right now is passed over in that same kind
 of row and for the same kind of reason, before any capacity is spent on it
-([§33](#33-work-that-needs-several-pools-at-once-is-admitted-whole)). A rested
+([§FS-005-dispatch.33](FS-005-dispatch.md#33-work-that-needs-several-pools-at-once-is-admitted-whole)). A rested
 or excluded root is never a candidate, so it consumes no slot, frees none, and
 counts toward no ceiling; an excluded root whose own run is **live** still counts
 live, because capacity is live work and not attempts. And a root two of these
@@ -2599,7 +2599,7 @@ root's run holds, then the ceilings — one row, one reason, first match.
 **A runner that writes no such record leaves all of this inert.** Where there is
 no stream, or one this reader cannot understand, no verdict is taken, nothing is
 remembered, and sweeps behave exactly as they did before — which is the floor
-§15.2 already keeps, and never an error — the degrade every seam owes
+[§FS-005-dispatch.15.2](FS-005-dispatch.md#152-what-a-run-is-doing-is-read-from-the-runs-own-stream) already keeps, and never an error — the degrade every seam owes
 ([§REQ-001-boundary.1](../requirements/REQ-001-boundary.md#1-the-anatomy)), stated because a rule that quietly stopped applying
 would be indistinguishable from a machine on which nothing ever stalls. A rule
 that cannot read its witness says nothing rather than guessing.
@@ -2611,9 +2611,9 @@ can be watched, attached to, and stopped in the runner's own words. The
 sweep only removes the requirement that somebody be present, and the board
 stays what it is: it starts nothing itself, and what it shows is the run,
 whoever asked for it
-([§15](#15-every-operation-is-visible-in-one-place)). The key also reaches work
+([§FS-005-dispatch.15](FS-005-dispatch.md#15-every-operation-is-visible-in-one-place)). The key also reaches work
 this sweep never touches, and on none of the terms above
-([§30](#30-a-run-asked-for-by-name-reaches-the-whole-of-that-matters-work)).
+([§FS-005-dispatch.30](FS-005-dispatch.md#30-a-run-asked-for-by-name-reaches-the-whole-of-that-matters-work)).
 
 ### 24.1 The sweep announces each root by the outcome it reached
 
@@ -2630,7 +2630,7 @@ that started, and on no root that did not.
 announced as passed over — whether a full ceiling refused it, the reader's own
 `--except` named it, the last run there having advanced nothing rested it,
 another root's run holds its tree, or its plan needs pools this site cannot
-have together ([§33](#33-work-that-needs-several-pools-at-once-is-admitted-whole)).
+have together ([§FS-005-dispatch.33](FS-005-dispatch.md#33-work-that-needs-several-pools-at-once-is-admitted-whole)).
 A root whose launch was refused is announced as that refusal. The two are
 different outcomes and say so in different words, but they are the same fault
 when a start marker is printed above them, and a rule written for one of them
@@ -2670,14 +2670,14 @@ as a template rendered against the matter: `"branch": "fix/issue-{number}"`. It
 is written on an entry that asks for a ticket or lays down a workflow — a
 configured action carrying `agent` or `workflow`, a project's own offer naming
 a workflow, the entry beside a workflow, and a recipe
-([§1](#1-a-recipe-decides-which-items-deserve-work-and-what-to-ask-for),
-[§19](#19-a-workflow-the-runtime-offers-is-an-action-and-its-inputs-are-answered-here),
+([§FS-005-dispatch.1](FS-005-dispatch.md#1-a-recipe-decides-which-items-deserve-work-and-what-to-ask-for),
+[§FS-005-dispatch.19](FS-005-dispatch.md#19-a-workflow-the-runtime-offers-is-an-action-and-its-inputs-are-answered-here),
 [§FS-006-project-interface.9](FS-006-project-interface.md#9-offers-the-projects-actions)) — and never on
 one that runs a command here: those say what they need on disk with
 `requires_checkout`, and the workspace they need is one somebody else has
 already made ([§FS-004-quick-actions.7](FS-004-quick-actions.md#7-a-workspace-that-is-not-there-is-offered-the-checkout)).
 
-The shipped `implement` recipe (§1) carries this template by default. Therefore
+The shipped `implement` recipe ([§FS-005-dispatch.1](FS-005-dispatch.md#1-a-recipe-decides-which-items-deserve-work-and-what-to-ask-for)) carries this template by default. Therefore
 an unconfigured dispatch for a branch-less issue mints `fix/issue-<number>` and
 writes its plan inside that workspace when the project has
 `branch_root_template`; without that registry field it refuses by name and
@@ -2687,12 +2687,12 @@ replaces the shipped recipe and chooses its own branch behavior.
 
 **The template is rendered like a brief**, from the same fields — `{number}`,
 `{repo}`, `{kind}`, `{title}`, `{ticket}`, `{id_slug}`, and the rest of
-[§2](#2-the-ticket-carries-what-ephor-knows-not-a-link-to-it)'s vocabulary —
+[§FS-005-dispatch.2](FS-005-dispatch.md#2-the-ticket-carries-what-ephor-knows-not-a-link-to-it)'s vocabulary —
 and three of them it may not name, because they are what it produces:
 `{branch}`, `{workspace}` and `{reply}`.
 
 **One of those fields serves every matter, and so is never withheld.**
-`{id_slug}` is the matter's own id as a name (§2), and every matter has an id: a
+`{id_slug}` is the matter's own id as a name ([§FS-005-dispatch.2](FS-005-dispatch.md#2-the-ticket-carries-what-ephor-knows-not-a-link-to-it)), and every matter has an id: a
 template naming it is never withheld for want of the field, because the field is
 never empty, and what it renders is always a name git will take, because the
 rendering is `[a-z0-9-]+` by construction. So the refusals below can still fire
@@ -2727,8 +2727,8 @@ was needed — and it is why two ids that read down to one slug stay two. It doe
 not constrain a template that explicitly names another field of the same matter.
 Whether a field that *this* matter can change while its work lasts may be named,
 and where, is a separate question, answered where the vocabulary is specified
-([§8](#8-the-ticket-carries-the-item-as-data-not-only-as-prose),
-[§6.1](#61-the-work-root-is-a-template-and-it-may-reach-above-the-project)) and
+([§FS-005-dispatch.8](FS-005-dispatch.md#8-the-ticket-carries-the-item-as-data-not-only-as-prose),
+[§FS-005-dispatch.6.1](FS-005-dispatch.md#61-the-work-root-is-a-template-and-it-may-reach-above-the-project)) and
 not here.
 
 **No shipped recipe names it, and nothing defaults to it.** `implement` keeps
@@ -2752,8 +2752,8 @@ the other way that number grows, and nothing in the template bounds it: the
 workspace this mints gets a task store of its own
 ([§FS-006-project-interface.7](FS-006-project-interface.md#7-the-projects-own-tasks-are-read-where-they-live)),
 the dispatch writes its plan inside that store
-([§3](#3-one-rhei-per-item-one-ticket-per-dispatch),
-[§6.1](#61-the-work-root-is-a-template-and-it-may-reach-above-the-project)), and a recipe
+([§FS-005-dispatch.3](FS-005-dispatch.md#3-one-rhei-per-item-one-ticket-per-dispatch),
+[§FS-005-dispatch.6.1](FS-005-dispatch.md#61-the-work-root-is-a-template-and-it-may-reach-above-the-project)), and a recipe
 over this source would be offered its own plan back on the next read and mint
 again. So what a dispatch wrote is not something a later sweep can dispatch:
 the seam yields no matter for a plan ephor caused to exist, absolutely and
@@ -2768,7 +2768,7 @@ fields it decides; it names something that is no field of a matter at all, and
 the refusal lists the ones it may name — the fixed vocabulary in full, and
 `{meta.<key>}` named as the open one, because the keys under `meta` are
 whatever this matter's source reported
-([§8](#8-the-ticket-carries-the-item-as-data-not-only-as-prose)) and no
+([§FS-005-dispatch.8](FS-005-dispatch.md#8-the-ticket-carries-the-item-as-data-not-only-as-prose)) and no
 refusal can enumerate a key a store has yet to invent; or what it renders is
 not a name git will take as a branch. The last of those is answered here rather
 than left to the checkout: git's own refusal arrives from inside the making, by which time
@@ -2783,7 +2783,7 @@ template correctly. A `{meta.<key>}` this matter has not got is such a field
 and not an unknown name: the name is one a template may take, and it is this
 matter that did not answer it, so the entry is withheld and the next matter
 renders the same template. The `work offers` reading names the excluded entry
-and the field it needed, as §27 requires; a silent disappearance would leave the
+and the field it needed, as [§FS-005-dispatch.27](FS-005-dispatch.md#27-an-offer-that-a-selector-refused-says-why) requires; a silent disappearance would leave the
 reader unable to distinguish an incompatible matter from no configured work.
 
 **The matter's own branch always wins — but the project's main branch is
@@ -2817,7 +2817,7 @@ for every entry that says nothing.
 
 **The workspace is made by the one checkout operation**
 ([§FS-004-quick-actions.7](FS-004-quick-actions.md#7-a-workspace-that-is-not-there-is-offered-the-checkout),
-[§12](#12-work-an-algorithm-can-finish-does-not-start-with-a-model)): the same
+[§FS-005-dispatch.12](FS-005-dispatch.md#12-work-an-algorithm-can-finish-does-not-start-with-a-model)): the same
 source checkout, the same directory template, the same trees grown from the
 project's main branch, the same task store — the third caller of one
 implementation, so a workspace dispatch makes and a workspace the reader's key
@@ -2828,17 +2828,17 @@ refused in its own terms with nothing dispatched behind it
 workspace ephor made is found on disk like every other
 ([§FS-008-attribution.2](FS-008-attribution.md#2-two-stages-one-engine)). Nothing is pushed either
 — publishing the branch is the work's move, not ephor's
-([§7](#7-handing-over-work-is-the-readers-move-and-stays-inside-the-machine)).
+([§FS-005-dispatch.7](FS-005-dispatch.md#7-handing-over-work-is-the-readers-move-and-stays-inside-the-machine)).
 And a project with no directory template for its branches is refused by name,
 the way a single-checkout project standing on other code already is
-([§3](#3-one-rhei-per-item-one-ticket-per-dispatch)): nothing is minted into a
+([§FS-005-dispatch.3](FS-005-dispatch.md#3-one-rhei-per-item-one-ticket-per-dispatch)): nothing is minted into a
 root that is itself the checkout.
 
 **It is made after every refusal and before the first write.** Who does the
 work is chosen, the machine is vetted, the workflow's inputs are answered —
 and only then does the workspace appear, so a refusal still leaves nothing
 behind
-([§19](#19-a-workflow-the-runtime-offers-is-an-action-and-its-inputs-are-answered-here)).
+([§FS-005-dispatch.19](FS-005-dispatch.md#19-a-workflow-the-runtime-offers-is-an-action-and-its-inputs-are-answered-here)).
 The machine vetted is the one in force where the work root is already there,
 and the one ephor would install where it is not: a workspace that does not
 exist declares nothing, and minting one in order to read its machine back is
@@ -2862,13 +2862,13 @@ words, and nothing is dispatched behind it.
 
 **What the work sees is the minted branch.** `{branch}` and `{workspace}`
 render with it, the ticket's identifiers carry it
-([§8](#8-the-ticket-carries-the-item-as-data-not-only-as-prose)), the ledger
+([§FS-005-dispatch.8](FS-005-dispatch.md#8-the-ticket-carries-the-item-as-data-not-only-as-prose)), the ledger
 records it, and the work root resolves inside the workspace — so the plan lands
 in the tree the work will edit rather than beside it. A surface asking about
 that work before it is dispatched asks about the same workspace: the hand an
 entry would go to and the roster a picker offers are read against the work root
 the dispatch will use
-([§14](#14-who-does-the-work-is-chosen-and-defaulted-per-project)), which for an
+([§FS-005-dispatch.14](FS-005-dispatch.md#14-who-does-the-work-is-chosen-and-defaulted-per-project)), which for an
 entry carrying a `branch` is the root inside the workspace that entry names and
 not the project's own.
 
@@ -2890,7 +2890,7 @@ Work that edits the change, about a matter no branch could be found for, on a
 project whose checkouts are one per branch, is refused — naming `branch` as the
 way out — where it used to be written at the project root. That fallback was
 the defect: work about a change, written into a directory that holds no change,
-which [§6](#6-dispatch-is-offered-where-it-would-work-and-refuses-where-it-would-not)
+which [§FS-005-dispatch.6](FS-005-dispatch.md#6-dispatch-is-offered-where-it-would-work-and-refuses-where-it-would-not)
 does not allow and the menu has always blocked. This is the two surfaces coming
 to agree ([§REQ-002-parity.2](../requirements/REQ-002-parity.md#2-parity-runs-both-ways)), and it is the one thing here that changes for a
 configuration written before it.
@@ -2909,7 +2909,7 @@ A sweep dispatches every eligible item in one order — today, newest
 Ephor has no opinion of its own about which item matters more: it does not
 compute a rank from labels, from reactions, or from anything else, and it
 does not ask a project to compute one either
-([§1](#1-a-recipe-decides-which-items-deserve-work-and-what-to-ask-for)).
+([§FS-005-dispatch.1](FS-005-dispatch.md#1-a-recipe-decides-which-items-deserve-work-and-what-to-ask-for)).
 What it can do is read one a project already wrote.
 
 **The ranking arrives as a file: an ordered list of item ids, one per line,
@@ -2924,7 +2924,7 @@ there are no scores, no bands, and nothing here interprets a tie.
 site configuration takes an optional `"ranking": "<path>"`, and
 `ephor work dispatch --ranking <path>` displaces it for that invocation alone
 — the same displacement `--hand` already gives a single dispatch
-([§14](#14-who-does-the-work-is-chosen-and-defaulted-per-project)).
+([§FS-005-dispatch.14](FS-005-dispatch.md#14-who-does-the-work-is-chosen-and-defaulted-per-project)).
 
 **Ranked items dispatch first, in the file's own order; everything the file
 does not name follows, in the order it already had.** The file orders — it
@@ -2938,12 +2938,12 @@ own number, not the file's: nothing a ranking names causes an item to be
 dispatched that a recipe would not already have matched. A recipe decides
 which items deserve work at all; a rank only orders the work the reader
 already chose to do
-([§1](#1-a-recipe-decides-which-items-deserve-work-and-what-to-ask-for)). An
+([§FS-005-dispatch.1](FS-005-dispatch.md#1-a-recipe-decides-which-items-deserve-work-and-what-to-ask-for)). An
 item skipped for another reason — it already has work, it fails `--kind` or
 `--updated-within`, no recipe applies — costs nothing against the bound; only
 an item actually dispatched does. An item whose deterministic opening move
 finishes with nothing to hand over
-([§12](#12-work-an-algorithm-can-finish-does-not-start-with-a-model)) opened
+([§FS-005-dispatch.12](FS-005-dispatch.md#12-work-an-algorithm-can-finish-does-not-start-with-a-model)) opened
 nothing either, and for the same reason costs nothing against the bound.
 
 **A file that is absent, empty, or unreadable is not an error.** The sweep
@@ -2986,7 +2986,7 @@ not hold and what the matter carried instead of what the selector asked for,
 or which field its branch template needed and this matter did not carry. Where
 the refused template named something that is no field of a matter at all, the
 refusal lists the fields it may name instead, and `{id_slug}` is one of them
-([§25](#25-work-about-a-matter-with-no-branch-can-mint-the-branch-it-needs)) — it
+([§FS-005-dispatch.25](FS-005-dispatch.md#25-work-about-a-matter-with-no-branch-can-mint-the-branch-it-needs)) — it
 is offered on every matter, because it is the one field every matter answers, and
 so no recipe is ever named as excluded *for* `{id_slug}`: there is no matter that
 has not got it.
@@ -3011,7 +3011,7 @@ The role-less case is why this exists. A project's own tasks
 at all — there is no forge reviewer to be one — and a `roles` selector, being
 non-empty by definition once it is written, matches a role-less item only
 when it is empty
-([§1](#1-a-recipe-decides-which-items-deserve-work-and-what-to-ask-for)).
+([§FS-005-dispatch.1](FS-005-dispatch.md#1-a-recipe-decides-which-items-deserve-work-and-what-to-ask-for)).
 That rule does not change here: a `roles: [author]` recipe still refuses
 every task, and correctly. What changes is that the refusal stops being
 silent — a recipe that plainly covered issues and pull requests no longer
@@ -3022,10 +3022,10 @@ matter, not a second thing the selector decides.
 
 **`meta` is the refusal a task is about to get most often, so it is named like
 the rest.** A selector asking what this matter's source said about it
-([§31.1](#311-and-it-can-ask-what-the-matters-own-source-said-about-it))
+([§FS-005-dispatch.31.1](FS-005-dispatch.md#311-and-it-can-ask-what-the-matters-own-source-said-about-it))
 refuses every matter whose source said nothing — every pull request, every
 issue, and every task in a plan carrying no such block — which is
-[§31](#31-a-selector-can-ask-who-holds-a-matter-and-what-it-is-labelled)'s
+[§FS-005-dispatch.31](FS-005-dispatch.md#31-a-selector-can-ask-who-holds-a-matter-and-what-it-is-labelled)'s
 silence rule working exactly as intended, and which makes it the commonest
 single reason a reader will see no offers. So the reading names `meta`, the
 keys the selector asked for, and what the matter carried under them: the keys
@@ -3035,18 +3035,18 @@ asks the wrong key read identically from an empty list.
 
 ## 28. A workflow entry can ask for the same thing a recipe can
 
-[§24](#24-work-nobody-has-to-start-starts-itself) removed the key from the
+[§FS-005-dispatch.24](FS-005-dispatch.md#24-work-nobody-has-to-start-starts-itself) removed the key from the
 front of a recipe's work and left it in front of every workflow's, which is
 where the unattended loop actually stops. A workflow is what fixes a matter
 end to end — implement, review, ship — and it is exactly the shape of work
 nobody should have to be present for. Yet it took two deliberate acts per
 matter: laying the plan down, and then starting the run. Both are the
-formality [§24](#24-work-nobody-has-to-start-starts-itself) already refuses to
+formality [§FS-005-dispatch.24](FS-005-dispatch.md#24-work-nobody-has-to-start-starts-itself) already refuses to
 charge a reader for.
 
 **So a workflow entry may say `autorun`, and it means what it means on a
 recipe.** The entry is the one
-[§19](#19-a-workflow-the-runtime-offers-is-an-action-and-its-inputs-are-answered-here)
+[§FS-005-dispatch.19](FS-005-dispatch.md#19-a-workflow-the-runtime-offers-is-an-action-and-its-inputs-are-answered-here)
 already describes, in any of its three homes, and this is one more thing it
 says beside its `when` and its `inputs`. Nothing else may say it: an entry
 that runs a command here has no work to start, and an entry that asks for a
@@ -3054,7 +3054,7 @@ ticket says it inside the recipe it already is — two spellings of one fact
 would drift, so the second is refused where it is written.
 
 The same entry may carry the flat `root` placement key described by
-[§1](#1-a-recipe-decides-which-items-deserve-work-and-what-to-ask-for). Its
+[§FS-005-dispatch.1](FS-005-dispatch.md#1-a-recipe-decides-which-items-deserve-work-and-what-to-ask-for). Its
 value wins the selected recipe and every configuration tier, and the exact
 root, checkout and branch used are recorded as the provenance of the plan it
 lays. Repeating the entry consults that recorded placement rather than a later
@@ -3065,7 +3065,7 @@ already walks the matters that deserve work and hands each one to the first
 recipe that applies. A matter no recipe applies to and that has no work at
 all is where the entry gets its turn: the first workflow entry that both
 matches and asked to run itself is laid down about that matter, through the
-one path [§19](#19-a-workflow-the-runtime-offers-is-an-action-and-its-inputs-are-answered-here)
+one path [§FS-005-dispatch.19](FS-005-dispatch.md#19-a-workflow-the-runtime-offers-is-an-action-and-its-inputs-are-answered-here)
 already writes plans through. Recipes keep their priority — a matter a recipe
 covers is a ticket, exactly as before — and a matter that already has work is
 left alone, `--again` included: a second plan about one matter is something
@@ -3073,7 +3073,7 @@ left alone, `--again` included: a second plan about one matter is something
 
 **It counts, reports, and refuses like a dispatch.** Laying is one of the
 things `--limit` bounds
-([§26](#26-an-ordering-already-made-can-be-read-and-a-limit-bounds-what-runs)),
+([§FS-005-dispatch.26](FS-005-dispatch.md#26-an-ordering-already-made-can-be-read-and-a-limit-bounds-what-runs)),
 taken in the ranking's own order like everything else that sweep does. Under
 `--dry-run` everything is resolved and nothing is written — not the plan, not
 the record of it, and not the files a real laying would put beside it. An
@@ -3083,17 +3083,17 @@ dispatch that could not open a ticket already is, and the sweep goes on to
 the next matter. An entry held because the work it would lay needs several
 pools at once and one of them cannot be had is reported the same way, by the
 same rule and in the same kind of row
-([§33](#33-work-that-needs-several-pools-at-once-is-admitted-whole)). Both
+([§FS-005-dispatch.33](FS-005-dispatch.md#33-work-that-needs-several-pools-at-once-is-admitted-whole)). Both
 forms of the reading carry it in the same words
 ([§REQ-002-parity.3](../requirements/REQ-002-parity.md#3-every-reading-answers-a-program)).
 
 **And what it laid is due like anything else.** A plan a workflow wrote is
 work in a work root, so
-[§24](#24-work-nobody-has-to-start-starts-itself)'s sweep is what starts it:
+[§FS-005-dispatch.24](FS-005-dispatch.md#24-work-nobody-has-to-start-starts-itself)'s sweep is what starts it:
 its root is **due** when that plan holds a task that is open, unclaimed and
 not parked on a question, and no run is live on the root. And a reader who
 names the matter starts it too, whatever its entry asked for
-([§30](#30-a-run-asked-for-by-name-reaches-the-whole-of-that-matters-work)).
+([§FS-005-dispatch.30](FS-005-dispatch.md#30-a-run-asked-for-by-name-reaches-the-whole-of-that-matters-work)).
 Two things are the plan's own rather than the root's, and both are read where
 the plan is. Its tasks are wherever the runtime wrote them — a plan rendered
 as a directory keeps them in files beside its index, and those are as much the
@@ -3107,20 +3107,20 @@ machine names the project's — and reading it under a default nobody chose
 would call its finished work unfinished. A machine that is there and will not
 read is neither: nothing in that plan is judged at all, rather than judged by
 a machine that answers for other work
-([§15](#15-every-operation-is-visible-in-one-place)).
+([§FS-005-dispatch.15](FS-005-dispatch.md#15-every-operation-is-visible-in-one-place)).
 A root's own machine answers for the plans the root holds directly, as it
 always did.
 
 **What asked for it is what the ledger says asked for it.** A recipe is a
 fact about a ticket; the entry is the fact about a laid plan, and ephor's
 record of the laying is where it is read from
-([§4](#4-the-ledger-is-ephors-record-and-never-the-truth-about-the-work)) —
+([§FS-005-dispatch.4](FS-005-dispatch.md#4-the-ledger-is-ephors-record-and-never-the-truth-about-the-work)) —
 not from the plan, which is the runtime's and says nothing about who asked.
 A plan nothing in the record laid — one a reader laid by hand, one that was
 simply found in the root — asked for nothing and is nobody's to start, which
-is [§24](#24-work-nobody-has-to-start-starts-itself)'s silence again. That
+is [§FS-005-dispatch.24](FS-005-dispatch.md#24-work-nobody-has-to-start-starts-itself)'s silence again. That
 holds however its tasks are named: the ticket id that says which recipe wrote
-it ([§24](#24-work-nobody-has-to-start-starts-itself)) is a fact about the
+it ([§FS-005-dispatch.24](FS-005-dispatch.md#24-work-nobody-has-to-start-starts-itself)) is a fact about the
 tickets ephor itself wrote into the root's own plan, and a store of its own
 names its tasks in the runtime's language, where the same spelling means
 nothing of the kind.
@@ -3159,14 +3159,14 @@ The first is **the ledger**, which needs no configuration because ephor
 already writes it. The one authoritative thing a provider says about its own
 window is a refusal, and a refusal names the instant it lifts; it arrives as a
 start that failed, which ephor records in its own words already
-(§4). Where those words carry an instant ephor can read, that start is a
+([§FS-005-dispatch.4](FS-005-dispatch.md#4-the-ledger-is-ephors-record-and-never-the-truth-about-the-work)). Where those words carry an instant ephor can read, that start is a
 **refusal on that hand's pool**, held until the instant and cleared by any
 observed success on the pool. Where they do not, nothing about a pool is
 claimed and the failure stays exactly what it was — one root's own back-off
-(§24) — because a failure ephor cannot date is not a window it may guess at.
+([§FS-005-dispatch.24](FS-005-dispatch.md#24-work-nobody-has-to-start-starts-itself)) — because a failure ephor cannot date is not a window it may guess at.
 The record is site data, kept where ephor's other state is and never written
 into a project ([§REQ-001-boundary.4](../requirements/REQ-001-boundary.md#4-the-footprint-rule)); it stays ephor's record of ephor's own
-act and never becomes the truth about the work (§4). A count of what ephor
+act and never becomes the truth about the work ([§FS-005-dispatch.4](FS-005-dispatch.md#4-the-ledger-is-ephors-record-and-never-the-truth-about-the-work)). A count of what ephor
 spawned may be shown beside it and may never be read into the rule: counting
 one's own spawns is deriving a quota under another name, and it is wrong the
 first moment anything else — a session at a terminal, another machine — spends
@@ -3212,11 +3212,11 @@ window never lowers a pool that another window has reported healthy.
 A member is passed over exactly when its pool is known spent — an unexpired
 refusal in the ledger, or an effective remaining at or under a floor, which is
 `0` unless the site names another. Every surviving member keeps the order its
-author wrote (§14). Where *every* member is vetoed the first still gets the
+author wrote ([§FS-005-dispatch.14](FS-005-dispatch.md#14-who-does-the-work-is-chosen-and-defaulted-per-project)). Where *every* member is vetoed the first still gets the
 ticket, carrying a note that names the earliest instant any of their pools
 resets: a ticket that is written and waits is work a person can see, start by
 hand, and reason about, and work that silently never dispatched is none of
-those things: who does the work was never what makes a ticket (§4).
+those things: who does the work was never what makes a ticket ([§FS-005-dispatch.4](FS-005-dispatch.md#4-the-ledger-is-ephors-record-and-never-the-truth-about-the-work)).
 
 **Absence degrades to unknown, out loud.** A pool with no verb bound, a verb
 that exits non-zero, output that will not parse, and an answer holding no
@@ -3230,7 +3230,7 @@ reader looking at a choice they cannot explain.
 **The choice is recorded where the work is.** Selection runs at every write
 ephor makes — a dispatch and a laying — and the member it chose, with whatever
 the choosing had to say, is written onto the ticket in ephor's own words,
-beside the dossier it already writes there (§2) rather than as a field in the
+beside the dossier it already writes there ([§FS-005-dispatch.2](FS-005-dispatch.md#2-the-ticket-carries-what-ephor-knows-not-a-link-to-it)) rather than as a field in the
 runtime's plan language, which is the runtime's ([§REQ-001-boundary.1](../requirements/REQ-001-boundary.md#1-the-anatomy)).
 So the plan itself says who and why, and a reader who was not there can read
 both. Mid-plan exhaustion needs nobody steering: the spawn fails carrying the
@@ -3257,14 +3257,14 @@ None of that is narrowed by what follows it. A separate question — whether a
 piece of work whose several targets are bought against *several pools* can be
 had at all — is not a question about a member and has no answer inside a list,
 so it is answered on its own in
-[§33](#33-work-that-needs-several-pools-at-once-is-admitted-whole), which runs
+[§FS-005-dispatch.33](FS-005-dispatch.md#33-work-that-needs-several-pools-at-once-is-admitted-whole), which runs
 after this rule and over the members this rule left standing.
 
 ## 30. A run asked for by name reaches the whole of that matter's work
 
-[§24](#24-work-nobody-has-to-start-starts-itself) took the key off the front of
+[§FS-005-dispatch.24](FS-005-dispatch.md#24-work-nobody-has-to-start-starts-itself) took the key off the front of
 the sweep's work and left it in front of everything else, and
-[§28](#28-a-workflow-entry-can-ask-for-the-same-thing-a-recipe-can) says of an
+[§FS-005-dispatch.28](FS-005-dispatch.md#28-a-workflow-entry-can-ask-for-the-same-thing-a-recipe-can) says of an
 entry that never asked that it is *laid by the reader and started by the
 reader, as it was*. That start is owed to the reader and nothing performed it.
 A matter whose only work was a plan a workflow laid had a verb that would not
@@ -3274,29 +3274,29 @@ the same words, on the same stream, with the same exit code as an id nothing
 had ever heard of. So the reader could not hold one matter back while the rest
 of the site kept its ceilings — they had to leave ephor and run the runtime
 themselves, which is the one thing the ledger exists to make unnecessary
-([§4](#4-the-ledger-is-ephors-record-and-never-the-truth-about-the-work)).
+([§FS-005-dispatch.4](FS-005-dispatch.md#4-the-ledger-is-ephors-record-and-never-the-truth-about-the-work)).
 
 **The key reaches every plan the record says is that matter's.** A run asked
 for by name starts the matter's own plan and every plan a workflow laid beside
 it, and names them to the runtime as the record names them
-([§28](#28-a-workflow-entry-can-ask-for-the-same-thing-a-recipe-can)) — never
+([§FS-005-dispatch.28](FS-005-dispatch.md#28-a-workflow-entry-can-ask-for-the-same-thing-a-recipe-can)) — never
 the id of a plan nobody wrote. Which plans those are is read the way the sweep
 reads them: the roots on disk, the tasks where the runtime wrote them, judged
 by the machine in force for the plan they are in
 ([§FS-006-project-interface.7](FS-006-project-interface.md#7-the-projects-own-tasks-are-read-where-they-live)).
 The key is a narrowing of that reading and not a second one, so the two surfaces
 cannot come apart on what a matter's work is
-([§15](#15-every-operation-is-visible-in-one-place)).
+([§FS-005-dispatch.15](FS-005-dispatch.md#15-every-operation-is-visible-in-one-place)).
 Where those plans occupy several committed roots, the key reaches each root
 with its recorded checkout and branch; the same normalized reading is used by
 a plain run and by the interface key.
 
 **The key is blind to `autorun`.** `autorun` is the condition under which work
 starts with *nobody present*, and its silence means the key
-([§24](#24-work-nobody-has-to-start-starts-itself)): a reader typing the
+([§FS-005-dispatch.24](FS-005-dispatch.md#24-work-nobody-has-to-start-starts-itself)): a reader typing the
 matter's name is the key. So a plan whose entry asked and a plan whose entry
 said nothing are started alike by name, which is what
-[§28](#28-a-workflow-entry-can-ask-for-the-same-thing-a-recipe-can)'s *started
+[§FS-005-dispatch.28](FS-005-dispatch.md#28-a-workflow-entry-can-ask-for-the-same-thing-a-recipe-can)'s *started
 by the reader* has always required. Nothing here gives the sweep a plan it did
 not already have: a plan whose entry said nothing is still no sweep's to start,
 and a plan the record never laid — one a reader wrote by hand, one merely found
@@ -3306,7 +3306,7 @@ in a root — is nobody's to start at all, on either surface.
 flight and over active work, the spend ceiling's refusal, the failed-start
 back-off and the site-wide autorun reservation all bound the sweep and only the
 sweep, because each of them is a decision made with nobody present
-([§24](#24-work-nobody-has-to-start-starts-itself),
+([§FS-005-dispatch.24](FS-005-dispatch.md#24-work-nobody-has-to-start-starts-itself),
 [§FS-015-spend-ceiling.6](FS-015-spend-ceiling.md#6-only-the-sweep-is-bound-and-the-persons-key-never-is)).
 A reader who names a matter is present and is deciding, so a full ceiling still
 warns and still refuses nothing, and a root the sweep is resting on is started
@@ -3314,7 +3314,7 @@ at once. One rule survives, and it is the one that is not about attention:
 **one live run per checkout**, because two runs in one working tree are two
 agents editing the same files. That refusal is by name, counted as a refusal
 rather than reported as an absence of work, and lifted by `--force` — exactly
-as [§24](#24-work-nobody-has-to-start-starts-itself) already writes it.
+as [§FS-005-dispatch.24](FS-005-dispatch.md#24-work-nobody-has-to-start-starts-itself) already writes it.
 
 **Both kinds of work in one root are one run.** Where a matter has a dispatched
 ticket in its own plan *and* a plan a workflow laid beside it, the key starts a
@@ -3339,7 +3339,7 @@ machine form, and in the exit code
   not a refusal: the command was understood and answered, and the answer is
   that the work is over, claimed, or waiting on a person. It exits `0`, names
   the matter, and says which of those it is in the terms
-  [§24](#24-work-nobody-has-to-start-starts-itself) already uses — open,
+  [§FS-005-dispatch.24](FS-005-dispatch.md#24-work-nobody-has-to-start-starts-itself) already uses — open,
   unclaimed, not parked. Under `--json` it is the run reading with no runs in
   it, carrying that sentence in `says`.
 - **A matter the record knows, holding work.** The run lines, unchanged, and a
@@ -3373,7 +3373,7 @@ and acts only under `--act`
 **A root whose machine will not read is judged by nobody here either.**
 Finality and gating are the machine's words, and with none to say them nothing
 in that root can be called runnable
-([§15](#15-every-operation-is-visible-in-one-place)). The key answers such a
+([§FS-005-dispatch.15](FS-005-dispatch.md#15-every-operation-is-visible-in-one-place)). The key answers such a
 root as the sweep does — it starts nothing there — and says so about the root,
 rather than reporting the matter finished. ephor installs a machine in every
 root it makes, so this reaches only a root somebody assembled by hand.
@@ -3381,7 +3381,7 @@ The same holds where the root's checkout stands on a branch other than the one
 the record says the work belongs on: a run there would edit different code, so
 the key starts nothing and names the branch the root is actually on, exactly as
 dispatch refuses there
-([§3](#3-one-rhei-per-item-one-ticket-per-dispatch)).
+([§FS-005-dispatch.3](FS-005-dispatch.md#3-one-rhei-per-item-one-ticket-per-dispatch)).
 
 **A root the key will not start in is refused, never reported as empty.** Both
 of those are answered the way the run already in the way is answered: the
@@ -3404,7 +3404,7 @@ root refusal into a runnable root.
 
 ## 31. A selector can ask who holds a matter, and what it is labelled
 
-[§1](#1-a-recipe-decides-which-items-deserve-work-and-what-to-ask-for) gave the
+[§FS-005-dispatch.1](FS-005-dispatch.md#1-a-recipe-decides-which-items-deserve-work-and-what-to-ask-for) gave the
 selector the vocabulary of the *matter itself* — its kind, the reader's role on
 it, what its gate is doing, whether it owes an answer, which source reported
 it. That vocabulary cannot express the one distinction a busy tracker is
@@ -3414,7 +3414,7 @@ its own issues gives every one of them the same kind, the same role, and the
 same source as the reader's own, so a selector over that vocabulary either
 takes the automation's queue along with the reader's or takes neither. A reader
 who cannot say *this one is mine* dispatches blind, and a sweep that runs with
-nobody present ([§24](#24-work-nobody-has-to-start-starts-itself)) makes that
+nobody present ([§FS-005-dispatch.24](FS-005-dispatch.md#24-work-nobody-has-to-start-starts-itself)) makes that
 the expensive kind of blind.
 
 Two forge facts answer it, and a selector asks about both:
@@ -3436,7 +3436,7 @@ therefore *labelled `enhancement`, and not labelled `GenAI`* — the ordinary
 shape of a queue a reader keeps and a machine feeds. The two halves are asked
 independently: all negatives must hold, and the positives, where any were
 written, must find one. This is the any-of rule `kinds`, `roles` and `sources`
-already follow ([§1](#1-a-recipe-decides-which-items-deserve-work-and-what-to-ask-for)),
+already follow ([§FS-005-dispatch.1](FS-005-dispatch.md#1-a-recipe-decides-which-items-deserve-work-and-what-to-ask-for)),
 with the refusal the other three have no need of.
 
 **An entry must name something.** `!` on its own names no label and no
@@ -3468,7 +3468,7 @@ own, so a selector gaining this vocabulary does not make a refresh dearer
 
 **A refusal names the field, as every other refusal does.** `ephor work offers`
 says which of the two refused and what the matter carried instead
-([§27](#27-an-offer-that-a-selector-refused-says-why)), including the case where
+([§FS-005-dispatch.27](FS-005-dispatch.md#27-an-offer-that-a-selector-refused-says-why)), including the case where
 the source reported nothing — a reader whose recipe silently stopped matching
 must be able to tell a matter that failed the filter from a source that never
 answered it.
@@ -3485,7 +3485,7 @@ slice or none, and the alternative is a source script per value of one field.
 
 So a selector may also ask **`meta`**: the bounded map of what this matter's
 source said about *this matter*
-([§8](#8-the-ticket-carries-the-item-as-data-not-only-as-prose),
+([§FS-005-dispatch.8](FS-005-dispatch.md#8-the-ticket-carries-the-item-as-data-not-only-as-prose),
 [§FS-006-project-interface.7](FS-006-project-interface.md#7-the-projects-own-tasks-are-read-where-they-live)). It is written as a map rather than a list, because
 each key is a different question:
 
@@ -3501,10 +3501,10 @@ canonical spelling, so `"tier": "1"` matches a `tier` the store wrote as `1`; a
 store writing its own files should not have to quote a digit to stay
 selectable. A selector value that is not a string is refused where the recipe is
 read, as an entry naming nothing already is
-([§31](#31-a-selector-can-ask-who-holds-a-matter-and-what-it-is-labelled)),
+([§FS-005-dispatch.31](FS-005-dispatch.md#31-a-selector-can-ask-who-holds-a-matter-and-what-it-is-labelled)),
 and the published schema refuses it too ([§FS-006-project-interface.11](FS-006-project-interface.md#11-the-interface-is-versioned)).
 
-**Silence refuses, and it is §31's rule rather than a second one.** A matter
+**Silence refuses, and it is [§FS-005-dispatch.31](FS-005-dispatch.md#31-a-selector-can-ask-who-holds-a-matter-and-what-it-is-labelled)'s rule rather than a second one.** A matter
 whose source reported no such map at all, and a matter reporting one that has
 not got the key asked for, are both refused: nobody said this matter is outside
 the acme-labs context, and an unattended sweep may not read an absence as a
@@ -3512,7 +3512,7 @@ statement. So a `meta` selector never matches a pull request, an issue, or a
 task in a plan that said nothing — and that costs no doctrine per source,
 because a source that does not report `meta` is a source that said nothing about
 it. The refusal names `meta` and what the matter carried, as
-[§27](#27-an-offer-that-a-selector-refused-says-why) requires.
+[§FS-005-dispatch.27](FS-005-dispatch.md#27-an-offer-that-a-selector-refused-says-why) requires.
 
 **There is no negative form.** A key's absence already refuses, so `!` here
 would have to mean *carried, and not this* — a second rule for a case nobody has
@@ -3521,11 +3521,11 @@ anything here.
 
 ## 32. A recipe can ask for its own sweep, and say how often
 
-[§24](#24-work-nobody-has-to-start-starts-itself) freed the *run* from the
+[§FS-005-dispatch.24](FS-005-dispatch.md#24-work-nobody-has-to-start-starts-itself) freed the *run* from the
 reader's key. The *sweep that writes the ticket* is still the reader's to
 perform, and the loop is therefore automatic in its second half only: what a
 timer runs reopens matters already dispatched
-([§5](#5-an-item-that-moved-reopens-its-work)) and starts tickets that already
+([§FS-005-dispatch.5](FS-005-dispatch.md#5-an-item-that-moved-reopens-its-work)) and starts tickets that already
 exist, and neither of those introduces a matter. A newly assigned issue sits in
 the feed until somebody types the sweep, however precisely the recipe describes
 the work it deserves.
@@ -3554,12 +3554,12 @@ comparison every other value goes through rather than being a mode beside it.
 already says the sweep needs nobody: a separate `unattended: true` restates it,
 and `unattended: false` written beside an interval is a state the schema would
 admit and nothing could mean. Silence is how a recipe declines
-([§24](#24-work-nobody-has-to-start-starts-itself)), and a boolean invites the
+([§FS-005-dispatch.24](FS-005-dispatch.md#24-work-nobody-has-to-start-starts-itself)), and a boolean invites the
 reader to write that silence out loud as a second, disagreeing answer.
 
 ### 32.1 The reader adopts the recipe; the recipe does the rest
 
-§24's argument is made here one step earlier and is the same argument.
+[§FS-005-dispatch.24](FS-005-dispatch.md#24-work-nobody-has-to-start-starts-itself)'s argument is made here one step earlier and is the same argument.
 Everything a recipe already decides — which matters deserve work, what to ask
 for, whose hand does it, and whether the ticket waits for a key — is one
 decision, made once, at adoption. *And find them yourself* belongs beside *and
@@ -3569,7 +3569,7 @@ unattended has already made the decision that the per-sweep key press re-asks,
 and `--dry-run` reports exactly what a sweep would open, so its precision is
 knowable before anything is adopted.
 
-The rules §24 sets for the run carry over unchanged. Silence means the key. The
+The rules [§FS-005-dispatch.24](FS-005-dispatch.md#24-work-nobody-has-to-start-starts-itself) sets for the run carry over unchanged. Silence means the key. The
 setting is written on the thing that hands work over and nowhere else, because
 a reader who trusts one recipe unattended has said nothing about the rest. And
 a dry run still writes nothing, which here includes the sweep's own record of
@@ -3587,13 +3587,13 @@ recipe's schedule.
 The alternative available without this field is a timer unit per recipe, each
 calling the sweep narrowed to one id. That works, and it splits one recipe's
 description across two places: the recipe says what the work is, and a unit file
-somewhere else says how often to look for it. That is the split §24 closed for
+somewhere else says how often to look for it. That is the split [§FS-005-dispatch.24](FS-005-dispatch.md#24-work-nobody-has-to-start-starts-itself) closed for
 `autorun`, reopened one step earlier.
 
 **This does not duplicate the scheduler, because ephor already works this way.**
 `work run --due` is the precedent: the unit fires often, and ephor decides what
 is genuinely due by reading the world rather than by being woken at the right
-moment ([§24](#24-work-nobody-has-to-start-starts-itself)). A per-recipe
+moment ([§FS-005-dispatch.24](FS-005-dispatch.md#24-work-nobody-has-to-start-starts-itself)). A per-recipe
 interval is the same move. The unit keeps firing at whatever rate it likes; a
 recipe whose interval has not elapsed is skipped. **The unit sets the
 resolution and the recipe sets the rhythm**, and neither has to know what the
@@ -3610,14 +3610,14 @@ floor of its own writes the floor rather than the zero.
 
 The sweep is **`ephor work sync`**, which is the unattended verb a timer
 already runs against the feed
-([§24](#24-work-nobody-has-to-start-starts-itself)). It needs no unit of its
+([§FS-005-dispatch.24](FS-005-dispatch.md#24-work-nobody-has-to-start-starts-itself)). It needs no unit of its
 own and no new line in anyone's: a recipe that adopts this field is swept by
 the timer that is already installed, which is the point — the reader's act is
 adopting the recipe, and adopting it must not also mean editing a service file.
 
 What changes there is one question, not one job. Sync already walks every
 matter in the feed and asks whether ephor has work about it: a matter it has
-work about is reopened where it moved ([§5](#5-an-item-that-moved-reopens-its-work)),
+work about is reopened where it moved ([§FS-005-dispatch.5](FS-005-dispatch.md#5-an-item-that-moved-reopens-its-work)),
 and a matter it has no work about is passed over. That second answer stops
 being unconditional. A matter with no work is **opened** when a recipe that
 asked for its own sweep covers it and that recipe's interval has elapsed, and
@@ -3626,7 +3626,7 @@ asked of each matter, two answers instead of one.
 
 **The recipe that sweeps is the recipe the reader's own sweep would have
 chosen.** Recipes are offered in priority order and one matter wants one piece
-of work ([§1](#1-a-recipe-decides-which-items-deserve-work-and-what-to-ask-for)),
+of work ([§FS-005-dispatch.1](FS-005-dispatch.md#1-a-recipe-decides-which-items-deserve-work-and-what-to-ask-for)),
 so this asks for the first recipe that applies and acts only where *that* one
 carried an interval. A matter whose best recipe stayed silent is left alone and
 is never quietly handed to a lesser recipe further down the list that happened
@@ -3634,26 +3634,26 @@ to say `dispatch` — that would be the field deciding which work a matter
 deserves, which is the selector's to decide and the ordering's.
 
 **Everything the reader's own sweep refuses, this refuses.** It is the same
-dispatch ([§6](#6-dispatch-is-offered-where-it-would-work-and-refuses-where-it-would-not)):
+dispatch ([§FS-005-dispatch.6](FS-005-dispatch.md#6-dispatch-is-offered-where-it-would-work-and-refuses-where-it-would-not)):
 a matter whose prerequisites are still open is withheld, a branch that is not
 checked out refuses, a hand a narrowing will not permit refuses, and a matter
 that already has work is left to sync's other answer. What it opens is a
 ticket like any other, and the run it gets — or does not get — is
-[§24](#24-work-nobody-has-to-start-starts-itself)'s question and not this one:
+[§FS-005-dispatch.24](FS-005-dispatch.md#24-work-nobody-has-to-start-starts-itself)'s question and not this one:
 a recipe may sweep itself and still wait for a key to run, or say `autorun` and
 not sweep, because the two settings answer two different questions and neither
 implies the other.
 
 **The ordering already made orders this sweep too.** Where `work.ranking`
 names item ids, the unattended sweep walks the feed in that order
-([§26](#26-an-ordering-already-made-can-be-read-and-a-limit-bounds-what-runs)),
+([§FS-005-dispatch.26](FS-005-dispatch.md#26-an-ordering-already-made-can-be-read-and-a-limit-bounds-what-runs)),
 as the reader's own sweep does. It is invisible until a bound stops a sweep
 short, and then it is the whole question: a reader who wrote both a ranking and
 a limit has said which matters the bound should spend itself on.
 
-**An entry that lays a workflow is not swept.** §28 lets such an entry ask for
+**An entry that lays a workflow is not swept.** [§FS-005-dispatch.28](FS-005-dispatch.md#28-a-workflow-entry-can-ask-for-the-same-thing-a-recipe-can) lets such an entry ask for
 what a recipe asks for, and `autorun` is what it was given
-([§28](#28-a-workflow-entry-can-ask-for-the-same-thing-a-recipe-can)). It is
+([§FS-005-dispatch.28](FS-005-dispatch.md#28-a-workflow-entry-can-ask-for-the-same-thing-a-recipe-can)). It is
 not given this: a sweep that laid workflows unasked would be opening plans of
 their own about matters nobody has looked at, and silence there means the key
 for the same reason it means the key everywhere else here.
@@ -3666,7 +3666,7 @@ reports what it *would* open beside what it would reopen, and writes neither
 ### 32.4 A sweep of one's own may be bounded
 
 Unattended dispatch makes the selector load-bearing in a way it is not
-otherwise ([§31](#31-a-selector-can-ask-who-holds-a-matter-and-what-it-is-labelled)):
+otherwise ([§FS-005-dispatch.31](FS-005-dispatch.md#31-a-selector-can-ask-who-holds-a-matter-and-what-it-is-labelled)):
 a mislabelled or newly-labelled matter reaches an agent without anyone having
 looked at it. Two things stand beside the setting rather than after it.
 
@@ -3675,7 +3675,7 @@ recipe that sweeps daily gives a reader a day to notice a selector that has
 started matching the wrong thing.
 
 The second is a bound on one sweep's own appetite. `--limit` already bounds the
-reader's sweep ([§26](#26-an-ordering-already-made-can-be-read-and-a-limit-bounds-what-runs)),
+reader's sweep ([§FS-005-dispatch.26](FS-005-dispatch.md#26-an-ordering-already-made-can-be-read-and-a-limit-bounds-what-runs)),
 and an unattended sweep is the case it was written for — but the reader is not
 there to type it, and the verb that hosts the sweep is not the verb the flag is
 on. So a recipe that sweeps itself may carry one, in a long spelling of the
@@ -3691,7 +3691,7 @@ counts what this recipe opened in this sweep and nothing else, so two
 self-sweeping recipes do not spend each other's allowance — and it bounds what
 is opened, never what is stepped over, which is the reading `--limit` already
 has. Omitted, the recipe is bounded by the ceilings every start is bounded by
-([§24](#24-work-nobody-has-to-start-starts-itself),
+([§FS-005-dispatch.24](FS-005-dispatch.md#24-work-nobody-has-to-start-starts-itself),
 [§FS-015-spend-ceiling](FS-015-spend-ceiling.md#fs-015-spend-ceiling-what-unattended-work-may-spend-is-the-persons-number-and-the-sweep-stops-at-it))
 and by nothing nearer. All of that is about what a sweep *runs*. What it is
 offered to run at all is decided before any of it, by the source
@@ -3704,13 +3704,13 @@ Deciding whether an interval has elapsed needs one fact nothing here keeps
 today: when this recipe last swept. That is a fact about ephor's own activity
 and never a claim about the work, so it is kept the way ephor's other records
 of its own acts are kept — beside `burn`'s cursors, in ephor's own state
-directory, and not in the ledger. [§4](#4-the-ledger-is-ephors-record-and-never-the-truth-about-the-work)'s
+directory, and not in the ledger. [§FS-005-dispatch.4](FS-005-dispatch.md#4-the-ledger-is-ephors-record-and-never-the-truth-about-the-work)'s
 rule is untouched: nothing here decides what exists, and the ledger goes on
 answering the one question it answers.
 
 It is kept per project and per recipe id, because that is what a recipe is: the
 same id resolves to a different recipe in a project that replaced it
-([§1](#1-a-recipe-decides-which-items-deserve-work-and-what-to-ask-for)), and a
+([§FS-005-dispatch.1](FS-005-dispatch.md#1-a-recipe-decides-which-items-deserve-work-and-what-to-ask-for)), and a
 sweep narrowed to one project must not spend another project's clock.
 
 **A missing or unreadable record means due now.** A reader who deletes this
@@ -3730,11 +3730,11 @@ at this moment, in this project.
 
 ## 33. Work that needs several pools at once is admitted whole
 
-[§29](#29-headroom-is-reported-to-ephor-and-vetoes-a-member-it-never-reorders)
+[§FS-005-dispatch.29](FS-005-dispatch.md#29-headroom-is-reported-to-ephor-and-vetoes-a-member-it-never-reorders)
 answers one question about one step: given an ordered list of alternates for a
 single target, which of them can be had right now. A workflow asks a different
 question. Its execution targets are answered one at a time
-([§19](#19-a-workflow-the-runtime-offers-is-an-action-and-its-inputs-are-answered-here)),
+([§FS-005-dispatch.19](FS-005-dispatch.md#19-a-workflow-the-runtime-offers-is-an-action-and-its-inputs-are-answered-here)),
 and a plan whose moderator is bought against one provider while its second
 participant is bought against another needs **both** windows open to reach its
 end. No list can say that, because a list has a survivor and this has none: a
@@ -3746,7 +3746,7 @@ chosen — and its only two answers are *admitted* and *held*.
 work needs are the distinct pools of the hands ephor itself resolved for it:
 every input that names who does the work, together with the hand the entry's
 own pin chose. A pool is what
-[§29](#29-headroom-is-reported-to-ephor-and-vetoes-a-member-it-never-reorders)
+[§FS-005-dispatch.29](FS-005-dispatch.md#29-headroom-is-reported-to-ephor-and-vetoes-a-member-it-never-reorders)
 says it is, and every one of these hands already carries the pool its work
 would be bought against, because resolving it is what produced the pool. No
 configuration key carries the requirement and no site writes one: it follows
@@ -3758,7 +3758,7 @@ worth saying out loud.
 
 **A set of one is never held.** Where every resolved hand is bought against a
 single pool there is nothing here to ask, and
-[§29](#29-headroom-is-reported-to-ephor-and-vetoes-a-member-it-never-reorders)'s
+[§FS-005-dispatch.29](FS-005-dispatch.md#29-headroom-is-reported-to-ephor-and-vetoes-a-member-it-never-reorders)'s
 answer is kept entire — including its own hardest case, where every alternate
 for the one target is spent and the first still takes the ticket and waits. One
 pool spent is a question that point already answered, and this one does not
@@ -3773,7 +3773,7 @@ in the feed exactly as it was, unclaimed and available to a machine that has
 what it needs
 ([§GOAL-003-nothing-lost](../goals.md#goal-003-nothing-lost-the-watch-is-trusted-enough-to-retire-the-sweep)).
 Holding is not an error: it is a refusal with a reason, the kind
-[§28](#28-a-workflow-entry-can-ask-for-the-same-thing-a-recipe-can) already
+[§FS-005-dispatch.28](FS-005-dispatch.md#28-a-workflow-entry-can-ask-for-the-same-thing-a-recipe-can) already
 reports for an entry nothing answered, and the sweep goes on to the next
 matter. An unattended start that cannot finish is not a handover
 ([§GOAL-004-handover](../goals.md#goal-004-handover-routine-moves-leave-the-persons-hands)),
@@ -3792,7 +3792,7 @@ reopen — and the way out is to answer the target with a hand this site has.
 
 **Unknown is not spent here either.** A pool nobody reported a number for
 holds nothing. This rule asks only what
-[§29](#29-headroom-is-reported-to-ephor-and-vetoes-a-member-it-never-reorders)'s
+[§FS-005-dispatch.29](FS-005-dispatch.md#29-headroom-is-reported-to-ephor-and-vetoes-a-member-it-never-reorders)'s
 veto asks — is this pool *known* spent — and there is no branch in it for a
 missing number, because absent is the ordinary case and a rule that read
 silence as exhaustion would hold every workflow on the machine and stop the
@@ -3825,7 +3825,7 @@ surfaces already have, and both readings of each carry the same words
 **Admission is one place, and it covers every door that writes.** What is held
 is the *admission* of the work, which every writing path already goes through:
 the sweep that lays a workflow entry
-([§28](#28-a-workflow-entry-can-ask-for-the-same-thing-a-recipe-can)), a
+([§FS-005-dispatch.28](FS-005-dispatch.md#28-a-workflow-entry-can-ask-for-the-same-thing-a-recipe-can)), a
 laying the reader asked for by name, and an entry that asked to run itself. A
 dry run reports the hold and writes nothing, as it already does for every other
 refusal, and there is no flag that overrides it — the escape is to answer a
@@ -3836,23 +3836,23 @@ target.
 unattended sweep decides about plan roots found on disk and never sees the
 entry that laid them, so it reads what the work needs from ephor's own record
 of the laying
-([§4](#4-the-ledger-is-ephors-record-and-never-the-truth-about-the-work)),
+([§FS-005-dispatch.4](FS-005-dispatch.md#4-the-ledger-is-ephors-record-and-never-the-truth-about-the-work)),
 which already names the plan, its root, its checkout and its branch. The hold
 is a `passed-over` row — the shape a ceiling and a busy tree already take
 there, a successful non-launch with its reason in the row rather than a failure
-([§24](#24-work-nobody-has-to-start-starts-itself)) — and it is checked before
+([§FS-005-dispatch.24](FS-005-dispatch.md#24-work-nobody-has-to-start-starts-itself)) — and it is checked before
 capacity is spent. It reads differently from the admission's: that one is
 *held, and still anybody's*, this one is *not started, and still yours*. A
 record written before ephor knew to write this carries no requirement and
 starts as it always did, which is what growing an interface by addition means
 ([§FS-006-project-interface.11](FS-006-project-interface.md#11-the-interface-is-versioned)),
 and a plan nothing in the record laid carries none either, which is
-[§28](#28-a-workflow-entry-can-ask-for-the-same-thing-a-recipe-can)'s silence
+[§FS-005-dispatch.28](FS-005-dispatch.md#28-a-workflow-entry-can-ask-for-the-same-thing-a-recipe-can)'s silence
 again.
 
 **A run asked for by name is warned, never held.** A reader who names a plan or
 a matter keeps the key
-([§30](#30-a-run-asked-for-by-name-reaches-the-whole-of-that-matters-work)):
+([§FS-005-dispatch.30](FS-005-dispatch.md#30-a-run-asked-for-by-name-reaches-the-whole-of-that-matters-work)):
 the plan is in front of them, it is already laid, and holding it would leave no
 way to run such a plan at all. It carries the same clause as a warning and
 starts. Only the sweep nobody typed is held, which is where the attempts this
@@ -3862,14 +3862,14 @@ point exists to stop were being spent.
 rather than a plan with targets of its own, so it has one pool and nothing here
 to be held on; a workflow whose hands all land on one pool is a set of one; and
 an ordered list of alternates anywhere keeps
-[§29](#29-headroom-is-reported-to-ephor-and-vetoes-a-member-it-never-reorders)'s
+[§FS-005-dispatch.29](FS-005-dispatch.md#29-headroom-is-reported-to-ephor-and-vetoes-a-member-it-never-reorders)'s
 behaviour exactly. Nothing already written is read differently, no file format
 changes, and no configuration becomes invalid.
 
 ## 34. A brief may be kept in the file that owns it
 
 The brief is what the ticket asks for, in the reader's own words
-([§1](#1-a-recipe-decides-which-items-deserve-work-and-what-to-ask-for)) — and
+([§FS-005-dispatch.1](FS-005-dispatch.md#1-a-recipe-decides-which-items-deserve-work-and-what-to-ask-for)) — and
 some of those words are not about the item at all. How work is done under this
 organization, what a house review looks at, the long standing prompt that took
 a year to settle: each of them is a document with an owner and a history, and
@@ -3880,21 +3880,21 @@ last month's words with nothing in its output to say so.
 
 So a recipe may name that file instead. `brief_file` is a **path template**,
 rendered from the vocabulary a work root is rendered from
-([§6.1](#61-the-work-root-is-a-template-and-it-may-reach-above-the-project)):
+([§FS-005-dispatch.6.1](FS-005-dispatch.md#61-the-work-root-is-a-template-and-it-may-reach-above-the-project)):
 the item's own fields, the resolved checkout, the project root, and the two
 names that reach above it. `{reply}` is not among them — it is a place ephor
 writes to rather than a fact about the matter, and a path cannot be one
-([§13](#13-a-communication-is-work-too-and-its-answer-comes-back-as-a-proposal)).
+([§FS-005-dispatch.13](FS-005-dispatch.md#13-a-communication-is-work-too-and-its-answer-comes-back-as-a-proposal)).
 A relative path is relative to the directory holding the configuration file
 that wrote it, with `~` and `$VAR` expanded first, and never to the working
 directory: a recipe that sweeps on its own rhythm
-([§32](#32-a-recipe-can-ask-for-its-own-sweep-and-say-how-often)) runs from
+([§FS-005-dispatch.32](FS-005-dispatch.md#32-a-recipe-can-ask-for-its-own-sweep-and-say-how-often)) runs from
 wherever the unit that called ephor happened to stand, and a brief that
 depended on that would be a different brief on a timer than under a person.
 
 **The file is read when the ticket is written, and its text is the brief.**
 Not named for the run to open: that is
-[§2](#2-the-ticket-carries-what-ephor-knows-not-a-link-to-it)'s rule and it
+[§FS-005-dispatch.2](FS-005-dispatch.md#2-the-ticket-carries-what-ephor-knows-not-a-link-to-it)'s rule and it
 applies here without amendment — a ticket saying *read the instruction at this
 path* has handed back the opening move, and it hands back more than a dossier
 would, because the file may be somewhere the work has no checkout of. Reading
@@ -3910,7 +3910,7 @@ heard of ephor.
 
 **A rendered path with no readable file behind it refuses, naming the path,
 before anything is written** — no workspace, no work root, no plan
-([§6.1](#61-the-work-root-is-a-template-and-it-may-reach-above-the-project)).
+([§FS-005-dispatch.6.1](FS-005-dispatch.md#61-the-work-root-is-a-template-and-it-may-reach-above-the-project)).
 This is the one thing the key adds to the boundary that section draws between
 a path and prose: a brief *named by* a path is under the path rule for its
 path and the prose rule for its text.
@@ -3932,21 +3932,21 @@ A repository is heard here only where a site pointed at it.
 
 A recipe may write `brief`, `brief_file`, or both. **Both is not an error**, and
 the two are not two spellings of one fact — the drift
-[§28](#28-a-workflow-entry-can-ask-for-the-same-thing-a-recipe-can) refuses is
+[§FS-005-dispatch.28](FS-005-dispatch.md#28-a-workflow-entry-can-ask-for-the-same-thing-a-recipe-can) refuses is
 one key that means what another already means, and these mean different things.
 The file says how work is done here; `brief` still says what to do with this
 matter, with its `{title}` and its `{url}` in it. So they compose, in a fixed
 order: the file's text first, the rendered `brief` after it, and whatever a
 deterministic opening move reached last of all, because that is what this run
-found ([§12](#12-work-an-algorithm-can-finish-does-not-start-with-a-model)).
+found ([§FS-005-dispatch.12](FS-005-dispatch.md#12-work-an-algorithm-can-finish-does-not-start-with-a-model)).
 
 **Neither is refused where the configuration loads**, naming the recipe, rather
 than at the dispatch that would have used it. A recipe can run from a timer
-with nobody watching ([§24](#24-work-nobody-has-to-start-starts-itself)), so a
+with nobody watching ([§FS-005-dispatch.24](FS-005-dispatch.md#24-work-nobody-has-to-start-starts-itself)), so a
 dispatch-time refusal lands in a log, while a load-time one stops the next
 reading of anything in front of the person who has just edited the file. This
 is the same reason the machine a recipe starts in is vetted before a ticket is
-written rather than after ([§6](#6-dispatch-is-offered-where-it-would-work-and-refuses-where-it-would-not)).
+written rather than after ([§FS-005-dispatch.6](FS-005-dispatch.md#6-dispatch-is-offered-where-it-would-work-and-refuses-where-it-would-not)).
 
 ### 34.2 Which text a ticket was given is recorded on the ticket
 
@@ -3954,12 +3954,12 @@ A brief read from a file is the one part of a ticket whose source can change
 without the matter changing. So each ticket records the rendered path it read
 and a hash of the bytes as read, in that ticket's own structured metadata —
 the one thing there that identifies the ask rather than the item
-([§8](#8-the-ticket-carries-the-item-as-data-not-only-as-prose)). A reader
+([§FS-005-dispatch.8](FS-005-dispatch.md#8-the-ticket-carries-the-item-as-data-not-only-as-prose)). A reader
 holding the file can say whether the ticket got these words or older ones, and
 a program in the state machine can too.
 
 **Per ticket, and never in the dossier.** The dossier is rewritten every time
-the matter reopens ([§5](#5-an-item-that-moved-reopens-its-work)), and a hash
+the matter reopens ([§FS-005-dispatch.5](FS-005-dispatch.md#5-an-item-that-moved-reopens-its-work)), and a hash
 written there would say what the *latest* dispatch read while sitting above
 tickets that were given something else. A hash naming another ticket's text is
 worse than no hash at all. Where a plan holds several tickets, each keeps its
@@ -3969,7 +3969,7 @@ own and none is corrected by a later one.
 
 The key belongs to the recipe rather than to one caller, so every path that
 turns a recipe into words honours it. The previews
-([§6.1](#61-the-work-root-is-a-template-and-it-may-reach-above-the-project))
+([§FS-005-dispatch.6.1](FS-005-dispatch.md#61-the-work-root-is-a-template-and-it-may-reach-above-the-project))
 show what the hand-over would actually carry, and where the file cannot be read
 they **fall back** to whatever can be rendered, as they already do for a
 placement that cannot be resolved: a menu row is a row, and a refusal in the
@@ -3977,17 +3977,17 @@ slot where the words go is worse than words that are out of date. A dry run is
 not a preview in that sense and does not fall back — it promises what the real
 dispatch would do, and a dry run that promises a ticket the real dispatch would
 refuse is the most misleading promise of the set
-([§6](#6-dispatch-is-offered-where-it-would-work-and-refuses-where-it-would-not)).
+([§FS-005-dispatch.6](FS-005-dispatch.md#6-dispatch-is-offered-where-it-would-work-and-refuses-where-it-would-not)).
 
 **The unattended sweep reads it too**, and it is the caller this point exists
 for. That sweep has a checkout and no matter
-([§3](#3-one-rhei-per-item-one-ticket-per-dispatch)), so the path renders from
+([§FS-005-dispatch.3](FS-005-dispatch.md#3-one-rhei-per-item-one-ticket-per-dispatch)), so the path renders from
 the names a checkout can answer, and one it cannot — a `{title}` where there is
 no item, or an `{id_slug}` where there is no id to slug — is refused **by name**,
 as any other unanswerable name in a path is
-([§6.1](#61-the-work-root-is-a-template-and-it-may-reach-above-the-project)). That
+([§FS-005-dispatch.6.1](FS-005-dispatch.md#61-the-work-root-is-a-template-and-it-may-reach-above-the-project)). That
 `{id_slug}` is never withheld from a matter
-([§25](#25-work-about-a-matter-with-no-branch-can-mint-the-branch-it-needs)) does
+([§FS-005-dispatch.25](FS-005-dispatch.md#25-work-about-a-matter-with-no-branch-can-mint-the-branch-it-needs)) does
 not reach here: this sweep has no matter, so the field has nothing to render from
 rather than an empty value to render.
 Where the file cannot be read, the work is still reported and no ticket is
@@ -4007,13 +4007,13 @@ that had one.
 
 A matter's work is **every plan the record says is that matter's** — the one
 ephor wrote itself and every one a workflow laid beside it
-([§19](#19-a-workflow-the-runtime-offers-is-an-action-and-its-inputs-are-answered-here),
-[§30](#30-a-run-asked-for-by-name-reaches-the-whole-of-that-matters-work)).
+([§FS-005-dispatch.19](FS-005-dispatch.md#19-a-workflow-the-runtime-offers-is-an-action-and-its-inputs-are-answered-here),
+[§FS-005-dispatch.30](FS-005-dispatch.md#30-a-run-asked-for-by-name-reaches-the-whole-of-that-matters-work)).
 Which entries `work forget --done` drops is read from those plans, and never
 from which of them ephor wrote: an entry whose laid plan holds a task that is
 not final is not over, and is not dropped.
 
-This is [§4](#4-the-ledger-is-ephors-record-and-never-the-truth-about-the-work)
+This is [§FS-005-dispatch.4](FS-005-dispatch.md#4-the-ledger-is-ephors-record-and-never-the-truth-about-the-work)
 applied to who may be forgotten. The work's state belongs to the runtime and is
 read from the plan; a reading that reports no open tickets while the plan on
 disk says otherwise is the watch reporting on itself instead of on the world,
@@ -4033,7 +4033,7 @@ read against it.
 plan that is absent or unreadable makes its entry report as **missing** — the
 row says so, `--missing` is the sweep it is for, and `--item` reaches it — and
 `--done` leaves it alone. A deleted *recipe* plan keeps the rule
-[§4](#4-the-ledger-is-ephors-record-and-never-the-truth-about-the-work) gives
+[§FS-005-dispatch.4](FS-005-dispatch.md#4-the-ledger-is-ephors-record-and-never-the-truth-about-the-work) gives
 it: it counts to `--done` as a finished plan rather than as an unreadable one,
 so an entry that has nothing else open is still selected. The asymmetry is
 deliberate: ephor wrote the recipe plan, so its absence is ephor's own record of
@@ -4045,19 +4045,19 @@ above governs both and something is open.
 
 **The same reading answers every surface**, because a matter has one body of
 work and not one per command
-([§30](#30-a-run-asked-for-by-name-reaches-the-whole-of-that-matters-work)). So
+([§FS-005-dispatch.30](FS-005-dispatch.md#30-a-run-asked-for-by-name-reaches-the-whole-of-that-matters-work)). So
 `work list --open` shows a matter whose laid workflow plan is still going, and
 the badge on its row says what that plan's task is doing rather than that a
 workflow exists at all — a workflow stopped at a question was invisible before
-([§15](#15-every-operation-is-visible-in-one-place),
+([§FS-005-dispatch.15](FS-005-dispatch.md#15-every-operation-is-visible-in-one-place),
 [§REQ-002-parity.3](../requirements/REQ-002-parity.md#3-every-reading-answers-a-program)).
 It reaches the hand a run is started with too
-([§14](#14-who-does-the-work-is-chosen-and-defaulted-per-project)): a laid
+([§FS-005-dispatch.14](FS-005-dispatch.md#14-who-does-the-work-is-chosen-and-defaulted-per-project)): a laid
 task takes part in that resolution exactly as a recipe ticket does, and a task
 that names its own target is still its own authority.
 
 **So a matter no recipe applies to is not thereby dormant.**
-[§5](#5-an-item-that-moved-reopens-its-work) keeps its words for the case it is
+[§FS-005-dispatch.5](FS-005-dispatch.md#5-an-item-that-moved-reopens-its-work) keeps its words for the case it is
 about — it merged, it closed, nothing is open — including the
 `work forget --done` it offers there. Where the plans say something is still
 open, the report says that instead, names the plan and the task it is at, and

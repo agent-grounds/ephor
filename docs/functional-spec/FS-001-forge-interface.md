@@ -39,7 +39,7 @@ ephor degrades to what is answered rather than failing.
   word for — an approval the forge dismissed, a review still in draft — is
   reported as no review, which is what it means to the reader. What a verdict
   *retires* is policy's
-  ([§3](#3-policy-lives-above-the-interface-never-in-an-implementation)): an
+  ([§FS-001-forge-interface.3](FS-001-forge-interface.md#3-policy-lives-above-the-interface-never-in-an-implementation)): an
   implementation says what the user did, never what is left of it. It is what a
   reviewing row leads with, except where a review is being asked for again —
   a re-request is the forge saying the old verdict is no longer the answer.
@@ -123,7 +123,7 @@ ephor degrades to what is answered rather than failing.
   Each enabled issue question — authored, participating, and every label being
   followed — is an answer in its own right. A question that comes back as full
   as its configured limit has not answered
-  ([§6](#6-a-source-that-did-not-answer-says-so-and-says-which-kind-of-not)):
+  ([§FS-001-forge-interface.6](FS-001-forge-interface.md#6-a-source-that-did-not-answer-says-so-and-says-which-kind-of-not)):
   it may have delivered only a prefix nobody can size. The implementation
   therefore fails the source rather than showing that unknown fraction as the
   whole answer. Its diagnosis names the question and the limit it reached,
@@ -140,21 +140,21 @@ ephor degrades to what is answered rather than failing.
   kinds of thing it models. A forge that keeps a notification list of its own —
   GitHub's notifications, GitLab's todos — has already made that judgement
   across everything it hosts, including the kinds ephor has no capability for
-  at all. Without it, [§6](#6-a-source-that-did-not-answer-says-so-and-says-which-kind-of-not)
+  at all. Without it, [§FS-001-forge-interface.6](FS-001-forge-interface.md#6-a-source-that-did-not-answer-says-so-and-says-which-kind-of-not)
   is a promise ephor cannot keep: an empty feed would mean "nothing is waiting
   in what I was told to look at", which is a different and much weaker claim
   than the one an empty feed makes.
 
   A notice about something another capability already reported is the same work
   seen twice, not two pieces of work; reconciling them is policy's job, under
-  [§3](#3-policy-lives-above-the-interface-never-in-an-implementation) and
+  [§FS-001-forge-interface.3](FS-001-forge-interface.md#3-policy-lives-above-the-interface-never-in-an-implementation) and
   [§FS-003-feed-categories.5](FS-003-feed-categories.md#5-one-subject-is-one-row-however-many-sources-reported-it).
 
 ## 2. Two transports, one interface
 
 An implementation is reached either **in process**, as Rust implementing the
 interface, or **out of process**, as an executable ephor runs. The two are the
-same interface: the capability set of §1 defines a set of data types, the
+same interface: the capability set of [§FS-001-forge-interface.1](FS-001-forge-interface.md#1-capabilities) defines a set of data types, the
 in-process form passes them directly and the out-of-process form passes their
 JSON serialization, and both are produced from one definition so they cannot
 drift. Which transport an implementation uses is invisible above the interface —
@@ -212,7 +212,7 @@ an empty or partial answer for a failure:
    shape it does not recognise — reports the failure. Returning the part it
    managed is not allowed where the missing part changes meaning: a pull
    request whose conversation was dropped reads as one that needs no reply.
-2. **A failed capability probe is a failure, not an empty declaration.** §1
+2. **A failed capability probe is a failure, not an empty declaration.** [§FS-001-forge-interface.1](FS-001-forge-interface.md#1-capabilities)
    lets an implementation decline a capability, and ephor degrades to what is
    declared. That applies to an implementation that *answered*; one that could
    not be asked has declared nothing, and is reported as broken rather than as
@@ -244,7 +244,7 @@ an empty or partial answer for a failure:
 
 Asking every source takes as long as the slowest of them, and that is not a
 number ephor controls: an out-of-process forge reached over a VPN is allowed a
-ceiling of its own (§2) precisely because the shared default is too short for
+ceiling of its own ([§FS-001-forge-interface.2](FS-001-forge-interface.md#2-two-transports-one-interface)) precisely because the shared default is too short for
 it. So the fetch is the slowest thing ephor does — minutes, where a source is
 entitled to them — and the reader is doing something else while it runs:
 scanning, opening a thread, marking work done.
@@ -266,7 +266,7 @@ Three things follow:
 2. **A run in flight says so, and says where it has got to.** A screen that
    stays live is also a screen that looks finished, and a reader who cannot
    tell a running refresh from a completed one reads a half-filled feed as the
-   whole answer — §6's failure arriving by another road, an empty section that
+   whole answer — [§FS-001-forge-interface.6](FS-001-forge-interface.md#6-a-source-that-did-not-answer-says-so-and-says-which-kind-of-not)'s failure arriving by another road, an empty section that
    means "not asked yet". So the header names the run and its progress while
    it is in flight, and the reader is told what it lost when it ends. Where a
    screen collects every operation in one place ([§FS-005-dispatch.15](FS-005-dispatch.md#15-every-operation-is-visible-in-one-place)), the
@@ -289,7 +289,7 @@ is metered per hour. A refresh that spends one search per role, per repository,
 per project therefore scales its cost by three numbers the reader never chose,
 and crosses that ceiling long before a registry looks large.
 
-What crossing it does is §6's failure arriving where §6 cannot see it. The forge
+What crossing it does is [§FS-001-forge-interface.6](FS-001-forge-interface.md#6-a-source-that-did-not-answer-says-so-and-says-which-kind-of-not)'s failure arriving where [§FS-001-forge-interface.6](FS-001-forge-interface.md#6-a-source-that-did-not-answer-says-so-and-says-which-kind-of-not) cannot see it. The forge
 does not refuse the refresh, it refuses the tail of it: the sources asked first
 answer, the ones asked last come back refused, and which is which depends only
 on the order the run happened to take. Every refused source does say so, and the
@@ -305,7 +305,7 @@ shape of the loop that asks it:
 
 Where a forge answers about several roles at once, it is asked once. The
 reasons are still reported one by one
-([§1](#1-capabilities)) — what collapses is the asking, never the answer. An
+([§FS-001-forge-interface.1](FS-001-forge-interface.md#1-capabilities)) — what collapses is the asking, never the answer. An
 implementation that cannot recover the separate reasons from a combined answer
 asks the separate questions instead: a reason is a claim about the reader's
 involvement, and one that was not established is not reported.

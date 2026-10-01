@@ -116,7 +116,7 @@ ephor normalizes into events and facts; `data` as free passthrough that
 returns wherever the dossier's metadata goes. Each verb's contract names the
 fields it reads and ignores the rest, and unknown fields are ignored
 everywhere — the envelope evolves by addition, and an incompatible change is
-a version bump with a changelog entry (§11). Paths in an answer resolve
+a version bump with a changelog entry ([§FS-006-project-interface.11](FS-006-project-interface.md#11-the-interface-is-versioned)). Paths in an answer resolve
 against the summons's working directory.
 
 For a `custom-status` binding using `format: "answer"`, each reported
@@ -194,7 +194,7 @@ The word is **task**, and it is one name for one thing
 *issue* is what a forge files, and these are neither — they are the
 project's own work, written down in the project's own checkout. So the row
 they land on is **Tasks** ([§FS-003-feed-categories.1](FS-003-feed-categories.md#1-the-categories)), the rung is *tasks*
-(§10), and the manifest key is `tasks`. What is not one of these keeps its
+([§FS-006-project-interface.10](FS-006-project-interface.md#10-capability-rung-by-rung)), and the manifest key is `tasks`. What is not one of these keeps its
 own name: the ticket ephor writes to dispatch work ([§FS-005-dispatch.3](FS-005-dispatch.md#3-one-rhei-per-item-one-ticket-per-dispatch)) and
 the ticket keys a forge is asked for ([§FS-001-forge-interface.1](FS-001-forge-interface.md#1-capabilities)) are other
 things and are called what they are.
@@ -297,7 +297,7 @@ the task's own id, and it is there for the project's sake whether or not ephor
 ever runs. Where the store's grammar has such a place, ephor reads it and
 carries it on the matter as `meta`, bounded and subtracted exactly as
 [§FS-005-dispatch.8](FS-005-dispatch.md#8-the-ticket-carries-the-item-as-data-not-only-as-prose) requires, so a selector ([§FS-005-dispatch.31.1](FS-005-dispatch.md#311-and-it-can-ask-what-the-matters-own-source-said-about-it)), a brief and
-a summoned program (§3) can each key off it instead of re-opening and re-parsing
+a summoned program ([§FS-006-project-interface.3](FS-006-project-interface.md#3-a-summons-environment-in-exit-code-and-answer-out)) can each key off it instead of re-opening and re-parsing
 the file ephor has already parsed ([§GOAL-001-fewest-moves](../goals.md#goal-001-fewest-moves-the-most-frequent-response-is-the-cheapest-one)).
 
 **The documented key is the task's own id** — the id the store uses for that
@@ -375,7 +375,7 @@ where the command needs one. The matter's own names — `EPHOR_ITEM_ID`,
 `EPHOR_TITLE`, `EPHOR_NUMBER` and the rest of the one vocabulary
 ([§FS-005-dispatch.8](FS-005-dispatch.md#8-the-ticket-carries-the-item-as-data-not-only-as-prose)) — come from the matter where there is one and are
 **empty rather than absent** where there is none: a summons does not start from
-a cleared environment (§3), so a name left unset is inherited, and a checkout
+a cleared environment ([§FS-006-project-interface.3](FS-006-project-interface.md#3-a-summons-environment-in-exit-code-and-answer-out)), so a name left unset is inherited, and a checkout
 asked for by branch alone would read some other matter's title as this one's. A
 call with no matter behind it runs the command rather than refusing; there is
 nothing about a matter that making a workspace needs. The working directory is
@@ -411,7 +411,7 @@ the checkout is refused rather than completed: ephor's git does not fill in a
 tree it did not make, because the command owns what a workspace of this project
 is, and a directory that is already there is never handed back to the command
 either. A non-zero exit is the checkout not made, `75` among them — there is no
-*parked* here, since a workspace either exists or does not (§3) — and the code is
+*parked* here, since a workspace either exists or does not ([§FS-006-project-interface.3](FS-006-project-interface.md#3-a-summons-environment-in-exit-code-and-answer-out)) — and the code is
 said. Nothing is dispatched behind a checkout that was not made and no store is
 put into a workspace that was not; where the directory is whole the store is
 ephor's to add, on this path as on the other
@@ -440,7 +440,7 @@ in before the rung answers here
 ([§FS-005-dispatch.1](FS-005-dispatch.md#1-a-recipe-decides-which-items-deserve-work-and-what-to-ask-for)).
 Nothing in the menu says which of the three an entry was written at — the rung
 is what orders it, and where it was written is read in the files. An offer is invoked
-by a person, runs as a summons (§3), and is refused with its reason where
+by a person, runs as a summons ([§FS-006-project-interface.3](FS-006-project-interface.md#3-a-summons-environment-in-exit-code-and-answer-out)), and is refused with its reason where
 its requirements do not hold ([§FS-004-quick-actions.2](FS-004-quick-actions.md#2-offered-only-where-it-would-work)). It takes the reader's
 terminal while it runs, which is what lets an offer be a pager or an editor —
 and an offer that needs none of that says so, and runs beneath the screen as a
@@ -530,7 +530,7 @@ so a project that narrows and names no `default` is told that much.
 Absence is the ordinary case: with no table anywhere nobody is named and the
 runtime picks exactly as it does now. With no runtime bound there is no roster
 to name a hand from, so a configured hand resolves to nothing and says so in
-the *workable* rung's own words (§10) rather than failing the dispatch — the
+the *workable* rung's own words ([§FS-006-project-interface.10](FS-006-project-interface.md#10-capability-rung-by-rung)) rather than failing the dispatch — the
 ticket is written as it would have been, because who does the work is not what
 makes a ticket ([§FS-005-dispatch.4](FS-005-dispatch.md#4-the-ledger-is-ephors-record-and-never-the-truth-about-the-work)).
 
@@ -540,9 +540,9 @@ What a project can do is resolved into a ladder, and every feature names
 the rungs it needs: *observable* (a registry row and at least one source
 answering) buys the watch; *placed* (the forest root on disk) buys actions
 and update; *branch-addressable* (a workspace template) buys resolution of
-matters to workspaces; *checkout-able* (§8) buys work that edits;
-*checkable* (§5) buys verification that means something; *gated* (§6) buys
-failure dossiers and the restart; *tasks* (§7) buys the project's
+matters to workspaces; *checkout-able* ([§FS-006-project-interface.8](FS-006-project-interface.md#8-the-checkout-contract)) buys work that edits;
+*checkable* ([§FS-006-project-interface.5](FS-006-project-interface.md#5-checks-are-verbs-and-every-script-is-self-contained)) buys verification that means something; *gated* ([§FS-006-project-interface.6](FS-006-project-interface.md#6-the-gate-is-the-projects-in-three-verbs)) buys
+failure dossiers and the restart; *tasks* ([§FS-006-project-interface.7](FS-006-project-interface.md#7-the-projects-own-tasks-are-read-where-they-live)) buys the project's
 own tasks as matters — a `requires` naming either of its older spellings,
 *ticketed* or *local-issues*, goes on meaning it;
 *workable* (a bound runtime, [§FS-005-dispatch](FS-005-dispatch.md#fs-005-dispatch-what-ephor-watches-it-can-hand-to-an-agent-runtime)) buys the loop. A missing
@@ -561,7 +561,7 @@ change bumps the schema version with a changelog entry per
 a release may change is answerable by diffing them.
 
 That reach includes the selector language a project's own offers and a reader's
-recipes share (§9): **every field a selector may ask is in the published
+recipes share ([§FS-006-project-interface.9](FS-006-project-interface.md#9-offers-the-projects-actions)): **every field a selector may ask is in the published
 schema**, `meta` among them ([§FS-005-dispatch.31.1](FS-005-dispatch.md#311-and-it-can-ask-what-the-matters-own-source-said-about-it)) — declared as an object of
 scalar values, so a list or a nested map written where a value belongs is
 refused offline and by name rather than becoming a selector that silently never
@@ -578,7 +578,7 @@ a work root may carry and the file-size budget live under `.agent-grounds/`,
 and the grounding configuration lives at the repository root, where it says at a
 glance that the repository is a grund tree. `.agents/` is the **deprecated
 former name** for all of them. These are conventions probed in the checkout
-(§1) — well-known names a project carries for its own sake — never artifacts
+([§FS-006-project-interface.1](FS-006-project-interface.md#1-the-three-homes)) — well-known names a project carries for its own sake — never artifacts
 ephor requires of it ([§REQ-001-boundary.3](../requirements/REQ-001-boundary.md#3-requirements-on-a-project-are-capabilities-never-artifacts)).
 
 **One probe, one fixed order, and both names go on working.** Looking for one

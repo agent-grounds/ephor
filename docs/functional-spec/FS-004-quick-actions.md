@@ -77,11 +77,11 @@ is reading the sentence and agreeing with it, so sending the reader to a
 browser to click the same box is the trip this section exists to save.
 
 Ticking goes back through the source that reported the task, like every other
-write ([§1](#1-a-quick-action-belongs-to-the-source-that-found-the-problem)) —
+write ([§FS-004-quick-actions.1](FS-004-quick-actions.md#1-a-quick-action-belongs-to-the-source-that-found-the-problem)) —
 ephor knows a task has a state and a way to transition it, and nothing about
 how that forge spells either. A forge that reports task state without offering
 to write it renders its boxes and offers no key, which is
-[§2](#2-offered-only-where-it-would-work) and not a degraded mode.
+[§FS-004-quick-actions.2](FS-004-quick-actions.md#2-offered-only-where-it-would-work) and not a degraded mode.
 
 A ticked box is an answer ([§FS-003-feed-categories.4](FS-003-feed-categories.md#4-a-conversation-is-answered-in-whatever-form-the-forge-recorded-it)),
 so the thread stops awaiting the reader as soon as the forge accepts the
@@ -110,7 +110,7 @@ so a branch that went stale without this machine hearing about it is the branch
 the offer is needed on most, and withholding the entry there hides the one move
 that would correct the reading. A branch genuinely level replays onto nothing
 at no cost, and is told so in the register a current repository is always told
-it in ([§2](#2-offered-only-where-it-would-work)) — a cheaper thing to be wrong
+it in ([§FS-004-quick-actions.2](FS-004-quick-actions.md#2-offered-only-where-it-would-work)) — a cheaper thing to be wrong
 about than a branch nineteen days behind being shown as current. What the offer
 needs is a base to name, not a distance to it.
 
@@ -119,7 +119,7 @@ replays onto the branch the project declares as its main, and it is offered
 only where the project declares one — an entry has to name what it is about to
 replay onto, and where nothing names a main branch there is no answer to put in
 it. The other rebase
-([§8](#8-a-branch-that-trails-its-own-published-copy-is-offered-the-rebase-onto-it))
+([§FS-004-quick-actions.8](FS-004-quick-actions.md#8-a-branch-that-trails-its-own-published-copy-is-offered-the-rebase-onto-it))
 resolves its ref inside each repository and so needs no base named anywhere:
 the two are gated apart, and a project that declares no main branch is still
 offered the replay onto its own published copy.
@@ -159,10 +159,10 @@ repository has no such day at all, which is what a fresh clone that has never
 fetched looks like, there is no day to report and the qualifier is left off
 entirely: the row reads `13 behind`, and nothing is invented to fill the gap.
 
-Offered only where it would work ([§2](#2-offered-only-where-it-would-work)):
+Offered only where it would work ([§FS-004-quick-actions.2](FS-004-quick-actions.md#2-offered-only-where-it-would-work)):
 something that resolves to no branch has nowhere to rebase, and a workspace
 that is not there is a checkout question
-([§7](#7-a-workspace-that-is-not-there-is-offered-the-checkout)) rather than a
+([§FS-004-quick-actions.7](FS-004-quick-actions.md#7-a-workspace-that-is-not-there-is-offered-the-checkout)) rather than a
 rebase one. A branch measured level is no longer one of these refusals, but a
 branch nothing could be measured on — no base named, or no ref to compare with
 — still is: the entry would have nothing to name. Where a branch cannot be
@@ -186,13 +186,13 @@ about the code, which is
 
 What becomes of the stopped tree is the caller's to say, and only that much is
 the caller's. A replay somebody is waiting on leaves the conflict standing
-where git left it and hands the situation over, which is what §FS-005-dispatch.12 describes and
+where git left it and hands the situation over, which is what [§FS-005-dispatch.12](FS-005-dispatch.md#12-work-an-algorithm-can-finish-does-not-start-with-a-model) describes and
 what every caller this move has today asks for — the reader's key, a program
 state, `--dispatch`, and the interface. A replay nobody is waiting on puts the
 tree back on the commit it started from and reports the conflict instead, and
-[§6.1](#61-the-same-replay-over-every-checkout-nobody-is-holding) is the only
+[§FS-004-quick-actions.6.1](FS-004-quick-actions.md#61-the-same-replay-over-every-checkout-nobody-is-holding) is the only
 caller that asks for it. The choice is an argument to this one replay and never
-a second implementation of it, for the reason §FS-005-dispatch.12 gives: two of them would
+a second implementation of it, for the reason [§FS-005-dispatch.12](FS-005-dispatch.md#12-work-an-algorithm-can-finish-does-not-start-with-a-model) gives: two of them would
 eventually disagree about what a clean rebase is.
 
 ### 6.1 The same replay, over every checkout nobody is holding
@@ -301,7 +301,7 @@ precedence one rebase already has: **3** where any checkout conflicted, **1**
 otherwise where any project could not be read, and **0** otherwise — *replayed*,
 *level*, *passed over* and *refused* are all good ends. A refusal is a good end
 here and only here: uncommitted work is reported and left alone
-([§6](#6-a-branch-that-trails-its-main-branch-is-offered-the-rebase)), and a tree
+([§FS-004-quick-actions.6](FS-004-quick-actions.md#6-a-branch-that-trails-its-main-branch-is-offered-the-rebase)), and a tree
 somebody is working in has uncommitted work most of the time, so a timer that
 went red for it would read failed on every machine anybody uses and its exit
 code would stop meaning anything. What is left for non-zero is the thing the
@@ -335,7 +335,7 @@ it takes: which repositories the project has, where each goes under the
 checkout, which branch, and what that branch is grown from. So **a missing
 workspace is offered the checkout, and ephor supplies the command**. A project
 that wants its own — a bare mirror, a filesystem snapshot, a `gh pr checkout` —
-configures one and that wins ([§3](#3-quick-actions-come-first-and-configuration-adds-to-them)),
+configures one and that wins ([§FS-004-quick-actions.3](FS-004-quick-actions.md#3-quick-actions-come-first-and-configuration-adds-to-them)),
 but nothing has to be configured for the offer to exist.
 
 **That wins wherever the operation is asked for, and not only where it is
@@ -390,7 +390,7 @@ A directory that is there stops the offer: ephor reports the workspace as
 already checked out and does nothing more. But *already checked out* answers
 the question about repositories, not the one about work. A workspace made
 before ephor made stores at all, or made by a project's own checkout command
-([§3](#3-quick-actions-come-first-and-configuration-adds-to-them)), holds every
+([§FS-004-quick-actions.3](FS-004-quick-actions.md#3-quick-actions-come-first-and-configuration-adds-to-them)), holds every
 repository it should and still has nowhere for a plan to land — and the reader
 who asks for the checkout again is asking exactly the question that would fix
 it.
@@ -424,12 +424,12 @@ would have traded one silence for another.
 **And it says how far behind the workspace is.** The distance is already
 measured and already said: the branch row for that very workspace reads
 `115 behind main as of Sep 10`
-([§6](#6-a-branch-that-trails-its-main-branch-is-offered-the-rebase)), one
+([§FS-004-quick-actions.6](FS-004-quick-actions.md#6-a-branch-that-trails-its-main-branch-is-offered-the-rebase)), one
 command away from a checkout that reuses the directory and reports only that it
 is there. Somebody who asks for a checkout is about to work in it, so this is
 the moment that fact is worth something and the only moment it is free — found
 afterwards, it is found by the change that will not land. So the line a reused
-workspace prints carries §6's reading in §6's own words: the count, the base it
+workspace prints carries [§FS-004-quick-actions.6](FS-004-quick-actions.md#6-a-branch-that-trails-its-main-branch-is-offered-the-rebase)'s reading in [§FS-004-quick-actions.6](FS-004-quick-actions.md#6-a-branch-that-trails-its-main-branch-is-offered-the-rebase)'s own words: the count, the base it
 trails, and the day the local copy of that base last moved. It is the same fold
 over the same forest rather than a second measurement, which is what keeps the
 two surfaces from ever saying different things about one directory, and a
@@ -444,7 +444,7 @@ row, and the row of a matter nothing could place, which is where a matter whose
 branch has no workspace usually is, since a branch nothing checked out is a
 branch the reader has no row for. Where a fact is shown is where the move
 about it belongs
-([§6](#6-a-branch-that-trails-its-main-branch-is-offered-the-rebase)), so the
+([§FS-004-quick-actions.6](FS-004-quick-actions.md#6-a-branch-that-trails-its-main-branch-is-offered-the-rebase)), so the
 checkout is a key on that row and not only an entry in a menu opened over it.
 One key, on every row that carries a branch, running the one operation above.
 
@@ -471,7 +471,7 @@ has to be cleaned up after is not the same answer as one that happened instead.
 This is already said of the `branch` template a dispatch renders
 ([§FS-005-dispatch.25](FS-005-dispatch.md#25-work-about-a-matter-with-no-branch-can-mint-the-branch-it-needs)),
 and the checkout is one operation for every caller
-([§7](#7-a-workspace-that-is-not-there-is-offered-the-checkout)), so it holds
+([§FS-004-quick-actions.7](FS-004-quick-actions.md#7-a-workspace-that-is-not-there-is-offered-the-checkout)), so it holds
 wherever the name came from — the reader's flag included.
 
 Three questions, all answerable from the name and the project's own
@@ -539,7 +539,7 @@ one command later.
 
 **And the input is refused by name where the project binds a checkout command.**
 What a branch is grown from is then that command's to decide, because the command
-is the maker ([§7](#7-a-workspace-that-is-not-there-is-offered-the-checkout)) and
+is the maker ([§FS-004-quick-actions.7](FS-004-quick-actions.md#7-a-workspace-that-is-not-there-is-offered-the-checkout)) and
 a base is not among the things it is guaranteed
 ([§FS-006-project-interface.8](FS-006-project-interface.md#8-the-checkout-contract)). Carrying the value through to a
 command that cannot read it would be a flag that parses and changes nothing,
@@ -559,11 +559,11 @@ leaves the reader to go elsewhere and do something about it.
 
 So **a branch whose published copy carries commits its checkout does not is
 offered the rebase onto that copy**, beside the rebase onto main
-([§6](#6-a-branch-that-trails-its-main-branch-is-offered-the-rebase)). Two
+([§FS-004-quick-actions.6](FS-004-quick-actions.md#6-a-branch-that-trails-its-main-branch-is-offered-the-rebase)). Two
 facts, two entries, two operations: one replays what the reader has onto where
 the project went, the other onto where their own branch already is.
 
-It follows [§6](#6-a-branch-that-trails-its-main-branch-is-offered-the-rebase)
+It follows [§FS-004-quick-actions.6](FS-004-quick-actions.md#6-a-branch-that-trails-its-main-branch-is-offered-the-rebase)
 in both of that section's consequences, for the same reason: this distance is
 measured against what was last fetched too. So the entry is offered wherever
 there is a copy to replay onto, whether the checkout measured behind it or
@@ -589,10 +589,10 @@ is exactly what `git worktree add -b` leaves behind, and in such a checkout bare
 `git rebase` refuses to run.
 
 Offered only where it would do something
-([§2](#2-offered-only-where-it-would-work)), which here is four refusals. An
+([§FS-004-quick-actions.2](FS-004-quick-actions.md#2-offered-only-where-it-would-work)), which here is four refusals. An
 item linked to no branch has nowhere to rebase, and a workspace that is not on
 disk is a checkout question
-([§7](#7-a-workspace-that-is-not-there-is-offered-the-checkout)). A branch
+([§FS-004-quick-actions.7](FS-004-quick-actions.md#7-a-workspace-that-is-not-there-is-offered-the-checkout)). A branch
 never pushed has no copy at all — nothing to name in the entry, nothing to
 replay onto, and no reading a fetch would correct — and *nothing published* is
 an answer, given in the same register as a repository already current and never
@@ -624,7 +624,7 @@ is a decision belonging to whoever makes it.
 
 ## 9. A gate is offered the restart, in two shapes
 
-Reading what failed ([§4](#4-failing-ci-answers-what-failed-and-why)) answers
+Reading what failed ([§FS-004-quick-actions.4](FS-004-quick-actions.md#4-failing-ci-answers-what-failed-and-why)) answers
 the question a red gate asks. It does not answer the one a reader most often
 has about it, which is *was that even me*. A runner died, a mirror was
 unreachable, a dependency shipped something broken, the same flake landed on
@@ -665,7 +665,7 @@ gets both. A gate that is not red — green, still running, blocked on an
 approval — gets *restart everything*, which is exactly the entry that still
 has something to do there, and not *restart what failed*, which would be a key
 that runs and reports that there was nothing to restart
-([§2](#2-offered-only-where-it-would-work)). An item carrying no gate at all
+([§FS-004-quick-actions.2](FS-004-quick-actions.md#2-offered-only-where-it-would-work)). An item carrying no gate at all
 gets neither: there is nothing to restart, and the fact is the item's, not the
 project's.
 

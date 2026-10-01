@@ -23,7 +23,7 @@ role on it:
 | Participating | issues the user is in but did not open, or follows by a label the source names ([§FS-001-forge-interface.1](FS-001-forge-interface.md#1-capabilities)) |
 | Tasks | the project's own tasks, from a store in its checkout ([§FS-006-project-interface.7](FS-006-project-interface.md#7-the-projects-own-tasks-are-read-where-they-live)) |
 | Messages | anything addressed to the user that is not a pull request or an issue |
-| Recent | finished work that still leaves something to do — see [§2](#2-recent) |
+| Recent | finished work that still leaves something to do — see [§FS-003-feed-categories.2](FS-003-feed-categories.md#2-recent) |
 
 Exactly one, so that the size of a category is the size of that pile of work
 and not a double count.
@@ -43,7 +43,7 @@ There are three such things, and they are the whole list:
 
 - **An answer is missing** — whatever would have made the subject await one
   while it was still open
-  ([§4](#4-a-conversation-is-answered-in-whatever-form-the-forge-recorded-it)):
+  ([§FS-003-feed-categories.4](FS-003-feed-categories.md#4-a-conversation-is-answered-in-whatever-form-the-forge-recorded-it)):
   somebody else had the last word, a task box on it is unticked, a notice named
   the reader. The comment that lands on the way out, or after it, is the case
   this exists for.
@@ -65,7 +65,7 @@ doing ([§GOAL-002-glance](../goals.md#goal-002-glance-one-glance-answers-what-n
 
 The recency window bounds the two the report knows: a missing answer and a red
 gate are worth showing only while the item's own last activity falls inside it
-([§3](#3-the-recency-window-is-configured)). Open work is not bounded by it. A
+([§FS-003-feed-categories.3](FS-003-feed-categories.md#3-the-recency-window-is-configured)). Open work is not bounded by it. A
 run in flight is not history, however long ago the matter it was asked about
 last moved, and the ledger — not the forge — is what says it is still going.
 
@@ -133,7 +133,7 @@ reads the forge's own notice list
 that land on the same pull request, and the overlap is the point: it is how
 ephor can be exhaustive without being told in advance where to look. What the
 reader must never see is the consequence — the same pull request twice, in two
-rows, counted twice in the size of the pile that [§1](#1-the-categories) exists
+rows, counted twice in the size of the pile that [§FS-003-feed-categories.1](FS-003-feed-categories.md#1-the-categories) exists
 to make readable.
 
 So a subject reported by several sources is one item. Which report survives is

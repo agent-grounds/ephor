@@ -66,7 +66,7 @@ whether a ticket sits in it. Where the binary itself is
 present, its own plan listing (`rhei list --json`) may sharpen state and
 assignee read-back — the binding's own stdout, honored by this one binding
 the way custom-status's is ([§AR-002-summons.3](AR-002-summons.md#3-the-answer)) — while the direct plan read
-of §3 stays the floor and is never removed ([§FS-005-dispatch.15](../functional-spec/FS-005-dispatch.md#15-every-operation-is-visible-in-one-place)). Also
+of [§AR-007-runtime.3](AR-007-runtime.md#3-degrade) stays the floor and is never removed ([§FS-005-dispatch.15](../functional-spec/FS-005-dispatch.md#15-every-operation-is-visible-in-one-place)). Also
 this module's: the recognition of a plan on disk. The plan-file suffix and
 the directory-workspace shape are the binding's grammar, so a surface that
 enumerates a work root's plans ([§FS-005-dispatch.15](../functional-spec/FS-005-dispatch.md#15-every-operation-is-visible-in-one-place)) asks this module what
@@ -88,7 +88,7 @@ from here is an id, a description, and typed inputs with none of the binding's
 grammar on them. Two things are read beside a workflow the binding keeps as a
 directory: the input properties its own listing leaves out — which input is an
 execution target, which is the principal one — scanned out of the manifest the
-way a states document is scanned in §3, right enough to fill an input and never
+way a states document is scanned in [§AR-007-runtime.3](AR-007-runtime.md#3-degrade), right enough to fill an input and never
 the authority on anything else; and the entry that makes the workflow an
 action, handed up as bytes, because this module knows where such a file sits
 and never what it means. Rendering one is a summons like any other: the

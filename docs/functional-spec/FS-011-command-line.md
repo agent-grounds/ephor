@@ -271,7 +271,7 @@ it, so it is refused before ephor is asked rather than advertised in help that
 has nothing behind it.
 
 A refusal is an answer like any other: under `--json` it lands on standard
-output as an outcome with `ok` false ([§7](#7---json-is-the-same-answer-not-a-second-one),
+output as an outcome with `ok` false ([§FS-011-command-line.7](FS-011-command-line.md#7---json-is-the-same-answer-not-a-second-one),
 [§REQ-002-parity.3](../requirements/REQ-002-parity.md#3-every-reading-answers-a-program)). It is decided before any registry is read, so the
 verbs that need no registry — `schema`, `check`, `validate --manifest` — still
 need none in order to refuse. Both halves of the rule exit **2**, the code this
@@ -312,7 +312,7 @@ code the replay's own outcome needed.
 ## 10. A mutating verb above one project reports, and acts under `--act`
 
 A selector that is honoured decides which projects a verb **reads**
-([§9](#9-a-scope-selector-is-honoured-or-refused)); it says nothing about what the verb then does to them, and
+([§FS-011-command-line.9](FS-011-command-line.md#9-a-scope-selector-is-honoured-or-refused)); it says nothing about what the verb then does to them, and
 those are two questions rather than one. Reading at any width is free: a
 summary of two projects and a summary of forty are the same act, larger.
 Writing is not. A verb that hands work over, reopens it, or starts the runtime
@@ -380,12 +380,12 @@ fire — `work dispatch`, `work sync`, `work run`, and `rebase` where a selector
 makes it sweep — and refused **by name** everywhere else, exiting **2** like a
 refused selector. A `rebase` that sweeps nothing is one of those elsewheres: the
 gate cannot fire on one checkout, so the flag would parse and change nothing,
-which is the fault [§9](#9-a-scope-selector-is-honoured-or-refused) exists to
+which is the fault [§FS-011-command-line.9](FS-011-command-line.md#9-a-scope-selector-is-honoured-or-refused) exists to
 end. A flag that parses,
-prints in its help and changes nothing is the fault [§9](#9-a-scope-selector-is-honoured-or-refused) exists to end, and it
+prints in its help and changes nothing is the fault [§FS-011-command-line.9](FS-011-command-line.md#9-a-scope-selector-is-honoured-or-refused) exists to end, and it
 does not become acceptable one rule later.
 
-The classification is total on the command tree, as [§9](#9-a-scope-selector-is-honoured-or-refused)'s is: every verb
+The classification is total on the command tree, as [§FS-011-command-line.9](FS-011-command-line.md#9-a-scope-selector-is-honoured-or-refused)'s is: every verb
 says whether it sweeps, and a variant added without a line does not compile.
 `update` and `ensure-agents` rewrite files in every managed workspace their
 scope reaches and are deliberately **not** gated here; they are recorded as the
@@ -394,7 +394,7 @@ that already exists rather than a rediscovery of the whole rule.
 
 A gated report is an answer like any other: under `--json` it is the dry run's
 own reading with the gate named in it, and a refused `--act` lands on standard
-output as an outcome with `ok` false ([§7](#7---json-is-the-same-answer-not-a-second-one),
+output as an outcome with `ok` false ([§FS-011-command-line.7](FS-011-command-line.md#7---json-is-the-same-answer-not-a-second-one),
 [§REQ-002-parity.3](../requirements/REQ-002-parity.md#3-every-reading-answers-a-program)).
 
 ## 11. A report reaches a terminal as prose and a file as markdown
@@ -421,7 +421,7 @@ in ephor rather than as the news it is carrying.
 The markdown form is not lost, because it was never the terminal's: it is what
 `--report <path>` writes and what the `report` field of `--json` carries, both
 declared as markdown and both for a reader that renders or stores it
-([§7](#7---json-is-the-same-answer-not-a-second-one)). So
+([§FS-011-command-line.7](FS-011-command-line.md#7---json-is-the-same-answer-not-a-second-one)). So
 one outcome is told twice, and a caller who wants the document has a flag that
 hands it over unchanged. Neither telling may know something the other does not
 ([§REQ-002-parity.3](../requirements/REQ-002-parity.md#3-every-reading-answers-a-program)): they differ in their frame — a heading and a fence in one,
@@ -466,7 +466,7 @@ a real name there.
 
 The machine form goes on carrying the path. The `repo` field a reading gives
 per repository is what a program opens a directory with, and a person's word
-for it would open nothing ([§7](#7---json-is-the-same-answer-not-a-second-one),
+for it would open nothing ([§FS-011-command-line.7](FS-011-command-line.md#7---json-is-the-same-answer-not-a-second-one),
 [§REQ-002-parity.4](../requirements/REQ-002-parity.md#4-the-machine-form-is-a-contract-not-a-dump)) — so naming is the prose
 form's, and the two forms stay the same answer because the path is still in the
 one that is parsed.

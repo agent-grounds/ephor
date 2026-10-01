@@ -99,13 +99,13 @@ verified between steps exactly as the interface verified it
 ## 6. Windowed: the reader's own window
 
 A summons the reader types into has, until now, had one place to run: the
-terminal ephor is in, handed over for the duration (§2). The **window
+terminal ephor is in, handed over for the duration ([§AR-002-summons.2](AR-002-summons.md#2-the-invocation)). The **window
 opener** is a second place ([§FS-005-dispatch.22](../functional-spec/FS-005-dispatch.md#22-a-window-of-the-readers-own-where-one-is-bound),
 [§DA-007-window-is-a-bound-opener](../decisions/architectural/DA-007-window-is-a-bound-opener.md#da-007-window-is-a-bound-opener-a-window-of-the-readers-own-is-a-bound-opener-with-the-terminal-as-the-floor)): a binding that opens a
 window of the reader's own with a command in it and hands back a handle, and
 later brings that handle forward. The executor is unchanged — the same
 place resolution, the same `EPHOR_*` dossier, the same exit semantics — and
-what differs, as for the job (§5), is only who holds the other end of the
+what differs, as for the job ([§AR-002-summons.5](AR-002-summons.md#5-detached-the-job)), is only who holds the other end of the
 streams: here, a terminal the reader can see beside ephor's.
 
 **The binding has two verbs and is selected once.** `open <title> -- <command>`
@@ -121,13 +121,13 @@ ephor ships three bindings and names none of them in core
 ([§REQ-001-boundary.5](../requirements/REQ-001-boundary.md#5-no-product-literal-outside-its-adapter)): a terminal multiplexer's new window, and two terminals'
 remote-control spawn, each with its own focus verb. A fourth is a pair of
 commands in configuration, which remains authoritative under SSH. Where
-nothing is eligible, the executor falls back to §2 and says so in the outcome
+nothing is eligible, the executor falls back to [§AR-002-summons.2](AR-002-summons.md#2-the-invocation) and says so in the outcome
 line: the terminal is the floor, and the floor is never removed. A remote
 fallback explains that SSH permits automatic tmux but not an automatic GUI
 window.
 
 **A windowed summons is a job with a window instead of a log.** It is
-written down as a job (§5) — the record, the lock, the `outcome.json` — and
+written down as a job ([§AR-002-summons.5](AR-002-summons.md#5-detached-the-job)) — the record, the lock, the `outcome.json` — and
 the supervisor runs inside the window, so liveness is the lock exactly as
 everywhere and a window the reader closed is a job that ended, however it
 ended. The record carries the handle the opener printed, and there is **no
