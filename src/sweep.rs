@@ -902,9 +902,10 @@ fn report(said: &str, rows: &[Swept], reached: &[Reached], gate: &crate::scope::
 /// it came to before forty lines of it rather than after.
 ///
 /// A replay nested inside this report takes the form of the document carrying
-/// it, so the conflicts below are each repository's prose indented one level
-/// under the checkout it belongs to — never the markdown the same replay
-/// writes into the file beside it (§FS-011-command-line.11.1).
+/// it, so the checkouts it stopped on are gathered under a section of their
+/// own and each replay's prose is indented one level under that line — never
+/// the markdown the same replay writes into the file beside it
+/// (§FS-011-command-line.11.1).
 fn say(said: &str, rows: &[Swept], reached: &[Reached], gate: &crate::scope::Gate) -> String {
     let mut out = format!("rebase sweep over {said} — {}.\n", summary(rows, reached));
     for project in reached {

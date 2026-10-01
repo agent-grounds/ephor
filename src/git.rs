@@ -453,8 +453,12 @@ impl Rebase {
     /// a person (§FS-011-command-line.11.2).
     pub fn say(&self) -> String {
         if self.repos.is_empty() {
+            // The ref the replay was aimed at, which the document's headline
+            // carries, so the prose knows nothing less than it
+            // (§REQ-002-parity.3).
             let mut out = format!(
-                "no git repository under {} — nothing was done.\n",
+                "nothing to rebase onto {} in {} — no git repository is under it.\n",
+                self.onto.label(),
                 self.checkout.display()
             );
             self.say_absent(&mut out);
@@ -1176,8 +1180,11 @@ pub struct RepoCreated {
 ///
 /// Written once so that the markdown form and the prose form differ in their
 /// frame and in nothing else, and so that a sixth [`Created`] arm — or a
-/// seventh [`Replay`] one — has one place to be said rather than two, and
-/// fails to compile until it is.
+/// seventh [`Replay`] one — has one place to be said rather than two. The
+/// compile-time half of that covers `sentence` and `verbatim`, which every
+/// renderer reads: a new arm cannot be written without saying them. `paths`
+/// and `closing` are read by the replay's renderers alone, so an arm that
+/// leaves them empty compiles and says nothing of them.
 pub struct Came {
     pub sentence: String,
     pub verbatim: Option<String>,
@@ -3140,7 +3147,7 @@ mod tests {
             "the absent repository is named by its path rather than for its reader:\n{said}"
         );
         assert!(
-            replay.report().contains("## the vendored tree"),
+            replay.report().contains("## vendor — the vendored tree"),
             "the markdown form names the absent repository by its path:\n{}",
             replay.report()
         );

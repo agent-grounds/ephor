@@ -610,8 +610,12 @@ ships, the previous "latest" section moves verbatim to
   through the one flattening rule the other two do. A replay nested inside the
   sweep's report takes the form of the document carrying it rather than its own,
   so the sweep's file nests markdown and the sweep's terminal nests prose. The
-  document is not lost and has not moved: `--report <path>`, the `report` field
-  of `--json`, and `repos[].repo` carry exactly what they carried. (PR #147)
+  document is not lost: `--report <path>` and the `report` field of `--json`
+  keep their markdown form, and `repos[].repo` keeps the path a program opens.
+  Their per-repository headings do move, because the rule above is the
+  document's too — a section that read `## . — fix/x` now reads
+  `## the project — fix/x` — so anything that was reading a heading for a path
+  must read `repos[].repo` instead. (PR #147)
 
 - **A project declared only by `update_mode: skip` rows keeps the role the
   registry gave it**
