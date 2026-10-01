@@ -27,7 +27,12 @@ A type is the *shape* of a checkout, shared by every project using it.
   under the workspace root, a human `role`, whether it is `required`, and an
   `update_mode` of `branch` (follow the workspace branch) or `skip` (leave it
   alone — vendored or read-only checkouts). `default_branch` may interpolate
-  `{branch}`.
+  `{branch}`. A `skip` row still **declares** the repository; what it says is
+  that `ephor update` leaves it alone. So a project every one of whose rows
+  says `skip` — a checkout a site keeps by hand — has a declared forest all the
+  same: each repository is named by the `role` its row gave, and a workspace
+  missing one of them is refused by name rather than read as a project that
+  declared nothing.
 - `agents` drives AGENTS.md rendering: the `template` path (resolved relative
   to the registry file), the `structure_intro` sentence, the summary templates
   used with and without a ticket, and `validations[]` — the commands an agent

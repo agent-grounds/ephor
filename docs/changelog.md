@@ -594,6 +594,44 @@ ships, the previous "latest" section moves verbatim to
 
 ### Fixed
 
+- **The replay a person watches is prose, and it calls every repository what
+  the registry calls it**
+  ([§FS-011-command-line.11.1](functional-spec/FS-011-command-line.md#111-what-a-terminal-is-handed-carries-no-markup-it-does-not-render),
+  [§FS-011-command-line.11.2](functional-spec/FS-011-command-line.md#112-a-report-names-a-repository-for-its-reader)).
+  `ephor rebase` printed its markdown document straight to the terminal — a `#`
+  headline, a `##` section per repository whose whole text was often the `.`
+  path, and two rows of backticks around what git said — and so did the sweep
+  that wraps it. Both now hand a terminal prose: a headline, one indented line
+  per repository, and git's own words indented under the line they belong to.
+  Every repository is named by its role, failing that by the handle its registry
+  row gave it, and only failing that by its path — in the replay, in the sweep,
+  in the report a repository the disk has not got gets, and in the ticket a
+  conflict opens, which is the third reader of the same report and now goes
+  through the one flattening rule the other two do. A replay nested inside the
+  sweep's report takes the form of the document carrying it rather than its own,
+  so the sweep's file nests markdown and the sweep's terminal nests prose. The
+  document is not lost and has not moved: `--report <path>`, the `report` field
+  of `--json`, and `repos[].repo` carry exactly what they carried. (PR #147)
+
+- **A project declared only by `update_mode: skip` rows keeps the role the
+  registry gave it**
+  ([§AR-004-forest.2](architecture/AR-004-forest.md#2-probes-not-declarations),
+  [§FS-006-project-interface.8](functional-spec/FS-006-project-interface.md#8-the-checkout-contract)).
+  A site that keeps a checkout by hand writes `skip` on every row, and ephor
+  dropped every such row before building the forest — so the project resolved as
+  though it had declared nothing. It lost the `role` each row carried and was
+  called *the checkout itself*; `ephor branches` read a nested `fix/issue-9`
+  checkout as the branch `fix`, because an undeclared layout accepts any
+  directory merely containing a repository; and a directory holding none of the
+  project's repositories was refused with *no repository of this project is in
+  it* rather than by name. A row saying `skip` says not to **update** the
+  repository, which is `ephor update`'s business, so it still declares it: such
+  a project now has a declared forest, keeps its roles, reads its nested
+  checkouts whole, and is refused with *ce, ee not on disk there*. A project
+  mixing `branch` and `skip` rows folds over the rows it tracks and no others,
+  exactly as before, so no vendored tree joins a checkout that is whole without
+  it. `ephor update` skips exactly the rows it skipped. (PR #147)
+
 - **A carried-over plan no longer leaves the records that name it behind**
   ([§FS-005-dispatch.3.1](functional-spec/FS-005-dispatch.md#31-a-plan-named-before-the-digest-is-carried-over)).
   Carrying a plan named before the digest over to the stem its matter's id

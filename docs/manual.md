@@ -420,6 +420,11 @@ ephor doctor [--project P] [--skip-self|--self-only] [--json]
 - **`rebase`** replays a checkout onto its main branch — or, with `--upstream`,
   onto the branch's own published copy — and is what the quick actions on a
   branch that has fallen behind run ([§8.11](#811-rebasing-a-branch-that-has-fallen-behind)).
+  What it replayed is one outcome told twice, the same way `checkout` tells
+  what it made: your terminal is handed prose, one line per repository named
+  the way the registry names it, while `--report <path>` and the `report` field
+  of `--json` carry the same account as markdown
+  ([§FS-011-command-line.11](functional-spec/FS-011-command-line.md#11-a-report-reaches-a-terminal-as-prose-and-a-file-as-markdown)).
   Its exit codes are its own — `3` is a conflict, not a failure.
 - **`checkout`** makes the branch workspace that is not there yet, one working
   tree per repository, and is what the quick action on a missing checkout runs
@@ -3394,6 +3399,20 @@ rebase ──0──► land-rebase ──► rebased        (FORCE_WITH_LEASE=1
    └─nonzero─► needs-human
 ```
 
+**What it replayed is one outcome told twice.** Your terminal is handed
+prose — a headline, one indented line per repository, and git's own words
+indented under the line they belong to — while `--report <path>` and the
+`report` field of `--json` carry the same account as the markdown document they
+were declared to be
+([§FS-011-command-line.11.1](functional-spec/FS-011-command-line.md#111-what-a-terminal-is-handed-carries-no-markup-it-does-not-render)).
+Every repository is called what the registry calls it — its role, failing that
+the handle its row gave it, and only failing that its path — in both tellings
+and in the ticket a conflict opens, while the `repo` field a program reads goes
+on carrying the path it opens a directory with
+([§FS-011-command-line.11.2](functional-spec/FS-011-command-line.md#112-a-report-names-a-repository-for-its-reader)).
+A project whose one repository is the root of its checkout is therefore never
+introduced by a full stop.
+
 `land-rebase` is a landing state of its own precisely because it forces:
 `land` proper never does, and a replayed branch is the one case where the push
 has to rewrite what the remote already has. It is `--force-with-lease`, so a
@@ -3480,6 +3499,15 @@ on such a source would otherwise stop every rebase in that project, hourly,
 forever. For the same reason an open pull request whose draft state the forge
 never reported protects the branch. One project that cannot be read stops that
 project and no other.
+
+**The sweep's own report is told the same twice**, and a replay nested inside
+it follows the sweep's destination rather than its own: the sweep printing to a
+terminal nests each replay as prose, indented one level under the checkout it
+belongs to, and the same sweep writing `--report <path>` or filling the `report`
+field of `--json` nests each as markdown
+([§FS-011-command-line.11.1](functional-spec/FS-011-command-line.md#111-what-a-terminal-is-handed-carries-no-markup-it-does-not-render)).
+The nested report's reader is the document it arrived in, so no caller reads
+its form off anything but its own destination.
 
 **A conflict puts the tree back and is always reported.** The sweep asks the
 replay for the restoring disposition ([§8.11](#811-rebasing-a-branch-that-has-fallen-behind)),
