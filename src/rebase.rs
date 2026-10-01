@@ -211,7 +211,9 @@ fn one_checkout(args: &RebaseArgs) -> Result<ExitCode> {
             serde_json::to_string_pretty(&view).unwrap_or_else(|_| "null".to_string())
         );
     } else {
-        print!("{}", outcome.report());
+        // The terminal gets prose; the document is `--report`'s and the
+        // `report` field's above (§FS-011-command-line.11.1).
+        print!("{}", outcome.say());
         if let Some(handed) = &handed {
             println!("\nhanded over: {}", handed.says);
             // What the resolution had to say about who got it — an effort

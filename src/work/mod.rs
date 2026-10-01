@@ -2061,11 +2061,14 @@ impl Dispatcher {
         if let Some(branch) = checkout.branch.clone() {
             self.behind.remove(&(item.project.clone(), branch));
         }
-        let report = outcome.report();
         if outcome.conflicted().is_empty() && outcome.stuck().is_empty() {
-            return Ok(Opening::Finished(report));
+            return Ok(Opening::Finished(outcome.report()));
         }
-        Ok(Opening::Stopped(report))
+        // What is handed over becomes a paragraph of the ticket this dispatch
+        // is about to write, so it is flattened by the rule the plan language
+        // has for an embedded document rather than carried in as one
+        // (§FS-005-dispatch.3, §FS-011-command-line.11.1).
+        Ok(Opening::Stopped(outcome.in_a_body()))
     }
 
     /// Hand an item to the runtime under one recipe. Opens the plan when the
@@ -6652,7 +6655,9 @@ enum Opening {
     None,
     /// It finished: there is nothing left to hand over.
     Finished(String),
-    /// It stopped, and this is the situation the ticket is about.
+    /// It stopped, and this is the situation the ticket is about — as a
+    /// paragraph of the plan body it becomes, not as a document of its own
+    /// (§FS-005-dispatch.3).
     Stopped(String),
 }
 
