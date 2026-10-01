@@ -205,9 +205,9 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
-      # For the python-test step at the end of this job, which is the only
-      # place the pinned generator is on PATH. Same pin as the `test` job, so
-      # the two read the same interpreter.
+      # For the python-test step that follows `Install grund` below, which is
+      # the only place the pinned generator is on PATH. Same pin as the `test`
+      # job, so the two read the same interpreter.
       - name: Install Python
         uses: actions/setup-python@v6
         with:
@@ -231,16 +231,22 @@ jobs:
       - name: Install grund
         run: cargo install grund --version 0.14.0 --locked
 
-      - name: grund check
-        run: grund check
-
-      - name: grund fmt --check
-        run: grund fmt --check
-
       # §FS-002-release.7: the pairing is proved where the pinned binary is.
       # The `test` job installs no grund, so the regeneration half of
       # `tests/integration/test_grund_pin_entrypoints.py` skips there for good
       # and the guard never fires; here `Install grund` has already put the
       # pinned release on PATH, which is what the test resolves through.
+      #
+      # It runs immediately after that install, and before `grund check`,
+      # because a broken pairing is itself a `grund check` error: left at the
+      # end of the job the guard would be skipped by the default step gating
+      # exactly when the mismatch it exists to catch is present. The cost is
+      # accepted - a failure here skips the two checks below for that run.
       - name: python tests
         run: python -m unittest discover -s tests/integration -p 'test_*.py'
+
+      - name: grund check
+        run: grund check
+
+      - name: grund fmt --check
+        run: grund fmt --check
