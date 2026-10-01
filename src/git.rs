@@ -401,6 +401,24 @@ impl Rebase {
         out
     }
 
+    /// The whole outcome as prose, for a reader whose terminal renders no
+    /// markup — the person watching the replay, and the sweep that nests this
+    /// replay inside its own prose (§FS-011-command-line.11.1).
+    ///
+    /// The same outcome [`Self::report`] tells, sentence for sentence: the two
+    /// differ in their frame — a heading and a fence there, a name and an
+    /// indent here — and in nothing else (§REQ-002-parity.3), and each
+    /// repository keeps its own line rather than being collapsed into a count
+    /// (§AR-004-forest.1). The repository is called what a report calls it for
+    /// a person (§FS-011-command-line.11.2).
+    ///
+    /// Declared here and still answering with the markdown document: the shape
+    /// of the contract is settled, and what it renders is the change this
+    /// stands in front of.
+    pub fn say(&self) -> String {
+        self.report()
+    }
+
     /// The same report, as a paragraph of somebody else's document
     /// (§FS-005-dispatch.3).
     ///
@@ -2727,6 +2745,315 @@ mod tests {
         let probed = Forest::resolve(&checkout, None, &[]);
         assert_eq!(probed.layout, vec![".".to_string()]);
         assert_eq!(probed.labels, vec!["the checkout itself".to_string()]);
+    }
+
+    // ----------------------------------------------------------------
+    // The replay's two tellings (agent-grounds/ephor#141). The checkout
+    // report above was brought under §FS-011-command-line.11 by #133; these
+    // hold the replay to the same rule.
+    // ----------------------------------------------------------------
+
+    /// A replay said by hand, so what follows is about the two renderings
+    /// rather than about what git did on the day.
+    fn replayed(repo: &str, branch: &str, replay: Replay) -> RepoReplay {
+        RepoReplay {
+            repo: repo.to_string(),
+            remote: ORIGIN.to_string(),
+            branch: Some(branch.to_string()),
+            onto: Some(format!("{ORIGIN}/main")),
+            replay,
+        }
+    }
+
+    fn rebase_of(repos: Vec<RepoReplay>, absent: Vec<String>) -> Rebase {
+        Rebase {
+            checkout: PathBuf::from("/w/proj/fix/one"),
+            onto: onto("main"),
+            repos,
+            absent,
+        }
+    }
+
+    /// Every one of the six, because the register a reader is answered in may
+    /// not depend on which way the replay went — and because a seventh
+    /// [`Replay`] arm has to fail this rather than arrive unsaid
+    /// (§FS-011-command-line.11.1).
+    const EVERY_DISPOSITION: [(&str, &str); 6] = [
+        ("current", "Already on top of"),
+        ("rebased", "Replayed onto"),
+        ("unpublished", "no copy on"),
+        ("conflicted", "stopped in a conflict"),
+        ("dirty", "Uncommitted work"),
+        ("refused", "git refused"),
+    ];
+
+    fn disposition(name: &str) -> Replay {
+        match name {
+            "current" => Replay::Current,
+            "rebased" => Replay::Rebased(3),
+            "unpublished" => Replay::Unpublished,
+            "conflicted" => Replay::Conflicted {
+                paths: vec!["shared.txt".to_string()],
+                restored: false,
+            },
+            "dirty" => Replay::Dirty(vec![" M README.md".to_string()]),
+            "refused" => Replay::Refused(REFUSED.to_string()),
+            other => panic!("no such disposition: {other}"),
+        }
+    }
+
+    /// The replay a person reads: ephor's own sentences, nothing a terminal
+    /// renders as syntax, and the repository at the root of its checkout
+    /// never introduced by its full stop (§FS-011-command-line.11.1,
+    /// §FS-011-command-line.11.2).
+    #[test]
+    fn every_disposition_of_a_replay_reaches_a_terminal_as_prose() {
+        for (name, phrase) in EVERY_DISPOSITION {
+            let said = rebase_of(
+                vec![replayed(".", "fix/one", disposition(name))],
+                Vec::new(),
+            )
+            .say();
+
+            carries_no_markup(&said);
+            assert!(
+                said.contains(phrase),
+                "the `{name}` disposition never says `{phrase}`:\n{said}"
+            );
+        }
+    }
+
+    /// What git said and which files it stopped on are kept — under the line
+    /// they belong to rather than fenced off from it
+    /// (§FS-011-command-line.11.1).
+    #[test]
+    fn what_git_said_in_a_replay_is_kept_indented_and_never_fenced() {
+        let said = rebase_of(
+            vec![
+                replayed(".", "fix/one", disposition("refused")),
+                replayed("ce", "fix/one", disposition("conflicted")),
+                replayed("ee", "fix/one", disposition("dirty")),
+            ],
+            Vec::new(),
+        )
+        .say();
+
+        carries_no_markup(&said);
+        for quoted in [
+            "fatal: 'origin' does not appear",
+            "shared.txt",
+            "M README.md",
+        ] {
+            let line = said
+                .lines()
+                .find(|line| line.contains(quoted))
+                .unwrap_or_else(|| panic!("`{quoted}` is gone from the replay:\n{said}"));
+            assert!(
+                line.starts_with(' ') || line.starts_with('\t'),
+                "`{quoted}` is not indented under the line it belongs to: {line:?}\n{said}"
+            );
+            assert!(
+                !line.trim_start().starts_with("- "),
+                "`{quoted}` reached the terminal as a markdown bullet: {line:?}\n{said}"
+            );
+        }
+    }
+
+    /// The naming ladder on a replay: the role the declaration gave, said in
+    /// both tellings, while the row a program reads goes on carrying the path
+    /// (§FS-011-command-line.11.2, §REQ-002-parity.4).
+    #[test]
+    fn the_name_a_declaration_gave_is_what_a_replay_calls_the_repository() {
+        use crate::forest::Declaration;
+        let temp = tempfile::tempdir().unwrap();
+        let checkout = checkout_with_origin(temp.path(), "app");
+        std::fs::write(checkout.join("mine.txt"), "uncommitted\n").unwrap();
+        let forest = Forest::resolve(
+            &checkout,
+            None,
+            &[Declaration {
+                path: ".".to_string(),
+                id: Some("app".to_string()),
+                role: Some("the project".to_string()),
+                main: None,
+            }],
+        );
+
+        let replay = super::rebase(&forest, &onto("master"), Stopped::Leave);
+
+        let said = replay.say();
+        carries_no_markup(&said);
+        assert!(
+            said.contains("the project"),
+            "the replay never names the repository for its reader:\n{said}"
+        );
+        assert!(
+            replay.report().contains("## the project — feature"),
+            "the markdown form heads its section with the path:\n{}",
+            replay.report()
+        );
+        assert_eq!(
+            replay.repos[0].repo, ".",
+            "the machine form stopped carrying the path a program opens"
+        );
+    }
+
+    /// Where the row gives no role the handle it gave is the name, and only
+    /// failing that the path — the same ladder, one rung down
+    /// (§FS-011-command-line.11.2).
+    #[test]
+    fn a_replay_falls_back_to_the_handle_and_then_to_the_path() {
+        use crate::forest::Declaration;
+        let temp = tempfile::tempdir().unwrap();
+        // Two clones side by side: `checkout_with_origin` puts each under
+        // `<root>/work`, which is the forest both are folded over.
+        checkout_with_origin(temp.path(), "ce");
+        checkout_with_origin(temp.path(), "ee");
+        let root = temp.path().join("work");
+        let forest = Forest::resolve(
+            &root,
+            None,
+            &[
+                Declaration {
+                    path: "ce".to_string(),
+                    id: Some("community".to_string()),
+                    role: None,
+                    main: None,
+                },
+                Declaration {
+                    path: "ee".to_string(),
+                    id: None,
+                    role: None,
+                    main: None,
+                },
+            ],
+        );
+
+        let said = super::rebase(&forest, &onto("master"), Stopped::Leave).say();
+        carries_no_markup(&said);
+        assert!(
+            said.contains("community"),
+            "the row's own handle is never reached for:\n{said}"
+        );
+        assert!(
+            said.contains("ee"),
+            "a row with neither role nor handle lost its path:\n{said}"
+        );
+    }
+
+    /// A declared repository the disk has not got is named the way the ladder
+    /// says, in both tellings: `report_absent` has no `Repo` to ask, and reads
+    /// the forest's labels like every other fold (§AR-004-forest.1,
+    /// §FS-011-command-line.11.2).
+    #[test]
+    fn a_repository_the_disk_has_not_got_is_named_for_its_reader_too() {
+        use crate::forest::Declaration;
+        let temp = tempfile::tempdir().unwrap();
+        let checkout = checkout_with_origin(temp.path(), "app");
+        let forest = Forest::resolve(
+            &checkout,
+            None,
+            &[
+                Declaration {
+                    path: ".".to_string(),
+                    id: Some("app".to_string()),
+                    role: Some("the project".to_string()),
+                    main: None,
+                },
+                Declaration {
+                    path: "vendor".to_string(),
+                    id: Some("vendored".to_string()),
+                    role: Some("the vendored tree".to_string()),
+                    main: None,
+                },
+            ],
+        );
+        assert_eq!(forest.absent, vec!["vendor".to_string()]);
+
+        let replay = super::rebase(&forest, &onto("master"), Stopped::Leave);
+
+        let said = replay.say();
+        carries_no_markup(&said);
+        assert!(
+            said.contains("the vendored tree"),
+            "the absent repository is named by its path rather than for its reader:\n{said}"
+        );
+        assert!(
+            replay.report().contains("## the vendored tree"),
+            "the markdown form names the absent repository by its path:\n{}",
+            replay.report()
+        );
+        assert_eq!(
+            replay.view()["absent"],
+            serde_json::json!(["vendor"]),
+            "the machine form stopped carrying the path a program opens"
+        );
+    }
+
+    /// And the document stays a document: what `--report <path>` writes and
+    /// what the `report` field of a reading carries is the markdown it was
+    /// declared to be, which the prose form above may not have moved
+    /// (§FS-011-command-line.11.1, §FS-011-command-line.7).
+    #[test]
+    fn the_markdown_form_of_a_replay_stays_markdown() {
+        let report = rebase_of(
+            vec![
+                replayed(".", "fix/one", disposition("dirty")),
+                replayed("ce", "fix/one", disposition("refused")),
+            ],
+            vec!["ee".to_string()],
+        )
+        .report();
+
+        assert!(
+            report.starts_with("# rebase onto main in "),
+            "the document lost its headline:\n{report}"
+        );
+        assert!(
+            report.contains("\n## "),
+            "the document lost its per-repository headings:\n{report}"
+        );
+        assert!(
+            report.contains("```"),
+            "the document stopped fencing what git said:\n{report}"
+        );
+    }
+
+    /// The third reader, and the author's stated reason this ticket is its
+    /// own: a replay reaching a plan body is flattened, and what the
+    /// flattening leaves behind is the repository's **name**
+    /// (§FS-005-dispatch.3, §FS-011-command-line.11.2). A body asserting only
+    /// the absence of `##` would pass over the defect — the flattener already
+    /// rewrites `## . — fix/one` to `**. — fix/one**`, full stop and all.
+    #[test]
+    fn a_replay_in_a_plan_body_carries_the_repositorys_name_not_its_path() {
+        use crate::forest::Declaration;
+        let temp = tempfile::tempdir().unwrap();
+        let checkout = checkout_with_origin(temp.path(), "app");
+        std::fs::write(checkout.join("mine.txt"), "uncommitted\n").unwrap();
+        let forest = Forest::resolve(
+            &checkout,
+            None,
+            &[Declaration {
+                path: ".".to_string(),
+                id: Some("app".to_string()),
+                role: Some("the project".to_string()),
+                main: None,
+            }],
+        );
+
+        let body = super::rebase(&forest, &onto("master"), Stopped::Leave).in_a_body();
+
+        assert!(
+            body.contains("**the project — feature**"),
+            "a plan body names the repository by its path:\n{body}"
+        );
+        for line in body.lines() {
+            assert!(
+                !line.trim_end().starts_with('#'),
+                "a heading reached a plan body as a task node: {line:?}\n{body}"
+            );
+        }
     }
 
     /// The chain reaches the prose: a workspace actually made out of a

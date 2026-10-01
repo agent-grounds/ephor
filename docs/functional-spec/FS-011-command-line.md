@@ -432,6 +432,13 @@ built it, a report reaching a terminal is prose and a report reaching a file or
 a JSON field is markdown; a report embedded in a plan body is neither, and is
 flattened by the rule the plan language has for it ([§FS-005-dispatch.3](FS-005-dispatch.md#3-one-rhei-per-item-one-ticket-per-dispatch)).
 
+**A report carried inside another report takes the form of the document
+carrying it**, not the form its own first reader would have asked for. A sweep
+printing to a terminal nests each replay it made as prose, and the same sweep
+writing a file nests each as markdown — because the nested report's reader is
+the document it arrived in, and a form chosen from anything else would put a
+fence in the middle of a page of prose.
+
 ### 11.2 A report names a repository for its reader
 
 A report about a forest says something per repository, and what it calls each

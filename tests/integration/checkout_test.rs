@@ -1324,9 +1324,9 @@ fn the_reading_says_which_maker_made_the_workspace() {
 }
 
 /// Declare every repository of this project type `update_mode: skip` — a
-/// schema-valid shape a site uses for a checkout it keeps by hand. The
-/// declarations a placement reads filter skipped repositories out, so the
-/// project's declared forest is empty and the forest is probed on disk instead
+/// schema-valid shape a site uses for a checkout it keeps by hand. A row that
+/// says not to update a repository still declares it, so the project's forest
+/// is the two rows below and not a tree probed off the disk
 /// (§AR-004-forest.2).
 fn skip_every_repository(tmp: &Path) {
     let path = tmp.join("workspaces.json");
@@ -1341,13 +1341,18 @@ fn skip_every_repository(tmp: &Path) {
     fs::write(&path, serde_json::to_string_pretty(&registry).unwrap()).unwrap();
 }
 
-/// A project whose declared forest is empty answers *whole* by one question
-/// rather than three (§FS-006-project-interface.8). With nothing declared there
-/// is nothing to be absent, so a bare directory used to be refused by the
-/// verification after the command returned and called *already checked out* by
-/// the maker's own short-circuit on the very next ask — one command, two
-/// answers, and the second one put a store into a directory holding no
-/// repository of the project. Asked twice, the refusal holds.
+/// A directory a bound command left behind holding no repository of the
+/// project answers *whole* by one question rather than three
+/// (§FS-006-project-interface.8). It used to be refused by the verification
+/// after the command returned and called *already checked out* by the maker's
+/// own short-circuit on the very next ask — one command, two answers, and the
+/// second one put a store into a directory holding no repository of the
+/// project. Asked twice, the refusal holds.
+///
+/// It refuses **by name**: this project's rows say `skip`, which is a row
+/// saying not to update a repository and not a project declaring none
+/// (§AR-004-forest.2), so the fold has two declared repositories that can be
+/// absent and the sentence says which rather than saying none is there.
 #[test]
 fn a_directory_holding_no_repository_of_the_project_is_refused_on_every_ask() {
     let tmp = tempdir();
@@ -1371,8 +1376,9 @@ fn a_directory_holding_no_repository_of_the_project_is_refused_on_every_ask() {
             "ask {ask}: a directory holding no repository of demo read as a workspace: {said}"
         );
         assert!(
-            said.contains("no repository of this project is in it"),
-            "ask {ask}: the refusal does not say why it is not a workspace: {said}"
+            said.contains("ce, ee not on disk there"),
+            "ask {ask}: the refusal does not name the declared repositories that \
+             are missing: {said}"
         );
         assert!(
             !target.join("panta").exists(),
@@ -1531,4 +1537,43 @@ fn a_refusal_reads_as_prose_while_the_reading_keeps_the_document_and_the_path() 
         vec!["ce", "ee"],
         "the machine form stopped carrying the path a program opens: {view:#}"
     );
+}
+
+/// A site that keeps its checkout by hand writes `update_mode: skip` on every
+/// row, and the role it wrote down there is still the name a report reaches
+/// for (agent-grounds/ephor#141). The row says not to *update* the repository;
+/// it does not say the project declares none (§AR-004-forest.2), so the
+/// checkout folds over the rows and names each one the way the declaration
+/// names it (§FS-011-command-line.11.2) rather than falling through to the
+/// paths a probed forest has.
+#[test]
+fn a_project_declared_only_by_skipped_rows_is_named_by_the_roles_it_wrote_down() {
+    let tmp = tempdir();
+    let root = fixture(tmp.path());
+    name_the_repositories(
+        tmp.path(),
+        "the community edition",
+        "the enterprise edition",
+    );
+    skip_every_repository(tmp.path());
+    let _ce = repo(tmp.path(), "ce");
+    let _ee = repo(tmp.path(), "ee");
+
+    let made = ephor(tmp.path())
+        .args(["checkout", "--project", "demo", "--branch", "feature"])
+        .output()
+        .unwrap();
+    assert!(made.status.success(), "{made:?}");
+    let printed = String::from_utf8_lossy(&made.stdout).into_owned();
+
+    carries_no_markup(&printed, "what `ephor checkout` printed");
+    for name in ["the community edition", "the enterprise edition"] {
+        assert!(
+            printed.contains(name),
+            "a project declared only by skipped rows lost the role its registry \
+             row gave `{name}`:\n{printed}"
+        );
+    }
+    assert!(root.join("feature/ce/.git").exists());
+    assert!(root.join("feature/ee/.git").exists());
 }

@@ -76,6 +76,15 @@ what probing cannot find — where the root is, the workspace template, and
 overrides. A fact that can be probed and is also declared is probed anyway;
 the declaration only says where to look.
 
+A row carrying `update_mode: skip` **still declares its repository** — what it
+says is not to update it — so a project all of whose rows say so has a declared
+forest and not a probed one. The two are different questions: which
+repositories a fold has to answer for, and which of them `ephor update` pulls.
+Reading the second as the first throws away everything else the row carries,
+and a site that keeps a checkout by hand loses the role it wrote down
+([§FS-011-command-line.11.2](../functional-spec/FS-011-command-line.md#112-a-report-names-a-repository-for-its-reader)) along with the layout its branch
+workspaces are recognized by.
+
 ## 3. Workspace resolution
 
 `workspace(project, branch)` — the row's template applied to the branch —
