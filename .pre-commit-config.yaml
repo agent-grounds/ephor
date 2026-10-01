@@ -63,7 +63,11 @@ repos:
         pass_filenames: false
         always_run: true
         stages: [pre-commit]
-      # Requires `grund` on PATH (cargo install grund).
+      # Requires the pinned `grund` on PATH, which is the release CI
+      # installs and the one that wrote the v10 block in both entrypoints
+      # (§FS-002-release.7):
+      #     cargo install grund --version 0.14.0 --locked
+      # Another version reaches another verdict on an untouched tree.
       - id: grund-check
         name: grund check
         entry: grund check

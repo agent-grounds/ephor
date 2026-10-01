@@ -67,6 +67,15 @@ The repository is a [grund](https://github.com/agent-grounds/grund) tree:
 [docs/roadmap.md](docs/roadmap.md) sequences what is not built yet, and
 `grund check` verifies that every `§ID` citation resolves.
 
+The checkers are pinned, and the pin is one pairing with the `grund init` block
+the entrypoints carry
+([§FS-002-release.7](docs/functional-spec/FS-002-release.md#7-a-pinned-checker-and-the-blocks-it-generates-move-together)):
+the gate reaches the verdict CI reaches only with the same release on `PATH`.
+
+```bash
+cargo install grund --version 0.14.0 --locked
+```
+
 ```bash
 just check         # the CI gate: fmt, build with -D warnings, tests, grund
 just pre-release   # everything a release verifies, publishing nothing

@@ -5211,3 +5211,17 @@ the plan is yours to hand-edit if you must.
 
 **An agent never runs.** ephor writes tickets; the runtime runs them.
 `ephor work run`, or `rhei run` in the checkout.
+
+**`grund check` fails on a checkout I have not touched.** You have a different
+`grund` than the one this repository pins, and the entrypoint blocks are the
+pinned one's output rather than yours
+([§FS-002-release.7](functional-spec/FS-002-release.md#7-a-pinned-checker-and-the-blocks-it-generates-move-together)).
+The pre-commit hook calls whatever `grund` is on `PATH`, so it has to be that
+release:
+
+```bash
+cargo install grund --version 0.14.0 --locked
+```
+
+That is the version CI installs and the version that wrote the `v10` block in
+`CLAUDE.md` and `.claude/CLAUDE.md`. Nothing is promised about any other.
