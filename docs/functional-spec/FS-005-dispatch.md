@@ -651,7 +651,8 @@ carries such a field the way it carries any other
 Unlike the refusals above, which dispatch performs, that is a condition on a
 name joining the half a path is rendered from rather than a check on the names
 already in it, three of which do not meet it today and are named where the
-rule is recorded ([§8](#8-the-ticket-carries-the-item-as-data-not-only-as-prose)).
+rule is recorded
+([§DF-002-path-fields-stable](../decisions/functional/DF-002-path-fields-stable.md#df-002-path-fields-stable-a-field-that-decides-a-path-holds-still-while-the-work-lasts)).
 
 **A script's environment is neither, and is told the gap rather than refused
 on it.** A summons carries the organization and its root as `EPHOR_ORG` and

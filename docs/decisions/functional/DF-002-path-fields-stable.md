@@ -57,9 +57,12 @@ a project with a `branch_root_template` the branch is the checkout
 checkout is where the plan goes too
 ([§FS-005-dispatch.6.1](../../functional-spec/FS-005-dispatch.md#61-the-work-root-is-a-template-and-it-may-reach-above-the-project)). The configuration in which
 the field is harmless — the plan's path fixed, only the branch and the working
-tree moving — is expressible today, and is one line: a work root written at
-the project or at the organization tier does not follow the checkout, and the
-innermost tier written is the one that answers
+tree moving — is expressible today, but it is not a matter of tier and one line
+does not settle it: the work root's line must name no field that follows the
+checkout — which a project's or an organization's need not, and the site's
+`{workspace}/panta` does — and no entry and no recipe in play may carry a root
+of its own, since a root written at either of those is read whole before any
+tier is consulted
 ([§FS-005-dispatch.6.1](../../functional-spec/FS-005-dispatch.md#61-the-work-root-is-a-template-and-it-may-reach-above-the-project)). What is missing is the guard
 rather than the capability: nothing requires that line, and nothing refuses
 the pairings it is not. A field whose safe use rests on a configuration nobody
