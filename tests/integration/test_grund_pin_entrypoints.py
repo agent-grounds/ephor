@@ -18,9 +18,16 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[2]
 CI = ROOT / ".github" / "workflows" / "ci.yml"
+JUSTFILE = ROOT / "justfile"
 ENTRYPOINTS = ("CLAUDE.md", ".claude/CLAUDE.md")
 GRUND_CONFIG = "grund.toml"
 SETUP_DOCS = ("README.md", "docs/manual.md", ".pre-commit-config.yaml")
+GATE_DEFINITIONS = (
+    CI.relative_to(ROOT).as_posix(),
+    JUSTFILE.relative_to(ROOT).as_posix(),
+    ".pre-commit-config.yaml",
+)
+SELECTION_FLAGS = ("--ignore", "--only")
 
 BEGIN = "<!-- BEGIN GRUND MANAGED BLOCK -->"
 END = "<!-- END GRUND MANAGED BLOCK -->"
@@ -170,6 +177,57 @@ def regenerate(binary: Path, sources: dict[str, str], config: str) -> dict[str, 
         return {name: (root / name).read_text(encoding="utf-8") for name in sources}
 
 
+def check_invocations(text: str) -> list:
+    """Every executable `grund check` command line in a gate definition.
+
+    A YAML gate writes the command after `run:` or `entry:`, either on its own
+    line or inline on the list item, and the justfile writes it as a bare recipe
+    line — so all four shapes reduce to the same thing. Comment lines are
+    skipped: prose explaining a selection is not the selection, and
+    `name: grund check` is a label rather than a command.
+    """
+    found = []
+    for line in text.splitlines():
+        command = line.strip()
+        if command.startswith("#"):
+            continue
+        if command.startswith("- "):
+            command = command[2:].strip()
+        for prefix in ("run:", "entry:"):
+            if command.startswith(prefix):
+                command = command[len(prefix) :].strip()
+                break
+        if command == "grund check" or command.startswith("grund check "):
+            found.append(command)
+    return found
+
+
+def check_selection(text: str) -> frozenset:
+    """Which findings a gate's `grund check` reports, as a comparable set.
+
+    A code is tagged with the flag that named it, so holding one out and
+    selecting only it never read as the same selection. An empty set is the
+    whole report, which is what every gate carries once a deferral is cleared.
+    """
+    invocations = check_invocations(text)
+    if not invocations:
+        raise HarnessError("no executable `grund check` invocation")
+    codes = set()
+    for command in invocations:
+        tokens = command.split()
+        for index, token in enumerate(tokens):
+            flag, separator, attached = token.partition("=")
+            if flag not in SELECTION_FLAGS:
+                continue
+            if separator:
+                codes.add((flag.lstrip("-"), attached))
+            elif index + 1 < len(tokens):
+                codes.add((flag.lstrip("-"), tokens[index + 1]))
+            else:
+                raise HarnessError(f"`{flag}` names no code in `{command}`")
+    return frozenset(codes)
+
+
 def read(name: str) -> str:
     return (ROOT / name).read_text(encoding="utf-8")
 
@@ -225,6 +283,22 @@ class PinnedCheckerContract(unittest.TestCase):
             len(set(versions.values())),
             1,
             f"§FS-002-release.7: the entrypoints disagree on the block version: {versions}",
+        )
+
+    def test_every_gate_invocation_carries_the_same_check_selection(self) -> None:
+        """§FS-002-release.7: the local gate reaches the verdict the job will.
+
+        Asserted as equality rather than against a particular code: the gates
+        agreeing is the lasting invariant, while any one selection is temporary,
+        so clearing a deferral is the deletion of the flags and nothing else.
+        """
+        selections = {name: check_selection(read(name)) for name in GATE_DEFINITIONS}
+        self.assertEqual(
+            len(set(selections.values())),
+            1,
+            "§FS-002-release.7: the gates disagree about which findings "
+            "`grund check` reports, so a contributor's hook and the job reach "
+            f"different verdicts on one tree: {selections}",
         )
 
     def test_entrypoints_are_the_pinned_generators_own_output(self) -> None:
@@ -293,6 +367,37 @@ class PairingCheckerCases(unittest.TestCase):
         moved = f"preamble\n\n{BEGIN}\nbody\n{END}\n\nrepository notes changed\n"
         self.assertEqual(managed_region(kept), managed_region(moved))
         self.assertNotEqual(outside_managed_region(kept), outside_managed_region(moved))
+
+    def test_a_selection_in_one_gate_and_missing_from_another_is_drift(self) -> None:
+        job = "    steps:\n      - run: grund check --ignore local-section-citation\n"
+        hook = "        entry: grund check\n"
+        self.assertNotEqual(check_selection(job), check_selection(hook))
+
+    def test_the_attached_form_of_the_flag_is_the_same_selection(self) -> None:
+        spaced = "    grund check --ignore local-section-citation\n"
+        attached = "        run: grund check --ignore=local-section-citation\n"
+        self.assertEqual(check_selection(spaced), check_selection(attached))
+
+    def test_holding_a_code_out_is_not_selecting_only_it(self) -> None:
+        ignored = "    grund check --ignore local-section-citation\n"
+        only = "    grund check --only local-section-citation\n"
+        self.assertNotEqual(check_selection(ignored), check_selection(only))
+
+    def test_prose_about_a_selection_is_not_a_selection(self) -> None:
+        commented = (
+            "      # grund check --ignore local-section-citation is held out\n"
+            "      - name: grund check\n"
+            "        run: grund check\n"
+        )
+        self.assertEqual(check_selection(commented), frozenset())
+
+    def test_a_gate_with_no_check_invocation_is_a_harness_error(self) -> None:
+        with self.assertRaises(HarnessError):
+            check_selection("        run: grund fmt --check\n")
+
+    def test_a_flag_naming_no_code_is_a_harness_error(self) -> None:
+        with self.assertRaises(HarnessError):
+            check_selection("    grund check --ignore\n")
 
     def test_a_block_with_no_markers_is_a_harness_error(self) -> None:
         with self.assertRaises(HarnessError):

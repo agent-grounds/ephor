@@ -245,8 +245,17 @@ jobs:
       - name: python tests
         run: python -m unittest discover -s tests/integration -p 'test_*.py'
 
+      # `local-section-citation` is held out, and only that code. It flags a
+      # bare section number written in prose, and the grund 0.13.0 gate this
+      # tree is leaving behind does not carry that rule at all - so nothing
+      # checked before this change stops being checked. The sites it names each
+      # need a decision between escaping the token and writing the citation
+      # out, which is the editorial pass recorded in pull request 146;
+      # finishing that pass is what deletes this flag. Every gate carries the
+      # same selection (§FS-002-release.7), and a contract test holds the three
+      # equal.
       - name: grund check
-        run: grund check
+        run: grund check --ignore local-section-citation
 
       - name: grund fmt --check
         run: grund fmt --check

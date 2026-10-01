@@ -5225,3 +5225,14 @@ cargo install grund --version 0.14.0 --locked
 
 That is the version CI installs and the version that wrote the `v10` block in
 `CLAUDE.md` and `.claude/CLAUDE.md`. Nothing is promised about any other.
+
+If you are already on that release and a bare `grund check` still fails, the
+invocation is the difference rather than the version. The gate runs
+`grund check --ignore local-section-citation`, and `just grund` — or `just
+check`, which calls it — is the invocation that matches CI; run that rather
+than the bare command. The held-out code flags a section number written on its
+own in prose, of which this repository's documentation carries a body that
+predates the rule: the grund 0.13.0 gate did not have it, so moving the pin is
+what surfaced them. Each site needs its own decision between escaping the token
+and writing the citation out, so they are held out together until that pass is
+done, and the flag goes when it is.

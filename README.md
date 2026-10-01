@@ -65,7 +65,9 @@ before a first release is in
 The repository is a [grund](https://github.com/agent-grounds/grund) tree:
 [docs/functional-spec/](docs/functional-spec/) declares what ephor must do,
 [docs/roadmap.md](docs/roadmap.md) sequences what is not built yet, and
-`grund check` verifies that every `§ID` citation resolves.
+`grund check` verifies that every `§ID` citation resolves — as `just grund`
+runs it, which is the invocation the gate uses and currently holds one
+pre-existing finding class out.
 
 The checkers are pinned, and the pin is one pairing with the `grund init` block
 the entrypoints carry
