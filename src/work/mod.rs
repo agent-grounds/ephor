@@ -60,7 +60,7 @@ pub enum Outcome {
     /// A recipe's deterministic opening move finished, so there was nothing
     /// left to hand over (§FS-005-dispatch.12): a clean rebase is a done
     /// thing, not a ticket.
-    Settled { move_name: String, report: String },
+    Settled { move_name: String },
     /// The item moved, but nothing applies to it any more — it was merged,
     /// closed, or answered. The work is over; the ledger keeps saying so.
     Dormant { changes: Vec<String> },
@@ -105,7 +105,7 @@ impl Outcome {
                 changes.join("; ")
             ),
             Outcome::Current => "already current".to_string(),
-            Outcome::Settled { move_name, .. } => {
+            Outcome::Settled { move_name } => {
                 format!("{move_name} finished — nothing to hand over")
             }
             Outcome::Dormant { changes } => {
@@ -2062,7 +2062,7 @@ impl Dispatcher {
             self.behind.remove(&(item.project.clone(), branch));
         }
         if outcome.conflicted().is_empty() && outcome.stuck().is_empty() {
-            return Ok(Opening::Finished(outcome.report()));
+            return Ok(Opening::Finished);
         }
         // What is handed over becomes a paragraph of the ticket this dispatch
         // is about to write, so it is flattened by the rule the plan language
@@ -2264,13 +2264,12 @@ impl Dispatcher {
         // (§FS-005-dispatch.12). Before the machine is consulted and before
         // anything is written, so a clean move leaves no plan behind either.
         let opening = self.opening(item, recipe)?;
-        if let Opening::Finished(report) = opening {
+        if matches!(opening, Opening::Finished) {
             return Ok(Outcome::Settled {
                 move_name: recipe
                     .opens_with
                     .clone()
                     .unwrap_or_else(|| recipe.id.clone()),
-                report,
             });
         }
 
@@ -6653,8 +6652,10 @@ fn clamp(text: &str, limit: usize) -> String {
 enum Opening {
     /// The recipe declares none, or there was nothing here for it to do.
     None,
-    /// It finished: there is nothing left to hand over.
-    Finished(String),
+    /// It finished: there is nothing left to hand over, and so nothing to
+    /// render either — a clean move is told by [`Outcome::describe`] and its
+    /// report reaches no reader (§FS-005-dispatch.12).
+    Finished,
     /// It stopped, and this is the situation the ticket is about — as a
     /// paragraph of the plan body it becomes, not as a document of its own
     /// (§FS-005-dispatch.3).

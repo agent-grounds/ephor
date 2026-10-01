@@ -683,8 +683,11 @@ fn a_replay_handed_over_as_a_plan_body_names_the_repository_it_is_about() {
         "the plan body names the repository by the path a program opens:\n{plan}"
     );
     // And no heading of the report survives, because a `#` line in a plan body
-    // is a node the runtime reads as a task.
-    for line in plan.lines() {
+    // is a node the runtime reads as a task. Measured over the ticket bodies
+    // alone: the plan language writes `## The item` and `## Tasks` of its own
+    // above them, and those are its headings rather than the report's.
+    let (_, bodies) = plan.split_once("## Tasks").expect("the plan has tasks");
+    for line in bodies.lines() {
         assert!(
             !line.trim_end().starts_with("# rebase onto"),
             "the report's headline reached the plan body as a task node: {line:?}"

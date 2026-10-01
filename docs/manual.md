@@ -3502,9 +3502,10 @@ project and no other.
 
 **The sweep's own report is told the same twice**, and a replay nested inside
 it follows the sweep's destination rather than its own: the sweep printing to a
-terminal nests each replay as prose, indented one level under the checkout it
-belongs to, and the same sweep writing `--report <path>` or filling the `report`
-field of `--json` nests each as markdown
+terminal gathers the checkouts it stopped on under a section of their own and
+nests each replay as prose indented one level under that line, and the same
+sweep writing `--report <path>` or filling the `report` field of `--json` nests
+each as markdown
 ([§FS-011-command-line.11.1](functional-spec/FS-011-command-line.md#111-what-a-terminal-is-handed-carries-no-markup-it-does-not-render)).
 The nested report's reader is the document it arrived in, so no caller reads
 its form off anything but its own destination.
