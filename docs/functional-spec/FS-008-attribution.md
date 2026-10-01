@@ -44,7 +44,7 @@ what its checkout has at `HEAD`, so the directory a branch resolves to and
 the directory it was found in are always the same one. The row keeps the last
 word on everything else about a branch — its ticket, whether it is active,
 whether it is a release branch — and on identity, which no checkout may widen
-([§1](#1-identity-is-declared-and-the-row-has-the-last-word)).
+([§FS-008-attribution.1](FS-008-attribution.md#1-identity-is-declared-and-the-row-has-the-last-word)).
 
 ## 3. Venue beats reference beats resemblance
 

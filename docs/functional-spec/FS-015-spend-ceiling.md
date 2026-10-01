@@ -50,7 +50,7 @@ scopes: the site's `work`, `organizations.<org-id>.work`, and
 
 `max_spend` is a ceiling on dollars and `max_tokens` a ceiling on tokens. They
 are two ceilings rather than one key with a unit, because a site may want both
-at once and because they fail differently — see [§2](#2-a-dollar-can-be-wrong-in-a-way-a-token-cannot).
+at once and because they fail differently — see [§FS-015-spend-ceiling.2](FS-015-spend-ceiling.md#2-a-dollar-can-be-wrong-in-a-way-a-token-cannot).
 
 Which organization a project belongs to is the `organization` field on its
 registry row and nothing else, read here and never written, exactly as the
@@ -144,7 +144,7 @@ did before this existed** — no new refusal, no new output, nothing to migrate.
 Writing `0` admits no new autorun starts under that scope.
 
 A `0` budget is a pause its author meant, not a window that will pass, so it
-names no resume instant ([§8](#8-the-resume-instant-is-the-earliest-one-the-measurement-allows)) and is not
+names no resume instant ([§FS-015-spend-ceiling.8](FS-015-spend-ceiling.md#8-the-resume-instant-is-the-earliest-one-the-measurement-allows)) and is not
 read as a ceiling that some other ceiling could be written above.
 
 ## 5. Every ceiling is evaluated, and the outermost full one is the reason
@@ -185,7 +185,7 @@ own comment names the first as the trigger and the second as the backstop, so a
 budget that bound only `--due` would let `work sync` start the night's work
 unbound and leave `--due` finding those roots already held. It would bind
 almost nothing. `max_concurrent` and `max_active` already bind both sweeps, and
-[§5](#5-every-ceiling-is-evaluated-and-the-outermost-full-one-is-the-reason)
+[§FS-015-spend-ceiling.5](FS-015-spend-ceiling.md#5-every-ceiling-is-evaluated-and-the-outermost-full-one-is-the-reason)
 says the four ceilings are asked of the same start.
 
 Nothing else is refused for budget. `ephor work dispatch`, `ephor work lay`, a
@@ -237,7 +237,7 @@ zero and is not a full ceiling either ([§FS-013-burn.7](FS-013-burn.md#7-dollar
 the machine because accounting was absent would fail over an extractor outage
 rather than over money, which is the failure this rule exists to forbid. The
 token ceiling is unaffected: it is the one that binds when the pricing is
-missing, which is [§2](#2-a-dollar-can-be-wrong-in-a-way-a-token-cannot)'s whole point.
+missing, which is [§FS-015-spend-ceiling.2](FS-015-spend-ceiling.md#2-a-dollar-can-be-wrong-in-a-way-a-token-cannot)'s whole point.
 
 ## 8. The resume instant is the earliest one the measurement allows
 
@@ -332,8 +332,8 @@ Written down rather than left as an absence ([§REQ-001-boundary.1](../requireme
 - **A budget on a pool, a model, or a hand.** The three scopes are the ones
   the registry nests and the ones the reading already groups by. A ceiling per
   model would need a grouping the sweep cannot resolve to a root.
-- **A spend reading on `status`.** [§10](#10-a-pause-is-visible-where-people-actually-look) is a pause, not a report, and the
+- **A spend reading on `status`.** [§FS-015-spend-ceiling.10](FS-015-spend-ceiling.md#10-a-pause-is-visible-where-people-actually-look) is a pause, not a report, and the
   report is `burn`.
 - **Any fix for a price book that reports an unknown as a zero.** It is
   upstream of ephor and this specification says so in
-  [§2](#2-a-dollar-can-be-wrong-in-a-way-a-token-cannot) rather than working around it.
+  [§FS-015-spend-ceiling.2](FS-015-spend-ceiling.md#2-a-dollar-can-be-wrong-in-a-way-a-token-cannot) rather than working around it.

@@ -95,7 +95,7 @@ eventually disagree about where a branch lives, and everything above them
 assumes they cannot.
 
 It runs backwards too, and that is what fills the branch table
-([§2](#2-probes-not-declarations)): the template split at `{branch}` gives a
+([§AR-004-forest.2](AR-004-forest.md#2-probes-not-declarations)): the template split at `{branch}` gives a
 prefix and a suffix, and a directory under the workspace base that sits
 between them names a branch ([§FS-008-attribution.2](../functional-spec/FS-008-attribution.md#2-two-stages-one-engine)). So the branches ephor
 places items under are the row's, then every workspace found on disk that the

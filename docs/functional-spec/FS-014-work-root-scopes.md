@@ -110,7 +110,7 @@ A checkout root dies with its branch. That is not a defect to be worked around:
 it is what makes a checkout root cheap to create and honest about its reach.
 
 What follows is a rule about what happens next, not a rule that keeps work out
-of a checkout root — work in the tree belongs there, by [§2](#2-reach-places-and-nothing-else-does). **Nothing is left in
+of a checkout root — work in the tree belongs there, by [§FS-014-work-root-scopes.2](FS-014-work-root-scopes.md#2-reach-places-and-nothing-else-does). **Nothing is left in
 a checkout root that anybody will want after the branch is gone.** What is worth
 keeping is folded up into a longer-lived scope before the tree is reclaimed.
 
@@ -133,7 +133,7 @@ name.
   triages them has its own state machine and its own reason to exist, and may
   sit beside an organization root without being one. Folding the two together
   would put intake and work under one machine that suits neither.
-- **No tree is kept alive in order to keep a record.** The answer to [§5](#5-nothing-durable-lives-in-a-checkout-work-root) is
+- **No tree is kept alive in order to keep a record.** The answer to [§FS-014-work-root-scopes.5](FS-014-work-root-scopes.md#5-nothing-durable-lives-in-a-checkout-work-root) is
   folding up before the tree is reclaimed, never declining to reclaim it.
   Checkouts nobody is working in, held open for their logs, are the cost this
   rule was supposed to remove.
@@ -144,15 +144,15 @@ Two parts of the rule above are this program's to enforce and are not yet
 enforced. Saying so costs a paragraph; a reader discovering it from behaviour
 costs more.
 
-- **A mutating verb above a checkout does not yet report by default.** [§3](#3-upper-scopes-decide-the-checkout-scope-executes) says
+- **A mutating verb above a checkout does not yet report by default.** [§FS-014-work-root-scopes.3](FS-014-work-root-scopes.md#3-upper-scopes-decide-the-checkout-scope-executes) says
   upper scopes decide and hand down; nothing refuses a verb that would act at
   organization or project scope instead, so today the division holds only
   because whoever configured the work kept to it.
-- **A handed-down ticket does not yet name where it came from.** [§4](#4-a-handed-down-ticket-names-where-it-came-from-and-the-trail-runs-both-ways) is owed in
+- **A handed-down ticket does not yet name where it came from.** [§FS-014-work-root-scopes.4](FS-014-work-root-scopes.md#4-a-handed-down-ticket-names-where-it-came-from-and-the-trail-runs-both-ways) is owed in
   both directions: neither the origin on the ticket nor the spawned ids on the
   result is written by anything.
 
-A fourth is owed, and not from here: the fold-up [§5](#5-nothing-durable-lives-in-a-checkout-work-root) asks for is the
+A fourth is owed, and not from here: the fold-up [§FS-014-work-root-scopes.5](FS-014-work-root-scopes.md#5-nothing-durable-lives-in-a-checkout-work-root) asks for is the
 archiver's, so what is missing for it is outside this program rather than in it.
 
 The roadmap carries what each of these is waiting on, here and elsewhere. What
