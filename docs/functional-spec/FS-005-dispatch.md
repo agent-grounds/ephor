@@ -250,13 +250,13 @@ tolerate, so `{number}` stays the right choice wherever the matter has one.
 better still and is deliberately not offered here: a name minted from free text
 moves when the matter is retitled, and a rendering that moves stops resolving one
 item's work to one place ([§5](#5-an-item-that-moved-reopens-its-work)). What
-such a retitle would cost is not a second workspace but a second **plan** for one
-matter: the first is left on disk with whatever it held, the ledger is repointed
-at the second ([§4](#4-the-ledger-is-ephors-record-and-never-the-truth-about-the-work)),
+such a retitle would cost is not merely a second workspace but a second
+**plan** for one matter: the first is left on disk with whatever it held, the
+ledger is repointed at the second ([§4](#4-the-ledger-is-ephors-record-and-never-the-truth-about-the-work)),
 both roots go on being enumerated and both go on being returned as due, and the
-guard against two runs colliding is keyed on the checkout rather than on the
-matter, so it holds neither. The refusal and the rule it follows are written down
-at [§DF-002-path-fields-stable](../decisions/functional/DF-002-path-fields-stable.md#df-002-path-fields-stable-a-field-that-decides-a-path-holds-still-while-the-work-lasts)
+guard against two runs colliding is keyed on the execution root — one per
+checkout under the default root — rather than on the matter, so it holds
+neither. The refusal and the rule it follows are written down at [§DF-002-path-fields-stable](../decisions/functional/DF-002-path-fields-stable.md#df-002-path-fields-stable-a-field-that-decides-a-path-holds-still-while-the-work-lasts)
 rather than left as an omission.
 
 **And one hazard belongs to the field rather than to any caller of it.** Because
@@ -647,8 +647,11 @@ A name whose answer will not keep is refused in the same position for the
 neighbouring reason — a root rendered from a field this matter can change while
 its work is open is a path that moves under work that is still open, where prose
 carries such a field the way it carries any other
-([§DF-002-path-fields-stable](../decisions/functional/DF-002-path-fields-stable.md#df-002-path-fields-stable-a-field-that-decides-a-path-holds-still-while-the-work-lasts),
-[§8](#8-the-ticket-carries-the-item-as-data-not-only-as-prose)).
+([§DF-002-path-fields-stable](../decisions/functional/DF-002-path-fields-stable.md#df-002-path-fields-stable-a-field-that-decides-a-path-holds-still-while-the-work-lasts)).
+Unlike the refusals above, which dispatch performs, that is a condition on a
+name joining the half a path is rendered from rather than a check on the names
+already in it, three of which do not meet it today and are named where the
+rule is recorded ([§8](#8-the-ticket-carries-the-item-as-data-not-only-as-prose)).
 
 **A script's environment is neither, and is told the gap rather than refused
 on it.** A summons carries the organization and its root as `EPHOR_ORG` and

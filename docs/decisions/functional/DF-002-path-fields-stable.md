@@ -52,13 +52,20 @@ record; it starts from here.
 
 **It loses because its obvious configuration is the unsafe one.** A reader who
 wants a branch they can read writes the field into the branch template, and under
-a project with a `branch_root_template` the branch is the checkout and the
-checkout is where the plan goes ([§FS-005-dispatch.25](../../functional-spec/FS-005-dispatch.md#25-work-about-a-matter-with-no-branch-can-mint-the-branch-it-needs)). The configuration in which
+a project with a `branch_root_template` the branch is the checkout
+([§FS-005-dispatch.25](../../functional-spec/FS-005-dispatch.md#25-work-about-a-matter-with-no-branch-can-mint-the-branch-it-needs)); the site's work root is `{workspace}/panta`, so the
+checkout is where the plan goes too
+([§FS-005-dispatch.6.1](../../functional-spec/FS-005-dispatch.md#61-the-work-root-is-a-template-and-it-may-reach-above-the-project)). The configuration in which
 the field is harmless — the plan's path fixed, only the branch and the working
-tree moving — needs two things this project has not got: a work root that does
-not follow the checkout, and a validator that refuses the pairings that are not
-that one. Offering the field today would therefore ship the unsafe shape as the
-default one and the safe shape as unreachable.
+tree moving — is expressible today, and is one line: a work root written at
+the project or at the organization tier does not follow the checkout, and the
+innermost tier written is the one that answers
+([§FS-005-dispatch.6.1](../../functional-spec/FS-005-dispatch.md#61-the-work-root-is-a-template-and-it-may-reach-above-the-project)). What is missing is the guard
+rather than the capability: nothing requires that line, and nothing refuses
+the pairings it is not. A field whose safe use rests on a configuration nobody
+is obliged to write is a field whose default use is the unsafe one — so
+offering it today would ship the unsafe pairing as the default and leave the
+safe one to a reader who happened to have written that line.
 
 **The scope of `{id_slug}`'s guarantee is narrower than it looks, and did not
 settle this.** What [§FS-005-dispatch.25](../../functional-spec/FS-005-dispatch.md#25-work-about-a-matter-with-no-branch-can-mint-the-branch-it-needs) fixes is construction and collision: what
@@ -70,15 +77,16 @@ is the one recorded here.
 
 **What a retitle would actually cost, which is why re-render stability outweighed
 an explicit readability option.** The temptation is to offer the field anyway,
-with a warning, to a reader who accepts the risk. The risk is not a second
-working tree. It is a second **plan** for one matter: the first is left on disk
-with whatever it held, the ledger is repointed at the second
+with a warning, to a reader who accepts the risk. The risk is not merely a
+second working tree. It is a second **plan** for one matter: the first is left
+on disk with whatever it held, the ledger is repointed at the second
 ([§FS-005-dispatch.4](../../functional-spec/FS-005-dispatch.md#4-the-ledger-is-ephors-record-and-never-the-truth-about-the-work)), both roots go on being enumerated and both go on being
 returned as due, and the guard against two runs colliding is keyed on the
-checkout rather than on the matter, so it holds neither. Nothing announces any of
-it, and the person who pays has done nothing but rename an issue. An option whose
-failure is silent, unattended and paid by someone who did not choose it is not an
-option a reader can meaningfully accept.
+execution root — one per checkout under the default root — rather than on the
+matter, so it holds neither. Nothing announces any of it, and the person who
+pays has done nothing but rename an issue. An option whose failure is silent,
+unattended and paid by someone who did not choose it is not an option a reader
+can meaningfully accept.
 
 **One architectural cost, recorded as a reason and not as a change.** With no
 exact handle to recover a matter by, *is this matter already on a branch?* falls
