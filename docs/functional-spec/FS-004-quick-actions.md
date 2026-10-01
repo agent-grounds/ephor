@@ -186,13 +186,13 @@ about the code, which is
 
 What becomes of the stopped tree is the caller's to say, and only that much is
 the caller's. A replay somebody is waiting on leaves the conflict standing
-where git left it and hands the situation over, which is what §12 describes and
+where git left it and hands the situation over, which is what §FS-005-dispatch.12 describes and
 what every caller this move has today asks for — the reader's key, a program
 state, `--dispatch`, and the interface. A replay nobody is waiting on puts the
 tree back on the commit it started from and reports the conflict instead, and
 [§6.1](#61-the-same-replay-over-every-checkout-nobody-is-holding) is the only
 caller that asks for it. The choice is an argument to this one replay and never
-a second implementation of it, for the reason §12 gives: two of them would
+a second implementation of it, for the reason §FS-005-dispatch.12 gives: two of them would
 eventually disagree about what a clean rebase is.
 
 ### 6.1 The same replay, over every checkout nobody is holding
