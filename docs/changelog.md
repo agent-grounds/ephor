@@ -295,10 +295,10 @@ ships, the previous "latest" section moves verbatim to
   ([§FS-005-dispatch.8](functional-spec/FS-005-dispatch.md#8-the-ticket-carries-the-item-as-data-not-only-as-prose), [§FS-005-dispatch.6.1](functional-spec/FS-005-dispatch.md#61-the-work-root-is-a-template-and-it-may-reach-above-the-project)), and the dispatch
   specification's account of what a retitle would cost is corrected
   ([§FS-005-dispatch.2](functional-spec/FS-005-dispatch.md#2-the-ticket-carries-what-ephor-knows-not-a-link-to-it)) — it cited the wrong point, and described the effect as
-  milder than it is: not a second workspace but a second **plan** for one
+  milder than it is: not merely a second workspace but a second **plan** for one
   matter, with the first left on disk, the ledger repointed at the second, both
   roots still enumerated and still returned as due, and the guard against two
-  runs colliding keyed on the checkout rather than on the matter. **No field was
+  runs colliding keyed on the execution root rather than on the matter. **No field was
   added and nothing under `src/` changed**: `{title_slug}` is already refused by
   the unknown-name arm of the branch minter, and the end-to-end case that pins
   the offered vocabulary whole now names it, so it is a test that breaks the day
