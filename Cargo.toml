@@ -178,6 +178,10 @@ name = "e2e_038_a_refusal_a_terminal_can_read"
 path = "tests/e2e/cases/E2E-038-a-refusal-a-terminal-can-read.rs"
 
 [[test]]
+name = "e2e_039_a_replay_a_terminal_can_read"
+path = "tests/e2e/cases/E2E-039-a-replay-a-terminal-can-read.rs"
+
+[[test]]
 name = "agents_test"
 path = "tests/integration/agents_test.rs"
 

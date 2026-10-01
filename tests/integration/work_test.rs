@@ -646,6 +646,95 @@ fn a_rebase_that_stopped_is_the_ticket_and_carries_where_it_got_to() {
     );
 }
 
+/// The same hand-over, read as a plan body: the report reaches the ticket
+/// through `crate::work::dossier::in_a_body`, and what the flattening leaves
+/// behind is the repository's **name** (§FS-005-dispatch.3,
+/// §FS-011-command-line.11.2). This is the third reader the report has, and
+/// the author's stated reason agent-grounds/ephor#141 is its own ticket: a
+/// rule each caller carries its own copy of is a rule one of them gets wrong.
+///
+/// Asserting only the absence of `#` would pass over the defect — the
+/// flattener already does that much, and rewrote `## . — you/ABC-42-work` to
+/// `**. — you/ABC-42-work**`, full stop and all.
+#[test]
+fn a_replay_handed_over_as_a_plan_body_names_the_repository_it_is_about() {
+    let tmp = tempdir();
+    let checkout = trailing_checkout(tmp.path(), true);
+    fixture_on(tmp.path(), &checkout, "master");
+    ephor(tmp.path())
+        .args(["refresh", "demo"])
+        .assert()
+        .success();
+
+    ephor(tmp.path())
+        .args(["work", "dispatch", "--recipe", "rebase"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("1 ticket(s) opened"));
+
+    let plan =
+        fs::read_to_string(checkout.join("panta/github-prs-acme-widget-42-922ddbdc.rhei.md"))
+            .unwrap();
+    // The role the fixture's registry row gives the repository at `.`. The
+    // branch beside it is whatever git says mid-rebase, so the assertion is
+    // about the name and not about what follows it.
+    assert!(
+        plan.contains("**Repository root"),
+        "the plan body names the repository by the path a program opens:\n{plan}"
+    );
+    // And no heading of the report survives, because a `#` line in a plan body
+    // is a node the runtime reads as a task.
+    for line in plan.lines() {
+        assert!(
+            !line.trim_end().starts_with("# rebase onto"),
+            "the report's headline reached the plan body as a task node: {line:?}"
+        );
+        assert!(
+            !line.trim_end().starts_with("## "),
+            "a heading from the report reached the plan body as a task node: \
+             {line:?}"
+        );
+    }
+}
+
+/// The other caller that reaches a plan body from a dispatch: the hand-over
+/// `ephor rebase --dispatch` makes, which flattens the same report through
+/// the same rule (§FS-005-dispatch.3). A rule each caller carries its own copy
+/// of is a rule one of them gets wrong, so both are asserted and not one.
+#[test]
+fn a_replay_handed_over_from_the_command_line_names_the_repository_too() {
+    let tmp = tempdir();
+    let checkout = trailing_checkout(tmp.path(), true);
+    fixture_on(tmp.path(), &checkout, "master");
+    ephor(tmp.path())
+        .args(["refresh", "demo"])
+        .assert()
+        .success();
+
+    ephor(tmp.path())
+        .args([
+            "rebase",
+            "--project",
+            "demo",
+            "--checkout",
+            checkout.to_str().unwrap(),
+            "--item",
+            "github-prs:acme/widget#42",
+            "--dispatch",
+        ])
+        .assert()
+        .code(3);
+
+    let plan =
+        fs::read_to_string(checkout.join("panta/github-prs-acme-widget-42-922ddbdc.rhei.md"))
+            .unwrap();
+    assert!(
+        plan.contains("**Repository root"),
+        "the handed-over plan body names the repository by the path a program \
+         opens:\n{plan}"
+    );
+}
+
 /// §FS-005-dispatch.13: work about a conversation needs no checkout — the
 /// plan is written at the branch workspace where one resolves and at the
 /// forest root where none does, so the checkout-able rung

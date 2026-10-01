@@ -900,9 +900,10 @@ fn a_single_checkout_project_is_never_judged_by_the_half_made_question() {
     );
 }
 
-/// Declare this project's only repository `update_mode: skip`, which the
-/// declarations a placement reads filter out — so the declared forest is empty
-/// and the forest is probed on disk instead (§AR-004-forest.2).
+/// Declare this project's only repository `update_mode: skip` — the shape a
+/// site uses for a checkout it keeps by hand. The row still declares the
+/// repository; what it says is not to update it (§AR-004-forest.2), so the
+/// forest is that one row rather than a tree probed off the disk.
 fn skip_every_repository(tmp: &Path) {
     let path = tmp.join("workspaces.json");
     let mut registry: Value = serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
@@ -915,12 +916,13 @@ fn skip_every_repository(tmp: &Path) {
     fs::write(&path, serde_json::to_string_pretty(&registry).unwrap()).unwrap();
 }
 
-/// And the dispatch's half of the same question. A project whose declared forest
-/// is empty has nothing to be absent, so the maker used to call the bare
-/// directory *already checked out* on the second ask and the dispatch wrote its
-/// plan straight into a tree holding no repository of the project
+/// And the dispatch's half of the same question. The maker used to call the
+/// bare directory *already checked out* on the second ask and the dispatch
+/// wrote its plan straight into a tree holding no repository of the project
 /// (§FS-006-project-interface.8). Dispatched twice, the refusal holds and
-/// nothing is left behind.
+/// nothing is left behind — and it refuses by naming the declared repository
+/// that is missing, because a row saying `skip` is a row saying not to update
+/// a repository and not a project declaring none (§AR-004-forest.2).
 #[test]
 fn a_dispatch_into_a_tree_holding_no_repository_of_the_project_refuses_twice() {
     let tmp = tempdir();
@@ -947,8 +949,9 @@ fn a_dispatch_into_a_tree_holding_no_repository_of_the_project_refuses_twice() {
             "ask {ask}: a tree holding no repository of demo read as a workspace: {said}"
         );
         assert!(
-            said.contains("no repository of this project is in it"),
-            "ask {ask}: the refusal does not say why it is not a workspace: {said}"
+            said.contains("the repository at its root not on disk there"),
+            "ask {ask}: the refusal does not name the declared repository that is \
+             missing: {said}"
         );
         assert!(
             !workspace.join("panta").exists(),

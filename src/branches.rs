@@ -1921,4 +1921,174 @@ mod tests {
             .expect("a name that leaves the workspace area is refused");
         assert!(why.contains("escaped"), "{why}");
     }
+
+    // ----------------------------------------------------------------
+    // A row that says `update_mode: skip` still declares its repository
+    // (agent-grounds/ephor#141, §AR-004-forest.2). What it says is not to
+    // update it, and reading that as "nothing is declared here" throws away
+    // the role the row carries and the layout its branch workspaces are
+    // recognized by.
+    // ----------------------------------------------------------------
+
+    /// A registry document whose one project type carries exactly these rows,
+    /// each `(path, update_mode)`, every one of them named and given a role.
+    fn registry_declaring(root: &Path, rows: &[(&str, &str)]) -> Value {
+        let repos: Vec<Value> = rows
+            .iter()
+            .map(|(path, mode)| {
+                json!({
+                    "id": if *path == "." { "root" } else { *path },
+                    "path": path,
+                    "role": if *path == "." { "the project".to_string() }
+                            else { format!("the {path}") },
+                    "required": true,
+                    "update_mode": mode,
+                    "default_branch": "main"
+                })
+            })
+            .collect();
+        json!({
+            "project_types": [{
+                "id": "monorepo",
+                "layout": "monorepo",
+                "repos": repos
+            }],
+            "projects": [{
+                "id": "widget",
+                "type": "monorepo",
+                "root": root.to_string_lossy(),
+                "main_branch": "main",
+                "branch_root_template": "{project_root}/{branch}",
+                "branches": []
+            }]
+        })
+    }
+
+    fn declared_paths(doc: &Value) -> Vec<String> {
+        let project = registry::array_field(doc, "projects")
+            .into_iter()
+            .find(|candidate| registry::id_of(candidate) == "widget")
+            .expect("the project is in the document");
+        declarations(doc, project)
+            .into_iter()
+            .map(|repo| repo.path)
+            .collect()
+    }
+
+    /// The three shapes a reviewer has to check, in one test, because the
+    /// difference between a fix and a regression is which of them moves: a
+    /// mixed project's skipped row stays out of the fold, an all-skipped
+    /// project has a declared forest, and a project with no rows at all still
+    /// has none (§AR-004-forest.2).
+    #[test]
+    fn a_project_declared_only_by_skipped_rows_still_declares_its_forest() {
+        let tmp = tempfile::tempdir().unwrap();
+
+        let mixed = registry_declaring(tmp.path(), &[("ce", "branch"), ("vendor", "skip")]);
+        assert_eq!(
+            declared_paths(&mixed),
+            vec!["ce".to_string()],
+            "a repository the project says to skip joined the fold of a mixed project"
+        );
+
+        let all_skipped = registry_declaring(tmp.path(), &[(".", "skip")]);
+        assert_eq!(
+            declared_paths(&all_skipped),
+            vec![".".to_string()],
+            "a project all of whose rows say `skip` lost the forest its registry declared"
+        );
+
+        let poly_skipped = registry_declaring(tmp.path(), &[("ce", "skip"), ("ee", "skip")]);
+        assert_eq!(
+            declared_paths(&poly_skipped),
+            vec!["ce".to_string(), "ee".to_string()],
+            "a poly-repo project all of whose rows say `skip` lost its forest"
+        );
+
+        let mut nothing = registry_declaring(tmp.path(), &[]);
+        nothing["project_types"][0]
+            .as_object_mut()
+            .expect("a project type is an object")
+            .remove("repos");
+        assert!(
+            declared_paths(&nothing).is_empty(),
+            "a project type with no `repos` at all gained a forest it never declared"
+        );
+    }
+
+    /// The role the row wrote down reaches the fold: an all-skipped project's
+    /// repository is named for its reader rather than called *the checkout
+    /// itself*, which is what an undeclared root is
+    /// (§FS-011-command-line.11.2).
+    #[test]
+    fn an_all_skipped_project_keeps_the_role_its_row_gave() {
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(tmp.path().join(".git")).unwrap();
+        let doc = registry_declaring(tmp.path(), &[(".", "skip")]);
+
+        let placement = Placement::load(&doc, "widget").expect("the project loads");
+        let forest = placement.forest(tmp.path());
+
+        assert_eq!(
+            forest.labels,
+            vec!["the project".to_string()],
+            "an all-skipped project's repository lost the role its registry row gave it"
+        );
+    }
+
+    /// The same filter, the second symptom: an empty declared layout sends
+    /// discovery down the branch that accepts a directory merely *containing*
+    /// a repository, and a branch whose own name has a separator in it is cut
+    /// at the first one (§AR-004-forest.3, §FS-008-attribution.2).
+    ///
+    /// The branch-name column alone, never the whole row: a row quotes the ref
+    /// it is measured against — `0 behind origin/fix/issue-9` — so a search
+    /// over the line matches whether or not the branch was read whole, and
+    /// would report the defect cured when it is not.
+    #[test]
+    fn an_all_skipped_projects_nested_branch_is_read_whole() {
+        let tmp = tempfile::tempdir().unwrap();
+        workspace_on_disk(tmp.path(), "fix/issue-9", &["."]);
+        let doc = registry_declaring(tmp.path(), &[(".", "skip")]);
+
+        let placement = Placement::load(&doc, "widget").expect("the project loads");
+        let found: Vec<String> = placement
+            .discovered_branches()
+            .into_iter()
+            .map(|branch| branch.branch)
+            .collect();
+
+        assert_eq!(
+            found,
+            vec!["fix/issue-9".to_string()],
+            "an all-skipped project's nested branch was cut at its first separator"
+        );
+    }
+
+    /// The control that is the whole difference between a fix and a
+    /// regression, and which nothing in this repository covered: a mixed
+    /// project's vendored `skip` row stays out of the fold, so a checkout
+    /// whose vendored tree is not on disk goes on being whole
+    /// (§AR-004-forest.1, §FS-006-project-interface.8).
+    #[test]
+    fn a_mixed_project_folds_over_the_rows_it_tracks_and_no_others() {
+        let tmp = tempfile::tempdir().unwrap();
+        let workspace = workspace_on_disk(tmp.path(), "you/ABC-7", &["ce"]);
+        let doc = registry_declaring(tmp.path(), &[("ce", "branch"), ("vendor", "skip")]);
+
+        let placement = Placement::load(&doc, "widget").expect("the project loads");
+        let forest = placement.forest(&workspace);
+
+        assert_eq!(forest.layout, vec!["ce".to_string()]);
+        assert!(
+            forest.absent.is_empty(),
+            "the vendored tree joined the fold and is reported missing: {:?}",
+            forest.absent
+        );
+        assert!(
+            crate::checkout::whole(&forest),
+            "a checkout that is whole today began being refused for a tree the \
+             project says to leave alone"
+        );
+    }
 }

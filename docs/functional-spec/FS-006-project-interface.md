@@ -395,11 +395,14 @@ a documented variable rather than a guess about who called.
 project declares is in it — the same fold that answers whether any workspace is
 whole ([§FS-004-quick-actions.7](FS-004-quick-actions.md#7-a-workspace-that-is-not-there-is-offered-the-checkout)) — and a repository of this project is in
 it at all. The last clause is not a restatement of the middle one: where the
-registry declares no forest for the project, or declares only repositories it is
-told to skip, there is nothing that *can* be absent, so a bare directory answers
-*whole* by the fold alone. It is named a workspace the command did not make
-instead, in the fold's own words — no repository of this project is in it — and
-this is one question rather than three, asked identically wherever a directory
+registry declares no forest for the project, there is nothing that *can* be
+absent, so a bare directory answers *whole* by the fold alone. It is named a
+workspace the command did not make instead, in the fold's own words — no
+repository of this project is in it. A project declared only by rows it is told
+to skip is **not** such a project: a row saying not to update a repository
+still declares it, so the fold has something that *can* be absent and the
+refusal names which — *ce, ee not on disk there* — rather than saying none is
+there. This is one question rather than three, asked identically wherever a directory
 that is there is judged: before the command is summoned, after it returns, and by
 the dispatch that would otherwise resolve *checked out* from the directory. Two
 of them calling a directory whole while the third refuses it is the same silence

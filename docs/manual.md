@@ -1680,10 +1680,13 @@ What ephor holds it to when it returns:
 - **The directory, every repository the project declares in it, and a repository
   of this project in it at all** — the same fold that answers whether any
   workspace is whole. The last clause is what a project with no declared forest
-  needs, or one whose declared repositories are all `update_mode: skip`: nothing
-  can be absent from such a directory, so without it a bare one would answer
-  *whole*. It is refused in the fold's own words instead — *no repository of this
-  project is in it*. One the command did not make
+  needs: nothing can be absent from such a directory, so without it a bare one
+  would answer *whole*. It is refused in the fold's own words instead — *no
+  repository of this project is in it*. A project whose rows all say
+  `update_mode: skip` is not one of those: the row says not to *update* the
+  repository and declares it all the same, so the fold has something that can be
+  absent and the refusal names which — *ce, ee not on disk there*. One the
+  command did not make
   is named and the checkout is refused rather than completed; ephor's git does
   **not** fill in a tree it did not make, because the command owns what a
   workspace of this project is. That holds of the directory such a refusal
