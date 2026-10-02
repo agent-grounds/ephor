@@ -335,7 +335,7 @@ mod transport {
 
     use super::{declared, definition, forge, keys};
     use crate::feed::gate::Scope;
-    use crate::forge::external::ExternalForge;
+    use crate::forge::external::{ExternalForge, SUBCOMMANDS};
     use crate::forge::{Forge, Request};
 
     const RECORDER: &str = r#"#!/bin/sh
@@ -408,12 +408,15 @@ esac
 
     /// Every subcommand the transport runs has an answer an author can look
     /// up, and every answer the schema describes is to a subcommand it runs.
+    /// The transport's own list is read, rather than the moves a test thought
+    /// to drive, so a subcommand added to the transport is held here without
+    /// anyone having to remember it; the transport refuses, in a debug build,
+    /// to run one the list does not name.
     #[test]
     fn every_subcommand_has_a_response_and_every_response_a_subcommand() {
-        let dir = tempfile::tempdir().expect("a scratch directory");
-        let run: BTreeSet<String> = recorded(dir.path())
-            .into_iter()
-            .map(|(call, _)| call.replace('-', "_"))
+        let run: BTreeSet<String> = SUBCOMMANDS
+            .iter()
+            .map(|call| call.replace('-', "_"))
             .collect();
         let described: BTreeSet<String> = forge()["$defs"]
             .as_object()

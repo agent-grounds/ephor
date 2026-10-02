@@ -11,6 +11,7 @@
 //!     ephor-forge-<name> issues         <<< '{"config":…,"tickets":[…],…}'
 //!     ephor-forge-<name> notices        <<< '{"config":…,"tickets":[…],…}'
 //!     ephor-forge-<name> failures       <<< '{"config":…,"repo":…,"number":…}'
+//!     ephor-forge-<name> restart        <<< '{"config":…,"repo":…,"number":…,"scope":…}'
 //!     ephor-forge-<name> react          <<< '{"config":…,"target":…,"emoji":…}'
 //!     ephor-forge-<name> resolve-task   <<< '{"config":…,"target":…}'
 //!     ephor-forge-<name> reply          <<< '{"config":…,"target":…,"text":…}'
@@ -31,6 +32,22 @@ use super::{Capabilities, Forge, Issue, Notice, PullRequest, Request, Restarted}
 use crate::feed::gate::Failure;
 use crate::feed::provider::{command_exists, run_json_stdin, ProviderError};
 
+/// Every subcommand the transport runs, as the protocol spells it
+/// (§FS-001-forge-interface.2). One list, so the published schema can be held
+/// to it: a subcommand added here and not described there is a move a gateway
+/// author has no way to learn about.
+pub const SUBCOMMANDS: [&str; 9] = [
+    "capabilities",
+    "pull-requests",
+    "issues",
+    "notices",
+    "failures",
+    "restart",
+    "react",
+    "resolve-task",
+    "reply",
+];
+
 pub struct ExternalForge {
     name: String,
     command: String,
@@ -50,6 +67,10 @@ impl ExternalForge {
         request: &Request,
         extra: Value,
     ) -> Result<Value, ProviderError> {
+        debug_assert!(
+            SUBCOMMANDS.contains(&subcommand),
+            "`{subcommand}` is run and not listed in SUBCOMMANDS"
+        );
         let mut payload = serde_json::to_value(request).unwrap_or_else(|_| json!({}));
         if let (Some(target), Some(source)) = (payload.as_object_mut(), extra.as_object()) {
             for (key, value) in source {
@@ -108,8 +129,11 @@ impl Forge for ExternalForge {
     /// "declared nothing" instead would describe a working extension behind an
     /// unreachable host as a broken one.
     fn capabilities(&self) -> Result<Capabilities, ProviderError> {
+        // No source's block is in hand yet, and the probe never depends on
+        // one; an empty object keeps `config` the object the schema says it
+        // always is (§FS-001-forge-interface.2).
         let probe = Request {
-            config: Value::Null,
+            config: json!({}),
             project: String::new(),
             tickets: Vec::new(),
             user: None,
