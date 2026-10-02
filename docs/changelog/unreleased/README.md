@@ -17,18 +17,28 @@ This part is shared. A repository that takes the format copies everything above 
 
 ## Part two: how this repository uses it
 
-The rules are [§FS-002-release.1.1](../../functional-spec/FS-002-release.md#11-one-file-per-pending-change-in-grunds-format), and a pull request that adds no entry of its own is refused before the push and again in CI ([§FS-002-release.6](../../functional-spec/FS-002-release.md#6-no-change-is-gated-on-the-changelog)).
+The rules are [§FS-002-release.1.1](../../functional-spec/FS-002-release.md#11-one-file-per-pending-change-in-grunds-format), and part one's opening sentence does not hold here: no change writes an entry, and neither the hook nor CI asks a change for one ([§FS-002-release.6](../../functional-spec/FS-002-release.md#6-no-change-is-gated-on-the-changelog)). Before a release, one pull request writes the release section, one file here for each change merged since the last `vX.Y.Z` tag ([§FS-002-release.1](../../functional-spec/FS-002-release.md#1-changelog)). Until it has merged, `Auto bump` holds the scheduled release with a notice, and `Release minor` refuses ([§FS-002-release.2](../../functional-spec/FS-002-release.md#2-cutting-a-release)). Entries a change wrote under the rule this one replaced, and any a pull request still adds, are released as written; the write-up does not describe those changes a second time.
+
+The write-up reads three things: the pull requests merged since the tag, which are the list that misses nothing; the issues they closed, which supply most of the words; and the schema diff, which says what a pull request did on the way that its issue never mentioned, such as a field renamed or removed from the machine form.
+
+```bash
+tag="$(git tag --list 'v*.*.*' --sort=-v:refname | head -n1)"
+gh pr list --state merged --base main --limit 500 --json number,title,body \
+  --search "merged:>$(git log -1 --format=%cI "$tag")"
+gh issue view <N>                     # each issue a pull request's body closes
+git diff "$tag"..main -- 'assets/*.schema.json'
+```
 
 - **The category is required** and is one of `added`, `changed`, `deprecated`, `removed`, `fixed`, `security` or `note`. Sections are released in that order, each under the same word capitalized, and a category with no entry is omitted. `note` is this repository's own: its changelog has always carried a `### Note` section.
-- **The slug carries the entry's lifetime.** The release orders an entry, and stamps its number, by the commit on `main` that added its slug ([§FS-002-release.2.1](../../functional-spec/FS-002-release.md#21-an-entry-is-ordered-and-attributed-by-where-it-landed)). Rewording an entry or moving it to another category keeps both; changing its slug is refused. Editing an entry that is already here is not a pull request's own entry.
+- **Each entry ends with its own number**, `(PR #N)`, naming the pull request it describes. The release stamps an entry that ends with none with the pull request of the commit that added it, and a write-up's entries all land in the write-up's one commit, so one left without a number would be released with the write-up's own ([§FS-002-release.2.2](../../functional-spec/FS-002-release.md#22-the-release-stamps-only-the-trailing-number-and-stamping-never-fails-it)). A number already written at the end is left alone, and one in the prose is prose. Where the forge cannot name exactly one pull request for an entry that ends with none, the entry is released as written and the release log says why.
+- **The slug carries the entry's lifetime.** The release orders an entry by the commit on `main` that added its slug, and entries that landed together go by file name ([§FS-002-release.2.1](../../functional-spec/FS-002-release.md#21-an-entry-is-ordered-and-attributed-by-where-it-landed)), so the write-up orders its own entries within a category by the slugs it chooses. Rewording an entry or moving it to another category keeps where it landed; changing its slug ends that lifetime and starts another at the commit that made the change.
 - **A bullet may run to several paragraphs.** A blank line followed by more text indented two spaces continues the same bullet, as Markdown reads it. Here this repository reads part one more widely than grund does: bullets this changelog already held run to several paragraphs, and an entry moved from it says what it said.
-- **The number** is optional and, when written, is this pull request's own. The release stamps `(PR #N)` at the end of an entry from the commit that added it, replacing a trailing `(PR #TBD)`; a number already written at the end is left alone, and one in the prose is prose ([§FS-002-release.2.2](../../functional-spec/FS-002-release.md#22-the-release-stamps-only-the-trailing-number-and-stamping-never-fails-it)). Where the forge cannot name exactly one pull request, the entry is released as written and the release log says why.
 
-For a branch named `fix/refresh-unreachable` that fixes a bug, the entry is `docs/changelog/unreleased/fix-refresh-unreachable.fixed.md`:
+If pull request #160 fixed a bug, the write-up adds `docs/changelog/unreleased/refresh-keeps-unreachable.fixed.md`:
 
 ```markdown
 - **`ephor refresh` keeps a project whose remote is unreachable.** It stays in
-  the feed, marked stale, instead of disappearing from it.
+  the feed, marked stale, instead of disappearing from it. (PR #160)
 ```
 
 ### The switch-over

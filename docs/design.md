@@ -276,8 +276,8 @@ fields it reads — checks read `summary` + `failures[]`, `smoke --list` reads
 `matters[]` + `discussions[]`, custom-status reads `summary` /
 `needs_response` / `url` / `matters[]`. Paths resolve relative to the
 summons's cwd. Unknown fields are ignored everywhere (must-ignore forward
-compatibility); `v` bumps only on incompatible change, with a changelog entry
-per [§FS-002-release](functional-spec/FS-002-release.md#fs-002-release-ephor-releases-from-a-tag-with-a-changelog-written-before-each-release).
+compatibility); `v` bumps only on incompatible change, noted by the release
+that ships it ([§FS-002-release](functional-spec/FS-002-release.md#fs-002-release-ephor-releases-from-a-tag-with-a-changelog-written-before-each-release)).
 
 ## 8. Offers: actions and recipes, one language
 

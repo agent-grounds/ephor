@@ -15,14 +15,16 @@ Keep-a-Changelog set — then `Note`; omit any with no entries.
 
 ### 1.2 Entry style
 
-One bullet per change, present tense, leading with the affected area. Every
-pull request adds an entry of its own: one file under
+One bullet per change, present tense, leading with the affected area. No
+change writes one. Before a release, one pull request writes the release
+section: one file per change merged since the last tag under
 [`changelog/unreleased/`](changelog/unreleased/README.md), named
 `<slug>.<category>.md` and holding that one bullet, in the format the
-directory's README gives. Nothing is written under `## Unreleased` by hand. The
-number is optional, because the release fills it in — end the bullet with
-`(PR #12)` if you know it, `(PR #TBD)` if you want a placeholder, or nothing at
-all. A number you do write must be your own pull request's
+directory's README gives. It reads the pull requests merged since the tag, the
+issues they closed, and the schema diff since the tag. Nothing is written under
+`## Unreleased` by hand. Each bullet ends with the number of the pull request
+it describes, `(PR #12)`: the write-up's entries all land in one commit, so one
+left without a number would be released with the write-up's own
 ([§FS-002-release.1](functional-spec/FS-002-release.md#1-changelog)).
 
 ### 1.3 Progressive discovery

@@ -44,22 +44,23 @@ line CI and the pre-commit hook run.
   it skips with a `harness:` message where that binary is not installed — which
   is why CI runs this line in the `grund` job as well as the `cargo test` job:
   only the former has the pin on `PATH`.
-- `test_check_changelog_pr_entry.py` — the pull-request changelog gate at both
-  of its moments ([§FS-002-release.6](../../docs/functional-spec/FS-002-release.md#6-no-change-is-gated-on-the-changelog)).
-- `test_prepare_changelog_release.py` — the release script: collecting,
-  ordering, stamping and consuming the pending entries
+- `test_prepare_changelog_release.py` — the release script: counting,
+  collecting, ordering, stamping and consuming the pending entries, and the
+  scheduled release's hold while none is written
   ([§FS-002-release.2](../../docs/functional-spec/FS-002-release.md#2-cutting-a-release)).
-- `test_changelog_migration.py` — how the gate and the release treat the
-  entries the switch-over moved out of `## Unreleased`
+- `test_changelog_migration.py` — how the release treats the entries the
+  switch-over moved out of `## Unreleased`
   ([§FS-002-release.1.2](../../docs/functional-spec/FS-002-release.md#12-the-switch-over-moves-what-was-pending-and-loses-nothing)).
 - `test_changelog_entries.py` — the entry format against the grund copy it
-  is pinned to, this repository's own pending entries, and two pull requests
-  landing in every order ([§FS-002-release.1](../../docs/functional-spec/FS-002-release.md#1-changelog)).
+  is pinned to, this repository's own pending entries, two pull requests
+  landing in every order ([§FS-002-release.1](../../docs/functional-spec/FS-002-release.md#1-changelog)), and that no
+  hook or workflow step asks a change for an entry
+  ([§FS-002-release.6](../../docs/functional-spec/FS-002-release.md#6-no-change-is-gated-on-the-changelog)).
 - `changelog_git.py` — not a test, and not collected as one: the throwaway git
-  repository, with a stub `gh` on `PATH`, those four share. The gate compares
-  entries against a base commit and the release reads the history that added
-  them, so neither can be shown with loose files. `fixtures/` holds grund's
-  README part one at the commit the format is pinned to.
+  repository, with a stub `gh` on `PATH`, those three share. The release reads
+  the history that added the entries, so it cannot be shown with loose files.
+  `fixtures/` holds grund's README part one at the commit the format is pinned
+  to.
 
 Unit tests stay beside the code under `code`'s rule; there is no third kind
 for them.
