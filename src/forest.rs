@@ -54,9 +54,16 @@ pub struct Repo {
     /// back to where nothing named it (§FS-011-command-line.11.2).
     pub name: String,
     pub path: PathBuf,
-    /// The remote a fold fetches from, pushes to and measures against, read
-    /// off the repository itself (§AR-004-forest.2).
+    /// The remote a fold fetches from and measures the base against — where
+    /// the base lives and what a new branch is grown from — read off the
+    /// repository itself (§AR-004-forest.2).
     pub remote: String,
+    /// The remote its checked-out branch is pushed to, which is where that
+    /// branch's published copy is looked for first: a fork, where a change
+    /// goes through one, and [`Self::remote`] wherever git records no other
+    /// (§AR-004-forest.2, §DA-003-upstream-is-the-published-copy). One value
+    /// for the row, the offer and the replay alike.
+    pub push_remote: String,
     /// What this repository's branches are measured against.
     pub main: Option<String>,
     pub role: Option<String>,
@@ -124,11 +131,13 @@ impl Forest {
                 layout.push(name.clone());
                 // Nothing declared this forest, so nothing named it either.
                 named.push(None);
+                // Asked once per repository, here where the probe already
+                // runs (§AR-004-forest.2).
+                let (remote, push_remote) = crate::git::remotes(&path);
                 repos.push(Repo {
                     name,
-                    // Asked once per repository, here where the probe already
-                    // runs (§AR-004-forest.2).
-                    remote: crate::git::remote(&path),
+                    remote,
+                    push_remote,
                     path,
                     main: main.map(String::from),
                     role: None,
@@ -149,12 +158,14 @@ impl Forest {
                     absent.push(declaration.path.clone());
                     continue;
                 }
+                // A row may declare where a repository is; which remotes it
+                // fetches from and pushes to are facts on disk, so they are
+                // probed anyway (§AR-004-forest.2).
+                let (remote, push_remote) = crate::git::remotes(&path);
                 repos.push(Repo {
                     name: declaration.path.clone(),
-                    // A row may declare where a repository is; which remote it
-                    // has is a fact on disk, so it is probed anyway
-                    // (§AR-004-forest.2).
-                    remote: crate::git::remote(&path),
+                    remote,
+                    push_remote,
                     path,
                     main: declaration.main.clone().or_else(|| main.map(String::from)),
                     role: declaration.role.clone(),
@@ -253,7 +264,12 @@ impl Forest {
                 // asks whether a copy is the base again reads this fact
                 // rather than resolving its own (§AR-004-forest.1).
                 let base = self.base(repo);
-                let measured = crate::git::standing(&repo.path, &repo.remote, base.as_deref());
+                let measured = crate::git::standing(
+                    &repo.path,
+                    &repo.remote,
+                    &repo.push_remote,
+                    base.as_deref(),
+                );
                 RepoStanding {
                     name: repo.name.clone(),
                     branch: measured.branch,
@@ -275,11 +291,13 @@ impl Forest {
 /// repository's own `HEAD` (§DA-003-upstream-is-the-published-copy).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Upstream {
-    /// `<remote>/<branch>` holds what was last pushed of this branch.
+    /// `<remote>/<branch>` holds what was last pushed of this branch;
+    /// `remote` is whichever remote held it — the one the branch is pushed
+    /// to, a fork included, or the one fetched from.
     Published { remote: String, branch: String },
-    /// Never pushed to `remote`: no copy to measure against and nothing to
-    /// replay onto. An answer, not an error
-    /// (§DA-003-upstream-is-the-published-copy).
+    /// Never pushed to `remote`, the remote the branch is pushed to: no copy
+    /// to measure against and nothing to replay onto. An answer, not an
+    /// error (§DA-003-upstream-is-the-published-copy).
     Unpushed { remote: String },
     /// Nothing to read: not a working tree, or `HEAD` is not on a branch.
     Unknown,
