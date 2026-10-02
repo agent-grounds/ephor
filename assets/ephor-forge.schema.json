@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/agent-grounds/ephor/schemas/forge/v1",
   "title": "ephor out-of-process forge protocol",
-  "description": "The protocol of FS-001-forge-interface.2: an executable named 'ephor-forge-<name>', resolved on PATH, invoked as 'ephor-forge-<name> <subcommand>' with a request as JSON on stdin and the answer as JSON on stdout. Diagnostics go to stderr; a non-zero exit is a failure, never an empty answer (FS-001-forge-interface.6). Subcommands: capabilities, pull-requests, issues, notices, failures, restart, resolve-task, react, reply. An implementation answers the subcommands whose capabilities it declared; ephor never calls an undeclared one. This document defines the request shape and one response shape per subcommand; message, gate, and failure shapes are the answer envelope's $defs, referenced here so the two transports cannot drift (FS-001-forge-interface.2).",
+  "description": "The protocol of FS-001-forge-interface.2: an executable named 'ephor-forge-<name>', resolved on PATH, invoked as 'ephor-forge-<name> <subcommand>' with a request as JSON on stdin and the answer as JSON on stdout. Diagnostics go to stderr; a non-zero exit is a failure, never an empty answer (FS-001-forge-interface.6). Subcommands: capabilities, pull-requests, issues, notices, messages, failures, restart, resolve-task, react, reply. An implementation answers the subcommands whose capabilities it declared; ephor never calls an undeclared one. This document defines the request shape and one response shape per subcommand; message, gate, and failure shapes are the answer envelope's $defs, referenced here so the two transports cannot drift (FS-001-forge-interface.2).",
   "$defs": {
     "request": {
       "type": "object",
@@ -51,6 +51,7 @@
         "restart": { "type": "boolean" },
         "issues": { "type": "boolean" },
         "notices": { "type": "boolean", "description": "Answers notices: the forge's own list of what it decided to tell the user (FS-001-forge-interface.1)." },
+        "messages": { "type": "boolean", "description": "Answers messages: the conversations addressed to the user in the other places people talk, each one whole (FS-001-forge-interface.1). An implementation that declares it should not also report the same conversations as notices: one id in both merges into one row, and the notice's verdict on whether it awaits the user would stand beside ephor's own." },
         "tasks": { "type": "boolean" },
         "reactions": { "type": "boolean" },
         "replies": { "type": "boolean" }
@@ -182,6 +183,25 @@
       "type": "array",
       "items": { "$ref": "#/$defs/notice" },
       "description": "Everything the forge says is directed at the user, whatever it is about. Answered exhaustively or not at all: a truncated list is a failure, never an answer (FS-001-forge-interface.6)."
+    },
+    "conversation": {
+      "type": "object",
+      "required": ["id", "title", "updated_at"],
+      "properties": {
+        "id": { "type": "string", "description": "Stable across refreshes. ephor keys the row '<provider>:<id>' and keeps the reader's unread state under it. Read for nothing else: whatever it looks like, it is never taken for a repository or a number." },
+        "title": { "type": "string" },
+        "url": { "type": "string" },
+        "updated_at": { "type": "string", "format": "date-time", "description": "When the conversation last moved." },
+        "room": { "type": "string", "description": "The room it is in, as the venue names it. Absent for a direct conversation." },
+        "reasons": { "type": "array", "items": { "$ref": "#/$defs/reason" }, "description": "Why it is the user's, in the vocabulary pull requests use." },
+        "threads": { "type": "array", "items": { "$ref": "#/$defs/thread" }, "description": "Its threads, each carrying its own reply descriptor. Each message says who wrote it and whether that was the user ('mine'); whether the conversation awaits the user, and what it refers to, are ephor's to work out from them, so a 'needs_response' sent here is ignored (FS-001-forge-interface.3)." }
+      },
+      "description": "One conversation addressed to the user in a place people talk that is not a forge (a chat room, a direct conversation, a mail thread), with its words (FS-001-forge-interface.1)."
+    },
+    "messages_response": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/conversation" },
+      "description": "The conversations addressed to the user. An implementation that cannot vouch that this is the venue as it is now fails rather than answering: an empty list is a quiet venue, never a listener that stopped hearing it (FS-001-forge-interface.6)."
     },
     "failures_response": {
       "type": "array",
