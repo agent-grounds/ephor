@@ -1452,6 +1452,98 @@ fn a_matter_with_a_branch_of_its_own_is_placed_through_that_branch() {
     );
 }
 
+/// The same forge, with issue 95 carrying one comment that quotes `$QUOTED` —
+/// the checkout of a branch the issue does not own, which is the shape of the
+/// lifecycle record comment the toolchain posts on an issue it filed.
+const QUOTING_FORGE: &str = r#"#!/usr/bin/env bash
+set -euo pipefail
+cat > /dev/null
+case "${1:?subcommand}" in
+  capabilities)
+    printf '{"issues":true,"pull_requests":true}'
+    ;;
+  issues)
+    printf '%s' '[
+      { "key": "acme/widget#95", "title": "Durations read as seconds",
+        "url": "https://acme.example/issue/95",
+        "updated_at": "2026-07-30T12:00:00Z", "status": "open",
+        "messages": [
+          { "author": "lifecycle", "text": "Record: the run that filed this worked in $QUOTED/panta.",
+            "when": "2026-07-30T11:00:00Z", "mine": false } ] }
+    ]'
+    ;;
+  *)
+    printf '[]'
+    ;;
+esac
+"#;
+
+/// A branch quoted in an issue's comments is not the issue's own. Issue 95's
+/// thread quotes the checkout of `fix/issue-94`, another issue's branch that is
+/// on disk, and the work about issue 95 still mints `fix/issue-95` rather than
+/// being laid inside that checkout (§FS-008-attribution.2.1,
+/// §FS-005-dispatch.25, the defect `agent-grounds/ephor#132` reported).
+#[test]
+fn a_branch_quoted_in_an_issues_comments_is_not_its_own() {
+    let world = watching(Some("fix/issue-{number}"), true);
+    world
+        .ephor()
+        .args(["checkout", "--project", PROJECT, "--branch", "fix/issue-94"])
+        .assert()
+        .success();
+    let theirs = world.forest().join("fix/issue-94");
+    assert!(
+        theirs.join(".git").exists(),
+        "no working tree for fix/issue-94"
+    );
+    world.stub(
+        "ephor-forge-acmeforge",
+        &QUOTING_FORGE.replace("$QUOTED", &theirs.to_string_lossy()),
+    );
+    world.ephor().args(["refresh", PROJECT]).assert().success();
+
+    let said = world
+        .ephor()
+        .args([
+            "work",
+            "lay",
+            "fix-issue",
+            "--item",
+            ITEM,
+            "--dry-run",
+            "--json",
+        ])
+        .assert()
+        .success();
+    let view = json_of(said.get_output());
+    let plan = view["plan"].as_str().expect("a plan path");
+    assert!(
+        Path::new(plan).starts_with(workspace(&world).join("panta")),
+        "the plan is not in the issue's own workspace: {view}"
+    );
+    assert!(!Path::new(plan).starts_with(&theirs), "{view}");
+    let report = view["report"].as_str().expect("a report");
+    assert!(report.contains("fix/issue-95"), "{report}");
+
+    // The offer says the same before anything is laid (§REQ-002-parity.3).
+    let offers = json_of(
+        world
+            .ephor()
+            .args(["work", "offers", "--item", ITEM, "--json"])
+            .assert()
+            .success()
+            .get_output(),
+    );
+    let offer = offers["offers"]
+        .as_array()
+        .expect("offers")
+        .iter()
+        .find(|offer| offer["id"] == "fix-issue")
+        .unwrap_or_else(|| panic!("'fix-issue' is not offered: {offers}"));
+    assert_eq!(offer["branch"], json!("fix/issue-95"), "{offer}");
+    assert!(!workspace(&world).exists(), "a dry run made the workspace");
+}
+
 /// A recipe says it the same way, and the ticket it opens lands in the
 /// workspace the template named (§FS-005-dispatch.25). The key is read
 /// wherever an entry hands work over, not only beside a workflow.
