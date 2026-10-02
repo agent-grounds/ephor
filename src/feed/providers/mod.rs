@@ -2,8 +2,6 @@
 //! `Provider`, then add a match arm in `build_provider`.
 
 mod custom_status;
-mod discord;
-mod email;
 pub mod forge;
 pub(crate) mod github;
 mod github_ci;
@@ -11,7 +9,6 @@ mod github_issues;
 mod github_notifications;
 mod github_prs;
 mod github_threads;
-mod slack;
 
 use serde_json::Value;
 
@@ -36,12 +33,11 @@ pub fn build_provider(config: &Value) -> Result<Box<dyn Provider>, ProviderError
             config,
         )?)),
         "custom-status" => Ok(Box::new(custom_status::CustomStatus::from_config(config)?)),
-        "slack" => Ok(Box::new(slack::Slack::from_config(config)?)),
-        "discord" => Ok(Box::new(discord::Discord::from_config(config)?)),
-        "email" => Ok(Box::new(email::Email::from_config(config)?)),
         // Anything else names a forge rather than a built-in provider: reach
         // it out of process (§FS-001-forge-interface.2). `ephor-forge-<name>`
-        // on PATH, or an explicit "command".
+        // on PATH, or an explicit "command". Chat and mail are among them:
+        // they reach ephor through a gateway answering the `messages` row
+        // (§FS-001-forge-interface.1), never through an adapter named here.
         _ => Ok(Box::new(forge::ForgeProvider::external(config)?)),
     }
 }
@@ -79,7 +75,7 @@ pub fn post_reply(write: &NativeWrite, text: &str) -> crate::error::Result<()> {
 /// and answering about all of them (§DA-002-fetch-attribution-split). A
 /// property of the provider, so it is answered where the providers are.
 pub fn is_shared(name: &str) -> bool {
-    matches!(name, "github-notifications" | "slack" | "discord" | "email")
+    name == "github-notifications"
 }
 
 /// Whether a provider name is one ephor implements itself. The complement of
@@ -95,9 +91,6 @@ fn built_in(name: &str) -> bool {
             | "github-notifications"
             | "github-threads"
             | "custom-status"
-            | "slack"
-            | "discord"
-            | "email"
     )
 }
 
@@ -342,6 +335,23 @@ mod tests {
             .err()
             .unwrap();
         assert_eq!(err.0, "the site has no source named 'chatgw' anymore");
+    }
+
+    /// The stubs that once answered to these names are gone, so each is now
+    /// a forge like any other name: a gateway installed as
+    /// `ephor-forge-<name>` answers for it (§FS-001-forge-interface.1).
+    #[test]
+    fn a_retired_chat_or_mail_name_resolves_as_a_forge() {
+        for name in ["slack", "discord", "email"] {
+            assert!(!built_in(name), "{name}");
+            assert!(!is_shared(name), "{name}");
+            let provider = build_provider(&json!({ "provider": name })).unwrap();
+            assert_eq!(provider.name(), name);
+            assert_eq!(
+                provider.unavailable_reason(),
+                Some(format!("`ephor-forge-{name}` is not on PATH"))
+            );
+        }
     }
 
     #[test]

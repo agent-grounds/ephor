@@ -54,7 +54,8 @@ pub struct ProviderSlot {
     /// What this source reported, as matters (§AR-006-matters.1).
     #[serde(default)]
     pub matters: Vec<Matter>,
-    /// Incremental fetch cursor for message providers (slack/discord/email).
+    /// Incremental fetch cursor, for a source that reads a stream from where
+    /// it last stopped.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cursor: Option<String>,
 }

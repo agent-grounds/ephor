@@ -597,13 +597,20 @@ fn a_lost_shared_source_makes_the_run_fail_even_when_every_project_answered() {
     let fake_bin = tmp.path().join("sharedbin");
     fs::create_dir_all(&fake_bin).unwrap();
     make_executable(&fake_bin.join("ephor-forge-goodforge"), FAKE_FORGE);
+    // A site-level source that asks nothing about any one project, and fails
+    // whatever it is asked.
+    make_executable(
+        &fake_bin.join("ephor-forge-deadgateway"),
+        "#!/usr/bin/env bash
+echo 'the gateway is not running' >&2
+exit 1
+",
+    );
     fs::write(
         tmp.path().join("status.json"),
         serde_json::to_string_pretty(&json!({
             "defaults": { "ttl_seconds": 600, "provider_timeout_seconds": 10 },
-            // A site-level source that asks nothing about any one project.
-            // `email` has no secret here, so it declines to answer.
-            "sources": [{ "provider": "email" }],
+            "sources": [{ "provider": "deadgateway" }],
             "projects": { "demo": { "providers": [
                 { "provider": "goodforge", "user": "dev", "repos": ["app"] }
             ] } }
