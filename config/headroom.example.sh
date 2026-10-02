@@ -60,8 +60,8 @@ set -uo pipefail
 # Where the vendor's own numbers come from. Two shapes are usual:
 #
 #   * a command that prints usage as JSON — parse it here with `jq`;
-#   * a metered API with a quota endpoint — `curl` it with a token from
-#     ~/config/secrets/ephor/, which is where ephor keeps its own.
+#   * a metered API with a quota endpoint — `curl` it with a token kept in a
+#     file nothing tracks, as headroom-metered.example.sh does.
 #
 # A subscription credential signed in through a vendor's OAuth usually has
 # neither, and shows its usage only to a person in a REPL. That is the ordinary

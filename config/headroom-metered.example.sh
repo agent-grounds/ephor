@@ -11,8 +11,8 @@
 #
 #     "work": { "headroom": { "north": "~/.config/ephor/headroom-north.sh" } }
 #
-# The token lives beside ephor's own secrets and never in the registry or the
-# feed configuration, which are both tracked (§REQ-001-boundary.4).
+# The token lives in a file of its own, read below, and never in the registry
+# or the feed configuration, which are both tracked (§REQ-001-boundary.4).
 set -uo pipefail
 
 : "${EPHOR_ANSWER:?ephor names the answer file; run this through work.headroom}"
