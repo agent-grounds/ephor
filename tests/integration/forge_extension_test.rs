@@ -950,3 +950,102 @@ fn every_move_on_a_site_sources_matter_goes_back_to_that_source() {
         "a site source is told no project, on a move as on a fetch: {calls:#?}"
     );
 }
+
+/// A site source whose host stopped answering after a good refresh: the
+/// failure is the network's, the one the request names.
+const FLAKY_SITE_FORGE: &str = r#"#!/usr/bin/env bash
+set -euo pipefail
+request="$(cat)"
+down="$(printf '%s' "$request" | jq -r '.config.down // ""')"
+case "${1:?subcommand}" in
+  capabilities) printf '{"pull_requests":true}' ;;
+  pull-requests)
+    if [ -n "$down" ] && [ -e "$down" ]; then
+      echo 'connection refused by the gateway' >&2
+      exit 1
+    fi
+    printf '%s' '[
+      { "id": "acme/widget/7", "repo": "acme/widget", "number": "7",
+        "title": "Widen the retry window",
+        "updated_at": "2026-08-01T12:00:00Z", "role": "author", "state": "open" }
+    ]'
+    ;;
+  *) printf '[]' ;;
+esac
+"#;
+
+/// A site source that stops answering keeps its last-good rows in the
+/// project it placed them under, and the slot says why, and which kind of
+/// failure it was, the way a project's own source does
+/// (§AR-008-pipeline.5). Without it the rows went stale with no word on
+/// the screen as to what had happened.
+#[test]
+fn a_lost_site_source_says_why_beside_the_rows_it_left() {
+    let tmp = tempdir();
+    write_fixture(tmp.path());
+    let registry = tmp.path().join("workspaces.json");
+    let mut doc: Value = serde_json::from_str(&fs::read_to_string(&registry).unwrap()).unwrap();
+    doc["projects"][0]["territory"] = json!(["acme/widget"]);
+    write_registry(&registry, &doc);
+    let down = tmp.path().join("down");
+    fs::write(
+        tmp.path().join("status.json"),
+        serde_json::to_string_pretty(&json!({
+            "defaults": { "ttl_seconds": 600, "provider_timeout_seconds": 10 },
+            "sources": [{ "provider": "sitegw", "down": down.to_string_lossy() }],
+            "projects": { "demo": { "providers": [] } }
+        }))
+        .unwrap(),
+    )
+    .unwrap();
+    let fake_bin = tmp.path().join("sitebin");
+    fs::create_dir_all(&fake_bin).unwrap();
+    make_executable(&fake_bin.join("ephor-forge-sitegw"), FLAKY_SITE_FORGE);
+    let path = format!(
+        "{}:{}",
+        fake_bin.to_string_lossy(),
+        std::env::var("PATH").unwrap_or_default()
+    );
+    let run = |args: &[&str]| {
+        let mut cmd = ephor_cmd();
+        cmd.env("PATH", &path);
+        for (key, value) in extension_env(tmp.path()) {
+            cmd.env(key, value);
+        }
+        cmd.args(args).output().unwrap()
+    };
+    let slot = || -> Value {
+        let cache: Value = serde_json::from_str(
+            &fs::read_to_string(tmp.path().join("state/ephor/feed/demo.json")).unwrap(),
+        )
+        .unwrap();
+        cache["providers"]["sitegw"].clone()
+    };
+
+    assert!(run(&["refresh"]).status.success());
+    assert_eq!(slot()["ok"], true, "{:#?}", slot());
+
+    fs::write(&down, "").unwrap();
+    let lost = run(&["refresh"]);
+    assert!(
+        !lost.status.success(),
+        "losing the site source fails the run"
+    );
+    let slot = slot();
+    assert_eq!(slot["ok"], false, "{slot:#?}");
+    assert_eq!(slot["stale"], true, "the last-good row is kept: {slot:#?}");
+    assert_eq!(slot["unreachable"], true, "{slot:#?}");
+    assert!(
+        slot["error"]
+            .as_str()
+            .is_some_and(|error| error.contains("connection refused")),
+        "the slot keeps the reason: {slot:#?}"
+    );
+
+    let status = run(&["status", "demo", "--cached"]);
+    let stderr = String::from_utf8_lossy(&status.stderr);
+    assert!(
+        stderr.contains("[sitegw]") && stderr.contains("unreachable: "),
+        "the project's view says which source went quiet, and how: {stderr}"
+    );
+}

@@ -737,13 +737,18 @@ pub fn refresh_shared(registry_doc: &Value, config: &StatusConfig) -> Result<Ref
         let mut touched = false;
         for name in &names {
             let matters = mine.get(name).cloned().unwrap_or_default();
-            let failed = failures.iter().any(|failure| &failure.provider == name);
-            if failed {
+            let failed = failures.iter().find(|failure| &failure.provider == name);
+            if let Some(failure) = failed {
                 // Last-good data waits out a failure here exactly as it does
-                // for a per-project source.
+                // for a per-project source, and says why, and which kind of
+                // not, beside it (§FS-001-forge-interface.6). A home that
+                // never held this source's rows is not given a slot for its
+                // failure: the run already says it, once.
                 if let Some(slot) = feed.providers.get_mut(name) {
                     slot.ok = false;
                     slot.stale = !slot.matters.is_empty();
+                    slot.error = Some(failure.message.clone());
+                    slot.unreachable = failure.unreachable;
                     touched = true;
                 }
                 continue;
