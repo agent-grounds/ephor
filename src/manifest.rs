@@ -101,6 +101,10 @@ pub struct Identity {
     pub territory: Vec<String>,
     #[serde(default)]
     pub addresses: Vec<String>,
+    /// Rooms on a conversation source, as the source states them
+    /// (§FS-008-attribution.1). Adopted only where the row is silent on rooms.
+    #[serde(default)]
+    pub rooms: Vec<String>,
 }
 
 /// One repository of the forest as the project declares it
@@ -719,6 +723,7 @@ mod row_tests {
             repos: Vec::new(),
             aliases: Vec::new(),
             territory: Vec::new(),
+            rooms: None,
             trust,
             organization: None,
         }
@@ -761,6 +766,30 @@ mod row_tests {
         let ignored = placement(tmp.path(), Trust::Ignore).identity();
         assert!(ignored.aliases.is_empty());
         assert!(ignored.territory.is_empty());
+    }
+
+    /// For rooms the row's word is its presence (§FS-008-attribution.1): a row
+    /// silent on them adopts the checkout's hint, one that lists none refuses
+    /// it, and one that lists its own replaces it.
+    #[test]
+    fn a_row_that_names_rooms_even_none_has_the_last_word_on_them() {
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::write(
+            tmp.path().join(FILE),
+            r#"{"identity": {"rooms": ["whatsapp/acme#120363@g.us"]}}"#,
+        )
+        .unwrap();
+
+        let silent = placement(tmp.path(), Trust::Full).identity();
+        assert_eq!(silent.rooms, vec!["whatsapp/acme#120363@g.us"]);
+
+        let mut refusing = placement(tmp.path(), Trust::Full);
+        refusing.rooms = Some(Vec::new());
+        assert!(refusing.identity().rooms.is_empty());
+
+        let mut naming = placement(tmp.path(), Trust::Full);
+        naming.rooms = Some(vec!["slack/acme#C024BE91L".to_string()]);
+        assert_eq!(naming.identity().rooms, vec!["slack/acme#C024BE91L"]);
     }
 
     /// The manifest's layout is used where the row declares none — a project

@@ -143,6 +143,11 @@
             "items": { "type": "string", "minLength": 1 },
             "description": "Repositories and organizations that are this project's business without being in its forest (FS-008-attribution.1): 'owner/name' for one repository, 'owner' for a whole organization. What places a mention or an issue filed in the project's ecosystem."
           },
+          "rooms": {
+            "type": "array",
+            "items": { "type": "string", "minLength": 1 },
+            "description": "Rooms on a conversation source that are this project's (FS-008-attribution.1): each the id the source states for it, matched exactly, with no prefix and no organization-wide claim. Present, even empty, it is the row's last word; absent, a manifest's identity.rooms is adopted. A conversation in a claimed room is placed here as firmly as a pull request on one of the project's repositories."
+          },
           "organization": { "type": "string", "minLength": 1 },
           "type": { "type": "string", "minLength": 1 },
           "display_name": { "type": "string", "minLength": 1 },

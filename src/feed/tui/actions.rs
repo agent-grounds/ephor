@@ -709,6 +709,7 @@ mod tests {
             repos: Vec::new(),
             aliases: Vec::new(),
             territory: Vec::new(),
+            rooms: None,
             trust: crate::manifest::Trust::Full,
             organization: None,
         };

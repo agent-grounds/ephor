@@ -1130,6 +1130,7 @@ mod brief_file_tests {
             repos: Vec::new(),
             aliases: Vec::new(),
             territory: Vec::new(),
+            rooms: None,
             trust: Default::default(),
             organization,
         }

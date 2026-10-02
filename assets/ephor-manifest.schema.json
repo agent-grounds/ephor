@@ -31,6 +31,11 @@
           "type": "array",
           "items": { "type": "string" },
           "description": "Mail addresses and lists whose conversations belong to this project."
+        },
+        "rooms": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Rooms on a conversation source whose conversations belong to this project, each the id the source states (FS-008-attribution.1). A hint: adopted only where the registry row says nothing about rooms, so a row listing none refuses it."
         }
       }
     },
