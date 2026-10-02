@@ -1056,3 +1056,88 @@ fn a_lost_site_source_says_why_beside_the_rows_it_left() {
         "the project's view says which source went quiet, and how: {stderr}"
     );
 }
+
+/// A shared source is fetched once per site, not per project
+/// (§AR-008-pipeline.1). So a refresh of one project keeps the rows a site
+/// source placed there, and only a source taken out of `sources` loses them.
+#[test]
+fn a_site_sources_rows_stay_until_it_leaves_sources() {
+    let tmp = tempdir();
+    write_fixture(tmp.path());
+    let registry = tmp.path().join("workspaces.json");
+    let mut doc: Value = serde_json::from_str(&fs::read_to_string(&registry).unwrap()).unwrap();
+    doc["projects"][0]["territory"] = json!(["acme/widget"]);
+    write_registry(&registry, &doc);
+    let configure = |sources: Value| {
+        fs::write(
+            tmp.path().join("status.json"),
+            serde_json::to_string_pretty(&json!({
+                // Every cached read is past its time, so `status` asks the
+                // project's own sources again.
+                "defaults": { "ttl_seconds": 0, "provider_timeout_seconds": 10 },
+                "sources": sources,
+                "projects": { "demo": { "providers": [] } }
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+    };
+    let fake_bin = tmp.path().join("sitebin");
+    fs::create_dir_all(&fake_bin).unwrap();
+    make_executable(&fake_bin.join("ephor-forge-sitegw"), FLAKY_SITE_FORGE);
+    let path = format!(
+        "{}:{}",
+        fake_bin.to_string_lossy(),
+        std::env::var("PATH").unwrap_or_default()
+    );
+    let run = |args: &[&str]| {
+        let mut cmd = ephor_cmd();
+        cmd.env("PATH", &path);
+        for (key, value) in extension_env(tmp.path()) {
+            cmd.env(key, value);
+        }
+        cmd.args(args).output().unwrap()
+    };
+    let slot = || -> Value {
+        let cache: Value = serde_json::from_str(
+            &fs::read_to_string(tmp.path().join("state/ephor/feed/demo.json")).unwrap(),
+        )
+        .unwrap();
+        cache["providers"]["sitegw"].clone()
+    };
+    let keys = |slot: &Value| -> Vec<String> {
+        slot["matters"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(|matter| matter["key"].as_str().map(String::from))
+            .collect()
+    };
+
+    configure(json!([{ "provider": "sitegw" }]));
+    assert!(run(&["refresh"]).status.success());
+    assert_eq!(keys(&slot()), ["sitegw:acme/widget/7"], "{:#?}", slot());
+
+    // The project's own sources are asked again; the site source is not, and
+    // what it placed here is still here.
+    let status = run(&["status", "demo"]);
+    assert!(
+        status.status.success(),
+        "{}",
+        String::from_utf8_lossy(&status.stderr)
+    );
+    assert_eq!(
+        keys(&slot()),
+        ["sitegw:acme/widget/7"],
+        "a refresh of one project keeps a site source's rows: {:#?}",
+        slot()
+    );
+
+    configure(json!([]));
+    assert!(run(&["refresh"]).status.success());
+    assert_eq!(
+        slot(),
+        Value::Null,
+        "a source no longer in `sources` leaves nothing behind"
+    );
+}

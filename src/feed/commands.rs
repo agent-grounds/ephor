@@ -11,7 +11,7 @@ use crate::error::{registry_error, EphorError, Result};
 use crate::feed::cache::{self, ProjectFeed};
 use crate::feed::config::{load_config, StatusConfig};
 use crate::feed::model::ItemKind;
-use crate::feed::refresh::refresh_project;
+use crate::feed::refresh::{refresh_project, site_source_names};
 use crate::feed::render::{self, Style};
 use crate::registry;
 use crate::scope::Projects;
@@ -123,12 +123,19 @@ fn refresh_projects(
              finds; the per-project form still works for now."
         );
     }
+    let site_sources = site_source_names(config);
     let mut total_failures = 0usize;
     let mut degraded = 0usize;
     let mut refreshed = 0usize;
     let mut per_project: Vec<serde_json::Value> = Vec::new();
     for (project, project_config) in selected {
-        let outcome = refresh_project(&registry_doc, project, project_config, &config.defaults)?;
+        let outcome = refresh_project(
+            &registry_doc,
+            project,
+            project_config,
+            &site_sources,
+            &config.defaults,
+        )?;
         refreshed += 1;
         // A provider that did not deliver is an error, not a warning: its
         // section of the feed is last-good data or nothing at all, and either
@@ -302,7 +309,13 @@ fn younger_than(cached: Option<&ProjectFeed>, ttl: u64) -> bool {
 fn refetch(config: &StatusConfig, project: &str, ttl: u64) -> Result<ProjectFeed> {
     let registry_doc = load_registry_doc()?;
     let project_config = known_project(config, project)?;
-    let outcome = refresh_project(&registry_doc, project, project_config, &config.defaults)?;
+    let outcome = refresh_project(
+        &registry_doc,
+        project,
+        project_config,
+        &site_source_names(config),
+        &config.defaults,
+    )?;
     for failure in &outcome.failures {
         eprintln!("error: {project}: {}", failure.describe());
     }
