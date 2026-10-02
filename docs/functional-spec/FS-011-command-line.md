@@ -376,8 +376,8 @@ is smaller than a project belongs on the same side of it.
 `--act` is global, declared beside the selectors and for their reason: a flag
 each verb had to remember is a flag the next mutating verb forgets, and in the
 selector forgetting is impossible. It is accepted exactly where the gate can
-fire — `work dispatch`, `work sync`, `work run`, and `rebase` where a selector
-makes it sweep — and refused **by name** everywhere else, exiting **2** like a
+fire — `work dispatch`, `work sync`, `work run`, `clean`, and `rebase` where a
+selector makes it sweep — and refused **by name** everywhere else, exiting **2** like a
 refused selector. A `rebase` that sweeps nothing is one of those elsewheres: the
 gate cannot fire on one checkout, so the flag would parse and change nothing,
 which is the fault [§FS-011-command-line.9](FS-011-command-line.md#9-a-scope-selector-is-honoured-or-refused) exists to

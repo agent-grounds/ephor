@@ -175,6 +175,9 @@ fn run(cli: Cli) -> Result<ExitCode> {
         // branch checkout in the scope where one was — the same verb, and the
         // selector is what enters the second (§FS-004-quick-actions.6.1).
         Command::Rebase(args) => return rebase::rebase(args, &projects, act),
+        // Selected out of the registry it loads, once, by the verb itself
+        // (§FS-017-clean.2).
+        Command::Clean(args) => return ephor::clean::clean(args, &scope, act),
         Command::Checkout(args) => return checkout::checkout(args),
         Command::Work(args) => return work::commands::work(args, &projects, act),
         // The abilities the screen used to hold alone (§FS-011-command-line).
@@ -335,6 +338,7 @@ fn run(cli: Cli) -> Result<ExitCode> {
         | Command::Failures(_)
         | Command::Restart(_)
         | Command::Rebase(_)
+        | Command::Clean(_)
         | Command::Checkout(_)
         | Command::Work(_)
         | Command::Job(_)

@@ -611,6 +611,11 @@ pub struct ProjectFeedConfig {
     /// How to materialize a missing branch workspace (see [`CheckoutConfig`]).
     #[serde(default)]
     pub checkout: Option<CheckoutConfig>,
+    /// The command that fills this project's clean verb, over whatever its
+    /// manifest declares and whatever a checkout is probed for — site
+    /// configuration over manifest over probe (§FS-017-clean.1).
+    #[serde(default)]
+    pub clean: Option<String>,
     /// This project's own recipes and work root (§FS-005-dispatch.1).
     #[serde(default)]
     pub work: crate::work::recipe::ProjectWorkConfig,

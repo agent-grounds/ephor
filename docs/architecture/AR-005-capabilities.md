@@ -10,9 +10,10 @@ reads this table; nothing else runs its own `command_exists` or path check.
 
 Each rung names its establishment and is resolved accordingly
 ([§FS-006-project-interface.1](../functional-spec/FS-006-project-interface.md#1-the-three-homes)): *placed* and *checkable* and *tasks* by
-probing the checkout; *checkout-able*, *workable*, and parts of *gated* by
-looking up bindings; *observable* and *branch-addressable* from the row and
-the sources' last answers. Resolution is cheap by construction — stat
+probing the checkout, and *cleanable* by asking the clean verb's seam, which
+weighs the site binding over the manifest over the probe; *checkout-able*,
+*workable*, and parts of *gated* by looking up bindings; *observable* and
+*branch-addressable* from the row and the sources' last answers. Resolution is cheap by construction — stat
 calls, config lookups, no spawning — so it can rerun whenever the world
 may have moved (a refresh, a checkout that appeared).
 

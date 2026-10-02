@@ -185,6 +185,7 @@ fn diagnose(
         // The bound runner, not the shipped word: the workable rung names
         // what this person's work would actually run (§FS-005-dispatch.14).
         runner: Some(crate::work::runtime::runner(&config.work)),
+        clean: project_config.and_then(|p| p.clean.as_deref()),
         gate_reported: feed.is_some_and(ProjectFeed::reports_a_gate),
         manifest: manifest.as_ref(),
     };

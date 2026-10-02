@@ -71,6 +71,10 @@
         }
       }
     },
+    "clean": {
+      "$ref": "#/$defs/command",
+      "description": "The clean verb (FS-017-clean.1), overriding the probed ./clean.sh: what gives back the space the project's builds took in one checkout, run there by `ephor clean`. Beside `checks` rather than in it, because a project that can clean is not thereby checkable."
+    },
     "ci": {
       "type": "object",
       "description": "Gate verbs (FS-006-project-interface.6) — project truth, the same for every developer; site configuration overrides for credentials or variants. Each is a summons: EPHOR_* environment in (EPHOR_REPO, EPHOR_NUMBER, EPHOR_BRANCH name the matter), exit code plus $EPHOR_ANSWER envelope out. status answers gate; failures answers failures[]; restart re-runs the failing gate and everything downstream of it, committing nothing (FS-005-dispatch.11), exit 75 meaning 'still running, ask again later'.",
@@ -187,7 +191,7 @@
         "requires": {
           "type": "array",
           "items": {
-            "enum": ["placed", "branch-addressable", "checkout-able", "checkable", "gated", "tasks", "local-issues", "ticketed", "workable"]
+            "enum": ["placed", "branch-addressable", "checkout-able", "checkable", "gated", "tasks", "local-issues", "ticketed", "cleanable", "workable"]
           },
           "description": "Capability rungs this offer needs (FS-006-project-interface.10); unmet rungs render '(unavailable: …)'. 'ticketed' and 'local-issues' are older spellings of 'tasks' and still resolve."
         },

@@ -545,6 +545,8 @@ matters to workspaces; *checkout-able* ([§FS-006-project-interface.8](FS-006-pr
 failure dossiers and the restart; *tasks* ([§FS-006-project-interface.7](FS-006-project-interface.md#7-the-projects-own-tasks-are-read-where-they-live)) buys the project's
 own tasks as matters — a `requires` naming either of its older spellings,
 *ticketed* or *local-issues*, goes on meaning it;
+*cleanable* (a clean verb bound, [§FS-017-clean.1](FS-017-clean.md#1-cleaning-is-a-verb-the-project-declares)) buys giving an idle
+checkout's build output back;
 *workable* (a bound runtime, [§FS-005-dispatch](FS-005-dispatch.md#fs-005-dispatch-what-ephor-watches-it-can-hand-to-an-agent-runtime)) buys the loop. A missing
 rung degrades exactly the features that named it, with the reason stated
 where the feature would have appeared — never an error, never silence

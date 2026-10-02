@@ -174,8 +174,7 @@ pub fn sweep(args: &RebaseArgs, projects: &Projects, act: Act) -> Result<ExitCod
     // is not a guard that passes: `Dispatcher::load` failing here stops the
     // sweep rather than leaving it to write into a tree it cannot ask about.
     let mut dispatcher = work::Dispatcher::load(&config)?;
-    let roots = dispatcher.work_roots();
-    let busy = work::live_checkouts(&config.work, &roots, &dispatcher.ledger);
+    let busy = dispatcher.live_checkouts();
 
     let mut rows: Vec<Swept> = Vec::new();
     let mut reached: Vec<Reached> = Vec::new();
@@ -215,20 +214,11 @@ pub fn sweep(args: &RebaseArgs, projects: &Projects, act: Act) -> Result<ExitCod
             refusal: None,
         });
 
-        for branch in &placement.branches {
-            // The project's main-branch checkout is not one of these: that
-            // directory belongs to `ephor update`, and where both could claim
-            // it `update` wins, because branch drift is the whole subject here
-            // (§FS-004-quick-actions.6.1).
-            if placement.is_main_branch(&branch.branch) {
-                continue;
-            }
-            let Some(checkout) = placement.workspace_for(&branch.branch) else {
-                continue;
-            };
-            if !checkout.is_dir() {
-                continue;
-            }
+        // The project's main-branch checkout is not one of these: that
+        // directory belongs to `ephor update`, and where both could claim it
+        // `update` wins, because branch drift is the whole subject here
+        // (§FS-004-quick-actions.6.1).
+        for (branch, checkout) in placement.branch_checkouts() {
             let outcome = match passed_over(
                 &config, &placement, project, branch, &checkout, &busy, &matters,
             ) {
@@ -345,11 +335,8 @@ fn passed_over(
     // and the invariant is read over the tree rather than over the kind of
     // caller — a writer that is not a run is held by it all the same, and is
     // never forced (§FS-005-dispatch.24).
-    if let Some(root) = work::holding(busy, checkout) {
-        return Some(format!(
-            "a live run holds this checkout, from {}",
-            root.display()
-        ));
+    if let Some(held) = live_run_holds(busy, checkout) {
+        return Some(held);
     }
     // A branch under review is somebody's to move.
     if let Some(said) = under_review(matters, &branch.branch) {
@@ -364,6 +351,17 @@ fn passed_over(
         ));
     }
     None
+}
+
+/// The reason a checkout a live run holds is passed over, naming the root the
+/// run was started from — the same words wherever a sweep that writes into
+/// trees declines one (§FS-005-dispatch.24, §FS-017-clean.2).
+pub(crate) fn live_run_holds(
+    busy: &BTreeMap<PathBuf, PathBuf>,
+    checkout: &std::path::Path,
+) -> Option<String> {
+    work::holding(busy, checkout)
+        .map(|root| format!("a live run holds this checkout, from {}", root.display()))
 }
 
 /// Whether an open pull request that is not a draft is on this branch

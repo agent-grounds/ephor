@@ -55,6 +55,7 @@ pub const SHAPES: &[(&str, &str)] = &[
     ("failures", "failures"),
     ("restart", "restart"),
     ("rebase", "rebase"),
+    ("clean", "clean"),
     ("checkout", "checkout"),
     ("validate", "validate"),
     ("list", "list"),
@@ -84,7 +85,7 @@ pub const SHAPES: &[(&str, &str)] = &[
 /// Every shape this API publishes, by the name the schema files it under. The
 /// tests below hold it to the document in both directions, so it is a
 /// spelling of the document rather than a second list to keep true.
-pub const NAMES: [&str; 35] = [
+pub const NAMES: [&str; 36] = [
     "actions",
     "branches",
     "operations",
@@ -98,6 +99,7 @@ pub const NAMES: [&str; 35] = [
     "restart",
     "checkout",
     "rebase",
+    "clean",
     "validate",
     "list",
     "job",

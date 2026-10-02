@@ -22,6 +22,7 @@ Behavior and requirements, one declaration per file. Each H1 declares an
 | [FS-014-work-root-scopes](FS-014-work-root-scopes.md) | a plan lives in the smallest scope that can see everything it touches |
 | [FS-015-spend-ceiling](FS-015-spend-ceiling.md) | what unattended work may spend is the person's number, and the sweep stops at it |
 | [FS-016-browser-opening](FS-016-browser-opening.md) | a browser action reaches the reader or leaves the address with them |
+| [FS-017-clean](FS-017-clean.md) | an idle checkout gives back what its builds took, through the project's own verb |
 | [§FS-001-forge-interface](FS-001-forge-interface.md#fs-001-forge-interface-ephor-reaches-every-forge-and-issue-tracker-through-one-provider-interface) | ephor reaches every forge and issue tracker through one provider interface |
 | [§FS-002-release](FS-002-release.md#fs-002-release-ephor-releases-from-a-tag-with-a-changelog-entry-per-change) | ephor releases from a tag, with a changelog entry per change |
 | [§FS-003-feed-categories](FS-003-feed-categories.md#fs-003-feed-categories-the-feed-sorts-itself-into-categories-and-finished-work-lands-in-recent) | the feed sorts itself into categories, and finished work lands in Recent |
@@ -38,6 +39,7 @@ Behavior and requirements, one declaration per file. Each H1 declares an
 | [§FS-014-work-root-scopes](FS-014-work-root-scopes.md#fs-014-work-root-scopes-a-plan-lives-in-the-smallest-scope-that-can-see-everything-it-touches) | a plan lives in the smallest scope that can see everything it touches |
 | [§FS-015-spend-ceiling](FS-015-spend-ceiling.md#fs-015-spend-ceiling-what-unattended-work-may-spend-is-the-persons-number-and-the-sweep-stops-at-it) | what unattended work may spend is the person's number, and the sweep stops at it |
 | [§FS-016-browser-opening](FS-016-browser-opening.md#fs-016-browser-opening-a-browser-action-reaches-the-reader-or-leaves-the-address-with-them) | a browser action reaches the reader or leaves the address with them |
+| [§FS-017-clean](FS-017-clean.md#fs-017-clean-an-idle-checkout-gives-back-what-its-builds-took-through-the-projects-own-verb) | an idle checkout gives back what its builds took, through the project's own verb |
 
 This index is navigational — citations should target the declaration's ID
 directly, never this file.

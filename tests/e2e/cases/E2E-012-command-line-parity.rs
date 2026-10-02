@@ -529,6 +529,7 @@ const SWEEP: &[(&str, &[&str])] = &[
     ("outcome", &["reply", ITEM, "it", "resets", "--json"]),
     ("failures", &["failures", "--item", ITEM, "--json"]),
     ("restart", &["restart", "--item", ITEM, "--json"]),
+    ("clean", &["clean", "--json"]),
     ("feed", &["feed", "--json"]),
     ("status", &["status", "--json"]),
     ("refresh", &["refresh", PROJECT, "--json"]),

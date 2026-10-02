@@ -1460,6 +1460,16 @@ impl Dispatcher {
         )
     }
 
+    /// Every working tree a live run holds right now, over every root beneath
+    /// the watch (§FS-005-dispatch.24) — what a sweep that writes into
+    /// checkouts reads before it writes in any of them. The rebase sweep and
+    /// `clean` ask it here rather than each assembling the reading, so the
+    /// guard they promise is one guard (§FS-017-clean.2).
+    pub fn live_checkouts(&mut self) -> BTreeMap<PathBuf, PathBuf> {
+        let roots = self.work_roots();
+        live_checkouts(&self.global, &roots, &self.ledger)
+    }
+
     /// What this ticket pins, and what the reader is told about it. Refuses
     /// where the choice cannot stand, so nothing is written and no opening
     /// move is made under a hand that may not have it

@@ -11,6 +11,12 @@
 //! **Which** verbs run, and in what order, is not decided here: that is policy
 //! above the interface, sequenced from configuration one summons at a time.
 //! This module answers only "what fills this verb, and what did it say".
+//!
+//! One more verb is bound here that is not a check: `clean`, probed as
+//! `./clean.sh`, declared by a manifest's `clean` key beside `checks`, and
+//! overridden by the site the same way (§FS-017-clean.1). How a project
+//! un-builds is its knowledge for the reason how it builds is, so the binding
+//! and the precedence are these and not a second copy of them.
 
 use std::path::Path;
 
@@ -28,6 +34,10 @@ pub enum Verb {
     Style,
     /// The smoke, which may enumerate features.
     Smoke,
+    /// Giving back what the project's builds took (§FS-017-clean.1). Bound
+    /// like the three and not one of them: [`Verb::all`] is the checks, and a
+    /// project that can clean is not thereby checkable.
+    Clean,
 }
 
 impl Verb {
@@ -36,6 +46,16 @@ impl Verb {
             Verb::Check => "check",
             Verb::Style => "style",
             Verb::Smoke => "smoke",
+            Verb::Clean => "clean",
+        }
+    }
+
+    /// The seam a summons fills, for its messages: `check.<verb>` for the
+    /// three checks, and `clean` for the verb that is not one.
+    pub fn seam(self) -> String {
+        match self {
+            Verb::Clean => self.name().to_string(),
+            _ => format!("check.{}", self.name()),
         }
     }
 
@@ -47,9 +67,12 @@ impl Verb {
             Verb::Check => "check.sh",
             Verb::Style => "check-style.sh",
             Verb::Smoke => "smoke-test.sh",
+            Verb::Clean => "clean.sh",
         }
     }
 
+    /// The check verbs (§FS-006-project-interface.5). `clean` is not among
+    /// them: what this list answers is what makes a project checkable.
     pub fn all() -> [Verb; 3] {
         [Verb::Check, Verb::Style, Verb::Smoke]
     }
@@ -72,11 +95,9 @@ impl Bound {
             Some(spec) => Place::parse(spec)?,
             None => Place::Root,
         };
-        Ok(
-            Summons::new(format!("check.{}", self.verb.name()), &self.command)
-                .at(place)
-                .carrying(dossier),
-        )
+        Ok(Summons::new(self.verb.seam(), &self.command)
+            .at(place)
+            .carrying(dossier))
     }
 }
 
@@ -125,6 +146,7 @@ fn declared(verb: Verb, manifest: &Manifest) -> Option<manifest::Binding> {
             .smoke
             .as_ref()
             .and_then(|smoke| serde_json::from_value(smoke.clone()).ok()),
+        Verb::Clean => manifest.clean.clone(),
     }
 }
 
@@ -266,6 +288,33 @@ mod tests {
 
         let mine = bind(Verb::Check, tmp.path(), Some(&declared), Some("./mine.sh")).unwrap();
         assert_eq!(mine.command, "./mine.sh");
+    }
+
+    /// The clean verb resolves as a check verb does — site configuration over
+    /// manifest over probe — and is summoned as `clean`, not as a check
+    /// (§FS-017-clean.1).
+    #[test]
+    fn clean_binds_as_a_check_verb_does() {
+        let tmp = tempfile::tempdir().unwrap();
+        assert_eq!(bind(Verb::Clean, tmp.path(), None, None), None);
+
+        std::fs::write(tmp.path().join("clean.sh"), "#!/bin/sh\n").unwrap();
+        let probed = bind(Verb::Clean, tmp.path(), None, None).unwrap();
+        assert_eq!(probed.command, "./clean.sh");
+
+        let declared = manifest_of(r#"{"clean": "./ci/clean.sh"}"#);
+        let manifested = bind(Verb::Clean, tmp.path(), Some(&declared), None).unwrap();
+        assert_eq!(manifested.command, "./ci/clean.sh");
+
+        let site = bind(
+            Verb::Clean,
+            tmp.path(),
+            Some(&declared),
+            Some("make distclean"),
+        )
+        .unwrap();
+        assert_eq!(site.command, "make distclean");
+        assert_eq!(site.summons(Vec::new()).unwrap().verb, "clean");
     }
 
     #[test]

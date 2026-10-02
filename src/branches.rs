@@ -1101,6 +1101,26 @@ impl Placement {
         self.main_branch.as_deref() == Some(name)
     }
 
+    /// Every branch checkout of this project that is on disk, in the order the
+    /// branches are listed — the row's first, then the ones found beside them —
+    /// and the main branch's left out (§FS-004-quick-actions.6.1).
+    ///
+    /// What a sweep over a project's checkouts walks. One enumeration, because
+    /// the rebase sweep and `clean` both promise the main checkout is
+    /// `ephor update`'s and nobody else's, and two copies of "which checkouts"
+    /// would one day disagree about it (§FS-017-clean.2).
+    pub fn branch_checkouts(&self) -> Vec<(&BranchInfo, PathBuf)> {
+        self.branches
+            .iter()
+            .filter(|branch| !self.is_main_branch(&branch.branch))
+            .filter_map(|branch| {
+                self.workspace_for(&branch.branch)
+                    .filter(|checkout| checkout.is_dir())
+                    .map(|checkout| (branch, checkout))
+            })
+            .collect()
+    }
+
     /// The item's branch name: what the provider recorded (ground truth), or
     /// the matched registry branch's — the project's main branch included,
     /// because this answers where the matter's code lives right now, not
