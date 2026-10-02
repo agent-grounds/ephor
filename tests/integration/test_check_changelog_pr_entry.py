@@ -1,267 +1,303 @@
 """The pull-request changelog gate, at both moments it runs. §FS-002-release.6
 
-The gate asks for a bullet, not for a number: a contributor writing their first
-bullet cannot know the number, so the pre-push hook is what refuses a missing
-bullet and CI never asks for a number that did not exist yet
-(§FS-002-release.1).
+The gate asks for an entry file the base did not have, not for a number: a
+contributor writing their first entry cannot know the number, so the pre-push
+hook is what refuses a missing entry and CI never asks for a number that did not
+exist yet (§FS-002-release.1). What an entry is — its name, its category, one
+bullet — is §FS-002-release.1.1, and the gate holds every entry a change touches
+to it.
 """
 
-import io
 import json
-import os
+import re
 import tempfile
 import unittest
-from contextlib import redirect_stderr, redirect_stdout
+from pathlib import Path
 from subprocess import CompletedProcess
 from unittest.mock import patch
-from pathlib import Path
 
-from changelog_git import GIT_ENV, ChangelogRepo, load_script, working_directory
+from changelog_git import ENTRY_DIR, EntryRepoCase, describe, load_script, output
 
 gate = load_script("check_changelog_pr_entry.py")
 
-# `GITHUB_EVENT_PATH` is set on every CI leg, and the gate reads it when no
-# `--pr-number` is given. Blanking it is what keeps a `--local-pr` case from
-# quietly picking up the number of the pull request running the suite.
-GATE_ENV = {**GIT_ENV, "GITHUB_EVENT_PATH": ""}
+BYPASS = "SKIP=changelog-pr-entry git push"
 
-# A section that already carries the numbers of merged pull requests, which is
-# what `## Unreleased` looks like in this repository. None of them is ours.
-NUMBERED_SECTION = """### Added
-
-- **A thing that already shipped to Unreleased.** (PR #137)
-- **A second thing already here.** (PR #138)
-- **A third thing, recorded by its url.**
-  (https://github.com/agent-grounds/ephor/pull/139)
-"""
-
-SECTION_WITH_A_NUMBERLESS_BULLET = """### Added
-
-- **A thing that already shipped to Unreleased.** (PR #137)
-- **A thing whose number nobody wrote.**
-"""
-
-THE_SIX_SECTIONS = ("Added", "Changed", "Deprecated", "Removed", "Fixed", "Security")
+# A refusal names a file to add, not only the directory: a concrete
+# `<slug>.<category>.md` under it, in one of the categories it may take.
+SUGGESTED_FILE = re.compile(
+    r"docs/changelog/unreleased/[a-z0-9][a-z0-9-]*\.(added|changed|deprecated|removed|fixed|security|note)\.md"
+)
 
 
-class Outcome:
-    def __init__(self, code: int, out: str, err: str) -> None:
-        self.code = code
-        self.out = out
-        self.err = err
+class EntryGateTests(EntryRepoCase):
+    """The base-relative gate: an added entry is what is asked for, at both moments."""
 
-    @property
-    def text(self) -> str:
-        return self.out + self.err
+    def ci(self, repo, *extra: str) -> CompletedProcess:
+        return repo.gate("--base-rev", repo.base, "--pr-number", "142", *extra)
 
-    @property
-    def first_error_line(self) -> str:
-        for line in self.text.splitlines():
-            if line.startswith("error:"):
-                return line
-        return ""
-
-    def __str__(self) -> str:
-        return f"exit={self.code}\n--- stdout ---\n{self.out}--- stderr ---\n{self.err}"
-
-
-def run_gate(repo: ChangelogRepo, argv: list[str], *, local_pr_number: int | None = None) -> Outcome:
-    """Run the gate the way a hook or a CI step does: in the checkout, by argv."""
-    out, err = io.StringIO(), io.StringIO()
-    with working_directory(repo.path), patch.dict(os.environ, GATE_ENV), patch.object(
-        gate, "pr_number_from_current_branch", return_value=local_pr_number
-    ):
-        with redirect_stdout(out), redirect_stderr(err):
-            try:
-                code = gate.main(argv)
-            except SystemExit as exc:  # argparse refusing an argument the gate does not have
-                code = exc.code if isinstance(exc.code, int) else 1
-    return Outcome(code, out.getvalue(), err.getvalue())
-
-
-class UnreleasedBulletGateTests(unittest.TestCase):
-    """The base-relative gate: a bullet is what is asked for, at both moments."""
-
-    def repo(self, unreleased: str, **kwargs) -> ChangelogRepo:
-        repo = ChangelogRepo(unreleased, **kwargs)
-        self.addCleanup(repo.cleanup)
+    def branch_with_no_entry(self, **kwargs):
+        repo = self.repo(**kwargs)
+        repo.write("src/thing.rs", "// a change a user will notice, and no entry for it\n")
+        repo.commit("a change with no changelog entry")
         return repo
 
-    def branch_that_adds(self, unreleased: str, *, base: str = NUMBERED_SECTION, **kwargs) -> ChangelogRepo:
-        repo = self.repo(base, **kwargs)
-        repo.write_unreleased(unreleased)
-        repo.commit("changelog: the contribution")
-        return repo
+    # --- what counts as adding an entry -------------------------------------
 
-    def branch_that_adds_no_bullet(self, *, base: str = NUMBERED_SECTION, **kwargs) -> ChangelogRepo:
-        repo = self.repo(base, **kwargs)
-        repo.write_file("src/thing.rs", "// a change a user will notice, and no bullet for it\n")
-        repo.commit("a change with no changelog bullet")
-        return repo
+    def test_an_added_entry_passes_at_both_moments_with_or_without_its_number(self) -> None:
+        for ending in ("", " (PR #TBD)", " (PR #142)", " ([#142](https://github.com/agent-grounds/ephor/pull/142))"):
+            with self.subTest(ending=ending):
+                repo = self.repo()
+                repo.entry("refresh-unreachable.fixed.md", f"- **`ephor refresh` keeps unreachable projects.**{ending}\n")
+                repo.commit("fix: keep unreachable projects")
+                self.assert_exit(repo.gate("--local-pr"), 0)
+                self.assert_exit(self.ci(repo), 0)
 
-    # --- the two arms of the reproducer, inverted ---------------------------
-
-    def test_new_bullet_passes_without_any_number(self) -> None:
-        repo = self.branch_that_adds(
-            NUMBERED_SECTION + "- **My first contribution.** It does what the issue asked for.\n"
+    def test_an_entry_of_several_paragraphs_is_one_entry(self) -> None:
+        repo = self.repo()
+        repo.entry(
+            "paragraphs.changed.md",
+            "- **A change that needs two paragraphs.** The first one wraps\n"
+            "  onto a second line.\n"
+            "\n"
+            "  **And a second paragraph.** It belongs to the same bullet.\n",
         )
-        outcome = run_gate(repo, ["--pr-number", "142", "--changelog", "docs/changelog.md"])
-        self.assertEqual(outcome.code, 0, outcome)
+        repo.commit("feat: a long entry")
+        self.assert_exit(self.ci(repo), 0)
 
-    def test_no_new_bullet_is_refused_even_though_the_section_is_full_of_numbers(self) -> None:
-        repo = self.branch_that_adds_no_bullet()
-        outcome = run_gate(repo, ["--local-pr", "--changelog", "docs/changelog.md"])
-        self.assertEqual(outcome.code, 1, outcome)
-        self.assertIn("no new or changed bullet", outcome.text, outcome)
+    def test_a_branch_that_adds_no_entry_is_refused_naming_the_directory_and_a_file(self) -> None:
+        repo = self.branch_with_no_entry()
+        local = repo.gate("--local-pr")
+        self.assert_refused(local, ENTRY_DIR, "PR #TBD", BYPASS)
+        self.assertRegex(output(local), SUGGESTED_FILE)
+        ci = self.ci(repo)
+        self.assert_refused(ci, ENTRY_DIR)
+        self.assertRegex(output(ci), SUGGESTED_FILE)
 
-    # --- what counts as adding a bullet ------------------------------------
+    def test_the_readme_alone_is_not_an_entry(self) -> None:
+        repo = self.repo()
+        repo.write(f"{ENTRY_DIR}/README.md", repo.read_entry("README.md") + "- A line that looks like a bullet.\n")
+        repo.commit("docs: explain the entries")
+        self.assert_refused(self.ci(repo), ENTRY_DIR)
 
-    def test_reworded_bullet_counts_as_changed(self) -> None:
-        repo = self.branch_that_adds(
-            SECTION_WITH_A_NUMBERLESS_BULLET.replace(
-                "- **A thing whose number nobody wrote.**",
-                "- **A thing whose number nobody wrote.** Now it says what it does.",
-            ),
-            base=SECTION_WITH_A_NUMBERLESS_BULLET,
+    def test_a_bullet_under_the_shared_section_is_not_an_entry(self) -> None:
+        repo = self.repo()
+        repo.write(
+            "docs/changelog.md",
+            repo.changelog.read_text().replace("## Unreleased\n", "## Unreleased\n\n### Fixed\n\n- **Written the old way.**\n"),
         )
-        outcome = run_gate(repo, ["--pr-number", "142", "--changelog", "docs/changelog.md"])
-        self.assertEqual(outcome.code, 0, outcome)
+        repo.commit("fix: an entry written the old way")
+        self.assert_refused(self.ci(repo), ENTRY_DIR)
+        self.assert_refused(repo.gate("--local-pr"), ENTRY_DIR)
 
-    def test_added_heading_without_a_bullet_is_refused(self) -> None:
-        repo = self.branch_that_adds(NUMBERED_SECTION + "\n### Security\n")
-        outcome = run_gate(repo, ["--pr-number", "142", "--changelog", "docs/changelog.md"])
-        self.assertEqual(outcome.code, 1, outcome)
-        self.assertIn("no new or changed bullet", outcome.text, outcome)
+    def test_an_edit_or_a_change_of_category_alone_does_not_count(self) -> None:
+        def edit(path: Path) -> None:
+            path.write_text("- **Already here, reworded.**\n")
 
-    # --- the number clause reads only the lines this pull request adds ------
+        def recategorize(path: Path) -> None:
+            path.rename(path.with_name("existing.changed.md"))
 
-    def test_number_on_an_added_line_must_be_this_pull_requests_own(self) -> None:
-        repo = self.branch_that_adds(NUMBERED_SECTION + "- **Mine, misnumbered.** (PR #137)\n")
-        outcome = run_gate(repo, ["--pr-number", "142", "--changelog", "docs/changelog.md"])
-        self.assertEqual(outcome.code, 1, outcome)
-        self.assertIn("PR #137", outcome.text, outcome)
-        self.assertIn("142", outcome.text, outcome)
+        def both(path: Path) -> None:
+            # Rewritten as well as moved: git sees no rename, the slug still does.
+            path.unlink()
+            path.with_name("existing.changed.md").write_text("- **Something else entirely, at length.**\n")
 
-    def test_a_pull_request_url_naming_another_number_is_refused(self) -> None:
-        repo = self.branch_that_adds(
-            NUMBERED_SECTION + "- **Mine, by url.** (https://github.com/agent-grounds/ephor/pull/137)\n"
+        for name, change in (("edit", edit), ("category", recategorize), ("category and edit", both)):
+            with self.subTest(change=name):
+                repo = self.repo()
+                existing = repo.entry("existing.fixed.md", "- **Already here.**\n")
+                base = repo.commit("fix: an entry that already landed")
+                change(existing)
+                repo.commit("docs: amend that entry")
+                self.assert_refused(repo.gate("--base-rev", base, "--pr-number", "142"), ENTRY_DIR)
+
+                # The amendment is not what was refused, the missing entry was.
+                repo.entry("mine.fixed.md", "- **My own change.**\n")
+                repo.commit("fix: my own change")
+                self.assert_exit(repo.gate("--base-rev", base, "--pr-number", "142"), 0)
+
+    def test_a_change_of_slug_is_refused_even_beside_a_new_entry(self) -> None:
+        repo = self.repo()
+        kept = repo.entry("kept-for-life.fixed.md", "- **Already here.**\n")
+        base = repo.commit("fix: an entry that already landed")
+        kept.rename(kept.with_name("renamed-later.fixed.md"))
+        repo.entry("mine.fixed.md", "- **My own change.**\n")
+        repo.commit("fix: mine, and a rename")
+        refused = repo.gate("--base-rev", base, "--pr-number", "142")
+        self.assert_refused(refused, "kept-for-life", "renamed-later")
+
+    def test_a_slug_used_twice_is_refused(self) -> None:
+        with self.subTest("both added by this change"):
+            repo = self.repo()
+            repo.entry("same.fixed.md")
+            repo.entry("same.added.md")
+            repo.commit("fix: one slug, two categories")
+            self.assert_refused(self.ci(repo), "same.fixed.md", "same.added.md")
+        with self.subTest("one already at the base"):
+            repo = self.repo()
+            repo.entry("same.fixed.md")
+            base = repo.commit("fix: an entry that already landed")
+            repo.entry("same.added.md")
+            repo.commit("feat: the same slug again")
+            self.assert_refused(repo.gate("--base-rev", base, "--pr-number", "142"), "same.added.md")
+
+    def test_a_malformed_entry_is_refused_even_beside_a_good_one(self) -> None:
+        cases = (
+            ("Upper-case.fixed.md", "- **The slug is not lowercase.**\n"),
+            ("under_score.fixed.md", "- **The slug has an underscore.**\n"),
+            ("no-category.md", "- **This repository requires a category.**\n"),
+            ("unknown.other.md", "- **`other` is not a category.**\n"),
+            ("plain-text.fixed.txt", "- **Not Markdown.**\n"),
+            ("empty.fixed.md", ""),
+            ("heading.fixed.md", "### Fixed\n\n- **A heading is not a bullet.**\n"),
+            ("no-bullet.fixed.md", "A paragraph, not a bullet.\n"),
+            ("two-bullets.fixed.md", "- **One.**\n- **Two.**\n"),
+            ("one-space.fixed.md", "- **Wrapped.**\n with a one-space continuation.\n"),
+            ("loose-paragraph.fixed.md", "- **A bullet.**\n\nThen a paragraph that is not indented.\n"),
         )
-        outcome = run_gate(repo, ["--pr-number", "142", "--changelog", "docs/changelog.md"])
-        self.assertEqual(outcome.code, 1, outcome)
-        self.assertIn("137", outcome.text, outcome)
+        for name, body in cases:
+            with self.subTest(name=name):
+                repo = self.repo()
+                repo.entry("mine.fixed.md", "- **My own change.**\n")
+                repo.entry(name, body)
+                repo.commit("fix: mine, and a malformed entry")
+                self.assert_refused(self.ci(repo), name)
 
-    def test_numbers_on_untouched_bullets_are_ignored(self) -> None:
-        repo = self.branch_that_adds(NUMBERED_SECTION + "- **Mine, with no number at all.**\n")
-        outcome = run_gate(repo, ["--pr-number", "142", "--changelog", "docs/changelog.md"])
-        self.assertEqual(outcome.code, 0, outcome)
-        for untouched in ("137", "138", "139"):
-            self.assertNotIn(untouched, outcome.text, outcome)
+    def test_an_entry_this_change_edits_is_held_to_the_format_too(self) -> None:
+        repo = self.repo()
+        existing = repo.entry("existing.fixed.md", "- **Already here.**\n")
+        base = repo.commit("fix: an entry that already landed")
+        existing.write_text("- **Already here.**\n- **And a second bullet in the same file.**\n")
+        repo.entry("mine.fixed.md", "- **My own change.**\n")
+        repo.commit("fix: mine, and a broken edit")
+        self.assert_refused(repo.gate("--base-rev", base, "--pr-number", "142"), "existing.fixed.md")
 
-    def test_pr_tbd_placeholder_is_accepted(self) -> None:
-        repo = self.branch_that_adds(NUMBERED_SECTION + "- **Mine, with a placeholder.** (PR #TBD)\n")
-        outcome = run_gate(repo, ["--pr-number", "142", "--changelog", "docs/changelog.md"])
-        self.assertEqual(outcome.code, 0, outcome)
+    # --- the number clause reads only what this change writes ----------------
 
-    # --- where CI gets its base --------------------------------------------
+    def test_a_number_this_change_writes_must_be_its_own(self) -> None:
+        for written in (
+            "(PR #137)",
+            "(pull request #137)",
+            "([original](https://github.com/agent-grounds/ephor/pull/137))",
+        ):
+            with self.subTest(written=written):
+                repo = self.repo()
+                repo.entry("misnumbered.fixed.md", f"- **Mine, misnumbered.** {written}\n")
+                repo.commit("fix: misnumbered")
+                self.assert_refused(self.ci(repo), "misnumbered.fixed.md", "137", "142")
+
+    def test_a_number_an_entry_already_carried_is_not_this_change_s_to_fix(self) -> None:
+        repo = self.repo()
+        carried = repo.entry("carried.fixed.md", "- **Landed with its number.** (PR #137)\n")
+        repo.entry("untouched.added.md", "- **Landed with its number too.** (PR #138)\n")
+        base = repo.commit("feat: entries that already landed")
+        carried.unlink()
+        repo.entry("carried.changed.md", "- **Landed with its number, clarified.** (PR #137)\n")
+        repo.entry("mine.fixed.md", "- **My own change.**\n")
+        repo.commit("fix: mine, and a clarification")
+        result = repo.gate("--base-rev", base, "--pr-number", "142")
+        self.assert_exit(result, 0)
+        self.assertNotIn("138", output(result), describe(result))
+
+    def test_a_foreign_number_written_into_an_existing_entry_is_refused(self) -> None:
+        repo = self.repo()
+        existing = repo.entry("existing.fixed.md", "- **Already here.**\n")
+        base = repo.commit("fix: an entry that already landed")
+        existing.write_text("- **Already here.** (PR #137)\n")
+        repo.entry("mine.fixed.md", "- **My own change.**\n")
+        repo.commit("fix: mine, and a number on someone else's")
+        self.assert_refused(repo.gate("--base-rev", base, "--pr-number", "142"), "existing.fixed.md", "137")
+
+    # --- where the base comes from --------------------------------------------
 
     def test_the_base_rev_flag_is_the_base_it_compares_against(self) -> None:
-        repo = self.branch_that_adds(NUMBERED_SECTION + "- **Mine, with no number at all.**\n")
-        outcome = run_gate(
-            repo, ["--pr-number", "142", "--base-rev", repo.base_sha, "--changelog", "docs/changelog.md"]
-        )
-        self.assertEqual(outcome.code, 0, outcome)
+        repo = self.repo()
+        repo.entry("mine.fixed.md")
+        head = repo.commit("fix: mine")
+        self.assert_exit(repo.gate("--base-rev", repo.base, "--pr-number", "142"), 0)
+        self.assert_refused(repo.gate("--base-rev", head, "--pr-number", "142"), ENTRY_DIR)
 
-    def test_a_moved_main_does_not_hand_a_branch_a_bullet_it_did_not_add(self) -> None:
-        repo = self.branch_that_adds_no_bullet()
-        repo.advance_main(
-            NUMBERED_SECTION.replace("A second thing already here.", "A second thing, reworded on main."),
-            "changelog: reword a bullet on main",
-        )
-        outcome = run_gate(
-            repo, ["--pr-number", "142", "--base-rev", repo.base_sha, "--changelog", "docs/changelog.md"]
-        )
-        self.assertEqual(outcome.code, 1, outcome)
+    def test_a_moved_main_does_not_hand_a_branch_an_entry_it_did_not_add(self) -> None:
+        repo = self.branch_with_no_entry()
+        repo.git("checkout", "-q", "main")
+        repo.entry("theirs.fixed.md", "- **Someone else's change.**\n")
+        repo.commit("fix: theirs, merged while this branch was open")
+        repo.git("checkout", "-q", "contribution")
+        self.assert_refused(repo.gate("--local-pr"), ENTRY_DIR)
+        self.assert_refused(self.ci(repo), ENTRY_DIR)
 
-    # --- where the local hook cannot see a base ----------------------------
+    def test_local_bases_are_tried_origin_then_upstream_then_main(self) -> None:
+        for preferred in ("origin/main", "upstream/main", "main"):
+            with self.subTest(preferred=preferred):
+                repo = self.repo()
+                if preferred != "main":
+                    repo.git("update-ref", f"refs/remotes/{preferred}", repo.base)
+                repo.entry("mine.fixed.md")
+                head = repo.commit("fix: mine")
+                if preferred != "main":
+                    # Local main already holds the entry: reading it instead of
+                    # the preferred base would find nothing added.
+                    repo.git("update-ref", "refs/heads/main", head)
+                self.assert_exit(repo.gate("--local-pr"), 0)
 
-    def test_unresolvable_base_falls_back_to_any_bullet_and_says_which_check_it_ran(self) -> None:
-        repo = self.branch_that_adds_no_bullet(with_origin=False)
-        outcome = run_gate(repo, ["--local-pr", "--changelog", "docs/changelog.md"])
-        self.assertEqual(outcome.code, 0, outcome)
-        self.assertIn("could not resolve a base", outcome.text, outcome)
-        self.assertIn("origin/main", outcome.text, outcome)
-        self.assertIn("has a bullet at all", outcome.text, outcome)
-        self.assertIn("not that you added one", outcome.text, outcome)
+    # --- where the local hook cannot see a base -------------------------------
 
-    def test_unresolvable_base_with_no_bullets_at_all_is_refused(self) -> None:
-        repo = self.repo("", with_origin=False)
-        repo.write_file("src/thing.rs", "// a change with an empty Unreleased above it\n")
-        repo.commit("a change with no changelog bullet anywhere")
-        outcome = run_gate(repo, ["--local-pr", "--changelog", "docs/changelog.md"])
-        self.assertEqual(outcome.code, 1, outcome)
-        self.assertIn("no bullets at all", outcome.text, outcome)
-        self.assertIn("SKIP=changelog-pr-entry git push", outcome.text, outcome)
+    def test_with_no_base_a_well_formed_entry_passes_and_says_what_was_not_checked(self) -> None:
+        repo = self.repo(with_base=False)
+        repo.entry("mine.note.md", "- **A note.**\n")
+        repo.commit("docs: a note")
+        result = repo.gate("--local-pr")
+        self.assert_exit(result, 0)
+        for detail in ("could not resolve a base", "origin/main", "upstream/main", ENTRY_DIR, "not that you added one"):
+            self.assertIn(detail, output(result), describe(result))
 
-    # --- the messages are the contributor-facing half of this change --------
+    def test_with_no_base_a_missing_or_malformed_entry_is_refused(self) -> None:
+        for body in (None, "A paragraph, not a bullet.\n"):
+            with self.subTest(body=body):
+                repo = self.repo(with_base=False)
+                if body is not None:
+                    repo.entry("broken.fixed.md", body)
+                repo.write("src/thing.rs", "// a change\n")
+                repo.commit("a change")
+                self.assert_refused(repo.gate("--local-pr"), ENTRY_DIR, BYPASS)
 
-    def test_refusal_names_the_skip_bypass(self) -> None:
-        repo = self.branch_that_adds_no_bullet()
-        outcome = run_gate(repo, ["--local-pr", "--changelog", "docs/changelog.md"])
-        self.assertEqual(outcome.code, 1, outcome)
-        self.assertIn("SKIP=changelog-pr-entry git push", outcome.text, outcome)
-
-    def test_refusal_carries_the_guidance_a_contributor_needs(self) -> None:
-        repo = self.branch_that_adds_no_bullet()
-        outcome = run_gate(repo, ["--local-pr", "--changelog", "docs/changelog.md"])
-        self.assertEqual(outcome.code, 1, outcome)
-        for section in THE_SIX_SECTIONS:
-            self.assertIn(section, outcome.text, f"the refusal does not name {section}:\n{outcome}")
-        self.assertIn("You do not need the pull request number", outcome.text, outcome)
-        self.assertIn("PR #TBD", outcome.text, outcome)
-        self.assertIn("conventions are in docs/changelog.md", outcome.text, outcome)
-
-    def test_wrong_number_refusal_says_untouched_numbers_are_not_theirs_to_fix(self) -> None:
-        repo = self.branch_that_adds(NUMBERED_SECTION + "- **Mine, misnumbered.** (PR #137)\n")
-        outcome = run_gate(repo, ["--pr-number", "142", "--changelog", "docs/changelog.md"])
-        self.assertEqual(outcome.code, 1, outcome)
-        self.assertIn("not yours to fix", outcome.text, outcome)
-        self.assertIn("PR #TBD", outcome.text, outcome)
-
-    # --- one predicate, two moments ----------------------------------------
+    # --- one predicate, two moments ---------------------------------------------
 
     def test_the_push_and_the_pull_request_reach_one_predicate(self) -> None:
         """`.pre-commit-config.yaml` promises the hook matches the CI gate rather than exceeding it."""
         cases = (
-            ("a branch that adds no bullet", None),
-            ("a branch that adds a numberless bullet", NUMBERED_SECTION + "- **Mine.**\n"),
+            ("adds no entry", None, 1),
+            ("adds a numberless entry", "- **Mine.**\n", 0),
+            ("adds an entry naming another pull request", "- **Mine.** (PR #137)\n", 1),
         )
-        for description, unreleased in cases:
+        for description, body, expected in cases:
             with self.subTest(description):
-                if unreleased is None:
-                    repo = self.branch_that_adds_no_bullet()
+                repo = self.repo()
+                if body is None:
+                    repo.write("src/thing.rs", "// a change\n")
                 else:
-                    repo = self.branch_that_adds(unreleased)
-                local = run_gate(repo, ["--local-pr", "--changelog", "docs/changelog.md"])
-                ci = run_gate(
-                    repo, ["--pr-number", "142", "--base-rev", repo.base_sha, "--changelog", "docs/changelog.md"]
-                )
-                self.assertEqual(local.code, ci.code, f"local:\n{local}\nci:\n{ci}")
-                if ci.code != 0:
-                    self.assertEqual(local.first_error_line, ci.first_error_line, f"local:\n{local}\nci:\n{ci}")
+                    repo.entry("mine.fixed.md", body)
+                repo.commit("the contribution")
+                repo.forge(branch_pr=142)
+                event = repo.root / "event.json"
+                event.write_text(json.dumps({"pull_request": {"number": 142}}))
+                local = repo.gate("--local-pr")
+                ci = repo.gate("--base-rev", repo.base, "--event-path", str(event))
+                self.assert_exit(local, expected)
+                self.assert_exit(ci, expected)
+                if expected:
+                    self.assertEqual(first_error_line(local), first_error_line(ci), f"{describe(local)}\n{describe(ci)}")
 
-    # --- behaviour this change does not move -------------------------------
+    def test_the_changelog_flag_moves_the_entry_directory_with_it(self) -> None:
+        repo = self.repo()
+        repo.write("elsewhere/changelog.md", repo.changelog.read_text())
+        repo.write("elsewhere/changelog/unreleased/mine.fixed.md", "- **Mine.**\n")
+        repo.commit("fix: an entry beside another changelog")
+        self.assert_exit(repo.gate("--changelog", "elsewhere/changelog.md", "--base-rev", repo.base), 0)
+        self.assert_refused(repo.gate("--base-rev", repo.base), ENTRY_DIR)
 
-    def test_an_added_bullet_may_carry_its_own_number(self) -> None:
-        repo = self.branch_that_adds(NUMBERED_SECTION + "- **Mine, numbered by hand.** (PR #142)\n")
-        outcome = run_gate(repo, ["--pr-number", "142", "--changelog", "docs/changelog.md"])
-        self.assertEqual(outcome.code, 0, outcome)
 
-    def test_a_pull_request_url_counts_as_this_pull_requests_number(self) -> None:
-        repo = self.branch_that_adds(
-            NUMBERED_SECTION + "- **Mine, by url.** (https://github.com/agent-grounds/ephor/pull/142)\n"
-        )
-        outcome = run_gate(repo, ["--pr-number", "142", "--changelog", "docs/changelog.md"])
-        self.assertEqual(outcome.code, 0, outcome)
+def first_error_line(result: CompletedProcess) -> str:
+    return next((line for line in output(result).splitlines() if line.startswith("error:")), "")
 
 
 class PullRequestNumberLookupTests(unittest.TestCase):
