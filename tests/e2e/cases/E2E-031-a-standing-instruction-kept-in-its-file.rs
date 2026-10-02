@@ -14,7 +14,10 @@
 //! its own `{title}` survives as those seven characters, while the `{title}` in
 //! `brief` is the matter's (§FS-005-dispatch.34). Its headings arrive flattened,
 //! because a heading inside a plan is a node the runtime would read as a task
-//! (§FS-005-dispatch.3). And each ticket records **which** version of the
+//! (§FS-005-dispatch.3) — all but the ones its author fenced, which arrive as
+//! written by the plan language's own fence rule, so a four-backtick block
+//! quoting a plan skeleton keeps the headings of the example nested inside it
+//! (§FS-005-dispatch.3.2). And each ticket records **which** version of the
 //! instruction it was given — the rendered path and a sha256 of the bytes as
 //! read — so a second ticket written after the file changed keeps its own
 //! answer and does not correct the first (§FS-005-dispatch.34.2,
@@ -67,6 +70,45 @@ ticket must carry the new words and a hash of its own.
 
 const INSTRUCTION_EDITED_SHA256: &str =
     "418bf68b2ca0121387118ea96c585d4a135cdab45de37f4f0e8edc050ea7cf11";
+
+/// A plan skeleton quoted whole. It holds a `markdown` example of its own, so
+/// its author fences it with four backticks — the ordinary way to quote content
+/// that contains fences — and every line of it, the nested example's headings
+/// included, is content (§FS-005-dispatch.3.2). The shape of the report this
+/// was written for, agent-grounds/ephor#142.
+const QUOTED_SKELETON: &str = r#"````markdown
+# Rhei: <the matter>
+
+## Tasks
+
+### Task 1: write the plan the ticket asks for
+**State:** pending
+
+The file to write looks like this:
+
+```markdown
+# Rhei: the retry window
+
+## Tasks
+
+### Task 1: widen the window
+**State:** pending
+```
+
+Nothing above is a template: its braces and its headings are the characters
+they are.
+````"#;
+
+/// A standing instruction whose one heading of its own stands outside every
+/// fence, and which quotes the skeleton above.
+fn quoting_instruction() -> String {
+    format!(
+        "# Standing instruction: how a hand-over is written here\n\n\
+         Every ticket laid under this recipe is a plan in the shape below. The shape is\n\
+         quoted whole, in a four-backtick fence, because it contains fences of its own:\n\n\
+         {QUOTED_SKELETON}\n\nFollow the shape exactly.\n"
+    )
+}
 
 /// A forge with one issue of the reader's. When it was last touched is read
 /// out of a file, so the case can move the matter and watch the work reopen
@@ -245,6 +287,54 @@ fn the_ticket_carries_the_instruction_and_says_which_version_it_got() {
     assert!(
         plan.contains(&format!("instruction_sha256: \"{INSTRUCTION_SHA256}\"")),
         "the ticket does not record a sha256 of the bytes as read:\n{plan}"
+    );
+}
+
+/// What the instruction's author fenced reaches the ticket as they wrote it,
+/// by the plan language's own fence rule: a four-backtick block keeps the
+/// headings of the `markdown` example nested inside it, and only the heading
+/// that stands outside every fence is flattened (§FS-005-dispatch.3.2,
+/// §FS-005-dispatch.34, §FS-005-dispatch.3).
+#[test]
+fn what_the_instruction_fenced_reaches_the_ticket_as_its_author_wrote_it() {
+    let world = watching();
+    world.file("DESIRES.md", &quoting_instruction());
+
+    dispatch(&world)
+        .success()
+        .stdout(predicate::str::contains("1 ticket(s) opened"));
+
+    let plan = std::fs::read_to_string(plan_path(&world)).expect("the plan is on disk");
+
+    // The nested example's headings are inside the four-backtick fence, past a
+    // three-backtick line that is content of the block and not its end.
+    for heading in [
+        "# Rhei: the retry window",
+        "## Tasks",
+        "### Task 1: widen the window",
+    ] {
+        let emphasised = format!("**{}**", heading.trim_start_matches('#').trim_start());
+        assert!(
+            !plan.lines().any(|line| line == emphasised),
+            "{heading:?} inside the four-backtick fence came out as {emphasised:?}:\n{plan}"
+        );
+    }
+    // And the whole block — both fences and everything between them — arrives
+    // byte for byte.
+    assert!(
+        plan.contains(QUOTED_SKELETON),
+        "the four-backtick block did not reach the ticket as its author wrote it:\n{plan}"
+    );
+
+    // The control: the rule still runs on this path, and the one heading
+    // outside every fence is flattened (§FS-005-dispatch.3).
+    assert!(
+        plan.contains("**Standing instruction: how a hand-over is written here**"),
+        "the instruction's own heading was not flattened:\n{plan}"
+    );
+    assert!(
+        !plan.contains("\n# Standing instruction"),
+        "the instruction's own heading reached the plan as a heading:\n{plan}"
     );
 }
 

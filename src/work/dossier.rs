@@ -1545,6 +1545,91 @@ mod tests {
         );
     }
 
+    /// A longer fence holds shorter ones: a three-backtick pair inside a
+    /// four-backtick block is content of the block, not its end, so the
+    /// headings of the nested example are what its author wrote
+    /// (§FS-005-dispatch.3.2).
+    #[test]
+    fn a_longer_fence_holds_a_shorter_pair_and_its_headings() {
+        let text = "````markdown\n# Outer\n```markdown\n# Inner\n## Tasks\n```\n\
+                    # After the inner pair\n````\n# Outside\n";
+        assert_eq!(
+            in_a_body(text),
+            "````markdown\n# Outer\n```markdown\n# Inner\n## Tasks\n```\n\
+             # After the inner pair\n````\n**Outside**\n"
+        );
+    }
+
+    /// A run of tildes is a fence exactly as a run of backticks is, and what
+    /// it wraps is left as it is (§FS-005-dispatch.3.2).
+    #[test]
+    fn a_tilde_fence_holds_a_heading() {
+        assert_eq!(
+            in_a_body("~~~\n# Quoted\n~~~\n# Outside\n"),
+            "~~~\n# Quoted\n~~~\n**Outside**\n"
+        );
+    }
+
+    /// A run of the other character does not close a backtick fence: it is a
+    /// line of the block (§FS-005-dispatch.3.2).
+    #[test]
+    fn a_backtick_fence_is_not_closed_by_tildes() {
+        assert_eq!(
+            in_a_body("```\n~~~\n# Still inside\n```\n# Outside\n"),
+            "```\n~~~\n# Still inside\n```\n**Outside**\n"
+        );
+    }
+
+    /// Nor does a backtick run close a tilde fence (§FS-005-dispatch.3.2).
+    #[test]
+    fn a_tilde_fence_is_not_closed_by_backticks() {
+        assert_eq!(
+            in_a_body("~~~\n```\n# Still inside\n~~~\n# Outside\n"),
+            "~~~\n```\n# Still inside\n~~~\n**Outside**\n"
+        );
+    }
+
+    /// A run carrying an info string opens a fence and never closes one: inside
+    /// an open fence it is a line of the block (§FS-005-dispatch.3.2).
+    #[test]
+    fn a_run_with_an_info_string_does_not_close_an_open_fence() {
+        assert_eq!(
+            in_a_body("```\n```rust\n# Still inside\n```\n# Outside\n"),
+            "```\n```rust\n# Still inside\n```\n**Outside**\n"
+        );
+    }
+
+    /// A fence nothing closes runs to the end of the text, and every heading
+    /// after it is content (§FS-005-dispatch.3.2).
+    #[test]
+    fn an_unclosed_fence_runs_to_the_end_of_the_text() {
+        assert_eq!(
+            in_a_body("# Before\n```text\n# Quoted\n\n## Also quoted\n"),
+            "**Before**\n```text\n# Quoted\n\n## Also quoted\n"
+        );
+    }
+
+    /// A closing run need only be at least as long as the one that opened the
+    /// fence, so a longer one closes it (§FS-005-dispatch.3.2).
+    #[test]
+    fn a_longer_closing_run_closes_the_fence() {
+        assert_eq!(
+            in_a_body("```\n# Quoted\n`````\n# Outside\n"),
+            "```\n# Quoted\n`````\n**Outside**\n"
+        );
+    }
+
+    /// Whitespace after a closing run leaves it bare, so it still closes the
+    /// fence — and the line itself is left as it was written
+    /// (§FS-005-dispatch.3.2).
+    #[test]
+    fn whitespace_after_a_closing_run_still_closes_the_fence() {
+        assert_eq!(
+            in_a_body("```\n# Quoted\n``` \t\n# Outside\n"),
+            "```\n# Quoted\n``` \t\n**Outside**\n"
+        );
+    }
+
     /// A rendered path with nothing readable behind it refuses, naming the
     /// path — and an empty file is the same hole arriving later, because the
     /// ticket would ask for nothing (§FS-005-dispatch.34).

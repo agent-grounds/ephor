@@ -363,7 +363,9 @@ loading the plan at all — which on the one writer nobody is watching
 ([§FS-004-quick-actions.6.1](FS-004-quick-actions.md#61-the-same-replay-over-every-checkout-nobody-is-holding))
 means a ticket that can never be worked and a checkout passed over on it
 forever. A brief read out of a file is an embedded document like any other and
-is flattened the same way ([§FS-005-dispatch.34](FS-005-dispatch.md#34-a-brief-may-be-kept-in-the-file-that-owns-it)).
+is flattened the same way ([§FS-005-dispatch.34](FS-005-dispatch.md#34-a-brief-may-be-kept-in-the-file-that-owns-it)). What counts as already fenced is
+the plan language's own rule, and nothing looser
+([§FS-005-dispatch.3.2](FS-005-dispatch.md#32-what-is-already-fenced-is-what-the-plan-language-fences)).
 
 A project that keeps a single checkout for every branch is not exempt from
 that. Its root is the branch's working tree only while it is standing on the
@@ -489,6 +491,34 @@ What was carried over is said on the command's own output and carried in `--json
 it over. It is a fact only ephor knows and only at that moment: the reader who
 had a path to a plan does not have one now, and a rename nobody was told about
 reads as work that vanished.
+
+### 3.2 What is already fenced is what the plan language fences
+
+**A plan must never be read by two fence rules, so a body is written by the
+reader's.** The flattening exists so that the runtime never meets a heading where
+the writer meant prose ([§FS-005-dispatch.3](FS-005-dispatch.md#3-one-rhei-per-item-one-ticket-per-dispatch)). A writer that puts a fence's
+edges anywhere the reader does not either flattens a line the reader would have
+left alone or leaves a heading standing where the reader finds a task. So the
+fence ephor leaves alone is the one rhei's plan language defines for itself, as
+agent-grounds/rhei#337 wrote it down:
+
+- A fence **opens** on a line whose first non-whitespace character begins a run
+  of three or more backticks, or of three or more tildes. An info string may
+  follow the run.
+- It **closes** only on a later line that is a run of the *same* character, *at
+  least as long* as the run that opened it, followed by nothing but whitespace.
+- **Nothing else closes it.** A shorter run, a run of the other character, and
+  a run carrying an info string are lines of the block like any other.
+- A fence that nothing closes **runs to the end** of the text.
+
+**So a longer fence holds shorter ones.** A run of four backticks, or of tildes,
+is how an author quotes a document that has fences of its own — a plan skeleton
+with a `markdown` example inside it, a gate's log that printed the code it failed
+on — and the inner pair is content of the outer block, not its end. Every line
+from the run that opened a fence to the run that closed it, both included,
+reaches the body unchanged, the headings of a nested example among them; only
+what stands outside every fence is flattened. A brief whose whole purpose is to
+show what a plan looks like must not arrive saying that a plan has no headings.
 
 ## 4. The ledger is ephor's record, and never the truth about the work
 
