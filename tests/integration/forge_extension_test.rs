@@ -1141,3 +1141,69 @@ fn a_site_sources_rows_stay_until_it_leaves_sources() {
         "a source no longer in `sources` leaves nothing behind"
     );
 }
+
+/// A forge whose pull request has a red gate, and that can say what failed.
+const GATED_FORGE: &str = r#"#!/usr/bin/env bash
+cat >/dev/null
+case "${1:?subcommand}" in
+  capabilities) printf '{"pull_requests":true,"gate":true,"failures":true}' ;;
+  pull-requests)
+    printf '%s' '[
+      { "id": "acme/app/7", "repo": "acme/app", "number": "7", "title": "Red gate",
+        "updated_at": "2026-08-01T12:00:00Z", "role": "author", "state": "open",
+        "gate": { "repos": [ { "repo": "acme/app", "passed": 1, "failed": 1, "running": 0 } ] } }
+    ]'
+    ;;
+  failures) printf '%s' '[{ "job": "gate / unit" }]' ;;
+  *) printf '[]' ;;
+esac
+"#;
+
+/// The bucket's name is not reserved: a project the site configures under it
+/// is a project, and a gate on a row it placed goes back to its own source
+/// (§AR-008-pipeline.2, §FS-001-forge-interface.9).
+#[test]
+fn a_project_named_like_the_bucket_keeps_its_own_sources() {
+    let tmp = tempdir();
+    write_fixture(tmp.path());
+    let registry = tmp.path().join("workspaces.json");
+    let mut doc: Value = serde_json::from_str(&fs::read_to_string(&registry).unwrap()).unwrap();
+    doc["projects"][0]["id"] = json!("unattributed");
+    write_registry(&registry, &doc);
+    fs::write(
+        tmp.path().join("status.json"),
+        serde_json::to_string_pretty(&json!({
+            "defaults": { "ttl_seconds": 600, "provider_timeout_seconds": 10 },
+            "projects": { "unattributed": { "providers": [{ "provider": "own" }] } }
+        }))
+        .unwrap(),
+    )
+    .unwrap();
+    let fake_bin = tmp.path().join("ownbin");
+    fs::create_dir_all(&fake_bin).unwrap();
+    make_executable(&fake_bin.join("ephor-forge-own"), GATED_FORGE);
+    let path = format!(
+        "{}:{}",
+        fake_bin.to_string_lossy(),
+        std::env::var("PATH").unwrap_or_default()
+    );
+    let run = |args: &[&str]| {
+        let mut cmd = ephor_cmd();
+        cmd.env("PATH", &path);
+        for (key, value) in extension_env(tmp.path()) {
+            cmd.env(key, value);
+        }
+        cmd.args(args).output().unwrap()
+    };
+
+    assert!(run(&["refresh"]).status.success());
+    let failures = run(&["failures", "--item", "own:acme/app/7", "--json"]);
+    assert!(
+        failures.status.success(),
+        "`ephor failures` did not reach the project's own source: {}{}",
+        String::from_utf8_lossy(&failures.stdout),
+        String::from_utf8_lossy(&failures.stderr)
+    );
+    let said: Value = serde_json::from_slice(&failures.stdout).unwrap();
+    assert_eq!(said["failures"][0]["job"], "gate / unit", "{said}");
+}
