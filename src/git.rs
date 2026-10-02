@@ -83,11 +83,14 @@ pub enum Replay {
     Conflicted { paths: Vec<String>, restored: bool },
     /// Uncommitted work, so nothing was touched (§FS-004-quick-actions.6).
     Dirty(Vec<String>),
-    /// Nothing published: this branch has no copy on the remote, so there is
-    /// nothing to replay onto. An answer in the same register as an already
-    /// current repository, never a refusal (§FS-004-quick-actions.8) — only
-    /// [`Onto::Upstream`] can reach it.
-    Unpublished,
+    /// Nothing published: this branch has no copy on `push_remote`, the
+    /// remote it is pushed to, nor on the one fetched from where that is
+    /// another, so there is nothing to replay onto. An answer in the same
+    /// register as an already current repository, never a refusal
+    /// (§FS-004-quick-actions.8) — only [`Onto::Upstream`] can reach it.
+    /// `push_remote` is for the sentence; the reading goes on saying the one
+    /// word (§REQ-002-parity.4).
+    Unpublished { push_remote: String },
     /// git would not, and this is what it said.
     Refused(String),
 }
@@ -100,7 +103,7 @@ impl Replay {
             Replay::Rebased(_) => "rebased",
             Replay::Conflicted { .. } => "conflicted",
             Replay::Dirty(_) => "dirty",
-            Replay::Unpublished => "unpublished",
+            Replay::Unpublished { .. } => "unpublished",
             Replay::Refused(_) => "refused",
         }
     }
@@ -154,10 +157,17 @@ impl RepoReplay {
             Replay::Rebased(commits) => Came::plain(format!(
                 "Replayed onto `{onto}`; it had trailed by {commits} commit(s).",
             )),
-            Replay::Unpublished => Came::plain(format!(
-                "Nothing published — `{branch}` has no copy on `{}` to replay onto, \
+            // Where the branch is pushed somewhere other than it is fetched
+            // from, both were looked on, the fork first, and a sentence naming
+            // only the remote fetched from sends a reader to the one they cannot
+            // push to (§FS-004-quick-actions.8).
+            Replay::Unpublished { push_remote } => Came::plain(format!(
+                "Nothing published — `{branch}` has no copy on {} to replay onto, \
                  so this repository was left as it is.",
-                self.remote
+                match *push_remote == self.remote {
+                    true => format!("`{}`", self.remote),
+                    false => format!("`{push_remote}` or on `{}`", self.remote),
+                }
             )),
             // The two dispositions say different things because they leave
             // different worlds behind, and a reader sent to find a conflicted
@@ -282,7 +292,7 @@ impl Rebase {
     pub fn unpublished(&self) -> Vec<&RepoReplay> {
         self.repos
             .iter()
-            .filter(|repo| matches!(repo.replay, Replay::Unpublished))
+            .filter(|repo| matches!(repo.replay, Replay::Unpublished { .. }))
             .collect()
     }
 
@@ -1186,7 +1196,14 @@ fn replay_one(
             Upstream::Published { remote, branch } => format!("{remote}/{branch}"),
             // Never pushed, or not on a branch at all: an answer, not a
             // refusal (§FS-004-quick-actions.8).
-            Upstream::Unpushed { .. } | Upstream::Unknown => return (None, Replay::Unpublished),
+            Upstream::Unpushed { .. } | Upstream::Unknown => {
+                return (
+                    None,
+                    Replay::Unpublished {
+                        push_remote: push.to_string(),
+                    },
+                )
+            }
         },
     };
     // Unmeasurable is not zero: everything above has verified the ref, so
@@ -2028,6 +2045,43 @@ mod tests {
         assert!(!checkout.join("main-moved.txt").exists());
     }
 
+    /// A branch pushed nowhere, in a checkout that pushes to a fork: its copy
+    /// was looked for on the fork first, so the sentence names the fork and
+    /// not only the remote fetched from, while the reading says what it always
+    /// did (§FS-004-quick-actions.8).
+    #[test]
+    fn a_branch_published_nowhere_names_the_fork_it_would_be_pushed_to() {
+        use crate::api::schema::holds;
+
+        let temp = tempfile::tempdir().unwrap();
+        let checkout = checkout_with_fork(temp.path(), "app", PushTo::Default);
+
+        let forest = Forest::resolve(&checkout, None, &[]);
+        let replayed = super::rebase(&forest, &Onto::Upstream, Stopped::Leave);
+        assert_eq!(
+            replayed.repos[0].replay,
+            Replay::Unpublished {
+                push_remote: "fork".to_string()
+            }
+        );
+        assert!(
+            replayed
+                .report()
+                .contains("has no copy on `fork` or on `origin` to replay onto"),
+            "{}",
+            replayed.report()
+        );
+
+        let view = replayed.view();
+        assert!(holds("rebase", &view).is_empty(), "{view}");
+        let row = view["repos"][0].as_object().unwrap();
+        assert_eq!(row["replay"], "unpublished");
+        assert_eq!(row["remote"], ORIGIN);
+        let mut keys: Vec<&str> = row.keys().map(String::as_str).collect();
+        keys.sort_unstable();
+        assert_eq!(keys, ["branch", "paths", "remote", "replay", "repo"]);
+    }
+
     /// A control, true before the fork was honoured and after: a new branch
     /// is grown from the remote the project is fetched from, never from the
     /// fork's older copy of the base (§FS-004-quick-actions.7.4).
@@ -2690,7 +2744,12 @@ mod tests {
             &Onto::Upstream,
             Stopped::Leave,
         );
-        assert_eq!(outcome.repos[0].replay, Replay::Unpublished);
+        assert_eq!(
+            outcome.repos[0].replay,
+            Replay::Unpublished {
+                push_remote: ORIGIN.to_string()
+            }
+        );
         assert_eq!(outcome.repos[0].onto, None);
         // Not stuck and not a conflict: the command succeeds and says why
         // there was nothing to do.
@@ -2724,7 +2783,12 @@ mod tests {
         assert_eq!(names, ["ce", "ee"]);
         assert_eq!(outcome.repos[0].replay, Replay::Rebased(1));
         assert_eq!(outcome.repos[0].onto.as_deref(), Some("origin/feature"));
-        assert_eq!(outcome.repos[1].replay, Replay::Unpublished);
+        assert_eq!(
+            outcome.repos[1].replay,
+            Replay::Unpublished {
+                push_remote: ORIGIN.to_string()
+            }
+        );
         assert_eq!(
             outcome.summary(),
             "1 rebased onto its published copy, 1 published nowhere"
@@ -2864,7 +2928,9 @@ mod tests {
                 restored: false,
             },
             Replay::Dirty(vec!["f.txt".to_string()]),
-            Replay::Unpublished,
+            Replay::Unpublished {
+                push_remote: ORIGIN.to_string(),
+            },
             Replay::Refused("no upstream".to_string()),
         ];
         for replay in replays {
@@ -3265,7 +3331,9 @@ mod tests {
         match name {
             "current" => Replay::Current,
             "rebased" => Replay::Rebased(3),
-            "unpublished" => Replay::Unpublished,
+            "unpublished" => Replay::Unpublished {
+                push_remote: ORIGIN.to_string(),
+            },
             "conflicted" => Replay::Conflicted {
                 paths: vec!["shared.txt".to_string()],
                 restored: false,
