@@ -515,7 +515,10 @@ say from where rather than take the project's `main_branch`: `--from` (`FROM`)
 is that input. What it takes is a **branch name on the project's remote** —
 `main`, not `origin/main`. The remote is ephor's to supply, because the
 checkout resolves the start point against the repository's own remote, so a
-value that named a remote as well would name one twice. Nor is it a revision:
+value that named a remote as well would name one twice. That remote is the one
+the repository fetches from, never the one it pushes to: a checkout that
+publishes through a fork still grows a new branch from where the project's main
+branch lives, not from the fork's copy of it. Nor is it a revision:
 `HEAD` and a revision expression such as `HEAD~1` are refused with every other
 name git will not take as a branch, naming the input they came in on
 ([§FS-011-command-line.9](FS-011-command-line.md#9-a-scope-selector-is-honoured-or-refused)).
@@ -587,6 +590,14 @@ entries from being one entry twice, and the middle one is what makes the offer
 worth having at all: a branch that was pushed and has no tracking configuration
 is exactly what `git worktree add -b` leaves behind, and in such a checkout bare
 `git rebase` refuses to run.
+
+Git records where a branch is published in its push configuration as well —
+`branch.<name>.pushRemote`, or `remote.pushDefault` for every branch, naming the
+fork a change goes through when its author cannot push to the project — so the
+branch of the same name is looked for on the remote the branch is pushed to
+first, and on the remote the project is fetched from after it. The replay
+fetches the remote the branch is pushed to as well, since refreshing the
+reading is the replay's to do.
 
 Offered only where it would do something
 ([§FS-004-quick-actions.2](FS-004-quick-actions.md#2-offered-only-where-it-would-work)), which here is four refusals. An

@@ -1749,6 +1749,202 @@ mod tests {
         run_in(&origin, &["checkout", "-q", "master"]);
     }
 
+    /// How a clone tells git that its branches are pushed somewhere other than
+    /// where it fetches from: for every branch, or for one.
+    #[derive(Debug, Clone, Copy)]
+    enum PushTo {
+        /// `remote.pushDefault`.
+        Default,
+        /// `branch.feature.pushRemote`.
+        Branch,
+    }
+
+    /// The fork shape (§FS-004-quick-actions.8): the clone of
+    /// [`checkout_with_origin`], fetching from `origin` and pushing to a
+    /// `fork` taken while the two agreed, wired by `push`. `master` then moves
+    /// on `origin` alone and is fetched, so the base is a commit further on
+    /// where the project lives than on the fork.
+    fn checkout_with_fork(root: &Path, name: &str, push: PushTo) -> PathBuf {
+        let clone = checkout_with_origin(root, name);
+        let fork = root.join(format!("{name}-fork.git"));
+        let status = Command::new("git")
+            .args(["clone", "-q"])
+            .arg(root.join(format!("{name}.git")))
+            .arg(&fork)
+            .stderr(Stdio::null())
+            .status()
+            .unwrap();
+        assert!(status.success());
+        run_in(&fork, &["config", "user.email", "t@example.com"]);
+        run_in(&fork, &["config", "user.name", "t"]);
+        run_in(&clone, &["remote", "add", "fork", &fork.to_string_lossy()]);
+        run_in(&clone, &["fetch", "-q", "fork"]);
+        match push {
+            PushTo::Default => run_in(&clone, &["config", "remote.pushDefault", "fork"]),
+            PushTo::Branch => run_in(&clone, &["config", "branch.feature.pushRemote", "fork"]),
+        }
+        advance_master(root, name, "main-moved.txt", "main\n");
+        run_in(&clone, &["fetch", "-q", "origin"]);
+        clone
+    }
+
+    /// Push `feature` to the fork alone, with no tracking configuration, and
+    /// move it on there without this clone: a reviewer's fixup on a pull
+    /// request opened from the fork. Nothing is fetched afterwards.
+    fn advance_feature_on_the_fork(root: &Path, name: &str, file: &str) {
+        let fork = root.join(format!("{name}-fork.git"));
+        let clone = root.join("work").join(name);
+        run_in(&clone, &["push", "-q", "fork", "feature"]);
+        run_in(&fork, &["checkout", "-q", "feature"]);
+        commit(&fork, file, "theirs\n", "somebody else pushed to the fork");
+        run_in(&fork, &["checkout", "-q", "master"]);
+    }
+
+    /// The standing of a branch published to the fork alone, one commit ahead
+    /// of its copy there and one behind it, however git was told where it is
+    /// pushed (§DA-003-upstream-is-the-published-copy).
+    fn stands_against_its_copy_on_the_fork(push: PushTo) {
+        let temp = tempfile::tempdir().unwrap();
+        let checkout = checkout_with_fork(temp.path(), "app", push);
+        advance_feature_on_the_fork(temp.path(), "app", "theirs.txt");
+        commit(&checkout, "mine-2.txt", "mine\n", "not pushed yet");
+        run_in(&checkout, &["fetch", "-q", "fork"]);
+
+        let forest = Forest::resolve(&checkout, None, &[]);
+        // The remote the project is fetched from is not moved by where the
+        // branch is pushed (§AR-004-forest.2).
+        assert_eq!(forest.repos[0].remote, ORIGIN);
+        let standing = forest.standing();
+        let repo = &standing.repos[0];
+        assert_eq!(
+            repo.upstream,
+            Upstream::Published {
+                remote: "fork".to_string(),
+                branch: "feature".to_string(),
+            },
+            "{push:?}: git records that `feature` is pushed to `fork`, and `fork/feature` holds it"
+        );
+        assert_eq!((repo.ahead, repo.behind_upstream), (Some(1), Some(1)));
+        // `origin/master` moved and `fork/master` did not: the base is
+        // counted where the project lives (§FS-004-quick-actions.7.4).
+        assert_eq!(repo.behind_base, Some(1));
+    }
+
+    /// `remote.pushDefault` names the fork for every branch: the ticket's own
+    /// shape (§FS-004-quick-actions.8).
+    #[test]
+    fn a_branch_pushed_to_the_push_default_is_read_against_its_copy_there() {
+        stands_against_its_copy_on_the_fork(PushTo::Default);
+    }
+
+    /// `branch.<name>.pushRemote` names it for this branch alone
+    /// (§FS-004-quick-actions.8).
+    #[test]
+    fn a_branch_pushed_to_its_own_push_remote_is_read_against_its_copy_there() {
+        stands_against_its_copy_on_the_fork(PushTo::Branch);
+    }
+
+    /// Both remotes hold a branch of this name: the one on the remote it is
+    /// pushed to is its copy, because that is where it was last pushed — the
+    /// other is from before the fork was wired in
+    /// (§DA-003-upstream-is-the-published-copy).
+    #[test]
+    fn where_both_remotes_have_the_branch_its_copy_is_the_one_it_is_pushed_to() {
+        let temp = tempfile::tempdir().unwrap();
+        let checkout = checkout_with_fork(temp.path(), "app", PushTo::Default);
+        run_in(&checkout, &["push", "-q", "origin", "feature"]);
+        advance_feature_on_the_fork(temp.path(), "app", "theirs.txt");
+        run_in(&checkout, &["fetch", "-q", "fork"]);
+
+        let standing = Forest::resolve(&checkout, None, &[]).standing();
+        assert_eq!(
+            standing.repos[0].upstream,
+            Upstream::Published {
+                remote: "fork".to_string(),
+                branch: "feature".to_string(),
+            }
+        );
+        assert_eq!(standing.repos[0].behind_upstream, Some(1));
+    }
+
+    /// A control, true before the fork was honoured and after: a branch pushed
+    /// to the remote the project is fetched from, and never to the fork, is
+    /// still read there under `remote.pushDefault` — the push remote is where
+    /// the copy is looked for first, not the only place
+    /// (§DA-003-upstream-is-the-published-copy).
+    #[test]
+    fn a_branch_pushed_where_the_project_is_fetched_from_is_still_read_there() {
+        let temp = tempfile::tempdir().unwrap();
+        let checkout = checkout_with_fork(temp.path(), "app", PushTo::Default);
+        advance_published_feature(temp.path(), "app", "theirs.txt");
+        run_in(&checkout, &["fetch", "-q", "origin"]);
+
+        let standing = Forest::resolve(&checkout, None, &[]).standing();
+        let repo = &standing.repos[0];
+        assert_eq!(
+            repo.upstream,
+            Upstream::Published {
+                remote: ORIGIN.to_string(),
+                branch: "feature".to_string(),
+            }
+        );
+        assert_eq!(repo.behind_upstream, Some(1));
+        assert_eq!(repo.behind_base, Some(1));
+    }
+
+    /// The replay onto a copy on the fork fetches the fork first, so a fixup
+    /// pushed there since this clone last fetched is what it lands on — the
+    /// replay is what refreshes the reading (§FS-004-quick-actions.8). The
+    /// `remote` its report carries is still the one fetched for the base.
+    #[test]
+    fn a_branch_is_replayed_onto_its_copy_on_the_fork_as_the_fork_has_it_now() {
+        let temp = tempfile::tempdir().unwrap();
+        let checkout = checkout_with_fork(temp.path(), "app", PushTo::Default);
+        advance_feature_on_the_fork(temp.path(), "app", "theirs.txt");
+        commit(&checkout, "mine-2.txt", "mine\n", "not pushed yet");
+        // As this clone last saw it, the fork's copy holds nothing new: only
+        // a fetch of the fork finds the fixup.
+        assert_eq!(behind_ref(&checkout, "fork/feature"), Some(0));
+
+        let forest = Forest::resolve(&checkout, None, &[]);
+        let replayed = super::rebase(&forest, &Onto::Upstream, Stopped::Leave);
+        assert_eq!(replayed.repos[0].onto.as_deref(), Some("fork/feature"));
+        assert_eq!(replayed.repos[0].replay, Replay::Rebased(1));
+        assert_eq!(replayed.repos[0].remote, ORIGIN);
+        assert!(replayed.report().contains("`fork/feature`"));
+        assert!(checkout.join("theirs.txt").exists());
+        assert!(checkout.join("mine-2.txt").exists());
+        // Main's move is the other rebase's.
+        assert!(!checkout.join("main-moved.txt").exists());
+    }
+
+    /// A control, true before the fork was honoured and after: a new branch
+    /// is grown from the remote the project is fetched from, never from the
+    /// fork's older copy of the base (§FS-004-quick-actions.7.4).
+    #[test]
+    fn a_workspace_is_grown_from_the_fetch_remote_and_never_from_the_fork() {
+        let temp = tempfile::tempdir().unwrap();
+        let ce = checkout_with_fork(temp.path(), "ce", PushTo::Default);
+        let source = ce.parent().unwrap().to_path_buf();
+        run_in(&ce, &["checkout", "-q", "master"]);
+        run_in(&ce, &["branch", "-q", "-D", "feature"]);
+
+        let target = temp.path().join("ws").join("nova");
+        let made = super::create(
+            &source,
+            &target,
+            &Forest::resolve(&source, None, &[]),
+            "nova",
+            "master",
+        );
+        assert_eq!(
+            made.repos[0].created,
+            Created::Branched("master".to_string())
+        );
+        assert!(made.report().contains("`origin/master`"));
+        assert!(target.join("ce").join("main-moved.txt").exists());
+    }
+
     #[test]
     fn a_branch_that_trails_is_replayed_and_one_that_does_not_is_current() {
         let temp = tempfile::tempdir().unwrap();

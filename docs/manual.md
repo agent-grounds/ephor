@@ -1303,7 +1303,9 @@ level as of a day you can see is a fact, "up to date" was a claim. Where no day
 was ever recorded, which is what a fresh clone that has never fetched looks
 like, the qualifier is simply left off: `· 13 behind`. A checkout that also
 trails its own **published copy** — the pushed branch of the same name, read
-per repository from each checkout's `HEAD` — carries a second distance in a
+per repository from each checkout's `HEAD`, and looked for first on the remote
+the branch is pushed to, which is your fork where `remote.pushDefault` or
+`branch.<name>.pushRemote` names one — carries a second distance in a
 second color: `· 13 behind as of Jul 28 · ↓2` is thirteen commits behind the
 project's main branch and two behind what was pushed of this branch. The arrow
 carries no date: it is news that somebody pushed, and a stale reading of it can
@@ -1500,6 +1502,9 @@ It follows the entry above in both respects: offered wherever there is a copy
 to replay onto, behind it or level, and dated from that copy's own ref rather
 than the base's — a fetch dates only the refs it actually brought down, so the
 two days rarely match.
+`<remote>` is wherever the branch was pushed: your fork's name, in a checkout
+that pushes to one, while the entry above still counts against the remote the
+project is fetched from.
 This one needs no `main_branch` at all: each repository resolves its own copy,
 so a project that names no main branch is still offered it.
 It runs `ephor rebase --upstream`, which replays each repository onto its own
@@ -2370,7 +2375,8 @@ beside it is offered there (§7.1): handing a level rebase to an agent is a
 ticket to do nothing, while pressing the key runs git and finds out. It is
 measured in your own checkout, not asked of a forge: each of the
 branch workspace's repositories is counted against `<its remote>/<its base>` as
-it was last fetched — the remote read off the repository, and the base its own
+it was last fetched — the remote it fetches from, read off the repository and
+never the fork a branch is pushed to, and the base its own
 `default_branch` where the row names one that is a branch rather than a
 template, the project's `main_branch` otherwise, and what its remote calls its
 default where neither says. An item ephor cannot measure — no branch, or nothing on
@@ -3355,8 +3361,12 @@ That is a different ref in every repository, so it takes no branch name and
 excludes `--onto`. It is what answers the checkout a poly-repo workspace
 actually leaves behind: a branch grown with `git worktree add -b`, pushed, and
 carrying no tracking configuration — where bare `git rebase` refuses to start
-at all. A repository that has published nothing is reported as *nothing
-published* and the run still succeeds; there was simply nothing to replay onto.
+at all. In a checkout that pushes somewhere other than it fetches from — a
+fork, named by `remote.pushDefault` or `branch.<name>.pushRemote` — the copy is
+looked for on the fork first and the fork is fetched too, so a fixup a reviewer
+pushed there since you last fetched is what you replay onto. A repository that
+has published nothing is reported as *nothing published* and the run still
+succeeds; there was simply nothing to replay onto.
 Replaying onto your own copy rewrites commits that copy already has, so landing
 it needs the same leased force push the rebase onto main does.
 

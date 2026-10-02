@@ -182,6 +182,10 @@ name = "e2e_039_a_replay_a_terminal_can_read"
 path = "tests/e2e/cases/E2E-039-a-replay-a-terminal-can-read.rs"
 
 [[test]]
+name = "e2e_040_a_branch_published_to_a_fork"
+path = "tests/e2e/cases/E2E-040-a-branch-published-to-a-fork.rs"
+
+[[test]]
 name = "agents_test"
 path = "tests/integration/agents_test.rs"
 
