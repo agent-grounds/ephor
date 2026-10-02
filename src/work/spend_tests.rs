@@ -192,6 +192,8 @@ fn the_outermost_full_scope_is_the_one_a_reader_is_sent_to() {
                     scope: "organizations.guild.work.max_spend".to_string(),
                     says: "the organization's".to_string(),
                     resumes_at: None,
+                    limit: Amount::Dollars(10.0),
+                    total: Some(Amount::Dollars(12.0)),
                 }),
             },
             Bound {
@@ -200,6 +202,8 @@ fn the_outermost_full_scope_is_the_one_a_reader_is_sent_to() {
                     scope: "projects.demo.work.max_spend".to_string(),
                     says: "the project's".to_string(),
                     resumes_at: None,
+                    limit: Amount::Dollars(5.0),
+                    total: Some(Amount::Dollars(12.0)),
                 }),
             },
         ],
@@ -227,6 +231,8 @@ fn a_pause_carries_the_scope_and_the_instant_and_nothing_else() {
         scope: "global work.max_spend".to_string(),
         says: "global work.max_spend 50 USD per 24h is full (52.40 USD measured)".to_string(),
         resumes_at: Some("2026-09-06T08:00:00Z".to_string()),
+        limit: Amount::Dollars(50.0),
+        total: Some(Amount::Dollars(52.40)),
     };
     let pause = serde_json::to_value(full.pause()).expect("the pause is a document");
     assert_eq!(
@@ -313,4 +319,58 @@ fn a_currency_or_a_window_the_store_cannot_answer_is_refused_by_name() {
         serde_json::json!({ "amount": 1, "currency": "USD", "per": "24h" })
     )
     .is_err());
+}
+
+/// A full budget is held as data at the scope the sweep asked — the key its
+/// denomination is written in, the ceiling and the total as numbers, and the
+/// resume instant the sentence names — and the sentence is the reason
+/// unchanged (§FS-005-dispatch.24.2).
+#[test]
+fn a_full_budget_is_held_as_data_and_says_what_it_always_said() {
+    let window = [bucket("2026-09-05T08:00:00Z", "demo", 2_000_000, None)];
+    let mine: Vec<&Bucket> = window.iter().collect();
+    let scope = Scope::Project("demo".to_string());
+    let full = tokens_full(
+        &scope.key(),
+        &TokenBudget {
+            amount: 1_000_000,
+            per: Per::Day,
+        },
+        &mine,
+        at("2026-09-05T10:00:00Z"),
+    )
+    .expect("full");
+    let hold = full.hold(&scope);
+    assert_eq!(
+        hold.data(),
+        serde_json::json!({
+            "kind": "budget", "scope": "project", "id": "demo", "key": "max_tokens",
+            "limit": 1_000_000, "total": 2_000_000, "until": "2026-09-06T08:00:00Z"
+        })
+    );
+    assert_eq!(hold.data()["until"], full.resumes_at.as_deref().unwrap());
+    assert_eq!(
+        hold.says(),
+        "projects.demo.work.max_tokens 1000000 per 24h is full \
+         (2000000 token(s) measured); resumes 2026-09-06T08:00:00Z"
+    );
+
+    // A ceiling of `0` measures nothing and names no instant.
+    let paused = tokens_full(
+        &scope.key(),
+        &TokenBudget {
+            amount: 0,
+            per: Per::Day,
+        },
+        &mine,
+        at("2026-09-05T10:00:00Z"),
+    )
+    .expect("a ceiling of 0 is full");
+    assert_eq!(
+        paused.hold(&scope).data(),
+        serde_json::json!({
+            "kind": "budget", "scope": "project", "id": "demo", "key": "max_tokens",
+            "limit": 0
+        })
+    );
 }

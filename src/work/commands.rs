@@ -19,6 +19,7 @@ use crate::feed::model::{Item, ItemKind};
 use crate::feed::render::Style;
 use crate::scope::Projects;
 use crate::seams::summons::{self, Outcome as SummonsOutcome};
+use crate::work::hold::Hold;
 use crate::work::ledger::Entry;
 use crate::work::runtime;
 
@@ -2367,6 +2368,10 @@ fn swept(
                     "says": run.says(),
                     "id": run.id,
                     "reason": run.reason(),
+                    // The same hold as data, from the value the reason was
+                    // rendered from; absent on every other outcome
+                    // (§FS-005-dispatch.24.2).
+                    "hold": run.hold().map(Hold::data),
                 }))
             })
             .collect();
@@ -2481,6 +2486,9 @@ fn would_sweep(
                         None => "would-run",
                     },
                     "reason": root.passed_over(),
+                    // Only the holds this report asks: excluded, rested,
+                    // stopped (§FS-005-dispatch.24.2).
+                    "hold": root.hold().map(Hold::data),
                 }))
             })
             .collect();

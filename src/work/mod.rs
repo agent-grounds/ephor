@@ -10,6 +10,7 @@
 pub mod commands;
 pub mod dossier;
 pub mod headroom;
+pub mod hold;
 pub mod ledger;
 mod ranking;
 pub mod recipe;
@@ -34,6 +35,7 @@ use crate::feed::model::Item;
 use crate::paths::for_shell;
 
 use dossier::Subject;
+use hold::{Flight, Hold};
 use ledger::{Dispatch, Entry, Judged, Ledger, Snapshot};
 use recipe::{HandList, OrganizationWorkConfig, ProjectWorkConfig, Recipe, WorkConfig};
 use runtime::plan::{self, Plan, Ticket, WorkRoot};
@@ -3945,7 +3947,7 @@ fn judge(
     ledger: &Ledger,
     root: &std::path::Path,
     now: DateTime<Utc>,
-) -> (Option<Verdict>, Option<String>) {
+) -> (Option<Verdict>, Option<Hold>) {
     let Some(last) = runtime::events::progress(root) else {
         return (None, None);
     };
@@ -3990,21 +3992,21 @@ fn judge(
 /// answers is that a row saying `started` every time hid a stalled root, and
 /// a rest that merely went quiet would hide it again. So the reason names the
 /// run it judged, so the reader can go and read it, and says when the root is
-/// tried again — or that it is now theirs.
-fn rests(judged: &Judged, now: DateTime<Utc>) -> Option<String> {
+/// tried again — or that it is now theirs. The two are two kinds of hold,
+/// because they promise different things to whoever reads them
+/// (§FS-005-dispatch.24.2).
+fn rests(judged: &Judged, now: DateTime<Utc>) -> Option<Hold> {
     if judged.held() {
-        return Some(format!(
-            "{} runs in a row here advanced nothing, the last of them {} — nothing more will \
-             be started on this root until a run advances there or you start one by hand",
-            judged.misses, judged.run
-        ));
+        return Some(Hold::Stopped {
+            run: judged.run.clone(),
+            count: judged.misses,
+        });
     }
-    judged.resting(now).then(|| {
-        format!(
-            "the last run here ({}) advanced nothing — this root is tried again in {}",
-            judged.run,
-            in_a_while(judged.ready_at(), now)
-        )
+    judged.resting(now).then(|| Hold::Rested {
+        run: judged.run.clone(),
+        count: judged.misses,
+        until: judged.ready_at(),
+        left: in_a_while(judged.ready_at(), now),
     })
 }
 
@@ -4067,8 +4069,9 @@ impl Excluded {
                     .0
                     .iter()
                     .find(|(path, _)| canonical(path) == canonical(&root.root))
-                    .map(|(_, named)| {
-                        format!("--except {named} — left out of this sweep at your asking")
+                    // The value as the reader gave it (§FS-005-dispatch.24.2).
+                    .map(|(_, named)| Hold::Excluded {
+                        except: named.clone(),
                     });
                 root
             })
@@ -4315,8 +4318,8 @@ impl Dispatcher {
                 // on: both are successful non-launch outcomes, both happen
                 // before capacity is spent, and both are said in the row
                 // where this used to say *started* (§FS-005-dispatch.24).
-                if let Some(why) = root.passed_over().map(str::to_string) {
-                    return Launched::passed_over(&root, why);
+                if let Some(hold) = root.hold().cloned() {
+                    return Launched::passed_over(&root, hold);
                 }
                 // A tree another root's run held before this sweep began, and
                 // a tree a launch in this same sweep has just taken: one
@@ -4330,8 +4333,10 @@ impl Dispatcher {
                     .as_ref()
                     .or_else(|| holding(&taken, &root.checkout))
                 {
-                    let why = live_in_this_checkout(&self.global, held_by);
-                    return Launched::passed_over(&root, why);
+                    // The same run the sentence names, kept as data
+                    // (§FS-005-dispatch.24.2).
+                    let hold = held_in_this_checkout(&self.global, held_by);
+                    return Launched::passed_over(&root, hold);
                 }
                 // A plan whose work needs several pools at once that this
                 // site cannot have together is passed over *before* capacity
@@ -4349,16 +4354,23 @@ impl Dispatcher {
                         .collect();
                     match runnable.is_empty() {
                         true => {
-                            let (entry, why) = held
-                                .into_values()
+                            let (plan, (entry, why)) = held
+                                .into_iter()
                                 .next()
                                 .expect("a held plan, since the map is not empty");
+                            // The plan directory, every pool in the order it
+                            // named them, and the first spent one
+                            // (§FS-005-dispatch.24.2).
                             return Launched::passed_over(
                                 &root,
-                                format!(
-                                    "the plan '{entry}' laid {}. The plan stays where it is.",
-                                    why.clause
-                                ),
+                                Hold::Pools {
+                                    plan,
+                                    entry,
+                                    pools: why.required,
+                                    pool: why.pool,
+                                    until: why.until,
+                                    clause: why.clause,
+                                },
                             );
                         }
                         // Some other plan in this root is runnable, so the run
@@ -4382,8 +4394,8 @@ impl Dispatcher {
                 {
                     warned.push(said);
                 }
-                if let Some(why) = capacity.refusal(&root.projects) {
-                    return Launched::passed_over(&root, why);
+                if let Some(hold) = capacity.hold(&root.projects) {
+                    return Launched::passed_over(&root, hold);
                 }
                 if !detaches {
                     return Launched::refused(
@@ -5021,11 +5033,13 @@ pub struct Due {
     pub refusal: Option<String>,
     /// Why the reader's own `--except` leaves this root out, where it does
     /// (§FS-005-dispatch.24). Set after the reading, because an exclusion is
-    /// the reader's instruction rather than anything ephor worked out.
-    pub excluded: Option<String>,
+    /// the reader's instruction rather than anything ephor worked out. Always
+    /// [`Hold::Excluded`] (§FS-005-dispatch.24.2).
+    pub excluded: Option<Hold>,
     /// Why the last run here having advanced nothing leaves this root alone —
-    /// the rest, or the end of resting (§FS-005-dispatch.24).
-    pub rested: Option<String>,
+    /// the rest, or the end of resting (§FS-005-dispatch.24): [`Hold::Rested`]
+    /// or [`Hold::Stopped`] (§FS-005-dispatch.24.2).
+    pub rested: Option<Hold>,
     /// What this sweep read of the last run here, where it could read one. A
     /// sweep that acts keeps it; a report held at the gate keeps none
     /// (§FS-011-command-line.10).
@@ -5037,8 +5051,14 @@ impl Due {
     /// reader's own instruction first, because naming it back is what tells
     /// them the flag took effect, and then the rest ephor decided on. One
     /// row, one reason, first match (§FS-005-dispatch.24).
-    pub fn passed_over(&self) -> Option<&str> {
-        self.excluded.as_deref().or(self.rested.as_deref())
+    pub fn passed_over(&self) -> Option<String> {
+        self.hold().map(Hold::says)
+    }
+
+    /// The same first match as data, for the row a program reads
+    /// (§FS-005-dispatch.24.2).
+    pub fn hold(&self) -> Option<&Hold> {
+        self.excluded.as_ref().or(self.rested.as_ref())
     }
 }
 
@@ -5060,9 +5080,10 @@ pub struct Launched {
     pub finished: bool,
     /// Why no run was started, where none was.
     pub failed: Option<String>,
-    /// Why an otherwise eligible root was omitted solely for lack of sweep
-    /// capacity. This is a successful, non-launch outcome, not a failure.
-    pub passed_over: Option<String>,
+    /// What held an otherwise eligible root, where something did. This is a
+    /// successful, non-launch outcome, not a failure; its sentence is the
+    /// row's reason and its data the row's `hold` (§FS-005-dispatch.24.2).
+    pub passed_over: Option<Hold>,
 }
 
 impl Launched {
@@ -5086,9 +5107,9 @@ impl Launched {
         }
     }
 
-    fn passed_over(due: &Due, why: String) -> Launched {
+    fn passed_over(due: &Due, hold: Hold) -> Launched {
         Launched {
-            passed_over: Some(why),
+            passed_over: Some(hold),
             ..Launched::of(due)
         }
     }
@@ -5099,8 +5120,8 @@ impl Launched {
     pub fn says(&self) -> String {
         match (&self.failed, &self.passed_over, &self.id, self.finished) {
             (Some(why), ..) => format!("⚠ no run started on {}: {why}", self.root.display()),
-            (None, Some(why), ..) => {
-                format!("↷ {} passed over: {why}", self.root.display())
+            (None, Some(hold), ..) => {
+                format!("↷ {} passed over: {}", self.root.display(), hold.says())
             }
             (None, None, Some(id), false) => format!("▶ run {id} started"),
             (None, None, Some(id), true) => format!("✓ run {id} finished already"),
@@ -5119,8 +5140,13 @@ impl Launched {
         }
     }
 
-    pub fn reason(&self) -> Option<&str> {
-        self.passed_over.as_deref()
+    pub fn reason(&self) -> Option<String> {
+        self.passed_over.as_ref().map(Hold::says)
+    }
+
+    /// What held this root, as data (§FS-005-dispatch.24.2).
+    pub fn hold(&self) -> Option<&Hold> {
+        self.passed_over.as_ref()
     }
 }
 
@@ -5218,20 +5244,26 @@ impl Limits {
     /// Which of the two refuses a start here, in the words that name the key
     /// it refused on (§FS-005-dispatch.24). Roots in flight is asked first,
     /// so a scope that never named the second key answers exactly as it did
-    /// before there was one — same wording, same count.
-    fn full(&self, live: Counts, scope: &str) -> Option<String> {
+    /// before there was one — same wording, same count. The count a hold
+    /// names is the one its key is over (§FS-005-dispatch.24.2).
+    fn full(&self, live: Counts, scope: &spend::Scope) -> Option<Hold> {
         if let Some(limit) = self.concurrent.filter(|limit| live.live >= *limit) {
-            return Some(format!(
-                "{scope}.max_concurrent {limit} is full ({} live run(s))",
-                live.live
-            ));
+            return Some(Hold::Concurrency {
+                scope: scope.clone(),
+                key: Flight::Concurrent,
+                limit,
+                count: live.live,
+            });
         }
         if let Some(limit) = self.active.filter(|limit| live.active >= *limit) {
-            return Some(format!(
-                "{scope}.max_active {limit} is full ({} active run(s), {} parked)",
-                live.active,
-                live.parked()
-            ));
+            return Some(Hold::Concurrency {
+                scope: scope.clone(),
+                key: Flight::Active {
+                    parked: live.parked(),
+                },
+                limit,
+                count: live.active,
+            });
         }
         None
     }
@@ -5365,8 +5397,20 @@ impl Capacity {
     /// A budget answers here only where this sweep is bound by one: where a
     /// person asked for it, [`Capacity::warning`] says what would have refused
     /// and nothing refuses (§FS-015-spend-ceiling.6).
+    #[cfg(test)]
     fn refusal(&self, projects: &[String]) -> Option<String> {
-        if let Some(why) = self.ceilings.site.full(self.global_live, "global work") {
+        self.hold(projects).as_ref().map(Hold::says)
+    }
+
+    /// The same walk as [`Capacity::refusal`], answering the hold itself: the
+    /// order here is the order the row's `hold` promises
+    /// (§FS-005-dispatch.24.2).
+    fn hold(&self, projects: &[String]) -> Option<Hold> {
+        if let Some(why) = self
+            .ceilings
+            .site
+            .full(self.global_live, &spend::Scope::Site)
+        {
             return Some(why);
         }
         if let Some(why) = self.spent(&spend::Scope::Site) {
@@ -5384,10 +5428,12 @@ impl Capacity {
                 .get(organization)
                 .filter(|limit| count >= **limit)
             {
-                return Some(format!(
-                    "organizations.{organization}.work.max_concurrent {limit} is full \
-                     ({count} live run(s))"
-                ));
+                return Some(Hold::Concurrency {
+                    scope: spend::Scope::Organization(organization.to_string()),
+                    key: Flight::Concurrent,
+                    limit: *limit,
+                    count,
+                });
             }
             if let Some(why) = self.spent(&spend::Scope::Organization(organization.to_string())) {
                 return Some(why);
@@ -5396,7 +5442,7 @@ impl Capacity {
         for project in projects {
             if let Some(limits) = self.ceilings.projects.get(project) {
                 let live = self.project_live.get(project).copied().unwrap_or_default();
-                if let Some(why) = limits.full(live, &format!("projects.{project}.work")) {
+                if let Some(why) = limits.full(live, &spend::Scope::Project(project.clone())) {
                     return Some(why);
                 }
             }
@@ -5411,9 +5457,9 @@ impl Capacity {
     /// for is refused by no budget at all, so this answers nothing there and
     /// the walk carries on to the concurrency ceilings further in
     /// (§FS-015-spend-ceiling.6).
-    fn spent(&self, scope: &spend::Scope) -> Option<String> {
+    fn spent(&self, scope: &spend::Scope) -> Option<Hold> {
         match self.budget {
-            spend::Budget::Binds => self.budgets.at(scope).map(|full| full.says.clone()),
+            spend::Budget::Binds => self.budgets.at(scope).map(|full| full.hold(scope)),
             spend::Budget::Warns => None,
         }
     }
@@ -5775,10 +5821,16 @@ pub fn checkout_standing_elsewhere(checkout: &std::path::Path, head: &str, wante
 /// name it published, and by the root holding it where it published none, so
 /// the reader is sent to the run rather than to a guess (§AR-009-surfaces.1).
 pub fn live_in_this_checkout(global: &WorkConfig, held_by: &std::path::Path) -> String {
-    let named = runtime::watch::identity(global, held_by)
-        .and_then(|run| run.id)
-        .unwrap_or_else(|| held_by.display().to_string());
-    format!("a run is live in this checkout: {named}")
+    held_in_this_checkout(global, held_by).says()
+}
+
+/// The same hold as data: the root holding the tree, and the run by the id it
+/// published where it published one (§FS-005-dispatch.24.2).
+fn held_in_this_checkout(global: &WorkConfig, held_by: &std::path::Path) -> Hold {
+    Hold::Tree {
+        root: held_by.to_path_buf(),
+        run: runtime::watch::identity(global, held_by).and_then(|run| run.id),
+    }
 }
 
 /// The recipe a ticket id was written from. Ids are `<recipe>-<n>`

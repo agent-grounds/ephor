@@ -3331,6 +3331,30 @@ ephor work states
   `max_spend` and `max_tokens` bound what this sweep and the one at the end of
   `work sync` may *spend* in a trailing window, at the same three scopes and
   asked after the two above them (§8.3).
+
+  Under `--json`, every `passed-over` row also carries `hold`: the first hold
+  that stopped the root, as data, beside a `reason` whose wording is unchanged
+  ([§FS-005-dispatch.24.2](functional-spec/FS-005-dispatch.md#242-a-passed-over-row-names-its-hold-as-data)).
+  A script selects on `hold.kind`, never on the words of `reason`, which are
+  for a reader and may change. The kinds, in the order the sweep asks them:
+
+  | `kind` | held because | members beside `kind` |
+  |---|---|---|
+  | `excluded` | your `--except` named the root | `except`, the value as you gave it |
+  | `rested` | the last run advanced nothing; tried again later | `run`, `count`, `until` |
+  | `stopped` | three runs in a row advanced nothing; started again only by hand or by a run that advances | `run`, `count` |
+  | `tree` | a live run holds the checkout | `root` it was started from, `run` where it published an id |
+  | `pools` | a plan needs pools that cannot be had together ([8.19](#819-what-a-provider-has-left-and-which-alternate-gets-the-ticket)) | `plan`, `pools`, `pool`, `until` where known |
+  | `concurrency` | `max_concurrent` or `max_active` is full | `scope` (`site`, `organization`, `project`), `id` below the site, `key`, `limit`, `count` |
+  | `budget` | `max_spend` or `max_tokens` is full | `scope`, `id`, `key`, `limit`, `total` where measured, `until` except under a ceiling of `0` |
+
+  The vocabulary is open: more kinds may come, so read one you do not know as
+  *not startable*. Only the first hold is named, so a `concurrency` row under
+  `--max-concurrent 0` may stand over another ceiling that is full as well;
+  a free slot starts a root held by `concurrency`, and not one held by
+  `budget`. A sweep above one project without `--act` asks only `--except`
+  and the no-advance holds, so its rows carry only `excluded`, `rested` or
+  `stopped`, and its `would-run` rows carry no `hold` at all.
 - **`workflows`** and **`lay`** are the runtime's own workflows, offered as
   actions (§8.15). `lay` writes a plan of its own beside the matter's and runs
   nothing; `--dry-run` shows what would answer every input first. Where the
