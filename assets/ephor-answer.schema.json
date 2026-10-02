@@ -139,6 +139,9 @@
         "reactions": {
           "type": "array",
           "items": { "$ref": "#/$defs/reaction" }
+        },
+        "react": {
+          "description": "Present where the venue can take a reaction on this message: the source's own descriptor for it, handed back verbatim when the person reacts (FS-001-forge-interface.1). Absent: the message is display-only."
         }
       }
     },

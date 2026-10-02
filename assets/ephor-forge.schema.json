@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/agent-grounds/ephor/schemas/forge/v1",
   "title": "ephor out-of-process forge protocol",
-  "description": "The protocol of FS-001-forge-interface.2: an executable named 'ephor-forge-<name>', resolved on PATH, invoked as 'ephor-forge-<name> <subcommand>' with a request as JSON on stdin and the answer as JSON on stdout. Diagnostics go to stderr; a non-zero exit is a failure, never an empty answer (FS-001-forge-interface.6). Subcommands: capabilities, pull-requests, issues, failures, restart, resolve-task, react, reply. An implementation answers the subcommands whose capabilities it declared; ephor never calls an undeclared one. This document defines the request shape and one response shape per subcommand; message, gate, and failure shapes are the answer envelope's $defs, referenced here so the two transports cannot drift (FS-001-forge-interface.2).",
+  "description": "The protocol of FS-001-forge-interface.2: an executable named 'ephor-forge-<name>', resolved on PATH, invoked as 'ephor-forge-<name> <subcommand>' with a request as JSON on stdin and the answer as JSON on stdout. Diagnostics go to stderr; a non-zero exit is a failure, never an empty answer (FS-001-forge-interface.6). Subcommands: capabilities, pull-requests, issues, notices, failures, restart, resolve-task, react, reply. An implementation answers the subcommands whose capabilities it declared; ephor never calls an undeclared one. This document defines the request shape and one response shape per subcommand; message, gate, and failure shapes are the answer envelope's $defs, referenced here so the two transports cannot drift (FS-001-forge-interface.2).",
   "$defs": {
     "request": {
       "type": "object",
@@ -12,6 +12,11 @@
           "type": "object",
           "description": "The provider block from the person's feed configuration, verbatim. Project keys, repository slugs, the user's address — the forge's business, opaque to ephor (FS-001-forge-interface.4)."
         },
+        "project": {
+          "type": "string",
+          "description": "The project the source is bound under (FS-001-forge-interface.9). Empty for a source bound once for the site, which is asked about no one project and whose answers ephor places, and for the capabilities probe."
+        },
+        "user": { "type": "string", "description": "The user's login on this forge, where ephor knows it. Omitted where it does not." },
         "timeout_seconds": { "type": "integer", "minimum": 1 },
         "repo": { "type": "string", "description": "failures and restart: the repository whose gate is being asked about." },
         "number": { "type": "string", "description": "failures and restart: the pull request whose gate is being asked about." },
@@ -31,7 +36,8 @@
         "text": {
           "type": "string",
           "description": "reply only: the message to send, as the person settled it \u2014 posted exactly as it stands (FS-005-dispatch.13)."
-        }
+        },
+        "emoji": { "type": "string", "description": "react only: the reaction to post, as the emoji itself." }
       }
     },
     "capabilities_response": {
@@ -40,9 +46,11 @@
         "pull_requests": { "type": "boolean" },
         "conversation": { "type": "boolean" },
         "gate": { "type": "boolean" },
+        "review": { "type": "boolean", "description": "Embeds 'review' in the pull requests it returns: the user's own verdict on a change they were asked to look at (FS-001-forge-interface.1)." },
         "failures": { "type": "boolean" },
         "restart": { "type": "boolean" },
         "issues": { "type": "boolean" },
+        "notices": { "type": "boolean", "description": "Answers notices: the forge's own list of what it decided to tell the user (FS-001-forge-interface.1)." },
         "tasks": { "type": "boolean" },
         "reactions": { "type": "boolean" },
         "replies": { "type": "boolean" }
@@ -64,36 +72,24 @@
         "role": { "enum": ["author", "reviewer"], "description": "Which search found it." },
         "reasons": {
           "type": "array",
-          "items": { "type": "string" },
-          "description": "The reasons it is the user's — authored, engaged, cited, review-requested, assigned (FS-001-forge-interface.1)."
+          "items": { "$ref": "#/$defs/reason" },
+          "description": "Every reason it is the user's (FS-001-forge-interface.1). Which side of the review that puts them on, and whether any of them means an answer is owed, is ephor's to decide (FS-001-forge-interface.3)."
         },
         "state": {
           "type": "string",
           "description": "As the forge spells it; 'open:needs_work' and 'open:approved' refine open where reviewers have spoken."
         },
-        "terminal": { "type": "boolean" },
         "cited": {
           "type": "boolean",
           "description": "Whether the user is cited anywhere in the conversation — the forge knows its own mention syntax; whether the citation was answered is ephor's rule (FS-001-forge-interface.3)."
         },
+        "review": {
+          "enum": ["approved", "changes-requested", "commented"],
+          "description": "The user's own review of this pull request, from an implementation declaring 'review' (FS-001-forge-interface.1). Omit it where they have not reviewed it; a verdict this vocabulary has no word for, such as an approval the forge dismissed, is no review."
+        },
         "threads": {
           "type": "array",
-          "items": {
-            "type": "object",
-            "required": ["messages"],
-            "properties": {
-              "label": { "type": "string" },
-              "url": { "type": "string" },
-              "reply": {
-                "type": "object",
-                "description": "Present where this channel can carry a reply (FS-007-matters.4): the implementation's own descriptor for the thread, handed back to the reply subcommand verbatim. Absent means display-only, and a drafted answer is copy material (FS-005-dispatch.13)."
-              },
-              "messages": {
-                "type": "array",
-                "items": { "$ref": "https://github.com/agent-grounds/ephor/schemas/answer/v1#/$defs/message" }
-              }
-            }
-          },
+          "items": { "$ref": "#/$defs/thread" },
           "description": "The conversation as ordered threads (FS-001-forge-interface.1). The channel is implicitly the pull request's review threads."
         },
         "gate": {
@@ -103,6 +99,25 @@
         "assignees": { "type": "array", "items": { "type": "string" }, "description": "The logins holding this pull request, where the forge names them (FS-005-dispatch.31). Omit it where the forge does not report assignment: an omitted list and an empty one mean different things, and a selector asking about it refuses on the omission." },
         "labels": { "type": "array", "items": { "type": "string" }, "description": "The labels the forge carries on this pull request (FS-005-dispatch.31). Omit it where the forge has no notion of labels, for the reason 'assignees' is omitted." }
       }
+    },
+    "reason": {
+      "enum": ["authored", "in-thread", "mentioned", "review-requested", "assigned"],
+      "description": "Why something is the user's, in the one vocabulary the protocol has (FS-001-forge-interface.1): they opened it, spoke in it, are named in it, were asked to review it, or have it assigned. A word outside it fails the whole answer."
+    },
+    "thread": {
+      "type": "object",
+      "required": ["messages"],
+      "properties": {
+        "messages": {
+          "type": "array",
+          "items": { "$ref": "https://github.com/agent-grounds/ephor/schemas/answer/v1#/$defs/message" }
+        },
+        "reply": {
+          "type": "object",
+          "description": "Present where this channel can carry a reply (FS-007-matters.4): the implementation's own descriptor for the thread, handed back to the reply subcommand verbatim. Absent means display-only, and a drafted answer is copy material (FS-005-dispatch.13)."
+        }
+      },
+      "description": "One thread of a conversation: its messages in order, and where a reply to it goes."
     },
     "pull_requests_response": {
       "type": "array",
@@ -115,13 +130,17 @@
         "key": { "type": "string", "description": "The ticket key as the tracker spells it ('GR-73955'). ephor keys the matter 'ticket:<key>'." },
         "title": { "type": "string" },
         "status": { "type": "string" },
-        "terminal": { "type": "boolean" },
         "url": { "type": "string" },
         "updated_at": { "type": "string", "format": "date-time" },
         "role": { "enum": ["author", "reviewer"], "description": "Whether the user opened this issue or merely takes part in it (FS-001-forge-interface.1). An implementation with no notion of the difference omits it, and everything it reports counts as the user's own." },
         "assigned": { "type": "boolean", "description": "Whether anyone has taken this issue, where the tracker holds that (FS-001-forge-interface.1). Omit it where the tracker has no notion of assignment: omitted and false mean different things, and what nobody claimed about is never counted as unclaimed work." },
         "assignees": { "type": "array", "items": { "type": "string" }, "description": "The logins holding this issue, where the tracker names them (FS-005-dispatch.31). 'assigned' says whether anybody has it; this says who. Omit it where the tracker does not report assignment: an omitted list and an empty one mean different things, and a selector asking about it refuses on the omission rather than reading it as unheld." },
         "labels": { "type": "array", "items": { "type": "string" }, "description": "The labels the tracker carries on this issue (FS-005-dispatch.31). Omit it where the tracker has no notion of labels, for the reason 'assignees' is omitted." },
+        "blocked_by": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/issue_dependency" },
+          "description": "The tracker's own first-class dependencies for this issue (FS-001-forge-interface.1). Omit it where the tracker has no notion of dependencies; an empty list says it asked and there are none. An issue blocked by one still open awaits its prerequisite rather than its reader (FS-003-feed-categories.4)."
+        },
         "messages": {
           "type": "array",
           "items": { "$ref": "https://github.com/agent-grounds/ephor/schemas/answer/v1#/$defs/message" },
@@ -129,9 +148,40 @@
         }
       }
     },
+    "issue_dependency": {
+      "type": "object",
+      "required": ["key", "title"],
+      "properties": {
+        "key": { "type": "string" },
+        "title": { "type": "string" },
+        "status": { "type": "string", "description": "As the tracker spells it; a finished status is what releases the dependent issue." },
+        "url": { "type": "string" }
+      },
+      "description": "One issue another is blocked by: who it is and where it stands, without its own conversation or dependencies."
+    },
     "issues_response": {
       "type": "array",
       "items": { "$ref": "#/$defs/issue" }
+    },
+    "notice": {
+      "type": "object",
+      "required": ["id", "title", "updated_at"],
+      "properties": {
+        "id": { "type": "string", "description": "Stable within the forge and across refreshes. ephor keys the row '<provider>:<repo>#<number>' where both are given and '<provider>:<id>' otherwise, and keeps the reader's unread state under it." },
+        "title": { "type": "string" },
+        "url": { "type": "string" },
+        "reason": { "type": "string", "description": "The forge's own word for why it is telling the user: mention, team_mention, review_requested, assign, ci_activity, \u2026 Free-form: shown to the reader and matched against a few known words, so a reason ephor has never seen still arrives (FS-001-forge-interface.1)." },
+        "subject": { "enum": ["pullrequest", "issue", "other"], "description": "What the notice is about. 'other' is a release, an advisory, an invitation: still addressed to the reader, and the default." },
+        "repo": { "type": "string", "description": "The repository the subject lives in, where the forge has that notion." },
+        "number": { "type": "string", "description": "The subject's number within its repository: what makes this notice the same work as a pull request or issue another capability reported (FS-003-feed-categories.5)." },
+        "updated_at": { "type": "string", "format": "date-time" },
+        "read": { "type": "boolean", "description": "The forge considers the user to have read it. Its own record, kept apart from ephor's unread tracking." }
+      }
+    },
+    "notices_response": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/notice" },
+      "description": "Everything the forge says is directed at the user, whatever it is about. Answered exhaustively or not at all: a truncated list is a failure, never an answer (FS-001-forge-interface.6)."
     },
     "failures_response": {
       "type": "array",
