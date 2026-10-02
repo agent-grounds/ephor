@@ -590,6 +590,9 @@ pub trait Forge: Send + Sync {
 }
 
 #[cfg(test)]
+mod schema_tests;
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use serde_json::json;

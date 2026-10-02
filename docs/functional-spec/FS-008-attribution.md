@@ -12,14 +12,24 @@ identity the registry declares ([§GOAL-003-nothing-lost](../goals.md#goal-003-n
 A project's identity is the set of signals by which its matters are
 recognized: ticket patterns, the forest's repositories, the wider
 **territory** the project claims — repositories and organizations that are
-its business without being in its forest — names and aliases, addresses. It
-lives in the registry row; a manifest may hint it
+its business without being in its forest — names and aliases, addresses, and
+the **rooms** it claims: venues on a conversation source, named exactly by the
+id the source states. It lives in the registry row; a manifest may hint it
 ([§FS-006-project-interface.2](FS-006-project-interface.md#2-the-manifest-is-offered-never-required)), and the row adopts or overrides — a checkout
 must not be able to claim another project's conversations. Territory is what
 places the general case: a mention of the person on some repository of the
 project's ecosystem, an issue filed there, a discussion opened there —
 none of it in any forest, all of it the project's business
 ([§GOAL-003-nothing-lost](../goals.md#goal-003-nothing-lost-the-watch-is-trusted-enough-to-retire-the-sweep)).
+
+A room is to a conversation what a repository is to a pull request: the venue
+it happens in, a group or a channel. It is matched only as the source spells
+it — no prefix, and no claim on everything under one organization — because
+chat ids share no grammar ephor could read without naming the networks that
+issue them ([§REQ-001-boundary.5](../requirements/REQ-001-boundary.md#5-no-product-literal-outside-its-adapter)). For rooms the row's word is its presence: a
+row that lists rooms, even none, has said which are the project's, and only a
+row silent on them adopts a manifest's hint. A row that cannot say *none*
+cannot refuse a checkout's claim.
 
 ## 2. Two stages, one engine
 
@@ -60,7 +70,7 @@ is placed as for any matter with no branch of its own, which a `branch`
 template mints ([§FS-005-dispatch.25](FS-005-dispatch.md#25-work-about-a-matter-with-no-branch-can-mint-the-branch-it-needs)).
 
 The first stage still reads the whole conversation, because a discussion
-naming a subject belongs to the named matter ([§FS-008-attribution.3](FS-008-attribution.md#3-venue-beats-reference-beats-resemblance)). Which
+with no subject of its own that names one belongs to the named matter ([§FS-008-attribution.3](FS-008-attribution.md#3-venue-beats-reference-beats-resemblance)). Which
 branch is a different question — which tree the matter's own work is in — and
 the tree a quote names is the one somebody else's work is in. Reading it as the
 matter's would let resemblance amend a row, which [§FS-008-attribution.3](FS-008-attribution.md#3-venue-beats-reference-beats-resemblance)
@@ -70,16 +80,24 @@ thread quotes.
 
 ## 3. Venue beats reference beats resemblance
 
-A discussion *on* a subject belongs to that subject's matter. A discussion
-*naming* a subject — a ticket key in a mail's text, a pull request's URL in
-a chat message — belongs to the named matter, linked onward
-([§FS-007-matters.2](FS-007-matters.md#2-same-subject-one-matter-related-subjects-linked-matters)). Only where neither holds may declared aliases place a
-conversation, and then as a topic matter, never onto an existing subject:
-resemblance may start a new row, it may not amend one. At the second stage
-the venue itself is the explicit signal: a matter whose subject sits on a
-repository of a project's forest or declared territory
-([§FS-008-attribution.1](FS-008-attribution.md#1-identity-is-declared-and-the-row-has-the-last-word)) is that project's before any reference or alias is
-consulted.
+A discussion *on* a subject belongs to that subject's matter, and a
+conversation whose source stated its own key is on that subject
+([§FS-007-matters.1](FS-007-matters.md#1-a-matter-is-a-subject-with-a-stated-identity)): a chat conversation its gateway keyed is a matter of its
+own. A discussion that *names* a subject but has none of its own — a ticket
+key in an unkeyed mail's text — belongs to the named matter. What a discussion
+on a subject names is linked onward ([§FS-007-matters.2](FS-007-matters.md#2-same-subject-one-matter-related-subjects-linked-matters)), never moved: a
+conversation that mentions a pull request stays the row it is, beside the pull
+request's. Only where neither holds may declared aliases place a conversation,
+and then as a topic matter, never onto an existing subject: resemblance may
+start a new row, it may not amend one. At the second stage the venue itself is
+the explicit signal: a matter whose subject sits on a repository of a
+project's forest or declared territory, or in a room the project claims
+([§FS-008-attribution.1](FS-008-attribution.md#1-identity-is-declared-and-the-row-has-the-last-word)), is that project's before any reference or alias is
+consulted. A conversation no claimed room places — a direct one, which has no
+room to claim, or one in a room nobody claimed — goes through the same stages
+as anything else: what it references places it, and it lands in the bucket
+only where nothing matches or several projects match equally
+([§FS-008-attribution.4](FS-008-attribution.md#4-unattributed-is-a-place-not-a-fate)).
 
 ## 4. Unattributed is a place, not a fate
 

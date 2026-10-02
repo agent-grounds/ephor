@@ -190,6 +190,14 @@ name = "e2e_041_every_idle_checkout_cleaned"
 path = "tests/e2e/cases/E2E-041-every-idle-checkout-cleaned.rs"
 
 [[test]]
+name = "e2e_042_a_chat_conversation_reaches_the_feed"
+path = "tests/e2e/cases/E2E-042-a-chat-conversation-reaches-the-feed.rs"
+
+[[test]]
+name = "e2e_043_a_gateway_that_cannot_vouch_for_its_spool"
+path = "tests/e2e/cases/E2E-043-a-gateway-that-cannot-vouch-for-its-spool.rs"
+
+[[test]]
 name = "agents_test"
 path = "tests/integration/agents_test.rs"
 

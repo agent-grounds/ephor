@@ -211,17 +211,29 @@ impl World {
     /// The cached feed, which is what a refresh left behind and every surface
     /// reads (§AR-008-pipeline.1).
     pub fn feed(&self) -> Value {
+        self.feed_of(PROJECT)
+    }
+
+    /// The cached feed of one home: a project, or the `unattributed` bucket a
+    /// site-wide source's findings land in when nothing claimed them
+    /// (§FS-008-attribution.4).
+    pub fn feed_of(&self, home: &str) -> Value {
         read_json(
             &self
                 .path()
                 .join("state/ephor/feed")
-                .join(format!("{PROJECT}.json")),
+                .join(format!("{home}.json")),
         )
     }
 
     /// Every matter in the cached feed, whichever source reported it.
     pub fn matters(&self) -> Vec<Value> {
-        self.feed()["providers"]
+        self.matters_in(PROJECT)
+    }
+
+    /// Every matter one home's cached feed holds, whichever source reported it.
+    pub fn matters_in(&self, home: &str) -> Vec<Value> {
+        self.feed_of(home)["providers"]
             .as_object()
             .map(|providers| {
                 providers
@@ -237,7 +249,11 @@ impl World {
     /// Whether the feed holds a matter with this key at all — for a scenario
     /// whose point is that something is *not* there.
     pub fn has_matter(&self, key: &str) -> bool {
-        self.matters()
+        self.has_matter_in(PROJECT, key)
+    }
+
+    pub fn has_matter_in(&self, home: &str, key: &str) -> bool {
+        self.matters_in(home)
             .iter()
             .any(|matter| matter["key"] == key || matter["id"] == key)
     }
@@ -245,7 +261,11 @@ impl World {
     /// The matter with this key, or a panic naming what was there instead —
     /// a scenario that cannot find its subject has to say what it saw.
     pub fn matter(&self, key: &str) -> Value {
-        let matters = self.matters();
+        self.matter_in(PROJECT, key)
+    }
+
+    pub fn matter_in(&self, home: &str, key: &str) -> Value {
+        let matters = self.matters_in(home);
         matters
             .iter()
             .find(|matter| matter["key"] == key || matter["id"] == key)
@@ -255,7 +275,7 @@ impl World {
                     .iter()
                     .filter_map(|matter| matter["key"].as_str())
                     .collect();
-                panic!("no matter {key} in the feed; it holds {keys:?}")
+                panic!("no matter {key} in the {home} feed; it holds {keys:?}")
             })
     }
 

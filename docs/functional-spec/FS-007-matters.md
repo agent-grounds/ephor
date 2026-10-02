@@ -1,14 +1,19 @@
 # FS-007-matters: the feed is made of matters, and a matter knows why it is there
 
 The unit of the watch is the **matter**: the subject under discussion or
-observation — a pull request, an issue, a task in the project's own
-store, a periodic build, a status subject, or a bare topic. What the spec has so far
-called an item is a matter seen through one source's report. A matter is
-the feed's row, the unit of attribution, of state, of fingerprinting, and
-of dispatch — the dossier is the dossier of a matter — and the reason for
-the noun is that the same matter is discussed in more than one place: the
-pull request's review threads, a mail thread about it, a chat fragment
-naming it. One subject, several venues, one row ([§GOAL-002-glance](../goals.md#goal-002-glance-one-glance-answers-what-needs-me-now)).
+observation — a pull request, an issue, a task in the project's own store, a
+periodic build, a status subject, a conversation its source keyed, or a bare
+topic. What the spec has so far called an item is a matter seen through one
+source's report. A matter is the feed's row, the unit of attribution, of
+state, of fingerprinting, and of dispatch — the dossier is the dossier of a
+matter — and the reason for the noun is that the same matter is discussed in
+more than one place: the pull request's review threads, a mail about it, a
+line of chat naming it. One subject, several venues, one row
+([§GOAL-002-glance](../goals.md#goal-002-glance-one-glance-answers-what-needs-me-now)): a fragment with no subject of its own joins the row of the
+subject it names. A conversation its source keyed is a subject itself, so it
+is a row of its own, and what it names is linked to it rather than folded into
+it ([§FS-007-matters.2](FS-007-matters.md#2-same-subject-one-matter-related-subjects-linked-matters)). Reports of one subject are still one row, however many
+sources made them.
 
 ## 1. A matter is a subject with a stated identity
 
