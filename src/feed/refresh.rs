@@ -163,10 +163,15 @@ fn stores_to_read(
 }
 
 /// Fetch all providers of one project concurrently and store the merged feed.
+///
+/// `site_sources` names the sources bound for the site ([`site_source_names`]).
+/// They are not asked here, so the slots they placed in this project are kept
+/// as they were (§FS-001-forge-interface.9).
 pub fn refresh_project(
     registry_doc: &Value,
     project_id: &str,
     project_config: &ProjectFeedConfig,
+    site_sources: &[String],
     defaults: &Defaults,
 ) -> Result<RefreshOutcome> {
     let ctx = build_context(registry_doc, project_id, defaults)?;
@@ -330,6 +335,18 @@ pub fn refresh_project(
     }
 
     let item_count = feed.items().count();
+    // A site source's slot here is `refresh_shared`'s to rewrite, so this run
+    // carries it over unasked: that is the slot a failure there marks stale
+    // (§FS-001-forge-interface.6 rule 5, §FS-001-forge-interface.9). A name no
+    // longer in `sources`, or one this project binds itself, is not carried.
+    for name in site_sources {
+        if feed.providers.contains_key(name) {
+            continue;
+        }
+        if let Some(slot) = previous.providers.get(name) {
+            feed.providers.insert(name.clone(), slot.clone());
+        }
+    }
     let total_failure = ok_count == 0 && !project_config.providers.is_empty();
     store_feed(&feed)?;
     Ok(RefreshOutcome {
@@ -440,6 +457,7 @@ impl BackgroundRefresh {
     pub fn start(config: &StatusConfig, over: &[String]) -> Result<Self> {
         let registry_doc = crate::feed::commands::load_registry_doc()?;
         let defaults = config.defaults.clone();
+        let site_sources = site_source_names(config);
         let jobs = jobs_over(config, over);
         let queue: Vec<String> = jobs.iter().map(|(project, _)| project.clone()).collect();
 
@@ -452,6 +470,7 @@ impl BackgroundRefresh {
                         &registry_doc,
                         &project,
                         &project_config,
+                        &site_sources,
                         &defaults,
                     ) {
                         Ok(outcome) => Landed {
@@ -722,12 +741,7 @@ pub fn refresh_shared(registry_doc: &Value, config: &StatusConfig) -> Result<Ref
         .cloned()
         .chain(std::iter::once(UNATTRIBUTED.to_string()))
         .collect();
-    let names: Vec<String> = config
-        .sources
-        .iter()
-        .filter_map(|source: &Value| source.get("provider").and_then(Value::as_str))
-        .map(String::from)
-        .collect();
+    let names = site_source_names(config);
     for home in homes {
         let mut feed = load_feed(&home)?.unwrap_or(ProjectFeed {
             project: home.clone(),
@@ -784,6 +798,17 @@ pub fn refresh_shared(registry_doc: &Value, config: &StatusConfig) -> Result<Ref
         notes: Vec::new(),
         total_failure: ok_count == 0,
     })
+}
+
+/// The names of the sources bound for the site, each the slot it writes in
+/// every home it places a matter in (§FS-001-forge-interface.9).
+pub fn site_source_names(config: &StatusConfig) -> Vec<String> {
+    config
+        .sources
+        .iter()
+        .filter_map(|source: &Value| source.get("provider").and_then(Value::as_str))
+        .map(String::from)
+        .collect()
 }
 
 /// The one context a source bound for the site is asked in: no project,

@@ -594,6 +594,7 @@ fn site(args: &DoctorArgs, style: &Style, say: &Narrator) -> Result<(Health, Opt
             &registry_doc,
             project,
             project_config,
+            &crate::feed::refresh::site_source_names(&config),
             &config.defaults,
         );
         say.done(&match &outcome {
