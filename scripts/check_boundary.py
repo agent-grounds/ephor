@@ -71,18 +71,10 @@ PRODUCTS = (
     # No adapter, so no home: a forge ephor does not implement is reached
     # through the forge interface, never by name (§FS-001-forge-interface.2).
     Product("gitlab", r"gitlab", kind="forge"),
-    Product(
-        "slack",
-        r"slack",
-        homes=("src/feed/providers/slack.rs", "src/feed/providers/mod.rs"),
-        kind="chat vendor",
-    ),
-    Product(
-        "discord",
-        r"discord",
-        homes=("src/feed/providers/discord.rs", "src/feed/providers/mod.rs"),
-        kind="chat vendor",
-    ),
+    # The same for chat: a chat network reaches ephor through a gateway
+    # answering the `messages` row (§FS-001-forge-interface.1).
+    Product("slack", r"slack", kind="chat vendor"),
+    Product("discord", r"discord", kind="chat vendor"),
     # The shipped runtime and the directory its projects live in
     # (§AR-007-runtime), and the plan store read out of a checkout.
     Product(

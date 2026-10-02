@@ -341,21 +341,6 @@ fn implied_extensions() -> Vec<String> {
         .collect()
 }
 
-/// Read a secret JSON file from the ephor secrets directory
-/// (`~/config/secrets/ephor/<name>.json`).
-#[allow(dead_code)] // for the slack/discord/email providers once implemented
-pub fn load_secret(ctx: &ProviderContext, name: &str) -> Result<Value, ProviderError> {
-    let path = ctx.secrets_dir.join(format!("{name}.json"));
-    let text = std::fs::read_to_string(&path)
-        .map_err(|err| ProviderError(format!("cannot read secret {}: {err}", path.display())))?;
-    serde_json::from_str(&text)
-        .map_err(|err| ProviderError(format!("invalid secret {}: {err}", path.display())))
-}
-
-pub fn secret_exists(ctx: &ProviderContext, name: &str) -> bool {
-    ctx.secrets_dir.join(format!("{name}.json")).is_file()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
