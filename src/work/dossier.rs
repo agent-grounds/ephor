@@ -621,13 +621,34 @@ fn read_instruction(
 /// otherwise each have to remember. Fenced content is left exactly as it is:
 /// what git said is what git said, an example in an instruction is the example
 /// its author wrote, and the plan language skips a fence for the same reason.
+///
+/// What counts as fenced is the plan language's own rule, because a plan must
+/// never be read by two (§FS-005-dispatch.3.2): a run of three or more
+/// backticks or tildes opens a fence, and only a bare run of the same
+/// character at least as long closes it. So a longer fence holds shorter ones
+/// — which is how an author quotes a document with fences of its own, a plan
+/// skeleton with an example inside it — and a fence nothing closes runs to
+/// the end of the text.
 pub fn in_a_body(text: &str) -> String {
     let mut out = String::new();
-    let mut fenced = false;
+    // The character and the length of the run that opened the fence this line
+    // stands in, if it stands in one.
+    let mut open: Option<(char, usize)> = None;
     for line in text.lines() {
-        if line.trim_start().starts_with("```") {
-            fenced = !fenced;
-        }
+        // Both of a fence's own lines are its content, written as they are.
+        let fenced = match (open, fence_run(line)) {
+            (None, Some((marker, run, _))) => {
+                open = Some((marker, run));
+                true
+            }
+            (Some((marker, opened)), Some((closing, run, true)))
+                if closing == marker && run >= opened =>
+            {
+                open = None;
+                true
+            }
+            _ => open.is_some(),
+        };
         let heading = match fenced {
             true => None,
             false => line
@@ -641,6 +662,17 @@ pub fn in_a_body(text: &str) -> String {
         }
     }
     out
+}
+
+/// The fence run a line begins with, at its first non-whitespace character:
+/// the character, how many of it there are, and whether nothing but whitespace
+/// follows — only such a bare run may close a fence (§FS-005-dispatch.3.2).
+fn fence_run(line: &str) -> Option<(char, usize, bool)> {
+    let trimmed = line.trim_start();
+    let marker = trimmed.chars().next().filter(|&c| matches!(c, '`' | '~'))?;
+    let rest = trimmed.trim_start_matches(marker);
+    let run = trimmed.len() - rest.len();
+    (run >= 3).then(|| (marker, run, rest.trim().is_empty()))
 }
 
 /// SHA-256 of some bytes, as lowercase hex (FIPS 180-4).
