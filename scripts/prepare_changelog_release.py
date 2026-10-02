@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
 """Stamp, collect and read changelog release sections. §FS-002-release.2
 
-Three commands, the ones the release workflows have always called. `stamp`
-writes the numbers the contributors could not know onto the pending entries
-(§FS-002-release.2.2, in `changelog_stamp`). `prepare` collects the entries
-under `docs/changelog/unreleased/` into a numbered release inline, rotates the
-previous release out to its archive, and consumes the entries
+Four commands. `stamp` writes the numbers the entries do not carry onto the
+pending entries (§FS-002-release.2.2, in `changelog_stamp`). `prepare` collects
+the entries under `docs/changelog/unreleased/` into a numbered release inline,
+rotates the previous release out to its archive, and consumes the entries
 (§FS-002-release.2.3). `notes` writes the inline section the GitHub release
-publishes (§FS-002-release.3).
+publishes (§FS-002-release.3). `pending` prints how many entries `prepare`
+would read, which the scheduled release holds on while it is `0`
+(§FS-002-release.2).
 """
 
 from __future__ import annotations
@@ -126,15 +127,24 @@ def prepare_release(changelog: Path, version: str, release_date: str) -> None:
         entry.path.unlink()
 
 
+def entry_paths(changelog: Path) -> list[Path]:
+    """Every path `prepare` reads as an entry, malformed ones included; `README.md` is none. §FS-002-release.2
+
+    `pending` counts this listing and `read_entries` reads it, so the hold and
+    the refusal cannot disagree about what counts.
+    """
+    directory = entry_directory(changelog)
+    if not directory.is_dir():
+        return []
+    return [path for path in sorted(directory.iterdir()) if path.name != ENTRY_README]
+
+
 def read_entries(changelog: Path) -> list[Entry]:
     """Every pending entry, or a refusal naming each malformed one. §FS-002-release.2.3"""
-    directory = entry_directory(changelog)
-    shown = directory.as_posix()
+    shown = entry_directory(changelog).as_posix()
     found: list[Entry] = []
     problems: list[str] = []
-    for path in sorted(directory.iterdir()) if directory.is_dir() else []:
-        if path.name == ENTRY_README:
-            continue
+    for path in entry_paths(changelog):
         if path.is_dir():
             problems.append(f"{shown}/{path.name}: a directory, where the entries are files")
             continue
@@ -163,7 +173,12 @@ def read_entries(changelog: Path) -> list[Entry]:
     if problems:
         raise ChangelogError("\n".join(problems))
     if not found:
-        raise ChangelogError(f"{shown}/ holds no entry to release; its {ENTRY_README} is not one")
+        # §FS-002-release.2.3: before a release, an empty directory means the write-up is not done.
+        raise ChangelogError(
+            f"{shown}/ holds no entry to release; its {ENTRY_README} is not one.\n"
+            f"  Write the release section first: one entry per change merged since the last tag, "
+            f"as part two of {shown}/{ENTRY_README} says."
+        )
     return found
 
 
@@ -326,7 +341,7 @@ def _validate_date(release_date: str) -> None:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Stamp, collect or read docs/changelog.md release sections.")
+    parser = argparse.ArgumentParser(description="Stamp, count, collect or read docs/changelog.md release sections.")
     parser.add_argument("--changelog", type=Path, default=Path("docs/changelog.md"))
     subparsers = parser.add_subparsers(dest="command", required=True)
 
@@ -339,10 +354,14 @@ def main(argv: Sequence[str] | None = None) -> int:
     notes.add_argument("--output", type=Path, required=True)
 
     subparsers.add_parser("stamp", help="write PR numbers onto pending entries that end with none")
+    subparsers.add_parser("pending", help="print how many entries prepare would read")
 
     args = parser.parse_args(argv)
     try:
-        if args.command == "prepare":
+        if args.command == "pending":
+            # §FS-002-release.2: a bare count, which `Auto bump` holds the release on while it is 0.
+            print(len(entry_paths(args.changelog)))
+        elif args.command == "prepare":
             prepare_release(args.changelog, args.version, args.date)
         elif args.command == "stamp":
             stamp_entries(args.changelog)

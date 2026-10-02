@@ -1,10 +1,15 @@
 name: Auto bump
 
 # Mondays at 09:00 UTC: if main has shipped non-doc changes since the last
-# vX.Y.Z tag and CI on that tip is green, bump the patch version, commit the
-# bump to main, and dispatch release.yml to publish the crate + binaries. A
-# GITHUB_TOKEN push does not trigger other workflows, so release.yml is invoked
-# explicitly via `gh workflow run` rather than relying on the tag-push trigger.
+# vX.Y.Z tag, CI on that tip is green and their release section is written,
+# bump the patch version, commit the bump to main, and dispatch release.yml to
+# publish the crate + binaries. A GITHUB_TOKEN push does not trigger other
+# workflows, so release.yml is invoked explicitly via `gh workflow run` rather
+# than relying on the tag-push trigger.
+#
+# No change writes the changelog; its section is written before a release
+# (§FS-002-release.1). Until it is, the release is held with a notice and the
+# run stays green (§FS-002-release.2).
 #
 # The first release is bootstrapped by hand — this workflow needs a v*.*.* tag
 # to bump from (§FS-002-release.2).
@@ -125,18 +130,37 @@ jobs:
           fi
           echo "CI on $sha is green."
 
-      - name: Install Rust toolchain
+      # §FS-002-release.2: hold while the release section is not written. Every
+      # later step reads the positive `ok == 'true'`, so a step that did not run
+      # leaves the release held rather than letting it through.
+      - name: Gate — release section written
+        id: gate_pending
         if: steps.gate_substantive.outputs.ok == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="${{ steps.versions.outputs.current_tag }}"
+          pending="$(python3 scripts/prepare_changelog_release.py pending)"
+          if [ "$pending" -eq 0 ]; then
+            echo "::notice::Changes since $tag wait for their release section: docs/changelog/unreleased/ holds no entry — skipping."
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ok=true" >> "$GITHUB_OUTPUT"
+            echo "$pending changelog entries wait for release."
+          fi
+
+      - name: Install Rust toolchain
+        if: steps.gate_substantive.outputs.ok == 'true' && steps.gate_pending.outputs.ok == 'true'
         uses: dtolnay/rust-toolchain@stable
 
       - name: Install cargo-edit
-        if: steps.gate_substantive.outputs.ok == 'true'
+        if: steps.gate_substantive.outputs.ok == 'true' && steps.gate_pending.outputs.ok == 'true'
         uses: taiki-e/install-action@v2
         with:
           tool: cargo-edit
 
       - name: Bump version and refresh lockfile
-        if: steps.gate_substantive.outputs.ok == 'true'
+        if: steps.gate_substantive.outputs.ok == 'true' && steps.gate_pending.outputs.ok == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -152,7 +176,7 @@ jobs:
 
       - name: Commit and push release candidate
         id: candidate
-        if: steps.gate_substantive.outputs.ok == 'true'
+        if: steps.gate_substantive.outputs.ok == 'true' && steps.gate_pending.outputs.ok == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -174,7 +198,7 @@ jobs:
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
 
       - name: Dry-run release workflow
-        if: steps.gate_substantive.outputs.ok == 'true'
+        if: steps.gate_substantive.outputs.ok == 'true' && steps.gate_pending.outputs.ok == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -208,7 +232,7 @@ jobs:
           gh run watch "$run_id" --exit-status --interval 30
 
       - name: Publish release commit and dispatch release
-        if: steps.gate_substantive.outputs.ok == 'true'
+        if: steps.gate_substantive.outputs.ok == 'true' && steps.gate_pending.outputs.ok == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -237,7 +261,9 @@ jobs:
             -f create_github_release=true
           git push origin --delete "$branch" || true
 
+      # §FS-002-release.5: a held release opens no dev version, so this carries the release's own condition.
       - name: Advance main to the next dev version
+        if: steps.gate_substantive.outputs.ok == 'true' && steps.gate_pending.outputs.ok == 'true'
         shell: bash
         run: |
           set -euo pipefail
