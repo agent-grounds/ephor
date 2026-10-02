@@ -5839,3 +5839,243 @@ fn a_sidecar_under_a_plan_that_stands_at_the_new_name_still_holds_the_matter_bac
     );
     assert_eq!(dispatcher.ledger.entries[id].plan_id, PRE_DIGEST);
 }
+
+/// A full concurrency ceiling is held as data — scope, id, key, limit and the
+/// count its key is over — and the sentence rendered from it is the one the
+/// sweep always said (§FS-005-dispatch.24.2).
+#[test]
+fn a_full_ceiling_is_held_as_data_and_says_what_it_always_said() {
+    // The site's working ceiling: the count is the active roots, not the live.
+    let site = Capacity::new(
+        Ceilings {
+            site: Limits {
+                concurrent: Some(9),
+                active: Some(1),
+            },
+            site_as_configured: Some(9),
+            ..Ceilings::default()
+        },
+        LiveRuns {
+            global: Counts { live: 3, active: 1 },
+            ..LiveRuns::default()
+        },
+    );
+    let hold = site.hold(&["widget".to_string()]).expect("full");
+    assert_eq!(
+        hold.data(),
+        serde_json::json!({
+            "kind": "concurrency", "scope": "site", "key": "max_active",
+            "limit": 1, "count": 1
+        })
+    );
+    assert_eq!(
+        hold.says(),
+        "global work.max_active 1 is full (1 active run(s), 2 parked)"
+    );
+
+    // A project's own working ceiling names the project.
+    let project = Capacity::new(
+        Ceilings {
+            projects: BTreeMap::from([(
+                "widget".to_string(),
+                Limits {
+                    concurrent: Some(9),
+                    active: Some(2),
+                },
+            )]),
+            ..Ceilings::default()
+        },
+        LiveRuns {
+            global: Counts { live: 2, active: 2 },
+            projects: BTreeMap::from([("widget".to_string(), Counts { live: 2, active: 2 })]),
+            ..LiveRuns::default()
+        },
+    );
+    let hold = project.hold(&["widget".to_string()]).expect("full");
+    assert_eq!(
+        hold.data(),
+        serde_json::json!({
+            "kind": "concurrency", "scope": "project", "id": "widget",
+            "key": "max_active", "limit": 2, "count": 2
+        })
+    );
+    assert_eq!(
+        hold.says(),
+        "projects.widget.work.max_active 2 is full (2 active run(s), 0 parked)"
+    );
+
+    // A project's flight ceiling, and an organization's, which bounds flight
+    // alone. The outermost full one is the hold.
+    let nested = |site: usize| Ceilings {
+        site: flight(site),
+        site_as_configured: Some(site),
+        organizations: BTreeMap::from([("acme".to_string(), 1)]),
+        projects: BTreeMap::from([("widget".to_string(), flight(1))]),
+        membership: BTreeMap::from([("widget".to_string(), "acme".to_string())]),
+    };
+    let live = || LiveRuns {
+        global: working(1),
+        organizations: BTreeMap::from([("acme".to_string(), 1)]),
+        projects: working_each(BTreeMap::from([("widget".to_string(), 1)])),
+    };
+    let organization = Capacity::new(nested(9), live())
+        .hold(&["widget".to_string()])
+        .expect("full");
+    assert_eq!(
+        organization.data(),
+        serde_json::json!({
+            "kind": "concurrency", "scope": "organization", "id": "acme",
+            "key": "max_concurrent", "limit": 1, "count": 1
+        })
+    );
+    assert_eq!(
+        organization.says(),
+        "organizations.acme.work.max_concurrent 1 is full (1 live run(s))"
+    );
+    let site = Capacity::new(nested(1), live())
+        .hold(&["widget".to_string()])
+        .expect("full");
+    assert_eq!(
+        site.data(),
+        serde_json::json!({
+            "kind": "concurrency", "scope": "site",
+            "key": "max_concurrent", "limit": 1, "count": 1
+        })
+    );
+    assert_eq!(
+        site.says(),
+        "global work.max_concurrent 1 is full (1 live run(s))"
+    );
+    let inner = Capacity::new(
+        Ceilings {
+            site: flight(9),
+            site_as_configured: Some(9),
+            projects: BTreeMap::from([("widget".to_string(), flight(1))]),
+            ..Ceilings::default()
+        },
+        live(),
+    )
+    .hold(&["widget".to_string()])
+    .expect("full");
+    assert_eq!(
+        inner.data(),
+        serde_json::json!({
+            "kind": "concurrency", "scope": "project", "id": "widget",
+            "key": "max_concurrent", "limit": 1, "count": 1
+        })
+    );
+    assert_eq!(
+        inner.says(),
+        "projects.widget.work.max_concurrent 1 is full (1 live run(s))"
+    );
+}
+
+/// A checkout a live run holds is held as `tree`, naming the root the run was
+/// started from and the run where it published an id — and the sentence is
+/// the one every surface says about it (§FS-005-dispatch.24.2).
+#[test]
+fn a_held_checkout_is_held_as_data_and_says_what_it_always_said() {
+    let tmp = tempfile::tempdir().unwrap();
+    let held = tmp.path().join("panta");
+    due_root(&held, &ticket_at("fix-gate-1", "collect"));
+    let holder = hold(&held);
+
+    let hold = held_in_this_checkout(&work_config(), &held);
+    assert_eq!(hold.says(), live_in_this_checkout(&work_config(), &held));
+    assert_eq!(hold.data()["kind"], "tree");
+    assert_eq!(hold.data()["root"], held.to_string_lossy().as_ref());
+
+    let named = Hold::Tree {
+        root: held.clone(),
+        run: Some("acme-run-7".to_string()),
+    };
+    assert_eq!(named.says(), "a run is live in this checkout: acme-run-7");
+    assert_eq!(
+        named.data(),
+        serde_json::json!({
+            "kind": "tree", "root": held.to_string_lossy(), "run": "acme-run-7"
+        })
+    );
+    drop(holder);
+}
+
+/// The rest and the stop are two holds, because they promise two different
+/// things: `rested` names the instant the root is tried again, `stopped` names
+/// no instant at all. Each says the sentence it always said
+/// (§FS-005-dispatch.24.2).
+#[test]
+fn the_rest_and_the_stop_are_two_holds_and_say_what_they_always_said() {
+    let tmp = tempfile::tempdir().unwrap();
+    let root = tmp.path().join("panta");
+    let group = due_root(&root, &ticket_at("fix-gate-1", "collect"));
+    let at: DateTime<Utc> = "2026-09-05T10:00:00Z".parse().unwrap();
+    let sweep = |ledger: &Ledger, now| {
+        due_among(
+            &work_config(),
+            std::slice::from_ref(&group),
+            &asking(&["fix-gate"]),
+            &laying(&[]),
+            ledger,
+            now,
+            Reach::Sweep,
+        )
+    };
+
+    last_run(&root, "acme-run-1", "failed", false);
+    let due = sweep(&remembering(&root, "acme-run-1", 1, at), at);
+    let hold = due[0].hold().expect("rested");
+    assert_eq!(
+        hold.data(),
+        serde_json::json!({
+            "kind": "rested", "run": "acme-run-1", "count": 1,
+            "until": "2026-09-05T10:05:00Z"
+        })
+    );
+    assert_eq!(
+        hold.says(),
+        "the last run here (acme-run-1) advanced nothing — this root is tried again in 5m"
+    );
+    assert_eq!(due[0].passed_over().as_deref(), Some(hold.says().as_str()));
+
+    last_run(&root, "acme-run-3", "failed", false);
+    let due = sweep(&remembering(&root, "acme-run-2", 2, at), at);
+    let hold = due[0].hold().expect("stopped");
+    assert_eq!(
+        hold.data(),
+        serde_json::json!({ "kind": "stopped", "run": "acme-run-3", "count": 3 })
+    );
+    assert_eq!(
+        hold.says(),
+        "3 runs in a row here advanced nothing, the last of them acme-run-3 — nothing more \
+         will be started on this root until a run advances there or you start one by hand"
+    );
+}
+
+/// The reader's exclusion is held as the value they gave, and it is the first
+/// hold even where the root is resting as well (§FS-005-dispatch.24.2).
+#[test]
+fn the_readers_exclusion_is_held_as_the_value_given() {
+    let tmp = tempfile::tempdir().unwrap();
+    let root = tmp.path().join("panta");
+    let group = due_root(&root, &ticket_at("fix-gate-1", "collect"));
+    last_run(&root, "acme-run-1", "failed", false);
+    let due = due_among(
+        &work_config(),
+        std::slice::from_ref(&group),
+        &asking(&["fix-gate"]),
+        &laying(&[]),
+        &empty_ledger(),
+        Utc::now(),
+        Reach::Sweep,
+    );
+    let excluded = Excluded::of(vec![(root.clone(), "github:acme/widget#7".to_string())]).mark(due);
+    let hold = excluded[0].hold().expect("excluded");
+    assert_eq!(
+        hold.data(),
+        serde_json::json!({ "kind": "excluded", "except": "github:acme/widget#7" })
+    );
+    assert_eq!(
+        hold.says(),
+        "--except github:acme/widget#7 — left out of this sweep at your asking"
+    );
+}

@@ -32,6 +32,7 @@ use crate::branches::Placement;
 use crate::burn::attribution;
 use crate::burn::{store, Bucket};
 use crate::feed::config::StatusConfig;
+use crate::work::hold::{Amount, Hold};
 use crate::work::recipe::{OrganizationWorkConfig, ProjectWorkConfig, WorkConfig};
 
 /// The one currency a ceiling may be written in (§FS-015-spend-ceiling.3).
@@ -140,7 +141,7 @@ pub enum Scope {
 }
 
 impl Scope {
-    fn key(&self) -> String {
+    pub(crate) fn key(&self) -> String {
         match self {
             Scope::Site => "global work".to_string(),
             Scope::Organization(id) => format!("organizations.{id}.work"),
@@ -198,9 +199,28 @@ pub struct Refusal {
     /// into room. Absent under a ceiling of `0`, which is a pause its author
     /// meant rather than a window that will pass.
     pub resumes_at: Option<String>,
+    /// The ceiling, in the denomination its key is written in: what the
+    /// sweep's `hold` names as `limit` (§FS-005-dispatch.24.2).
+    pub limit: Amount,
+    /// What the window measured, absent where nothing was measured — a
+    /// ceiling of `0` refuses before anything is read (§FS-005-dispatch.24.2).
+    pub total: Option<Amount>,
 }
 
 impl Refusal {
+    /// The hold a sweep passes a root over on, at the scope it asked: the
+    /// numbers as data and this sentence as the reason
+    /// (§FS-005-dispatch.24.2).
+    pub fn hold(&self, scope: &Scope) -> Hold {
+        Hold::Budget {
+            scope: scope.clone(),
+            limit: self.limit,
+            total: self.total,
+            until: self.resumes_at.clone(),
+            says: self.says.clone(),
+        }
+    }
+
     /// The machine form of the pause: the scope and the instant, and nothing
     /// else — the totals and the coverage stay in `burn`
     /// (§FS-015-spend-ceiling.10).
@@ -388,6 +408,8 @@ fn dollars_full(
             says: format!("{scope} 0 {money} per {per} admits no new autorun starts"),
             scope,
             resumes_at: None,
+            limit: Amount::Dollars(0.0),
+            total: None,
         });
     }
     let window = within(mine, budget.per, now);
@@ -416,6 +438,8 @@ fn dollars_full(
         ),
         scope,
         resumes_at: lifts.map(instant),
+        limit: Amount::Dollars(budget.amount),
+        total: Some(Amount::Dollars(spent)),
     })
 }
 
@@ -434,6 +458,8 @@ fn tokens_full(
             says: format!("{scope} 0 per {per} admits no new autorun starts"),
             scope,
             resumes_at: None,
+            limit: Amount::Tokens(0),
+            total: None,
         });
     }
     let window = within(mine, budget.per, now);
@@ -456,6 +482,8 @@ fn tokens_full(
         ),
         scope,
         resumes_at: lifts.map(instant),
+        limit: Amount::Tokens(budget.amount),
+        total: Some(Amount::Tokens(measured.tokens)),
     })
 }
 
