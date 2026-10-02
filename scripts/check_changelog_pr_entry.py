@@ -1,10 +1,16 @@
 #!/usr/bin/env python3
-"""Require a pull request to add or change an Unreleased changelog bullet. §FS-002-release.6
+"""Require a pull request to add a changelog entry of its own. §FS-002-release.6
 
 One predicate reached at two moments: the pre-push hook, against the base
-branch, and CI, against the pull request's own base commit. Neither asks for a
-number that does not exist yet (§FS-002-release.1) — the release stamps it
-(§FS-002-release.2).
+branch, and CI, against the pull request's own base commit. Both ask whether
+the change adds an entry whose slug the base did not have, whether every entry
+it adds or changes is well-formed (§FS-002-release.1.1), and whether any pull
+request number it newly writes is its own. Neither asks for a number that does
+not exist yet (§FS-002-release.1) — the release stamps it (§FS-002-release.2.2).
+
+Both sides of the comparison are read out of commits, not the checkout: on a
+`pull_request` event the checkout is the head merged into the base, and before
+a push an uncommitted file is not one the push carries.
 """
 
 from __future__ import annotations
@@ -16,25 +22,25 @@ import re
 import subprocess
 import sys
 from pathlib import Path
-from typing import NamedTuple, Sequence
+from typing import Sequence
 
 # `__file__` is set under `python scripts/...` and under the test harness's
-# load-by-path alike, so this reaches the shared cut from both (§FS-002-release.6).
+# load-by-path alike, so this reaches the shared reader from both (§FS-002-release.6).
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from changelog_unreleased import bullet_blocks, unreleased_range  # noqa: E402
-
-
-HUNK_RE = re.compile(r"^@@ -[0-9]+(?:,[0-9]+)? \+(?P<start>[0-9]+)(?:,[0-9]+)? @@")
-
-# The scanner for "a pull request number is written here". These are the three
-# spellings the gate has always recognised; what changed is that they now
-# report which number they found rather than testing for one we already have.
-PR_NUMBER_PATTERNS = (
-    re.compile(r"(?i)\bPR\s*#\s*([0-9]+)\b"),
-    re.compile(r"(?i)\bpull request\s*#\s*([0-9]+)\b"),
-    re.compile(r"/pull/([0-9]+)(?:\b|[/#?)])"),
+from changelog_history import (  # noqa: E402
+    GitError,
+    blob_text,
+    file_at,
+    files_at,
+    merge_base,
+    renames,
+    repository_path,
+    rev_parse,
 )
+from changelog_switchover import SharedSection  # noqa: E402
+from changelog_unreleased import ENTRY_README, entry_directory, entry_name, entry_problem, pr_numbers  # noqa: E402
+
 
 # Where the local hook looks for a base, in order. A fork clone that has never
 # fetched this repository has none of them, which is the degraded case.
@@ -42,99 +48,134 @@ BASE_CANDIDATES = ("origin/main", "upstream/main", "main")
 
 BYPASS = "  To push anyway: SKIP=changelog-pr-entry git push"
 
-# With no pull request template and no CONTRIBUTING.md in this repository, the
-# refusal is the contributor-facing documentation for the rule (§FS-002-release.6).
-GUIDANCE = """
-  Every pull request adds one bullet saying what a user will notice. Add it under
-  ## Unreleased in the right section (Added / Changed / Deprecated / Removed / Fixed /
-  Security), for example:
-
-      ### Fixed
-
-      - **`ephor refresh` no longer drops a project whose remote is unreachable.**
-
-  You do not need the pull request number — the release fills it in. If you know it, or
-  want a placeholder, `PR #12` and `PR #TBD` are both fine."""
-
 
 class ChangelogPrError(Exception):
     pass
 
 
-class AddedLine(NamedTuple):
-    """A line this change adds or alters inside `## Unreleased`."""
+def guidance(directory: str) -> str:
+    """With no pull request template and no CONTRIBUTING.md here, the refusal is the rule's documentation. §FS-002-release.6"""
+    return f"""
 
-    number: int  # its line number in the changelog as this change leaves it
-    text: str
-    in_bullet: bool  # so that adding a bare `### Fixed` is not a pass
+  Every pull request adds one file under {directory}/ saying what a user will
+  notice: one bullet, in a file named <slug>.<category>.md. For this branch, for example:
+
+      {directory}/{suggested_slug()}.fixed.md
+
+      - **`ephor refresh` no longer drops a project whose remote is unreachable.**
+
+  The slug is yours, lowercase letters, digits and hyphens, and stays with the entry;
+  the category is one of added, changed, deprecated, removed, fixed, security or note.
+  You do not need the pull request number — the release fills it in. If you know it,
+  or want a placeholder, end the bullet with `(PR #12)` or `(PR #TBD)`. Editing an
+  entry that is already there does not count. The format is {directory}/README.md."""
 
 
-def added_unreleased_lines(base_rev: str, changelog: Path) -> list[AddedLine]:
-    """The `## Unreleased` lines this change adds or alters, against `base_rev`. §FS-002-release.6"""
-    lines = _changelog_lines(changelog)
-    start, end = _unreleased_range(lines)
-    bullet_lines = {
-        index for block_start, block_end in bullet_blocks(lines, start, end) for index in range(block_start, block_end)
-    }
+def suggested_slug() -> str:
+    """A slug from the branch's name, which is a good default and not the contributor's only choice."""
+    branch = os.environ.get("GITHUB_HEAD_REF") or ""
+    if not branch:
+        result = subprocess.run(["git", "rev-parse", "--abbrev-ref", "HEAD"], check=False, capture_output=True, text=True)
+        branch = result.stdout.strip() if result.returncode == 0 else ""
+    slug = re.sub(r"[^a-z0-9]+", "-", branch.lower()).strip("-")
+    return slug if slug and slug != "head" else "my-change"
 
+
+def check_entries(base: str, directory: str, changelog: str, pr_number: int | None) -> None:
+    """The base-relative predicate, the same at both moments. §FS-002-release.6"""
+    base_files = files_at(base, directory)
+    head_files = files_at("HEAD", directory)
+    # A file that was already there and is unchanged is not this change's to judge.
+    touched = sorted(name for name, blob in head_files.items() if name != ENTRY_README and base_files.get(name) != blob)
+    texts = {name: blob_text(head_files[name]) for name in touched}
+    base_slugs = _slugs(base_files)
+    head_slugs = _slugs(head_files)
+
+    problems = []
+    # §FS-002-release.1.1: every entry the change adds or changes is held to the format.
+    malformed = {name for name in touched if entry_problem(name, texts[name]) is not None}
+    problems += [f"{directory}/{entry_problem(name, texts[name])}" for name in sorted(malformed)]
+    for slug, names in sorted(head_slugs.items()):
+        if len(names) > 1 and any(name in touched for name in names):
+            problems.append(
+                f"{directory}/: the slug `{slug}` is used by {' and '.join(names)}; a slug is unique across every category"
+            )
+    # §FS-002-release.2.1: the slug carries the entry's lifetime, so changing it is refused outright.
+    for old, new in renames(base, "HEAD", directory):
+        before, after = entry_name(old), entry_name(new)
+        if before and after and before.slug != after.slug and before.slug not in head_slugs:
+            problems.append(
+                f"{directory}/{old} is renamed to {new}: an entry keeps its slug for life, because the release "
+                f"orders and attributes it by its slug. Keep `{before.slug}` and change only the text or the "
+                "category; a new change is a new entry."
+            )
+
+    # §FS-002-release.1.2: a copy of a bullet the base's shared section held is neither added nor numbered here.
+    shared = SharedSection(file_at(base, changelog))
+    copies = set()
     added = []
-    for number, text in _added_lines(base_rev, changelog):
-        index = number - 1
-        if start <= index < end:
-            added.append(AddedLine(number, text, index in bullet_lines))
-    return added
+    for name in touched:
+        parsed = entry_name(name)
+        if name in malformed or parsed is None or parsed.slug in base_slugs:
+            continue
+        if shared and shared.take(parsed.category, texts[name]):
+            copies.add(name)
+        else:
+            added.append(name)
+
+    if pr_number is not None:
+        for name in touched:
+            parsed = entry_name(name)
+            if name in copies or parsed is None or texts[name] is None:
+                continue
+            # A number the entry already carried at the base is not this change's to fix.
+            carried = {number for old in base_slugs.get(parsed.slug, []) for number in pr_numbers(_text(base_files[old]))}
+            for written in dict.fromkeys(pr_numbers(texts[name])):
+                if written != pr_number and written not in carried:
+                    problems.append(
+                        f"{directory}/{name} names PR #{written}, but this is pull request #{pr_number}. Write "
+                        f"`(PR #{pr_number})`, write `(PR #TBD)`, or leave the number out — the release fills it in."
+                    )
+
+    if not added:
+        problems.insert(0, f"this change adds no entry of its own under {directory}/.")
+    if problems:
+        raise ChangelogPrError("\nerror: ".join(problems) + (guidance(directory) if not added else ""))
 
 
-def check_unreleased_entry(added: Sequence[AddedLine], pr_number: int | None) -> None:
-    """A bullet is what is asked for; a number, only if one is written. §FS-002-release.6"""
-    if not any(line.in_bullet for line in added):
-        raise ChangelogPrError(
-            "docs/changelog.md has no new or changed bullet under ## Unreleased.\n" + GUIDANCE
-        )
-    if pr_number is None:
+def check_any_entry(directory: str) -> None:
+    """The degraded check, with no base to compare against: a well-formed entry is there at all. §FS-002-release.6
+
+    Whether this change added it cannot be told, and neither can whether a
+    malformed one beside it is this change's, so only the absence of any
+    well-formed entry refuses — the local gate never refuses what CI would pass.
+    """
+    files = files_at("HEAD", directory)
+    problems = [entry_problem(name, blob_text(blob)) for name, blob in sorted(files.items()) if name != ENTRY_README]
+    if any(problem is None for problem in problems):
         return
-    for line in added:
-        for written in _pr_numbers(line.text):
-            if written != pr_number:
-                raise ChangelogPrError(
-                    f"docs/changelog.md ## Unreleased: line {line.number} names PR #{written}, "
-                    f"but this is pull request #{pr_number}.\n"
-                    "\n"
-                    f"    {line.text.strip()}\n"
-                    "\n"
-                    f"  Write `PR #{pr_number}`, write `PR #TBD`, or leave the number out entirely — the\n"
-                    "  release fills it in. Only the lines this pull request adds are checked; the\n"
-                    "  numbers on bullets that were already here are not yours to fix."
-                )
-
-
-def check_any_bullet(changelog: Path) -> None:
-    """The degraded check: `## Unreleased` carries a bullet at all. §FS-002-release.6"""
-    lines = _changelog_lines(changelog)
-    start, end = _unreleased_range(lines)
-    if not bullet_blocks(lines, start, end):
-        raise ChangelogPrError("docs/changelog.md ## Unreleased has no bullets at all.\n" + GUIDANCE)
+    found = "".join(f"\nerror: {directory}/{problem}" for problem in problems)
+    raise ChangelogPrError(f"{directory}/ holds no well-formed entry.{found}" + guidance(directory))
 
 
 def resolve_base(explicit: str | None) -> tuple[str | None, list[str]]:
     """The commit to compare against, and every candidate tried getting there. §FS-002-release.6"""
     if explicit is not None:
         # CI passes the pull request's own base commit, and `actions/checkout`
-        # gives it the head branch already merged into that commit — so the
-        # two-dot diff is exactly the pull request's net change and no merge
-        # base is needed. Locally there is no merge commit, so one is.
-        resolved = _rev_parse(explicit)
-        return resolved, [explicit]
+        # gives it the head branch already merged into that commit — so
+        # comparing the two trees is exactly the pull request's net change and
+        # no merge base is needed. Locally there is no merge commit, so one is.
+        return rev_parse(explicit), [explicit]
 
     tried = []
     for candidate in BASE_CANDIDATES:
         tried.append(candidate)
-        resolved = _rev_parse(candidate)
+        resolved = rev_parse(candidate)
         if resolved is None:
             continue
-        merge_base = _merge_base(resolved)
-        if merge_base is not None:
-            return merge_base, tried
+        found = merge_base(resolved)
+        if found is not None:
+            return found, tried
     return None, tried
 
 
@@ -184,79 +225,30 @@ def pr_number_from_current_branch() -> int | None:
     return number
 
 
-def _changelog_lines(changelog: Path) -> list[str]:
-    try:
-        return changelog.read_text(encoding="utf-8").splitlines()
-    except FileNotFoundError as exc:
-        raise ChangelogPrError(f"missing changelog: {changelog}") from exc
+def _slugs(files: dict[str, str]) -> dict[str, list[str]]:
+    """The entries' file names by slug, the README and anything not named as an entry aside."""
+    slugs: dict[str, list[str]] = {}
+    for name in sorted(files):
+        parsed = entry_name(name)
+        if parsed is not None:
+            slugs.setdefault(parsed.slug, []).append(name)
+    return slugs
 
 
-def _unreleased_range(lines: Sequence[str]) -> tuple[int, int]:
-    """The body of `## Unreleased`, in this check's own error vocabulary."""
-    section = unreleased_range(lines)
-    if section is None:
-        raise ChangelogPrError("missing ## Unreleased section in docs/changelog.md")
-    return section
-
-
-def _added_lines(base_rev: str, changelog: Path) -> list[tuple[int, str]]:
-    diff = _git(["diff", "--unified=0", base_rev, "--", str(changelog)])
-    added: list[tuple[int, str]] = []
-    number = 0
-    in_hunk = False
-    for raw in diff.splitlines():
-        hunk = HUNK_RE.match(raw)
-        if hunk is not None:
-            number = int(hunk.group("start"))
-            in_hunk = True
-            continue
-        if not in_hunk or not raw.startswith("+"):
-            continue
-        added.append((number, raw[1:]))
-        number += 1
-    return added
-
-
-def _pr_numbers(text: str) -> list[int]:
-    return [int(match) for pattern in PR_NUMBER_PATTERNS for match in pattern.findall(text)]
-
-
-def _git(args: Sequence[str]) -> str:
-    try:
-        result = subprocess.run(["git", *args], check=False, capture_output=True, text=True)
-    except FileNotFoundError as exc:
-        raise ChangelogPrError("git is not on PATH") from exc
-    if result.returncode != 0:
-        raise ChangelogPrError(f"git {' '.join(args)} failed: {result.stderr.strip()}")
-    return result.stdout
-
-
-def _rev_parse(rev: str) -> str | None:
-    result = subprocess.run(
-        ["git", "rev-parse", "--verify", "--quiet", f"{rev}^{{commit}}"],
-        check=False,
-        capture_output=True,
-        text=True,
-    )
-    if result.returncode != 0:
-        return None
-    return result.stdout.strip() or None
-
-
-def _merge_base(rev: str) -> str | None:
-    result = subprocess.run(
-        ["git", "merge-base", "HEAD", rev], check=False, capture_output=True, text=True
-    )
-    if result.returncode != 0:
-        return None
-    return result.stdout.strip() or None
+def _text(blob: str) -> str:
+    return blob_text(blob) or ""
 
 
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
-        description="Check that this change adds or alters a bullet under ## Unreleased."
+        description="Check that this change adds an entry under docs/changelog/unreleased/."
     )
-    parser.add_argument("--changelog", type=Path, default=Path("docs/changelog.md"))
+    parser.add_argument(
+        "--changelog",
+        type=Path,
+        default=Path("docs/changelog.md"),
+        help="the changelog; its entries are the changelog/unreleased/ directory beside it",
+    )
     parser.add_argument("--pr-number", type=int)
     parser.add_argument("--event-path", type=Path, default=None)
     parser.add_argument(
@@ -272,6 +264,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     compared_against = None
+    directory = "docs/changelog/unreleased"
     try:
         pr_number = args.pr_number
         if pr_number is None:
@@ -286,28 +279,25 @@ def main(argv: Sequence[str] | None = None) -> int:
         if pr_number is not None and pr_number <= 0:
             raise ChangelogPrError(f"invalid pull request number: {pr_number}")
 
-        # A number nobody has yet is no longer a reason to stand down: the
-        # bullet is checked either way, and only the number clause needs one.
+        directory = repository_path(entry_directory(args.changelog))
+        # A number nobody has yet is no reason to stand down: the entry is
+        # checked either way, and only the number clause needs one.
         base_rev, tried = resolve_base(args.base_rev)
         if base_rev is None:
             print(
                 "changelog PR entry: could not resolve a base to compare against\n"
                 f"  (tried {', '.join(tried)}), so this only checked that\n"
-                "  ## Unreleased has a bullet at all — not that you added one.\n"
+                f"  {directory}/ holds a well-formed entry — not that you added one.\n"
                 "  CI will compare against the pull request's base."
             )
-            check_any_bullet(args.changelog)
+            check_any_entry(directory)
         else:
             compared_against = tried[-1]
-            check_unreleased_entry(added_unreleased_lines(base_rev, args.changelog), pr_number)
-    except ChangelogPrError as exc:
+            check_entries(base_rev, directory, repository_path(args.changelog), pr_number)
+    except (ChangelogPrError, GitError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         if compared_against is not None:
-            print(
-                f"\n  (compared against {compared_against}; conventions are in docs/changelog.md"
-                " section 1.2)",
-                file=sys.stderr,
-            )
+            print(f"\n  (compared against {compared_against}; the format is {directory}/README.md)", file=sys.stderr)
         if args.local_pr:
             print(f"\n{BYPASS}", file=sys.stderr)
         return 1
