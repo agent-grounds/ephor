@@ -504,14 +504,15 @@ A project that wants to speak places one file at its forest root
 ([§FS-006-project-interface.2](functional-spec/FS-006-project-interface.md#2-the-manifest-is-offered-never-required)).
 It is **offered, never required**: every field is optional, an empty `{}` is
 valid, and a project that places nothing is fully watchable exactly as it
-stands. It may declare identity hints, its forest's own layout, check and gate
-verbs, task stores, and offers — menu entries you invoke.
+stands. It may declare identity hints, its forest's own layout, check, clean
+and gate verbs, task stores, and offers — menu entries you invoke.
 
 ```jsonc
 { "identity": { "aliases": ["widget"], "territory": ["acme-labs"] },
   "forest":   [{ "name": "ce", "path": "ce" }],
   "checks":   { "check": "./check.sh",
                 "smoke": { "command": "./ci/smoke.sh", "features": "list" } },
+  "clean":    "./ci/clean.sh",
   "ci":       { "status": "./ci/gate.sh", "failures": "./ci/gate-failures.sh" },
   "tasks":    [{ "kind": "rhei", "path": "docs/plans" }],
   "actions":  [{ "id": "rebuild", "description": "rebuild it",
@@ -525,6 +526,7 @@ verbs, task stores, and offers — menu entries you invoke.
 | `identity` | names, aliases, ticket patterns, repositories, territory, addresses — hints your row adopts or overrides ([§FS-008-attribution.1](functional-spec/FS-008-attribution.md#1-identity-is-declared-and-the-row-has-the-last-word)) | §4.2.2, [the registry](registry.md#identity-and-territory) |
 | `forest` | the repositories under the root, as the project declares them ([§AR-004-forest.1](architecture/AR-004-forest.md#1-folds)) | §5.1, `EPHOR_REPOS` |
 | `checks` | what fills `check`, `style`, `smoke` ([§FS-006-project-interface.5](functional-spec/FS-006-project-interface.md#5-checks-are-verbs-and-every-script-is-self-contained)) | §4.2.3 |
+| `clean` | what gives an idle branch checkout's build output back ([§FS-017-clean.1](functional-spec/FS-017-clean.md#1-cleaning-is-a-verb-the-project-declares)) | §8.11.2 |
 | `ci` | what answers `status`, `failures`, `restart` ([§FS-006-project-interface.6](functional-spec/FS-006-project-interface.md#6-the-gate-is-the-projects-in-three-verbs)) | §4.2.4 |
 | `tasks` | task stores kept somewhere other than the probed names — `tickets` is the older spelling and is still read ([§FS-006-project-interface.7](functional-spec/FS-006-project-interface.md#7-the-projects-own-tasks-are-read-where-they-live)) | §4.2.5 |
 | `actions` | menu entries the project offers ([§FS-006-project-interface.9](functional-spec/FS-006-project-interface.md#9-offers-the-projects-actions)) | §7.6 |
@@ -622,6 +624,11 @@ the aggregate is defined as everything the project considers a check and
 running all three would run the style pass twice. A verb named and not there is
 refused rather than skipped — a check nobody ran that nobody was told about is
 what that rule exists to prevent.
+
+A fourth verb is bound the same way and is not a check: `clean`, probed as
+`./clean.sh`, bound by a manifest's `clean` key and overridden by your
+`projects.<id>.clean`. `ephor clean` asks it of idle branch checkouts
+([§8.11.2](#8112-giving-back-what-builds-took)).
 
 ### 4.2.4 Gate verbs — how a project's CI is asked what it is doing
 
@@ -1858,6 +1865,7 @@ the cheap way to ask this question outside the inbox
 | checkable | `check.sh`, `check-style.sh`, or `smoke-test.sh` at the root, **or** a manifest `checks` block (§4.2.3) | verification that means something |
 | gated | a source reports a gate, **or** a manifest `ci` block binds one (§4.2.4) | failure dossiers and the restart |
 | tasks | a `panta/` or `.beads/` store at the root, in any branch workspace on disk, or one a manifest declares (§4.2.5) | the project's own tasks as matters |
+| cleanable | `clean.sh` at the root, a manifest `clean` key, or your `projects.<id>.clean` (§8.11.2) | giving an idle checkout's build output back |
 | workable | the configured runner is on `PATH` | running the work |
 
 The ladder is resolved per project when the inbox loads, when a refresh
@@ -3599,6 +3607,35 @@ nesting that checkout's own `rebase --json` where a replay ran.
 **And it runs with nobody watching**: `systemd/ephor-rebase-sweep.{service,timer}`,
 hourly ([§10.1](#101-timers)).
 
+#### 8.11.2 Giving back what builds took
+
+Every branch checkout keeps the build output it made. `ephor clean` asks each
+project's own **clean verb** of every branch checkout on disk that nobody is
+holding, and says what came back ([§FS-017-clean](functional-spec/FS-017-clean.md#fs-017-clean-an-idle-checkout-gives-back-what-its-builds-took-through-the-projects-own-verb)):
+
+```bash
+ephor clean                       # every project in the registry: what it would summon where
+ephor clean --act                 # run it, and measure each checkout before and after
+ephor clean --workspace widget --act --json
+```
+
+The verb is the project's, bound the way a check verb is (§4.2.3): `./clean.sh`
+at the checkout's root, a manifest's `clean` key, or your
+`projects.<id>.clean` — site configuration over manifest over probe, resolved
+in each checkout. It runs there as a summons with the branch's `EPHOR_*`
+environment; `0` is cleaned, `75` parked, anything else failed. A project that
+binds none is **not guessed for**: each of its checkouts is passed over with
+"no clean verb declared", and the *cleanable* rung (§7.5) says the same.
+
+The checkouts are the ones the rebase sweep walks (§8.11.1), with the same two
+held back: the main branch's checkout, said once per project, and a checkout a
+live run holds, passed over with the run named. Without `--act`, at any width,
+it lists the command and where it would run and names no bytes. Under `--act`
+each row says what was reclaimed, measured on disk without following symbolic
+links or counting a hard link twice, and the report ends with the total. A
+failed verb is reported and the sweep goes on; the run exits `1` where any verb
+failed or any project was not reached, `0` otherwise.
+
 ### 8.12 An answer comes back as a proposal
 
 Often the next move on a matter is not a change but a reply. The shipped
@@ -5001,6 +5038,7 @@ ephor list | validate | ensure-agents | update            # the registry
 ephor refresh | status | feed | mark-read | failures      # the feed
 ephor restart --scope failed|all                          # run a gate again
 ephor rebase [--org O | --workspace W | --tag T] [--act]  # one checkout, or a sweep
+ephor clean [--org O | --workspace W | --tag T] [--act]   # each idle checkout's clean verb
 ephor checkout | branches                                 # the checkout
 ephor check | validate --manifest | schema                # the project interface
 ephor actions [list] | actions run <id> | actions open <id>  # what may be done here

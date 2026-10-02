@@ -35,7 +35,8 @@ pub struct Cli {
     /// word that does it (§FS-011-command-line.10). Declared here beside the
     /// selectors for their reason: a flag each verb had to remember is a flag
     /// the next mutating verb forgets. It is taken by `work dispatch`, `work
-    /// sync` and `work run`, and refused by name everywhere else.
+    /// sync`, `work run`, `clean`, and `rebase` where a selector makes it
+    /// sweep, and refused by name everywhere else.
     #[arg(long, global = true)]
     pub act: bool,
 
@@ -83,6 +84,9 @@ pub enum Command {
     Restart(RestartArgs),
     /// Replay a checkout's branch onto its main branch.
     Rebase(RebaseArgs),
+    /// Give back what builds took in every idle branch checkout, through each
+    /// project's own clean verb.
+    Clean(CleanArgs),
     /// Make the branch workspace that is not checked out yet.
     Checkout(CheckoutArgs),
     /// Hand items to the agent runtime, and see what came of it.
@@ -865,6 +869,19 @@ pub struct RebaseArgs {
     #[arg(long)]
     pub report: Option<String>,
 
+    /// Emit the outcome as JSON.
+    #[arg(long)]
+    pub json: bool,
+}
+
+/// `ephor clean` (§FS-017-clean): summon each project's clean verb in every
+/// branch checkout on disk that no live run holds, and say what it gave back.
+///
+/// It reports what it would summon where and writes nothing without `--act`.
+/// It exits `1` where any verb failed or any project was not reached, and `0`
+/// otherwise.
+#[derive(Args, Debug)]
+pub struct CleanArgs {
     /// Emit the outcome as JSON.
     #[arg(long)]
     pub json: bool,

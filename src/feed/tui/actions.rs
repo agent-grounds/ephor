@@ -722,6 +722,7 @@ mod tests {
                 answering: Some(1),
                 checkout: Some("git worktree add"),
                 runner: Some("sh"),
+                clean: None,
                 gate_reported: true,
                 manifest: None,
             },

@@ -39,6 +39,9 @@ pub enum Rung {
     /// A *ticket* is what a remote tracker keys and an *issue* is what a forge
     /// files — these are neither, so the rung is named for what it holds.
     Tasks,
+    /// A clean verb bound (§FS-017-clean.1). Buys giving an idle checkout's
+    /// build output back.
+    Cleanable,
     /// A bound runtime on PATH (§FS-005-dispatch). Buys the loop.
     Workable,
 }
@@ -54,6 +57,7 @@ impl Rung {
             Rung::Checkable => "checkable",
             Rung::Gated => "gated",
             Rung::Tasks => "tasks",
+            Rung::Cleanable => "cleanable",
             Rung::Workable => "workable",
         }
     }
@@ -74,7 +78,7 @@ impl Rung {
     }
 
     /// Every rung, in ladder order.
-    pub fn all() -> [Rung; 8] {
+    pub fn all() -> [Rung; 9] {
         [
             Rung::Observable,
             Rung::Placed,
@@ -83,6 +87,7 @@ impl Rung {
             Rung::Checkable,
             Rung::Gated,
             Rung::Tasks,
+            Rung::Cleanable,
             Rung::Workable,
         ]
     }
@@ -133,6 +138,9 @@ pub struct Bindings<'a> {
     pub checkout: Option<&'a str>,
     /// The runtime binding — the command that runs a plan.
     pub runner: Option<&'a str>,
+    /// The command the site binds to the project's clean verb, where it binds
+    /// one (§FS-017-clean.1).
+    pub clean: Option<&'a str>,
     /// Whether any source has reported a gate for this project. The sources'
     /// last answer is what establishes the rung until gate verbs are bound
     /// (§AR-005-capabilities.1).
@@ -281,6 +289,20 @@ impl CapabilitySet {
             fails(Rung::Tasks, unplaced);
         }
 
+        // Asked of the seam, as the checks are: the site's binding wins, then
+        // the manifest's, then the probe — and where none answers there is no
+        // guessed fallback, only this sentence (§FS-017-clean.1).
+        let cleans = crate::seams::checks::bind(
+            crate::seams::checks::Verb::Clean,
+            root,
+            bindings.manifest,
+            bindings.clean,
+        )
+        .is_some();
+        if !cleans {
+            fails(Rung::Cleanable, no_clean_verb(root));
+        }
+
         // A bound verb counts as much as a forge that reports one: above the
         // seam nothing can tell the difference (§FS-006-project-interface.6).
         let gated = crate::seams::gate::Verb::all().into_iter().any(|verb| {
@@ -347,6 +369,18 @@ impl CapabilitySet {
     }
 }
 
+/// Why the *cleanable* rung is missing in this checkout: no clean verb is
+/// declared, and where one would have been (§FS-017-clean.1). One sentence,
+/// so the ladder and the sweep that passes a checkout over say the same.
+pub fn no_clean_verb(checkout: &std::path::Path) -> String {
+    format!(
+        "no clean verb declared: {} holds no {}, and neither its manifest nor the site \
+         configuration binds one",
+        checkout.display(),
+        crate::seams::checks::Verb::Clean.probed()
+    )
+}
+
 /// Why the runtime rung is missing, or None where it holds — the one question
 /// `ephor work run` asks before spawning anything, resolved here so the
 /// command line and the inbox refuse in the same words
@@ -390,6 +424,7 @@ mod tests {
             answering: Some(1),
             checkout: Some("gco \"$EPHOR_BRANCH\""),
             runner: None,
+            clean: None,
             gate_reported: true,
             manifest: None,
         }

@@ -186,6 +186,10 @@ name = "e2e_040_a_branch_published_to_a_fork"
 path = "tests/e2e/cases/E2E-040-a-branch-published-to-a-fork.rs"
 
 [[test]]
+name = "e2e_041_every_idle_checkout_cleaned"
+path = "tests/e2e/cases/E2E-041-every-idle-checkout-cleaned.rs"
+
+[[test]]
 name = "agents_test"
 path = "tests/integration/agents_test.rs"
 

@@ -846,6 +846,61 @@
         { "$ref": "#/$defs/rebase_sweep" }
       ]
     },
+    "clean": {
+      "description": "`ephor clean --json` (FS-017-clean) — each project's own clean verb asked of every branch checkout on disk that no live run holds, with the main branch's left to `ephor update`. Without `--act` it lists what would be summoned where and names no bytes; under `--act` each checkout is measured on disk before its verb runs and after. It exits `1` where any verb failed or any project was not reached, `0` otherwise — `cleaned`, `parked` and `passed-over` are all good ends.",
+      "type": "object",
+      "required": ["scope", "summary", "cleaned", "parked", "failed", "passed_over", "would_clean", "projects", "checkouts"],
+      "properties": {
+        "scope": { "type": "string", "description": "The selectors as the caller typed them, or `every project in the registry` where none was given." },
+        "summary": { "type": "string" },
+        "cleaned": { "type": "integer" },
+        "parked": { "type": "integer" },
+        "failed": { "type": "integer" },
+        "passed_over": { "type": "integer" },
+        "would_clean": { "type": "integer" },
+        "reclaimed_bytes": { "type": "integer", "description": "What every verb that ran gave back, in bytes on disk. Absent on a run held at the gate, which runs no verb and so knows no number." },
+        "reclaimed": { "type": "string", "description": "`reclaimed_bytes` in human-readable units, as the prose says it." },
+        "gated": { "type": "boolean", "description": "The run reported and summoned nothing, because cleaning writes into trees and `--act` is what says to (FS-011-command-line.10)." },
+        "says": { "type": "string", "description": "What a gated run says it did instead, naming the flag that acts. Present with `gated`." },
+        "projects": {
+          "type": "array",
+          "description": "One row per project in scope, and whether its checkouts were reached at all. A project that names no main branch is not reached: its main checkout cannot be told from a branch's (FS-017-clean.2).",
+          "items": {
+            "type": "object",
+            "required": ["project", "reached"],
+            "properties": {
+              "project": { "type": "string" },
+              "reached": { "type": "boolean" },
+              "says": { "type": "string", "description": "Why none of it was reached, where none was." }
+            }
+          }
+        },
+        "checkouts": {
+          "type": "array",
+          "description": "One row per branch checkout the sweep saw, whichever end it came to.",
+          "items": {
+            "type": "object",
+            "required": ["project", "branch", "checkout", "outcome", "says"],
+            "properties": {
+              "project": { "type": "string" },
+              "branch": { "type": "string" },
+              "checkout": { "type": "string" },
+              "outcome": {
+                "enum": ["cleaned", "parked", "failed", "passed-over", "would-clean"],
+                "description": "Read from the verb's exit code: `0` cleaned, `75` parked, anything else failed. `passed-over` is a live run holding the checkout or no clean verb declared, and never a silence. `would-clean` is what a run held at the gate says."
+              },
+              "says": { "type": "string", "description": "The one line the prose gave about this checkout, reason included where it was passed over or failed." },
+              "command": { "type": "string", "description": "The command the clean verb is bound to here — site configuration over manifest over probe. Absent where none is bound." },
+              "cwd": { "type": "string", "description": "Where that command runs: the checkout, or the repository of it the binding names." },
+              "before_bytes": { "type": "integer", "description": "The checkout's size on disk before its verb ran. Present only where a verb ran." },
+              "after_bytes": { "type": "integer", "description": "Its size on disk after the verb ran." },
+              "reclaimed_bytes": { "type": "integer", "description": "`before_bytes` less `after_bytes`, never below zero." },
+              "reclaimed": { "type": "string", "description": "`reclaimed_bytes` in human-readable units." }
+            }
+          }
+        }
+      }
+    },
     "validate": {
       "description": "`ephor validate --json` — what was held to a published schema and came through. Two things can be: the registry with the managed workspaces whose paths were checked, or one project's own manifest under `--manifest`, which involves no registry at all (FS-006-project-interface.11). The reading says which by which fields it carries.",
       "type": "object",

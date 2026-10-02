@@ -265,6 +265,12 @@ pub struct Manifest {
     pub forest: Vec<Repo>,
     #[serde(default)]
     pub checks: Checks,
+    /// What gives back the space the project's builds took, where it binds
+    /// one somewhere other than the probed `./clean.sh` (§FS-017-clean.1).
+    /// Beside `checks` rather than in it: a project that can clean is not
+    /// thereby checkable.
+    #[serde(default)]
+    pub clean: Option<Binding>,
     #[serde(default, rename = "ci")]
     pub gate: Gate,
     /// `tickets` is the older spelling of this key and is still read: the
@@ -294,6 +300,7 @@ impl Manifest {
         if trust == Trust::Descriptions {
             // Read what it says about itself; run none of it.
             manifest.checks = Checks::default();
+            manifest.clean = None;
             manifest.gate = Gate::default();
             manifest.offers.clear();
         }
@@ -639,6 +646,7 @@ mod tests {
             tmp.path().join(FILE),
             r#"{"identity": {"aliases": ["the widget"]},
                 "checks": {"check": "./check.sh"},
+                "clean": "./ci/clean.sh",
                 "actions": [{"id": "x", "description": "d", "command": "c"}]}"#,
         )
         .unwrap();
@@ -646,6 +654,10 @@ mod tests {
         let full = Manifest::read(tmp.path(), Trust::Full).unwrap().unwrap();
         assert_eq!(full.identity.aliases, vec!["the widget"]);
         assert!(full.checks.check.is_some());
+        assert_eq!(
+            full.clean.as_ref().map(Binding::command),
+            Some("./ci/clean.sh")
+        );
         assert_eq!(full.offers.len(), 1);
 
         // Descriptions only: what it says about itself survives, what it would
@@ -655,6 +667,8 @@ mod tests {
             .unwrap();
         assert_eq!(narrowed.identity.aliases, vec!["the widget"]);
         assert!(narrowed.checks.check.is_none());
+        // Cleaning removes files, which is running something (§FS-017-clean.1).
+        assert!(narrowed.clean.is_none());
         assert!(narrowed.offers.is_empty());
 
         // Ignored: not read at all.

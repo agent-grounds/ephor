@@ -126,6 +126,9 @@ pub struct Session {
     pub provider_blocks: BTreeMap<String, Vec<Value>>,
     /// Per-project branch checkout commands.
     pub checkouts: BTreeMap<String, CheckoutConfig>,
+    /// Per-project clean verbs the site binds, over each checkout's manifest
+    /// and probe (§FS-017-clean.1).
+    pub cleans: BTreeMap<String, String>,
     /// How long finished work stays under Recent (§FS-003-feed-categories.3).
     pub recent_days: u64,
     pub unread_only: bool,
@@ -542,6 +545,7 @@ impl Session {
                     .get(project)
                     .map(|checkout| checkout.command.as_str()),
                 runner: Some(crate::work::runtime::RUNNER),
+                clean: self.cleans.get(project).map(String::as_str),
                 gate_reported,
                 manifest: manifest.as_ref(),
             };
@@ -1002,6 +1006,11 @@ impl Session {
                         .clone()
                         .map(|checkout| (id.clone(), checkout))
                 })
+                .collect(),
+            cleans: config
+                .projects
+                .iter()
+                .filter_map(|(id, project)| project.clean.clone().map(|clean| (id.clone(), clean)))
                 .collect(),
             recent_days: config.defaults.recent_days,
             unread_only: true,

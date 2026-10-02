@@ -16,6 +16,7 @@ pub mod branches;
 pub mod burn;
 pub mod capabilities;
 pub mod checkout;
+pub mod clean;
 pub mod cli;
 pub mod commands;
 pub mod doctor;

@@ -147,6 +147,7 @@ and its degrade:
 | checkable | probed or declared check verbs (§5) | meaningful verify, fix-gate work that trusts itself | guess-list fallback, then opaque |
 | gated | bound CI verbs (§5) | gate counts, failure dossiers, restart | counts omitted, restart not offered |
 | ticketed | probed local stores (§5) | local tickets in the feed, implement recipes on them | rung absent, no feature |
+| cleanable | probed, declared or site-bound clean verb (§5) | `ephor clean` giving an idle checkout's build output back | checkouts passed over, "no clean verb declared" |
 | workable | bound runner + checkout-able + work root | dispatch, `work run`, the loop | tickets-on-disk; run refuses with guidance |
 
 Git is not a rung: it is the substrate. A placed project *is* a forest.

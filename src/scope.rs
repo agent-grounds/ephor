@@ -144,6 +144,10 @@ pub fn honoured(command: &Command) -> (String, Honours) {
         // even though the behaviour is not. What it sweeps *in* those projects
         // is [`sweeps`], which does read the condition.
         Command::Rebase(_) => said("rebase", Honours::Watched),
+        // The registry's rows rather than the watched list: a checkout is
+        // worth cleaning whether or not anybody watches its project's forge,
+        // so the verb selects out of the registry it loads (§FS-017-clean.2).
+        Command::Clean(_) => said("clean", Honours::Registry),
         Command::Checkout(_) => said("checkout", Honours::Nothing),
         Command::Work(args) => work_honoured(args),
         Command::Job(_) => said("job", Honours::Nothing),
@@ -244,6 +248,9 @@ pub fn sweeps(command: &Command, scope: &Scope) -> Sweeps {
         // none it is about the one checkout it was handed.
         Command::Rebase(_) if scope.selects_projects() => Sweeps::Gated,
         Command::Rebase(_) => Sweeps::NothingWithoutASelector,
+        // Every branch checkout the scope reaches, selector or none, so it is
+        // above the gate at every width (§FS-017-clean.2).
+        Command::Clean(_) => Sweeps::Gated,
         // The managed-workspace sweeps. `validate` only reads the paths it
         // walks; the other two rewrite a file in every workspace, and are the
         // deferral this rule records rather than hides.
@@ -362,8 +369,8 @@ impl Act {
             Sweeps::Gated => unreachable!("returned above"),
         }
         says.push_str(
-            " `work dispatch`, `work sync`, `work run`, and `rebase` where a selector makes \
-             it sweep, take it.",
+            " `work dispatch`, `work sync`, `work run`, `clean`, and `rebase` where a \
+             selector makes it sweep, take it.",
         );
         // Exits 2 like a refused selector: both halves of the scope rule are
         // one configuration refusal for the caller (§FS-011-command-line.9).
