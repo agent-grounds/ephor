@@ -57,22 +57,6 @@ jobs:
       - name: cargo fmt --check
         run: cargo fmt --all -- --check
 
-      # §FS-002-release.1: every pull request adds an entry of its own under
-      # docs/changelog/unreleased/. The check is base-relative (§FS-002-release.6),
-      # so it needs the pull request's own base commit — and only that one. It
-      # lists and diffs the two trees rather than walking history, and on a
-      # `pull_request` event the checkout above is the head branch already merged
-      # into that base, so the two trees differ by exactly this pull request's net
-      # change. One shallow fetch is therefore enough and the clone stays depth-1.
-      - name: changelog PR entry
-        if: github.event_name == 'pull_request'
-        env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-        run: |
-          git fetch --no-tags --depth=1 origin "$BASE_SHA"
-          python scripts/check_changelog_pr_entry.py \
-            --pr-number "${{ github.event.pull_request.number }}" --base-rev "$BASE_SHA"
-
       - name: python tests
         run: python -m unittest discover -s tests/integration -p 'test_*.py'
 

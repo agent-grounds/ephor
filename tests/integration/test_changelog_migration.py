@@ -1,9 +1,8 @@
 """The switch-over moves what was pending into entries, and loses nothing. §FS-002-release.1.2
 
 The copies here are written by hand, as the old `stamp` and the move would leave
-them, rather than by a migration under test: what is pinned is how the gate
-(§FS-002-release.6) and the release (§FS-002-release.2.2) treat a copy, and
-that the exception for one cannot be claimed by anything else.
+them, rather than by a migration under test: what is pinned is how the release
+treats a copy (§FS-002-release.2.2).
 """
 
 from changelog_git import (
@@ -13,7 +12,6 @@ from changelog_git import (
     changelog_text,
     describe,
     entries_readme,
-    output,
     release_section,
 )
 
@@ -69,11 +67,10 @@ COPIES = {
 }
 
 OWN_ENTRY = "- **Pending changelog entries are one file each.**\n"
-FOREIGN_NUMBERS = ("104", "105", "106", "107", "108")
 
 
 class SwitchOverTests(EntryRepoCase):
-    def switch_over(self, *, own_entry: str | None = OWN_ENTRY):
+    def switch_over(self):
         """The tree before, the base it finally lands on, and the switch-over commit itself."""
         repo = self.repo(LEGACY)
         repo.write("docs/guide.md", "# Guide\n\n## Detail\n")
@@ -83,59 +80,10 @@ class SwitchOverTests(EntryRepoCase):
         repo.write(f"{ENTRY_DIR}/README.md", entries_readme())
         for name, body in COPIES.items():
             repo.entry(name, body)
-        if own_entry is not None:
-            repo.entry("distributed-entries.changed.md", own_entry)
+        repo.entry("distributed-entries.changed.md", OWN_ENTRY)
         migration = repo.commit("feat: one file per pending changelog entry")
         repo.forge({repo.base: [], final_base: [107], migration: [149]})
         return repo, final_base, migration
-
-    # --- the gate ---------------------------------------------------------------
-
-    def test_the_switch_over_passes_the_gate_on_its_own_entry(self) -> None:
-        repo, final_base, _ = self.switch_over()
-        self.assert_exit(repo.gate("--base-rev", final_base, "--pr-number", "149"), 0)
-
-    def test_copies_alone_are_not_an_added_entry(self) -> None:
-        repo, final_base, _ = self.switch_over(own_entry=None)
-        refused = repo.gate("--base-rev", final_base, "--pr-number", "149")
-        self.assert_refused(refused, ENTRY_DIR)
-        for number in FOREIGN_NUMBERS:
-            # Refused for the missing entry, not by a number check copies are spared.
-            self.assertNotIn(f"#{number}", output(refused), describe(refused))
-
-    def test_the_switch_over_s_own_entry_is_held_to_the_number_check(self) -> None:
-        repo, final_base, _ = self.switch_over(own_entry="- **Pending entries are files.** (PR #104)\n")
-        self.assert_refused(
-            repo.gate("--base-rev", final_base, "--pr-number", "149"), "distributed-entries.changed.md", "104", "149"
-        )
-
-    def test_a_copy_that_does_not_match_the_base_is_an_ordinary_entry(self) -> None:
-        cases = (
-            ("reworded", "legacy-0001.fixed.md", "- **Written number, reworded.** [guide](../../guide.md#detail). (PR #104)\n"),
-            ("recategorized", "legacy-0001.note.md", COPIES["legacy-0001.fixed.md"]),
-            ("renumbered", "legacy-0001.fixed.md", COPIES["legacy-0001.fixed.md"].replace("#104", "#109")),
-        )
-        for description, name, body in cases:
-            with self.subTest(description):
-                repo, final_base, _ = self.switch_over()
-                (repo.path / ENTRY_DIR / "legacy-0001.fixed.md").unlink()
-                repo.entry(name, body)
-                repo.commit("feat: the switch-over, with one copy that is not a copy")
-                number = "109" if description == "renumbered" else "104"
-                self.assert_refused(repo.gate("--base-rev", final_base, "--pr-number", "149"), name, number)
-
-    def test_copies_are_recognized_against_the_base_they_land_on(self) -> None:
-        repo, _, _ = self.switch_over()
-        # The base it was planned against never had the late bullet.
-        self.assert_refused(repo.gate("--base-rev", repo.base, "--pr-number", "149"), "legacy-0006.fixed.md", "107")
-
-    def test_after_the_switch_over_a_copy_of_moved_text_is_an_ordinary_entry(self) -> None:
-        repo, _, migration = self.switch_over()
-        repo.entry("pretend-legacy.fixed.md", COPIES["legacy-0001.fixed.md"])
-        repo.commit("fix: an entry copied from one that moved")
-        self.assert_refused(repo.gate("--base-rev", migration, "--pr-number", "150"), "pretend-legacy.fixed.md", "104")
-
-    # --- the release -------------------------------------------------------------
 
     def test_the_release_publishes_every_moved_bullet_and_none_with_the_switch_over_s_number(self) -> None:
         repo, _, _ = self.switch_over()

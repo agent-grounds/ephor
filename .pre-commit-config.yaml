@@ -19,16 +19,6 @@ repos:
       #   - `cargo test --all-targets --locked` matches the CI `cargo test` step
       #     and also runs at pre-push so broken tests block both commit-time and
       #     push-time workflows.
-      #   - `scripts/check_changelog_pr_entry.py --local-pr` is the CI changelog
-      #     gate reached at the push instead — one predicate at two moments
-      #     (§FS-002-release.6), which is what keeps it matching rather than
-      #     exceeding. It asks for an entry file under `docs/changelog/unreleased/`
-      #     whose slug the base did not have, a question answerable before a
-      #     pull request exists, and adds the number clause only when `gh`
-      #     reports a number.
-      #     It refuses the push rather than standing down; the refusal names
-      #     `SKIP=changelog-pr-entry git push`, which drops this hook alone and
-      #     leaves `cargo-test` below still running.
       - id: cargo-fmt-check
         name: cargo fmt --check
         entry: cargo fmt --all -- --check
@@ -50,13 +40,6 @@ repos:
         pass_filenames: false
         always_run: true
         stages: [pre-commit, pre-push]
-      - id: changelog-pr-entry
-        name: changelog PR entry
-        entry: python scripts/check_changelog_pr_entry.py --local-pr
-        language: system
-        pass_filenames: false
-        always_run: true
-        stages: [pre-push]
       - id: python-test
         name: python tests
         entry: python -m unittest discover -s tests/integration -p test_*.py

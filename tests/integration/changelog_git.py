@@ -1,14 +1,13 @@
 """A throwaway git repository carrying `docs/changelog.md` and its pending entries.
 
 Not a test module — `unittest discover -p 'test_*.py'` does not collect it. It is
-shared by every changelog test because the gate and the release are two halves
-of one rule and both need a real repository rather than loose files: the gate
-compares the entries against a base commit (§FS-002-release.6), and the release
-orders and attributes them by the history that added them (§FS-002-release.2.1).
+shared by every changelog test because the release needs a real repository
+rather than loose files: it orders and attributes the entries by the history
+that added them (§FS-002-release.2.1). It also reads the workflow and hook files
+the way the tests that pin them need (§FS-002-release.2, §FS-002-release.6).
 
-The scripts run as the hook and the workflows run them — by argv, in the
-checkout, in a process of their own — so nothing here assumes how they are
-written inside. The forge is the one thing faked: `gh` on `PATH` is a stub that
+The script runs as the workflows run it — by argv, in the checkout, in a
+process of its own — so nothing here assumes how it is written inside. The forge is the one thing faked: `gh` on `PATH` is a stub that
 answers from a JSON file the test writes and logs every call, so a refused or
 rate-limited forge is a case and not an accident of the machine.
 
@@ -60,9 +59,9 @@ GIT_ENV = {
     "GIT_TERMINAL_PROMPT": "0",
 }
 
-# The forge, as far as the gate and the release ask it anything: the branch's
-# pull request, and the pull requests a commit belongs to. A response that is a
-# string is a refusal, printed the way `gh` prints one. Anything else is refused
+# The forge, as far as the release asks it anything: the pull requests a commit
+# belongs to. A response that is a string is a refusal, printed the way `gh`
+# prints one. Anything else is refused
 # loudly, so a call the tests did not expect shows up in the warning it causes.
 GH_STUB = '''
 import json, os, re, sys
@@ -72,14 +71,6 @@ args = sys.argv[1:]
 with open(os.environ["CHANGELOG_FORGE_LOG"], "a", encoding="utf-8") as log:
     log.write(json.dumps(args) + "\\n")
 data = json.loads(Path(os.environ["CHANGELOG_FORGE_DATA"]).read_text(encoding="utf-8"))
-
-if args[:2] == ["pr", "view"]:
-    number = data.get("branch_pr")
-    if number is None:
-        print("no pull requests found for branch", file=sys.stderr)
-        sys.exit(1)
-    print(number)
-    sys.exit(0)
 
 match = re.search(r"commits/([0-9a-f]{40})/pulls", " ".join(args)) if args[:1] == ["api"] else None
 if match is not None:
@@ -194,17 +185,14 @@ def entries_readme() -> str:
 
 
 class EntryRepo:
-    """A contributor's checkout: a base commit on `main`, and a branch to add entries on.
+    """A checkout: a base commit on `main`, and a branch to add entries on.
 
     `unreleased=None` is a tree after the switch-over — the pointer under
     `## Unreleased` and the entry directory with its README. Any other text is
     a tree before it, with that text as the shared section and no directory.
-    Without `with_base` there is no `main` and no remote at all, which is the
-    fork clone that has never fetched this repository and the case the local
-    gate has to degrade for.
     """
 
-    def __init__(self, unreleased: str | None = None, *, with_base: bool = True) -> None:
+    def __init__(self, unreleased: str | None = None) -> None:
         self.root = Path(tempfile.mkdtemp(prefix="ephor-changelog-")).resolve()
         self.path = self.root / "checkout"
         self.path.mkdir()
@@ -218,26 +206,22 @@ class EntryRepo:
         self.env = {
             **os.environ,
             **GIT_ENV,
-            # Set on every CI leg, and read by the gate when no `--pr-number` is
-            # given: blanking it keeps the suite's own pull request out of a case.
-            "GITHUB_EVENT_PATH": "",
             "PATH": f"{stub.parent}{os.pathsep}{os.environ.get('PATH', '')}",
             "CHANGELOG_FORGE_DATA": str(self.forge_data),
             "CHANGELOG_FORGE_LOG": str(self.forge_log),
         }
         self.forge()
 
-        self.git("init", "-q", "-b", "main" if with_base else "contribution")
+        self.git("init", "-q", "-b", "main")
         self.changelog = self.write("docs/changelog.md", changelog_text(POINTER if unreleased is None else unreleased))
         if unreleased is None:
             self.write(f"{ENTRY_DIR}/README.md", entries_readme())
         self.base = self.commit("changelog: the tree before the contribution")
-        if with_base:
-            self.git("checkout", "-q", "-b", "contribution")
+        self.git("checkout", "-q", "-b", "contribution")
 
-    def forge(self, pulls: dict[str, object] | None = None, branch_pr: int | None = None) -> None:
-        """What the forge answers from now on: `pulls` by commit, and the branch's own pull request."""
-        self.forge_data.write_text(json.dumps({"pulls": pulls or {}, "branch_pr": branch_pr}), encoding="utf-8")
+    def forge(self, pulls: dict[str, object] | None = None) -> None:
+        """What the forge answers from now on: the pull requests of each commit in `pulls`."""
+        self.forge_data.write_text(json.dumps({"pulls": pulls or {}}), encoding="utf-8")
 
     def git(self, *args: str) -> str:
         result = subprocess.run(["git", *args], cwd=self.path, env=self.env, capture_output=True, text=True)
@@ -270,9 +254,6 @@ class EntryRepo:
             capture_output=True,
             text=True,
         )
-
-    def gate(self, *args: str) -> subprocess.CompletedProcess:
-        return self.run_script("check_changelog_pr_entry.py", *args)
 
     def release(self, *args: str) -> subprocess.CompletedProcess:
         return self.run_script("prepare_changelog_release.py", *args)

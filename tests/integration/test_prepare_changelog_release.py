@@ -197,7 +197,6 @@ class StampTests(EntryRepoCase):
         repo.commit("release: 0.1.1")
         reused = repo.entry("same.note.md", "- **The second lifetime.**\n")
         second = repo.commit("docs: second lifetime")
-        self.assert_exit(repo.gate("--base-rev", f"{second}^", "--pr-number", "143"), 0)
         repo.forge({first: [142], second: [143]})
         self.assert_exit(repo.release("stamp"), 0)
         self.assertEqual(reused.read_text(), "- **The second lifetime.** (PR #143)\n")

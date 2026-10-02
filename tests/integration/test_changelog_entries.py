@@ -4,9 +4,8 @@ Three things no single script shows. The format is grund's, byte for byte
 (§FS-002-release.1.1). This repository's own tree has made the move: its shared
 section is a pointer, and every entry waiting in it is one a release collects.
 And the reason for all of it — two pull requests that each record a change
-integrate in either order, merged or rebased, and both entries then pass the
-gate (§FS-002-release.6), are stamped with their own numbers and are released
-(§FS-002-release.2).
+integrate in either order, merged or rebased, and both entries are then stamped
+with their own numbers and released (§FS-002-release.2).
 
 And no change is asked for one: neither the hook nor CI gates a change on the
 changelog, and what is written is checked where the release reads it
@@ -136,12 +135,10 @@ class IntegrationTests(EntryRepoCase):
     def land(self, operation: str, first: str, second: str) -> None:
         repo = self.repo()
         numbers = {"alpha": 142, "beta": 143}
-        verdicts = {}
-        for label, number in numbers.items():
+        for label in numbers:
             repo.git("checkout", "-q", "-b", f"probe-{label}", repo.base)
             repo.entry(f"probe-{label}.fixed.md", f"- **The {label} change is recorded.**\n")
             repo.commit(f"fix: {label}")
-            verdicts[label] = repo.gate("--base-rev", repo.base, "--pr-number", str(number))
 
         if operation == "merge":
             repo.git("checkout", "-q", "-b", "candidate", repo.base)
@@ -156,11 +153,8 @@ class IntegrationTests(EntryRepoCase):
         self.assertEqual(repo.git("diff", repo.base, "--", "docs/changelog.md"), "")
         self.assertEqual(repo.pending(), ["probe-alpha.fixed.md", "probe-beta.fixed.md"])
 
-        # What it could not: each entry passes the gate, is stamped with its own
-        # number, and is released, in the order it landed.
-        for label in numbers:
-            with self.subTest(stage="gate", entry=label):
-                self.assert_exit(verdicts[label], 0)
+        # What it could not: each entry is stamped with its own number, and is
+        # released, in the order it landed.
         pulls = {}
         for line in repo.git("log", "--all", "--format=%H %s").splitlines():
             sha, subject = line.split(" ", 1)
