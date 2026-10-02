@@ -639,7 +639,13 @@ deliberately.
 | `github-threads` | GraphQL unresolved review threads | last comment is not yours |
 | `custom-status` | any shell command in the workspace (`format: answer`, or the legacy `text` / `json`) | the answer says so |
 | `<anything else>` | a forge extension: `ephor-forge-<name>` on `PATH` ([§FS-001-forge-interface.2](docs/functional-spec/FS-001-forge-interface.md#2-two-transports-one-interface)) | ephor's policy, over what it answered |
-| `slack`/`discord`/`email` | stubs; activate by adding secrets under `~/config/secrets/ephor/` | mentions/DMs (planned) |
+
+Chat and mail come in through a forge extension that answers `messages`,
+declared once in `sources` and placed by the `rooms` a registry row claims
+([§FS-001-forge-interface.1](docs/functional-spec/FS-001-forge-interface.md#1-capabilities),
+[§FS-008-attribution.1](docs/functional-spec/FS-008-attribution.md#1-identity-is-declared-and-the-row-has-the-last-word)).
+[`config/chat-gateway.example.sh`](config/chat-gateway.example.sh) is a worked
+gateway over the spool an always-on listener keeps.
 
 A task store in the checkout — `panta/`, `.beads/` — is read on every refresh
 without any provider block, and reports under its own name
