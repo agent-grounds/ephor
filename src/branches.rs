@@ -31,7 +31,8 @@ pub struct BranchInfo {
 }
 
 /// Whether an item is work on this branch: by ticket key, by the branch name
-/// the provider recorded, or by the branch name appearing in the title.
+/// the provider recorded, or by the branch name appearing in the title — the
+/// matter's own word, never its conversation's (§FS-008-attribution.2.1).
 pub fn matches(item: &Item, branch: &BranchInfo) -> bool {
     // The provider-recorded branch is ground truth and is not a match to be
     // argued about: the forge said which branch this is on.
@@ -41,10 +42,10 @@ pub fn matches(item: &Item, branch: &BranchInfo) -> bool {
         return true;
     }
     // Everything else is the one matching engine at its second scope
-    // (§AR-003-attribution.3): the same evidence, the project's branches as
-    // the identity table. [`place`] is what the surfaces ask — it puts the
-    // whole table in front of the engine at once, which is both cheaper and
-    // the engine's own ranking rather than list order.
+    // (§AR-003-attribution.3): the matter's own evidence, the project's
+    // branches as the identity table. [`place`] is what the surfaces ask — it
+    // puts the whole table in front of the engine at once, which is both
+    // cheaper and the engine's own ranking rather than list order.
     crate::attribution::branch(
         &evidence(item),
         &[(branch.branch.clone(), branch.ticket.clone())],
@@ -61,10 +62,10 @@ pub fn matches(item: &Item, branch: &BranchInfo) -> bool {
 /// One answer for one item, so the group a row is filed under and the count
 /// the branch above it shows cannot disagree.
 ///
-/// The engine is asked once for the whole table rather than once per branch.
-/// An item's evidence is its entire recorded conversation joined into one
-/// string, so building it per branch is the same answer at N times the price —
-/// and N is now every workspace on disk, not the handful somebody wrote down.
+/// The engine is asked once for the whole table rather than once per branch:
+/// building an item's evidence per branch is the same answer at N times the
+/// price — and N is now every workspace on disk, not the handful somebody wrote
+/// down.
 pub fn place(item: &Item, branches: &[BranchInfo]) -> Option<usize> {
     let recorded = item
         .raw
@@ -85,14 +86,21 @@ pub fn place(item: &Item, branches: &[BranchInfo]) -> Option<usize> {
 }
 
 /// What the matching engine is given about an item, at the branch scope
-/// (§AR-003-attribution.3): everything the matter carries, plus the ticket the
-/// id names for sources that put it there and nowhere else.
+/// (§AR-003-attribution.3): what the matter says of itself — its title, and
+/// the ticket keys its title and its id name, the id for sources that put the
+/// ticket there and nowhere else — and nothing its conversation says
+/// (§FS-008-attribution.2.1). A comment quoting a branch is talk about that
+/// branch: the lifecycle record on an issue quotes the checkout of the run
+/// that filed it, and reading that as the issue's own branch laid the issue's
+/// work inside somebody else's finished checkout.
 fn evidence(item: &Item) -> crate::attribution::Evidence {
-    let mut evidence = crate::matter::evidence_of(item);
-    evidence
-        .tickets
-        .extend(crate::ticket_ids::tickets_in(&item.id));
-    evidence
+    let mut tickets = crate::ticket_ids::tickets_in(&item.title);
+    tickets.extend(crate::ticket_ids::tickets_in(&item.id));
+    crate::attribution::Evidence {
+        tickets,
+        words: item.title.clone(),
+        ..crate::attribution::Evidence::default()
+    }
 }
 
 /// A branch name's workspace directory per the project's
@@ -1535,6 +1543,51 @@ mod tests {
         let matter = item("A pull request from main", json!({ "branch": "main" }));
         assert_eq!(placement.branch_name(&matter), Some("main".to_string()));
         assert_eq!(placement.own_branch(&matter), Some("main".to_string()));
+    }
+
+    /// A branch a comment quotes is not the matter's own: the record comment
+    /// naming the checkout of another issue's branch places this issue on no
+    /// branch, so a template mints it its own rather than laying its work in
+    /// that checkout (§FS-008-attribution.2.1, the defect
+    /// `agent-grounds/ephor#132` reported). Its own title naming the branch
+    /// still places it there.
+    #[test]
+    fn a_branch_quoted_in_a_comment_is_not_the_matters_own() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut placement = placement(tmp.path(), Some("{project_root}/{branch}"));
+        placement.branches.push(BranchInfo {
+            branch: "fix/issue-274".to_string(),
+            ticket: None,
+            active: false,
+            is_release: false,
+            declared: false,
+        });
+        let theirs = tmp.path().join("fix/issue-274");
+        std::fs::create_dir_all(&theirs).unwrap();
+        let said = |text: String| json!({ "threads": [ { "messages": [ { "text": text } ] } ] });
+
+        let quoted = said(format!(
+            "The run that filed this worked in {}.",
+            theirs.display()
+        ));
+        let matter = item("test_root builds fixtures under $TMPDIR", quoted);
+        assert!(placement.matched(&matter).is_none());
+        assert_eq!(placement.own_branch(&matter), None);
+        assert_eq!(placement.branch_name(&matter), None);
+        let owned = placement.own_checkout(&matter);
+        assert!(owned.branch.is_none());
+        assert!(matches!(owned.state, WorkspaceState::Unmatched));
+
+        // A ticket key quoted the same way is the conversation too.
+        let keyed = item("Unrelated", said("the same shape as ABC-42".to_string()));
+        assert_eq!(placement.own_branch(&keyed), None);
+
+        // The matter's own title naming the branch is the matter's own word.
+        let named = item("Finish fix/issue-274", json!({}));
+        assert_eq!(
+            placement.own_branch(&named),
+            Some("fix/issue-274".to_string())
+        );
     }
 
     #[test]

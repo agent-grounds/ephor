@@ -39,4 +39,7 @@ because a guess that lands wrong amends someone's matter silently
 ([§FS-008-attribution.4](../functional-spec/FS-008-attribution.md#4-unattributed-is-a-place-not-a-fate)). Branch matching inside a project is the same
 engine with the project's branches as the identity table — the code that
 matches ticket keys and branch names today is this function's seed, promoted
-rather than duplicated.
+rather than duplicated. What it is shown about a matter is the matter's own
+word — the ticket keys in its id and title, and its title — and not the
+conversation stage one read, so a branch a comment quotes places the matter on
+none ([§FS-008-attribution.2.1](../functional-spec/FS-008-attribution.md#21-a-matters-branch-is-one-it-names-never-one-its-conversation-quotes)).

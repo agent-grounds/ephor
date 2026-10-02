@@ -46,6 +46,28 @@ word on everything else about a branch — its ticket, whether it is active,
 whether it is a release branch — and on identity, which no checkout may widen
 ([§FS-008-attribution.1](FS-008-attribution.md#1-identity-is-declared-and-the-row-has-the-last-word)).
 
+### 2.1 A matter's branch is one it names, never one its conversation quotes
+
+At the second stage a matter is placed on a branch by what it says of itself,
+and by nothing its conversation says about it. The branch the forge recorded
+for it is the firm answer; after that, a branch whose ticket key the matter's
+own id or title carries, and a branch its title names outright. A comment
+quoting a branch — a lifecycle record naming the checkout of the run that filed
+the issue, a reviewer pointing at where a neighbour's fix landed — is the
+conversation talking, and it places the matter on no branch: an issue whose
+thread quotes `fix/issue-274` is not work on `fix/issue-274`, and work about it
+is placed as for any matter with no branch of its own, which a `branch`
+template mints ([§FS-005-dispatch.25](FS-005-dispatch.md#25-work-about-a-matter-with-no-branch-can-mint-the-branch-it-needs)).
+
+The first stage still reads the whole conversation, because a discussion
+naming a subject belongs to the named matter ([§FS-008-attribution.3](FS-008-attribution.md#3-venue-beats-reference-beats-resemblance)). Which
+branch is a different question — which tree the matter's own work is in — and
+the tree a quote names is the one somebody else's work is in. Reading it as the
+matter's would let resemblance amend a row, which [§FS-008-attribution.3](FS-008-attribution.md#3-venue-beats-reference-beats-resemblance)
+forbids, and it would get worse the longer a matter lived: the more of an
+issue's history the toolchain writes back onto it, the more checkout paths its
+thread quotes.
+
 ## 3. Venue beats reference beats resemblance
 
 A discussion *on* a subject belongs to that subject's matter. A discussion

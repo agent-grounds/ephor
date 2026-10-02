@@ -2788,7 +2788,9 @@ reader unable to distinguish an incompatible matter from no configured work.
 
 **The matter's own branch always wins — but the project's main branch is
 never a matter's own.** A pull request keeps the branch the forge recorded
-and a matter the registry placed keeps the branch it matched; the template
+and a matter the registry placed keeps the branch it matched — one the matter
+names itself, never one its conversation merely quotes
+([§FS-008-attribution.2.1](FS-008-attribution.md#21-a-matters-branch-is-one-it-names-never-one-its-conversation-quotes)); the template
 applies only where the matter has no branch at all. The project's configured
 `main_branch` is the trunk every workspace is grown from, not a branch any
 issue or pull request owns, so a registry match to it counts as no branch
