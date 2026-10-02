@@ -7,5 +7,6 @@
   answering keeps its last rows in each project, marked stale, with what failed
   and whether it was the network beside them, as a project's own source does
   ([§FS-001-forge-interface.6](../../functional-spec/FS-001-forge-interface.md#6-a-source-that-did-not-answer-says-so-and-says-which-kind-of-not)).
-  A source taken out of `sources` takes its rows with it at the next refresh.
+  A source taken out of `sources` takes its rows out of each project at that
+  project's next refresh.
   (PR #155)
