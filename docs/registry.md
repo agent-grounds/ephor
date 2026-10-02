@@ -83,6 +83,11 @@ that is what places a conversation nobody addressed to a repository
   `"acme"` for a whole organization. It is what places the general case — a
   mention of you on some repository of the project's ecosystem, an issue filed
   there, a discussion opened there, none of it in any checkout.
+- `rooms[]` — the venues on a chat source that are the project's, each the
+  exact id the source states, `"whatsapp/acme#120363@g.us"`. Matched only when
+  equal. Its presence is the row's word: `[]` says *none* and refuses a
+  manifest's `identity.rooms`, where a row without the key adopts it
+  ([manual §4.2.2](manual.md#422-territory)).
 
 Attribution weighs these against what a conversation carries: an explicit venue
 wins outright, a reference places next, and resemblance only argues. Two

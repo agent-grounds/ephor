@@ -94,7 +94,6 @@ have guessed, and you always have the last word.
 | Schema | `--schema` → `$EPHOR_SCHEMA` → the copy embedded in the binary |
 | Feed config | `$EPHOR_STATUS_CONFIG` → `~/.config/ephor/status.json` → `$EPHOR_HOME/config/status.json` |
 | State | `$XDG_STATE_HOME/ephor` → `~/.local/state/ephor` |
-| Secrets | `~/config/secrets/ephor/<name>.json` |
 
 `~` and `$VAR` / `${VAR}` are expanded in every path ephor reads from
 configuration; an unknown variable is left as written rather than emptied.
@@ -458,8 +457,15 @@ once per refresh
 ([§AR-008-pipeline.1](architecture/AR-008-pipeline.md#1-fetch)):
 
 ```jsonc
-{ "sources": [ { "provider": "github-notifications" } ] }
+{ "sources": [ { "provider": "github-notifications" },
+               { "provider": "chatgw", "spool": "~/.local/state/chat" } ] }
 ```
+
+The second is a chat gateway: a forge extension answering `messages`, the
+conversations addressed to you in the other places people talk (§11.1). It is
+declared here for the same reason — a chat account serves every project you
+have — and is told no project when it is asked
+([§FS-001-forge-interface.9](functional-spec/FS-001-forge-interface.md#9-a-source-is-bound-to-one-project-or-to-the-site-and-every-move-goes-back-to-the-source)).
 
 Where each of its findings belongs is then ephor's to decide, not the
 source's: one matching engine weighs what the conversation carries against
@@ -479,6 +485,17 @@ Declaring a shared source under a project still works and says so once per
 refresh. The difference it makes: declared per project, a mention lands on
 whichever project happened to fetch it; declared at site level, it lands where
 it belongs.
+
+Where a row came from and where it landed are two facts, and every move on it
+follows the first. A reply, a reaction, a ticked task, the failures under a
+gate, a restart: each goes back to the source that reported the row — a site
+source is found among the site's as well as the project's own, and is told no
+project on the move as on the fetch
+([§FS-001-forge-interface.9](functional-spec/FS-001-forge-interface.md#9-a-source-is-bound-to-one-project-or-to-the-site-and-every-move-goes-back-to-the-source)).
+A row still in the unattributed bucket is answered the same way. Where a
+project binds a source under the same name as the site does, the project's own
+is the one meant. `--dry-run` resolves the same source and makes the same
+checks as the move, and a rehearsed reply names the source it would go through.
 
 ### 4.2.0 Pointing work at a different runtime
 
@@ -523,7 +540,7 @@ and gate verbs, task stores, and offers — menu entries you invoke.
 
 | Block | Says | Where it is documented |
 |---|---|---|
-| `identity` | names, aliases, ticket patterns, repositories, territory, addresses — hints your row adopts or overrides ([§FS-008-attribution.1](functional-spec/FS-008-attribution.md#1-identity-is-declared-and-the-row-has-the-last-word)) | §4.2.2, [the registry](registry.md#identity-and-territory) |
+| `identity` | names, aliases, ticket patterns, repositories, territory, addresses, rooms — hints your row adopts or overrides ([§FS-008-attribution.1](functional-spec/FS-008-attribution.md#1-identity-is-declared-and-the-row-has-the-last-word)) | §4.2.2, [the registry](registry.md#identity-and-territory) |
 | `forest` | the repositories under the root, as the project declares them ([§AR-004-forest.1](architecture/AR-004-forest.md#1-folds)) | §5.1, `EPHOR_REPOS` |
 | `checks` | what fills `check`, `style`, `smoke` ([§FS-006-project-interface.5](functional-spec/FS-006-project-interface.md#5-checks-are-verbs-and-every-script-is-self-contained)) | §4.2.3 |
 | `clean` | what gives an idle branch checkout's build output back ([§FS-017-clean.1](functional-spec/FS-017-clean.md#1-cleaning-is-a-verb-the-project-declares)) | §8.11.2 |
@@ -580,11 +597,35 @@ mention of you on some repository of the project's ecosystem, an issue filed
 there, none of it in any checkout.
 
 A manifest may hint the same things — `identity.aliases`, `identity.repos`,
-`identity.ticket_patterns`, `identity.territory`, `identity.addresses` — and
-the row adopts a hint where it says nothing of its own and overrides it where
-it does. The row has the last word because a checkout must not be able to claim
-another project's conversations
+`identity.ticket_patterns`, `identity.territory`, `identity.addresses`,
+`identity.rooms` — and the row adopts a hint where it says nothing of its own
+and overrides it where it does. The row has the last word because a checkout
+must not be able to claim another project's conversations
 ([§FS-008-attribution.1](functional-spec/FS-008-attribution.md#1-identity-is-declared-and-the-row-has-the-last-word)).
+
+**Rooms** are territory for conversations. `rooms` on a registry row names the
+venues on a chat source — a group, a channel — that are the project's, each
+spelled exactly as the source states it in a conversation's `room`:
+
+```jsonc
+{ "id": "widget", "rooms": ["whatsapp/acme#120363@g.us"], … }
+```
+
+A conversation in a claimed room is that project's before any reference or
+alias is consulted, as a pull request on one of its repositories is
+([§FS-008-attribution.3](functional-spec/FS-008-attribution.md#3-venue-beats-reference-beats-resemblance)).
+A room matches only when it is equal: no prefix, no case folding, and no claim
+on everything under one organization, because chat ids share no grammar ephor
+could read without naming the networks that issue them. A conversation no
+claimed room places — a direct one, which has no room, or one in a room nobody
+claimed — is placed like anything else: by what it refers to, and into the
+unattributed bucket where nothing matches.
+
+For rooms the row's word is its **presence**. A row that lists rooms has said
+which are the project's, and a manifest's `identity.rooms` is then ignored.
+`"rooms": []` is a refusal, not an omission: it says *none*, and is the only
+way a row can turn down a checkout's claim on a room. Only a row with no
+`rooms` key adopts the hint.
 
 ### 4.2.3 Check verbs — how a project says whether it is well
 
@@ -973,7 +1014,9 @@ It never substitutes an empty answer, because an empty section has to mean
 "nothing is waiting" and never "this source could not be read".
 
 - Its last-good items stay in the feed, **marked `(stale)`** wherever they
-  appear, and the provider that failed is named beside them.
+  appear, and the provider that failed is named beside them. A site source
+  (§4.2) is no different: each project that holds its rows keeps them, stale,
+  with what failed and whether it was the network.
 - A host that could not be reached at all — DNS, refused connection, a VPN
   that is down — is reported as **unreachable**, which asks you for a network
   rather than for a fix.
@@ -1043,7 +1086,17 @@ A provider block always has `provider`; the rest is its own.
 | `github-threads` | GraphQL unresolved review threads | the last comment is not yours |
 | `custom-status` | any shell command in the workspace | the JSON says so |
 | `<anything else>` | an external forge executable (§11.1) | ephor's policy, over what it answered |
-| `slack`, `discord`, `email` | stubs; activate by adding secrets | mentions and DMs (planned) |
+
+Chat and mail have no provider of their own. They come in through a **gateway**:
+a forge extension that answers `messages`, declared once for the site (§4.2)
+and placed by the rooms projects claim (§4.2.2). How a network is listened to —
+a linked device, a bot token, a bridge — changes on the network's schedule, not
+ephor's, so it stays outside ephor
+([§DF-003-chat-is-a-forge-capability](decisions/functional/DF-003-chat-is-a-forge-capability.md#df-003-chat-is-a-forge-capability-chat-reaches-the-feed-as-a-capability-of-the-one-forge-interface)).
+[`config/chat-gateway.example.sh`](../config/chat-gateway.example.sh) is the
+worked example: link it as `ephor-forge-chatgw` and point it at your listener's
+spool. A provider named `slack`, `discord` or `email` is no longer built in, so
+it resolves like any other name, to `ephor-forge-<name>` on `PATH`.
 
 Two more sources need no provider block at all: a **task store** in the
 checkout is read on every refresh where one is there, and reports under its own
@@ -4949,6 +5002,8 @@ A shell script with `jq` is a complete implementation.
 ephor-forge-<name> capabilities   <<< '{"config":…,"project":…}'
 ephor-forge-<name> pull-requests  <<< '{"config":…,"tickets":[…],…}'
 ephor-forge-<name> issues         <<< '{"config":…,"tickets":[…],…}'
+ephor-forge-<name> notices        <<< '{"config":…,"project":…,…}'
+ephor-forge-<name> messages       <<< '{"config":…,"project":…,…}'
 ephor-forge-<name> failures       <<< '{"config":…,"repo":…,"number":…}'
 ephor-forge-<name> restart        <<< '{"config":…,"repo":…,"number":…,"scope":"failed"|"all"}'
 ephor-forge-<name> react          <<< '{"config":…,"target":…,"emoji":…}'
@@ -4988,6 +5043,44 @@ put on a thread: they are its own, and ephor reads only `task.state` (`open` /
 screen, which is how a read-only implementation says so — there is nothing to
 declare beyond leaving it out. `reply` carries the words a person settled on
 and posts them as they stand ([§8.12](#812-an-answer-comes-back-as-a-proposal)).
+It is sent only where the thread carries a `reply` descriptor **and** the
+forge declared `"replies": true`; a descriptor alone is refused with *`<name>`
+does not send replies*, and a dry run refuses it the same way
+([§FS-001-forge-interface.1](functional-spec/FS-001-forge-interface.md#1-capabilities)).
+
+`notices` is the completeness net (§5.2): one entry per thing the forge itself
+decided to tell the user, declared as `"notices": true`. `messages`, declared
+as `"messages": true`, is how chat and mail reach the feed: the conversations
+addressed to the user, each one **whole** — a stable `id`, `title`, `url`,
+`updated_at`, the `room` it is in (absent for a direct conversation), its
+`reasons`, and its `threads` in the shape a pull request's conversation has,
+each thread with its own `reply` descriptor
+([§FS-001-forge-interface.1](functional-spec/FS-001-forge-interface.md#1-capabilities)).
+A conversation lands in Messages as `<name>:<id>`, and the `id` must not change
+between refreshes: it is the row's key and what your read state is kept under.
+What the extension says about a message is who wrote it and whether it was you
+(`mine`); whether the conversation waits on you is ephor's to read off the
+messages. `ephor schema forge` prints every shape.
+
+A `messages` source is usually a **gateway** over a record something else
+keeps: an always-on listener writes what it hears to a spool, and the
+extension reads the spool when ephor asks
+([`config/chat-gateway.example.sh`](../config/chat-gateway.example.sh)). An
+empty answer there means *nothing is waiting*, so it may be given only while
+the extension can show the listener is still hearing the network
+([§FS-001-forge-interface.6](functional-spec/FS-001-forge-interface.md#6-a-source-that-did-not-answer-says-so-and-says-which-kind-of-not)):
+
+| Case | Answer | What the feed shows |
+|---|---|---|
+| never paired — no listener has recorded an account | non-zero exit, one line on stderr saying to pair it | the source failed, with that line |
+| the listener cannot reach the network | non-zero exit, a line containing `connection refused` | the source **unreachable**; its last rows `(stale)` |
+| the listener's last confirmed observation is too old, or was never recorded | non-zero exit, one line saying it cannot vouch for the spool | the source failed; its last rows `(stale)` |
+| a quiet room — the listener is hearing, nobody spoke | `[]`, exit 0 | nothing waiting |
+
+A listener process that is still running proves nothing, and neither does the
+age of the newest message: a quiet room and a deaf listener leave the same
+record. How the extension shows current observation is its own configuration
+— the example takes `max_age_seconds` — and ephor reads none of it.
 
 Policy is never an extension's business: what counts as answered, what needs a
 response, how threads and gates roll up, how items match branches, what is
@@ -5098,7 +5191,6 @@ A checkout is enough for those three, which is why CI can run them
 | `~/.local/state/ephor/burn/<date>.json` | five-minute token buckets, thirty days kept (§9.3) |
 | `~/.local/state/ephor/burn/cursors.json` | how far each transcript has been read (§9.3) |
 | `~/.claude/projects/**/*.jsonl`, `~/.codex/sessions/**/*.jsonl` | read, never written: what the burn page is built from (§9) |
-| `~/config/secrets/ephor/*.json` | provider secrets |
 | `<forest root>/ephor.json` | the project's own manifest, if it wrote one (§4.2.1) |
 | `<checkout>/panta/` | work roots: plans, state machine, runtime artifacts |
 | `<work root>/runtime/ephor/<plan>.reply.md` | a drafted answer, until you post it (§8.12) |
