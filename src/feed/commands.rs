@@ -611,11 +611,18 @@ fn about_the_gate(
 )> {
     // The bucket binds no source of its own, and a matter in it names no
     // project, so a menu entry run on one passes an empty `$EPHOR_PROJECT`.
-    // Any other home is a project the site configures, whose own entries come
-    // before the site's.
-    let (project, own) = match project {
-        "" | crate::feed::refresh::UNATTRIBUTED => (crate::feed::refresh::UNATTRIBUTED, Vec::new()),
-        project => (project, known_project(config, project)?.providers.clone()),
+    // Its own name means it too, unless the site configures a project of that
+    // name. Any other home is a project the site configures, whose own entries
+    // come before the site's (§FS-001-forge-interface.9).
+    let bucket = match project {
+        "" => true,
+        crate::feed::refresh::UNATTRIBUTED => !config.projects.contains_key(project),
+        _ => false,
+    };
+    let (project, own) = if bucket {
+        (crate::feed::refresh::UNATTRIBUTED, Vec::new())
+    } else {
+        (project, known_project(config, project)?.providers.clone())
     };
     let sources = crate::feed::providers::Sources {
         project: project.to_string(),
