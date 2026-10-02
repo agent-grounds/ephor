@@ -11,8 +11,13 @@ directory is named for ([§AR-004-forest.1](../../architecture/AR-004-forest.md#
 
 1. `@{upstream}` where git records one **and it does not name this
    repository's base**;
-2. otherwise `<remote>/<HEAD>` where the remote has a branch of that name —
-   the untracked-but-pushed shape `git worktree add -b` leaves behind;
+2. otherwise `<push remote>/<HEAD>` where the remote the branch is pushed to
+   has a branch of that name — the untracked-but-pushed shape
+   `git worktree add -b` leaves behind — and after it `<remote>/<HEAD>`, where
+   the remote the repository fetches from is another one. The push remote is
+   `branch.<HEAD>.pushRemote`, else `remote.pushDefault`, else the fetch remote
+   itself ([§AR-004-forest.2](../../architecture/AR-004-forest.md#2-probes-not-declarations)), so a repository with no push configuration
+   has one remote and resolves exactly as it always did;
 3. otherwise the branch is **unpushed**. An answer, not an error: a branch
    never published has no copy to measure against, so nothing shows a
    distance and nothing offers a replay onto it.
@@ -41,6 +46,14 @@ published copy those repositories actually have, from the remote-tracking
 refs git already keeps, so the fact is measurable exactly where git's own
 shorthand gives up. A fact that can be probed is probed ([§AR-004-forest.2](../../architecture/AR-004-forest.md#2-probes-not-declarations));
 the tracking config is one witness, not the authority.
+
+The push configuration is another witness, and git's own record of where a
+branch is published when that is not where its repository fetches from: a
+change to a project its author cannot push to goes through a fork. Step 2 reads
+`branch.<HEAD>.pushRemote` and `remote.pushDefault` as configuration rather than
+asking for `@{push}`, which under git's stock `push.default` of `simple`
+resolves nothing for a branch with no upstream or one whose upstream is its
+base — the two shapes this decision exists for.
 
 ## 3. The cost
 

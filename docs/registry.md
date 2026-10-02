@@ -108,6 +108,17 @@ Nothing in a manifest can gate a capability that probing or your own
 configuration could not establish alone, so a row that ignores one loses
 nothing but the project's own convenience.
 
+## No field declares a fork
+
+A project you contribute to through a fork has no field saying so, and needs
+none. The checkout already tells git: it fetches from the project and pushes to
+your fork, through `remote.pushDefault` or `branch.<name>.pushRemote`. ephor
+reads it there. The distance from main is counted on the remote the repository
+fetches from, and a branch's published copy is looked for on the remote it is
+pushed to ([§AR-004-forest.2](architecture/AR-004-forest.md#2-probes-not-declarations)). A field saying the same would be a
+second witness to a fact git already keeps, and the first to go stale when a
+remote is added or renamed.
+
 ## Hook sets
 
 Named lists of commands run around `ephor update`. An entry is either the

@@ -9,6 +9,12 @@ single repository a forest of one ([§FS-006-project-interface.1](../functional-
 comes from the registry row, with the manifest's `forest` adopted where the
 row does not override.
 
+A repository's `remote` is the one it **fetches** from: where its base lives
+and what a new branch is grown from. The remote its checked-out branch is
+**pushed** to is a second fact beside it — a fork, where a change goes through
+one — and the same remote wherever git records no other
+([§AR-004-forest.2](AR-004-forest.md#2-probes-not-declarations)).
+
 ## 1. Folds
 
 Every git-facing feature is a fold over the forest, per-repository answers
@@ -70,11 +76,17 @@ is in the answer, by name, per repository, every time it is folded over.
 Because git is assumed, facts are derived rather than configured: which
 branches exist, which branch workspaces are on disk, what ticket key a
 branch name carries, how far a checkout trails, which remote each
-repository fetches from and pushes to, what base each is measured against,
-and where each checked-out branch is published. The registry row keeps only
-what probing cannot find — where the root is, the workspace template, and
-overrides. A fact that can be probed and is also declared is probed anyway;
-the declaration only says where to look.
+repository fetches from, which remote its checked-out branch is pushed to
+(`branch.<name>.pushRemote`, else `remote.pushDefault`, else the first), what
+base each is measured against, and where each checked-out branch is published.
+The registry row keeps only what probing cannot find — where the root is, the
+workspace template, and overrides. A fact that can be probed and is also
+declared is probed anyway; the declaration only says where to look.
+
+Neither remote is declared. A checkout that fetches from a project and pushes
+to a fork of it has already told git so, and a registry field saying it again
+would be a second witness to a fact git keeps — and the first to go stale when
+a remote is added or renamed.
 
 A row carrying `update_mode: skip` **still declares its repository** — what it
 says is not to update it — so a project all of whose rows say so has a declared
