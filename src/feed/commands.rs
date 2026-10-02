@@ -581,9 +581,10 @@ pub fn refresh(args: &RefreshArgs, scope: &Projects) -> Result<ExitCode> {
 /// context to ask in. Both questions a reader asks of a gate — what failed
 /// (§FS-004-quick-actions.4) and run it again (§FS-004-quick-actions.9) — take
 /// the same four coordinates and resolve them the same way, so they resolve
-/// them here: the source that produced the item is the one asked, the matter
-/// comes out of ephor's own cache rather than a fresh fetch, and the source's
-/// own timeout is the ceiling, because both of these are its slow calls.
+/// them here: the source that produced the item is the one asked, wherever it
+/// is bound (§FS-001-forge-interface.9), the matter comes out of ephor's own
+/// cache rather than a fresh fetch, and the source's own timeout is the
+/// ceiling, because both of these are its slow calls.
 fn about_the_gate(
     config: &StatusConfig,
     project: &str,
@@ -595,16 +596,24 @@ fn about_the_gate(
     crate::feed::model::Item,
     crate::feed::provider::ProviderContext,
 )> {
-    let project_config = known_project(config, project)?;
-    let block = project_config
-        .providers
-        .iter()
-        .find(|block| block.get("provider").and_then(Value::as_str) == Some(source))
-        .ok_or_else(|| {
-            registry_error(format!(
-                "Project '{project}' has no source named '{source}'."
-            ))
-        })?;
+    // The bucket binds no source of its own, and a matter in it names no
+    // project, so a menu entry run on one passes an empty `$EPHOR_PROJECT`.
+    // Any other home is a project the site configures, whose own entries come
+    // before the site's.
+    let (project, own) = match project {
+        "" | crate::feed::refresh::UNATTRIBUTED => (crate::feed::refresh::UNATTRIBUTED, Vec::new()),
+        project => (project, known_project(config, project)?.providers.clone()),
+    };
+    let sources = crate::feed::providers::Sources {
+        project: project.to_string(),
+        own,
+        site: config.sources.clone(),
+    };
+    let (block, told) = sources.find(source).ok_or_else(|| {
+        registry_error(format!(
+            "Neither '{project}' nor the site has a source named '{source}'."
+        ))
+    })?;
 
     let feed = cache::load_feed(project)?.ok_or_else(|| {
         registry_error(format!(
@@ -626,8 +635,14 @@ fn about_the_gate(
 
     let provider = crate::feed::providers::build_provider(block)
         .map_err(|err| EphorError::Command(err.to_string()))?;
-    let registry_doc = load_registry_doc()?;
-    let mut ctx = crate::feed::refresh::build_context(&registry_doc, project, &config.defaults)?;
+    // A site source is told no project here, as it is on a fetch.
+    let mut ctx = match told {
+        "" => crate::feed::refresh::site_context(&config.defaults),
+        _ => {
+            let registry_doc = load_registry_doc()?;
+            crate::feed::refresh::build_context(&registry_doc, project, &config.defaults)?
+        }
+    };
     // The source's own ceiling, not the refresh default: the block that set a
     // longer timeout for its fetches meant it for these too.
     if let Some(timeout) = crate::feed::refresh::provider_timeout(block) {
@@ -652,13 +667,17 @@ fn named_gate(
     crate::feed::provider::ProviderContext,
 )> {
     if let Some(id) = item {
+        // The bucket is searched too: a site source's matter nothing claimed
+        // is still that source's to answer (§FS-001-forge-interface.9).
         let (project, found) = config
             .projects
             .keys()
+            .map(String::as_str)
+            .chain(std::iter::once(crate::feed::refresh::UNATTRIBUTED))
             .filter_map(|project| {
                 let feed = cache::load_feed(project).ok()??;
                 let item = feed.items().find(|item| &item.id == id)?;
-                Some((project.clone(), item))
+                Some((project.to_string(), item))
             })
             .next()
             .ok_or_else(|| {

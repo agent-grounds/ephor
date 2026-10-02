@@ -14,7 +14,8 @@ use serde_json::Value;
 
 use crate::error::{EphorError, Result};
 use crate::feed::config::Defaults;
-use crate::feed::providers::{self, forge_call, NativeWrite};
+use crate::feed::providers::{self, forge_call, NativeWrite, Sources};
+use crate::forge::{Forge, Request};
 
 /// Where a posted reply goes. Parsed from a thread's `reply` descriptor.
 #[derive(Debug, Clone, PartialEq)]
@@ -41,29 +42,91 @@ pub fn parse_target(thread: &Value, source: &str) -> Option<ReplyTarget> {
     })
 }
 
-/// Send the reply. The text is the reader's — edited or as it was drafted —
-/// and it goes out exactly as it stands (§FS-005-dispatch.13).
-pub fn post(
+/// A reply that can go out: the words, the source that will carry them, and
+/// everything that source needs, resolved and checked.
+pub struct Prepared {
+    text: String,
+    carrier: Carrier,
+}
+
+enum Carrier {
+    Native(NativeWrite),
+    Forge {
+        forge: Box<dyn Forge>,
+        request: Request,
+        target: Value,
+    },
+}
+
+/// Everything a reply does short of sending it (§FS-001-forge-interface.9):
+/// the words are settled, the source that reported the conversation is found
+/// wherever it is bound, and it is asked whether it can carry a reply at all.
+/// A dry run is this and nothing more, so it refuses exactly where the send
+/// would.
+///
+/// The descriptor on the thread says where a reply goes; the `replies`
+/// capability says the forge can send one, and a reply goes only where both
+/// hold (§FS-001-forge-interface.1). A forge that wrote a descriptor without
+/// declaring the capability is refused by name rather than handed words it
+/// never said it could deliver.
+pub fn prepare(
     target: &ReplyTarget,
     text: &str,
-    blocks: &[Value],
-    project: &str,
+    sources: &Sources,
     defaults: &Defaults,
-) -> Result<()> {
+) -> Result<Prepared> {
     let text = text.trim();
     if text.is_empty() {
         return Err(EphorError::Command("There is nothing to post".to_string()));
     }
-    match target {
-        ReplyTarget::Native(write) => providers::post_reply(write, text),
+    let command = |err: crate::feed::provider::ProviderError| EphorError::Command(err.to_string());
+    let carrier = match target {
+        ReplyTarget::Native(write) => Carrier::Native(write.clone()),
         ReplyTarget::Forge { source, target } => {
-            let (forge, request) = forge_call(blocks, source, project, defaults)
-                .map_err(|err| EphorError::Command(err.to_string()))?;
-            forge
-                .reply(&request, target, text)
-                .map_err(|err| EphorError::Command(err.to_string()))
+            let (forge, request) = forge_call(sources, source, defaults).map_err(command)?;
+            if !forge.capabilities().map_err(command)?.replies {
+                return Err(EphorError::Command(format!(
+                    "{source} does not send replies"
+                )));
+            }
+            Carrier::Forge {
+                forge,
+                request,
+                target: target.clone(),
+            }
+        }
+    };
+    Ok(Prepared {
+        text: text.to_string(),
+        carrier,
+    })
+}
+
+impl Prepared {
+    /// Send it. The text is the reader's — edited or as it was drafted — and
+    /// it goes out exactly as it stands (§FS-005-dispatch.13).
+    pub fn send(self) -> Result<()> {
+        match self.carrier {
+            Carrier::Native(write) => providers::post_reply(&write, &self.text),
+            Carrier::Forge {
+                forge,
+                request,
+                target,
+            } => forge
+                .reply(&request, &target, &self.text)
+                .map_err(|err| EphorError::Command(err.to_string())),
         }
     }
+}
+
+/// Prepare the reply and send it.
+pub fn post(
+    target: &ReplyTarget,
+    text: &str,
+    sources: &Sources,
+    defaults: &Defaults,
+) -> Result<()> {
+    prepare(target, text, sources, defaults)?.send()
 }
 
 #[cfg(test)]
@@ -117,7 +180,56 @@ mod tests {
             source: "forge".to_string(),
             target: json!({ "id": "t-9" }),
         };
-        let err = post(&target, "  \n\n", &[], "widget", &Defaults::default()).unwrap_err();
+        let err = post(&target, "  \n\n", &Sources::default(), &Defaults::default()).unwrap_err();
         assert!(err.to_string().contains("nothing to post"), "{err}");
+    }
+
+    /// A forge that wrote a reply descriptor without declaring `replies` is
+    /// refused by name, on a dry run exactly as on a send, and is never handed
+    /// the words (§FS-001-forge-interface.9).
+    #[cfg(unix)]
+    #[test]
+    fn a_forge_that_declared_no_replies_is_refused_before_the_words_go_out() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let mute = dir.path().join("ephor-forge-mute");
+        std::fs::write(
+            &mute,
+            "#!/bin/sh\n\
+             here=$(dirname \"$0\")\n\
+             cat > /dev/null\n\
+             echo \"$1\" >> \"$here/calls\"\n\
+             case \"$1\" in\n\
+               capabilities) printf '{\"conversation\":true}' ;;\n\
+               *) printf '{}' ;;\n\
+             esac\n",
+        )
+        .unwrap();
+        std::fs::set_permissions(&mute, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let sources = Sources {
+            project: String::new(),
+            own: Vec::new(),
+            site: vec![json!({ "provider": "mute", "command": mute.to_string_lossy() })],
+        };
+        let target = ReplyTarget::Forge {
+            source: "mute".to_string(),
+            target: json!({ "chat": "120363@g.us" }),
+        };
+
+        let dry = prepare(&target, "Friday works.", &sources, &Defaults::default())
+            .err()
+            .expect("the rehearsal refuses");
+        let sent = post(&target, "Friday works.", &sources, &Defaults::default()).unwrap_err();
+        assert_eq!(dry.to_string(), "mute does not send replies");
+        assert_eq!(
+            sent.to_string(),
+            dry.to_string(),
+            "and the move in the same words"
+        );
+        let calls = std::fs::read_to_string(dir.path().join("calls")).unwrap();
+        assert_eq!(
+            calls.lines().collect::<Vec<_>>(),
+            ["capabilities", "capabilities"]
+        );
     }
 }

@@ -120,17 +120,51 @@ pub fn may_carry_pull_requests(name: &str) -> bool {
     }
 }
 
+/// The sources a move on one matter may go back to (§FS-001-forge-interface.9):
+/// the entries of the project it is placed under, then the ones bound once for
+/// the site.
+///
+/// Where a matter came from and where it was placed are two facts. A matter a
+/// site source reported, and attribution placed under a project, is still
+/// that source's to answer, so looking only among the project's own entries
+/// found nothing and every move on it failed after the dry run said it would
+/// go out.
+#[derive(Debug, Clone, Default)]
+pub struct Sources {
+    /// The project the matter is placed under; empty in the unattributed
+    /// bucket, which binds no source of its own.
+    pub project: String,
+    /// That project's own entries.
+    pub own: Vec<Value>,
+    /// The entries bound once for the site.
+    pub site: Vec<Value>,
+}
+
+impl Sources {
+    /// The entry named `source`, and the project a move through it is told
+    /// (§FS-001-forge-interface.9). Where the project binds a source under
+    /// the same name as the site does, the project's own is the one meant; a
+    /// site source is told no project on a move, as it is on a fetch.
+    pub fn find(&self, source: &str) -> Option<(&Value, &str)> {
+        let named = |block: &&Value| block.get("provider").and_then(Value::as_str) == Some(source);
+        match self.own.iter().find(named) {
+            Some(block) => Some((block, self.project.as_str())),
+            None => self.site.iter().find(named).map(|block| (block, "")),
+        }
+    }
+}
+
 /// The forge behind a source and the request to call it with, for the writes
-/// that go back to it — a reaction, a ticked task. Fails where the source is
-/// one of ephor's own providers: those reach their host directly, and a caller
-/// that lands here with one has a descriptor it should have handled itself.
+/// that go back to it — a reaction, a ticked task, a reply. Fails where the
+/// source is one of ephor's own providers: those reach their host directly,
+/// and a caller that lands here with one has a descriptor it should have
+/// handled itself.
 ///
 /// The block's own timeout is honored the way a fetch honors it, since a forge
 /// that needs a minute to be reached at all needs it for a write too.
 pub fn forge_call(
-    blocks: &[Value],
+    sources: &Sources,
     source: &str,
-    project: &str,
     defaults: &crate::feed::config::Defaults,
 ) -> Result<(Box<dyn Forge>, crate::forge::Request), ProviderError> {
     if built_in(source) {
@@ -138,14 +172,14 @@ pub fn forge_call(
             "'{source}' is not reached through the forge interface"
         )));
     }
-    let block = blocks
-        .iter()
-        .find(|block| block.get("provider").and_then(Value::as_str) == Some(source))
-        .ok_or_else(|| {
-            ProviderError(format!(
-                "'{project}' has no source named '{source}' anymore"
-            ))
-        })?;
+    let (block, project) = sources.find(source).ok_or_else(|| {
+        ProviderError(match sources.project.as_str() {
+            "" => format!("the site has no source named '{source}' anymore"),
+            project => {
+                format!("neither '{project}' nor the site has a source named '{source}' anymore")
+            }
+        })
+    })?;
     let timeout = crate::feed::refresh::provider_timeout(block)
         .map(|timeout| timeout.as_secs())
         .unwrap_or(defaults.provider_timeout_seconds);
@@ -159,18 +193,18 @@ pub fn forge_call(
     Ok((forge::ForgeProvider::external(block)?.into_forge(), request))
 }
 
-/// The quick actions a project's sources offer on one item
-/// (§FS-004-quick-actions.1). Only the source that produced the item is
-/// asked — it is the one that knows what the item means — and a provider
-/// block that no longer builds simply offers nothing, since a menu is not the
-/// place to report a broken configuration.
-pub fn quick_actions(provider_blocks: &[Value], item: &Item) -> Vec<ActionConfig> {
-    provider_blocks
-        .iter()
-        .filter(|block| block.get("provider").and_then(Value::as_str) == Some(item.source.as_str()))
-        .filter_map(|block| build_provider(block).ok())
-        .flat_map(|provider| provider.quick_actions(item))
-        .collect()
+/// The quick actions the source that produced one item offers on it
+/// (§FS-004-quick-actions.1). Only that source is asked — it is the one that
+/// knows what the item means — wherever it is bound
+/// (§FS-001-forge-interface.9), and a provider block that no longer builds
+/// simply offers nothing, since a menu is not the place to report a broken
+/// configuration.
+pub fn quick_actions(sources: &Sources, item: &Item) -> Vec<ActionConfig> {
+    sources
+        .find(&item.source)
+        .and_then(|(block, _)| build_provider(block).ok())
+        .map(|provider| provider.quick_actions(item))
+        .unwrap_or_default()
 }
 
 /// `serde(default)` for provider flags that are on unless switched off.
@@ -194,6 +228,7 @@ pub(crate) fn parse_config<T: serde::de::DeserializeOwned>(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::feed::config::Defaults;
     use crate::feed::model::ItemKind;
     use crate::feed::provider::command_exists;
     use serde_json::json;
@@ -223,10 +258,14 @@ mod tests {
 
     #[test]
     fn only_the_source_that_produced_the_item_is_asked() {
-        let blocks = vec![
-            json!({ "provider": "custom-status", "command": "true" }),
-            json!({ "provider": "github-ci", "repos": ["acme/widget"] }),
-        ];
+        let blocks = Sources {
+            project: "widget".to_string(),
+            own: vec![
+                json!({ "provider": "custom-status", "command": "true" }),
+                json!({ "provider": "github-ci", "repos": ["acme/widget"] }),
+            ],
+            site: Vec::new(),
+        };
         // The github-ci block answers for its own item — where `gh` is
         // installed to answer at all (§FS-004-quick-actions.2): the failures
         // and both restarts (§FS-004-quick-actions.9).
@@ -249,6 +288,60 @@ mod tests {
         // The same item attributed to another source asks that source, which
         // knows nothing about it.
         assert!(quick_actions(&blocks, &failing_ci_item("custom-status")).is_empty());
+    }
+
+    /// A move finds its source among the project's own entries first, then the
+    /// site's, and a site source is told no project (§FS-001-forge-interface.9).
+    #[test]
+    fn a_move_finds_its_source_wherever_it_is_bound() {
+        let sources = Sources {
+            project: "widget".to_string(),
+            own: vec![json!({ "provider": "acme", "repos": ["app"] })],
+            site: vec![
+                json!({ "provider": "acme", "repos": ["elsewhere"] }),
+                json!({ "provider": "chatgw", "spool": "~/chat" }),
+            ],
+        };
+
+        // On a shared name the project's own entry is the one meant.
+        let (block, told) = sources.find("acme").unwrap();
+        assert_eq!(block["repos"], json!(["app"]));
+        assert_eq!(told, "widget");
+        // Only the site binds this one, and it is told no project.
+        let (block, told) = sources.find("chatgw").unwrap();
+        assert_eq!(block["spool"], "~/chat");
+        assert_eq!(told, "");
+        assert!(sources.find("nobody").is_none());
+
+        let (_, request) = forge_call(&sources, "chatgw", &Defaults::default()).unwrap();
+        assert_eq!(request.project, "");
+        assert_eq!(
+            request.config,
+            json!({ "provider": "chatgw", "spool": "~/chat" })
+        );
+        let (_, request) = forge_call(&sources, "acme", &Defaults::default()).unwrap();
+        assert_eq!(request.project, "widget");
+    }
+
+    /// A source neither the project nor the site binds any more is named with
+    /// both places it was looked for, and a matter in the bucket with the one.
+    #[test]
+    fn a_source_bound_nowhere_says_where_it_was_looked_for() {
+        let placed = Sources {
+            project: "widget".to_string(),
+            ..Sources::default()
+        };
+        let err = forge_call(&placed, "chatgw", &Defaults::default())
+            .err()
+            .unwrap();
+        assert_eq!(
+            err.0,
+            "neither 'widget' nor the site has a source named 'chatgw' anymore"
+        );
+        let err = forge_call(&Sources::default(), "chatgw", &Defaults::default())
+            .err()
+            .unwrap();
+        assert_eq!(err.0, "the site has no source named 'chatgw' anymore");
     }
 
     #[test]

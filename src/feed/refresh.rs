@@ -634,20 +634,7 @@ pub fn refresh_shared(registry_doc: &Value, config: &StatusConfig) -> Result<Ref
         .map(|placement: crate::branches::Placement| placement.identity())
         .collect();
 
-    // One context for the whole site: no project, because that is the point.
-    let ctx = ProviderContext {
-        project_id: String::new(),
-        project_root: paths::state_dir(),
-        // No project, so no organization to place it in: both names reach a
-        // shared source's summons defined and empty, beside the empty
-        // `EPHOR_PROJECT` that says the same thing (§FS-005-dispatch.6.1).
-        organization: None,
-        main_branch: String::new(),
-        tickets: Vec::new(),
-        github_user: config.defaults.github_user.clone(),
-        timeout: Duration::from_secs(config.defaults.provider_timeout_seconds),
-        secrets_dir: paths::secrets_dir(),
-    };
+    let ctx = site_context(&config.defaults);
 
     let results: Mutex<BTreeMap<String, (bool, Option<String>, Vec<crate::feed::model::Item>)>> =
         Mutex::new(BTreeMap::new());
@@ -792,6 +779,25 @@ pub fn refresh_shared(registry_doc: &Value, config: &StatusConfig) -> Result<Ref
         notes: Vec::new(),
         total_failure: ok_count == 0,
     })
+}
+
+/// The one context a source bound for the site is asked in: no project,
+/// because that is the point — on a fetch, and on a move that goes back to it
+/// (§FS-001-forge-interface.9).
+pub fn site_context(defaults: &crate::feed::config::Defaults) -> ProviderContext {
+    ProviderContext {
+        project_id: String::new(),
+        project_root: paths::state_dir(),
+        // No project, so no organization to place it in: both names reach a
+        // shared source's summons defined and empty, beside the empty
+        // `EPHOR_PROJECT` that says the same thing (§FS-005-dispatch.6.1).
+        organization: None,
+        main_branch: String::new(),
+        tickets: Vec::new(),
+        github_user: defaults.github_user.clone(),
+        timeout: Duration::from_secs(defaults.provider_timeout_seconds),
+        secrets_dir: paths::secrets_dir(),
+    }
 }
 
 /// Build one source and ask it, reporting a failure as data rather than

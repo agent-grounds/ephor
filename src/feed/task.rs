@@ -14,7 +14,7 @@ use serde_json::Value;
 
 use crate::error::{EphorError, Result};
 use crate::feed::config::Defaults;
-use crate::feed::providers::forge_call;
+use crate::feed::providers::{forge_call, Sources};
 use crate::matter::task_resolved;
 
 /// A task on a message: its state, and who to send a transition to.
@@ -49,9 +49,10 @@ pub fn parse(message: &Value, source: &str) -> Option<Task> {
     })
 }
 
-/// Tick a task, through the forge that reported it.
-pub fn resolve(task: &Task, blocks: &[Value], project: &str, defaults: &Defaults) -> Result<()> {
-    let (forge, request) = forge_call(blocks, &task.source, project, defaults)
+/// Tick a task, through the forge that reported it, wherever that forge is
+/// bound (§FS-001-forge-interface.9).
+pub fn resolve(task: &Task, sources: &Sources, defaults: &Defaults) -> Result<()> {
+    let (forge, request) = forge_call(sources, &task.source, defaults)
         .map_err(|err| EphorError::Command(err.to_string()))?;
     forge
         .resolve_task(&request, &task.target)

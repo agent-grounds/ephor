@@ -788,3 +788,165 @@ fn an_extension_that_cannot_tick_says_so() {
         .to_string();
     assert!(error.contains("readonly"), "{error}");
 }
+
+/// A source bound once for the site: one pull request with a red gate and a
+/// conversation, in a repository only the `demo` project's territory claims.
+/// Every call that carries the source's own block is logged with the project
+/// it was told, so a move can be traced back to the source that reported it.
+const SITE_FORGE: &str = r#"#!/usr/bin/env bash
+set -euo pipefail
+request="$(cat)"
+log="$(printf '%s' "$request" | jq -r '.config.log // ""')"
+if [ -n "$log" ]; then
+  printf '%s' "$request" | jq -c --arg call "$1" '{call: $call, project}' >> "$log"
+fi
+case "${1:?subcommand}" in
+  capabilities)
+    printf '{"pull_requests":true,"conversation":true,"gate":true,"failures":true,"restart":true,"reactions":true,"tasks":true,"replies":true}'
+    ;;
+  pull-requests)
+    printf '%s' '[
+      { "id": "acme/widget/7", "repo": "acme/widget", "number": "7",
+        "title": "Widen the retry window",
+        "updated_at": "2026-08-01T12:00:00Z",
+        "role": "author", "state": "open", "cited": false,
+        "threads": [ { "reply": { "thread": "t7" }, "messages": [
+          { "author": "Ada", "text": "does the window reset per attempt?",
+            "when": "2026-08-01T11:00:00Z", "mine": false,
+            "react": { "subject": "c1" } },
+          { "author": "Bo", "text": "add a test for the reset",
+            "when": "2026-08-01T11:30:00Z", "mine": false,
+            "task": { "id": "t1", "state": "open" } } ] } ],
+        "gate": { "repos": [ { "repo": "acme/widget", "passed": 4, "failed": 1, "running": 0 } ] } }
+    ]'
+    ;;
+  failures) printf '%s' '[ { "job": "gate / integration" } ]' ;;
+  restart) printf '{"asked":1}' ;;
+  react|resolve-task|reply) printf '{}' ;;
+  *) printf '[]' ;;
+esac
+"#;
+
+/// Where a matter came from and where it was placed are two facts
+/// (§AR-008-pipeline.2): a site source's pull request that attribution placed
+/// under `demo` is still that source's to answer. Every move back on it —
+/// the failures, a restart, a reaction, a ticked task, a reply — reaches the
+/// site source, which is told no project, as it is on a fetch.
+#[test]
+fn every_move_on_a_site_sources_matter_goes_back_to_that_source() {
+    let tmp = tempdir();
+    write_fixture(tmp.path());
+    let registry = tmp.path().join("workspaces.json");
+    let mut doc: Value = serde_json::from_str(&fs::read_to_string(&registry).unwrap()).unwrap();
+    doc["projects"][0]["territory"] = json!(["acme/widget"]);
+    write_registry(&registry, &doc);
+    let log = tmp.path().join("calls.jsonl");
+    fs::write(
+        tmp.path().join("status.json"),
+        serde_json::to_string_pretty(&json!({
+            "defaults": { "ttl_seconds": 600, "provider_timeout_seconds": 10 },
+            "sources": [{ "provider": "sitegw", "log": log.to_string_lossy() }],
+            "projects": { "demo": { "providers": [] } }
+        }))
+        .unwrap(),
+    )
+    .unwrap();
+    let fake_bin = tmp.path().join("sitebin");
+    fs::create_dir_all(&fake_bin).unwrap();
+    make_executable(&fake_bin.join("ephor-forge-sitegw"), SITE_FORGE);
+    let path = format!(
+        "{}:{}",
+        fake_bin.to_string_lossy(),
+        std::env::var("PATH").unwrap_or_default()
+    );
+    let run = |args: &[&str]| {
+        let mut cmd = ephor_cmd();
+        cmd.env("PATH", &path);
+        for (key, value) in extension_env(tmp.path()) {
+            cmd.env(key, value);
+        }
+        cmd.args(args).output().unwrap()
+    };
+    let outcome = |args: &[&str]| -> Value {
+        let output = run(args);
+        serde_json::from_slice(&output.stdout).unwrap_or_else(|_| {
+            panic!(
+                "`ephor {}` printed no outcome: {}",
+                args.join(" "),
+                String::from_utf8_lossy(&output.stderr)
+            )
+        })
+    };
+
+    let refreshed = run(&["refresh"]);
+    assert!(
+        refreshed.status.success(),
+        "{}",
+        String::from_utf8_lossy(&refreshed.stderr)
+    );
+    let cache: Value = serde_json::from_str(
+        &fs::read_to_string(tmp.path().join("state/ephor/feed/demo.json")).unwrap(),
+    )
+    .unwrap();
+    assert_eq!(
+        cache["providers"]["sitegw"]["matters"][0]["key"], "sitegw:acme/widget/7",
+        "attribution placed the site source's matter under demo: {cache:#?}"
+    );
+    let item = "sitegw:acme/widget/7";
+
+    for args in [
+        vec!["failures", "--item", item, "--json"],
+        vec!["restart", "--item", item, "--scope", "failed", "--json"],
+    ] {
+        let output = run(&args);
+        assert!(
+            output.status.success(),
+            "`ephor {}` did not reach the site source: {}",
+            args.join(" "),
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+    for args in [
+        vec!["react", item, "THUMBS_UP", "--message", "0", "--json"],
+        vec!["tick", item, "--message", "1", "--json"],
+    ] {
+        let said = outcome(&args);
+        assert_eq!(said["ok"], true, "`ephor {}`: {said}", args.join(" "));
+    }
+
+    // The rehearsal resolves the same source and asks it whether it can carry
+    // a reply, then stops short of sending — and says where it would go.
+    let rehearsed = outcome(&["reply", item, "it", "resets", "--dry-run", "--json"]);
+    assert_eq!(rehearsed["ok"], true, "{rehearsed}");
+    assert!(
+        rehearsed["says"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("sitegw"),
+        "the dry run names the source the reply would go through: {rehearsed}"
+    );
+    let replied = outcome(&["reply", item, "it", "resets", "--json"]);
+    assert_eq!(replied["ok"], true, "{replied}");
+
+    let calls: Vec<Value> = fs::read_to_string(&log)
+        .unwrap()
+        .lines()
+        .map(|line| serde_json::from_str(line).unwrap())
+        .collect();
+    let moves: Vec<&Value> = calls
+        .iter()
+        .filter(|call| !matches!(call["call"].as_str(), Some("pull-requests" | "issues")))
+        .collect();
+    assert_eq!(
+        moves
+            .iter()
+            .map(|call| call["call"].as_str().unwrap_or_default())
+            .collect::<Vec<_>>(),
+        ["failures", "restart", "react", "resolve-task", "reply"],
+        "each move reached the site source once, and the rehearsal sent nothing: {calls:#?}"
+    );
+    assert!(
+        calls.iter().all(|call| call["project"] == ""),
+        "a site source is told no project, on a move as on a fetch: {calls:#?}"
+    );
+}
