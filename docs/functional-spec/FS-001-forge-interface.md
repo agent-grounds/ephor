@@ -1,11 +1,15 @@
 # FS-001-forge-interface: ephor reaches every forge and issue tracker through one provider interface
 
-ephor aggregates work from places that host code review and places that track
-issues. Which ones they are is a property of a person's employer, not of ephor.
-No forge, tracker, or vendor CLI may therefore be named in ephor's core
+ephor aggregates work from the places people work and talk: places that host
+code review, places that track issues, and the other places people talk —
+mail, chat ([§GRUND-001-overseer.1](../grund.md#1-the-problem)). Which ones they are is a property of a
+person's employer, not of ephor. No forge, tracker, messaging service, or
+vendor CLI may therefore be named in ephor's core
 ([§REQ-001-boundary.5](../requirements/REQ-001-boundary.md#5-no-product-literal-outside-its-adapter)): every one of them is reached through a single interface
-with a fixed capability set, and an implementation is selected per project by
-configuration.
+with a fixed capability set — closed, enumerated in [§FS-001-forge-interface.1](FS-001-forge-interface.md#1-capabilities),
+and grown only by amending it — and an implementation is selected in site
+configuration ([§REQ-001-boundary.2](../requirements/REQ-001-boundary.md#2-three-homes-one-resolution-order)), bound to one project or shared once across
+the site ([§FS-001-forge-interface.9](FS-001-forge-interface.md#9-a-source-is-bound-to-one-project-or-to-the-site-and-every-move-goes-back-to-the-source)).
 
 ## 1. Capabilities
 
@@ -56,6 +60,12 @@ ephor degrades to what is answered rather than failing.
   says which. An implementation that can only read task state declares no
   tasks capability; its tasks still render with their state, since knowing a
   box is unticked is most of the value even where ephor cannot tick it.
+- **Replies** — send a reply to a thread, given the descriptor the
+  implementation put on that thread, handed back verbatim. The descriptor says
+  where the reply goes; this capability says the implementation can send it,
+  and a reply is sent only where both hold. Without it, a conversation is read
+  here and answered where it lives, and a drafted answer is text to copy
+  ([§FS-005-dispatch.13](FS-005-dispatch.md#13-a-communication-is-work-too-and-its-answer-comes-back-as-a-proposal)).
 - **Gate status** — the job counts (passed, failed, running) for a pull
   request, per repository the gate covers, since one change may gate across
   several repositories at once; and, where the forge reaches a verdict of its
@@ -149,6 +159,20 @@ ephor degrades to what is answered rather than failing.
   seen twice, not two pieces of work; reconciling them is policy's job, under
   [§FS-001-forge-interface.3](FS-001-forge-interface.md#3-policy-lives-above-the-interface-never-in-an-implementation) and
   [§FS-003-feed-categories.5](FS-003-feed-categories.md#5-one-subject-is-one-row-however-many-sources-reported-it).
+- **Messages by reason** — the conversations addressed to the user in the
+  other places people talk, each one whole: a stable id, title, url, when it
+  last moved, the room it is in unless it is a direct conversation, the reasons
+  it is the user's in the vocabulary pull requests use, and its threads in the
+  shape **Conversation** gives a pull request's, each thread carrying its own
+  reply descriptor. Whole is the point of the row. A title and a reason are
+  what a notice already carries, and a conversation that arrives without its
+  words can be neither judged nor answered: whether it waits on the reader is
+  read off the messages, and so is what it refers to. Both are ephor's to work
+  out, never the implementation's to say
+  ([§FS-001-forge-interface.3](FS-001-forge-interface.md#3-policy-lives-above-the-interface-never-in-an-implementation)) — what it says about each message is who wrote
+  it and whether that was the user, since only it knows how its venue names
+  people. The id is stable across refreshes, because it is the row's key and
+  the key the reader's unread state is kept under.
 
 ## 2. Two transports, one interface
 
@@ -211,7 +235,16 @@ an empty or partial answer for a failure:
    cannot complete an answer — a fetch that failed, output it cannot parse, a
    shape it does not recognise — reports the failure. Returning the part it
    managed is not allowed where the missing part changes meaning: a pull
-   request whose conversation was dropped reads as one that needs no reply.
+   request whose conversation was dropped reads as one that needs no reply. An
+   implementation that answers from a record something else keeps — a spool,
+   a cache, a mirror — answers completely only while it can show current
+   observation of the venue. A confirmed quiet counts: a venue observed to
+   have nothing new is answered, and the answer is empty. A running process
+   does not count, and neither does the age of the newest message — a keeper
+   still running may have stopped hearing, and a quiet room and a deaf
+   listener leave the same record. Otherwise it fails rather than answers. How
+   it shows current observation is its own configuration; ephor reads no field
+   and no bound for it.
 2. **A failed capability probe is a failure, not an empty declaration.** [§FS-001-forge-interface.1](FS-001-forge-interface.md#1-capabilities)
    lets an implementation decline a capability, and ephor degrades to what is
    declared. That applies to an implementation that *answered*; one that could
@@ -326,3 +359,28 @@ direction that punishes exactly the busiest reader.
 
 None of this licenses asking for more than is needed: the cheap form of a
 question is still only asked because the answer is read.
+
+## 9. A source is bound to one project or to the site, and every move goes back to the source
+
+An implementation is bound in site configuration in one of two places
+([§REQ-001-boundary.2](../requirements/REQ-001-boundary.md#2-three-homes-one-resolution-order)). Bound under one project, it is asked about that project,
+and what it reports is that project's. Bound once for the site, it is asked
+once per refresh, is told no project, and what it reports is placed by
+attribution ([§FS-008-attribution](FS-008-attribution.md#fs-008-attribution-every-conversation-finds-its-project-or-says-that-it-could-not)) — which is what lets one source serve every
+project a person has, a notification stream or a chat gateway, without being
+told in advance where to look.
+
+Every move back on a matter — a reply, a reaction, a ticked task, the failures
+under its gate, a restart — goes to the source that reported it, wherever that
+source is bound. Where a matter came from and where it was placed are two
+facts: a matter a site source reported and attribution placed under a project
+is still that source's to answer, so the source is found among the site's as
+well as the project's own. A matter still in the unattributed bucket is
+answered the same way. On a move, as on a fetch, a site source is told no
+project. Where a project binds a source under the same name as the site does,
+the project's own is the one meant.
+
+A dry run refuses wherever the move it stands for would. It resolves the same
+source and makes the same checks — the capability as well as the descriptor —
+and stops only short of sending: a rehearsal that promises a move the real one
+then refuses has told the reader something untrue.

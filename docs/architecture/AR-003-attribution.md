@@ -11,10 +11,19 @@ places its own items, a split decided with its configuration cost in
 
 Extracted once per discussion or event, at fetch normalization: the venue's
 own subject key where the source stated one (the pull request the thread is
-on, the store the ticket lives in); referenced keys found in text — ticket
+on, the store the ticket lives in, the conversation a gateway keyed); the room
+a conversation states it happened in; referenced keys found in text — ticket
 patterns, pull request URLs, repository names; addresses and participants;
 and the plain words that may hit an alias. Evidence is data on the item,
 inspectable in `EPHOR_RAW`, so a misplacement can be debugged by looking.
+
+The room is kept apart from the conversation's own key and from what its text
+references, because the three answer different questions: the key is what the
+conversation is, the room is where it happened, and a reference is what it
+mentions. A conversation's key is never read for a repository. A chat id can
+happen to be spelled like `owner/name#number`, and reading a venue out of that
+spelling would let a project's organization-wide territory tie with the room
+that actually claims the conversation. Notices keep the older reading for now.
 
 ## 2. Identity
 
@@ -24,15 +33,31 @@ the row per the three homes ([§REQ-001-boundary.2](../requirements/REQ-001-boun
 the forest's repositories, the declared territory — repositories and
 organizations that are the project's business without being in its forest,
 which is what places a general mention or a stray issue — names and
-aliases, addresses. Compiled identities form one table the engine matches
-against — attribution is a function of (evidence, identity table), no IO.
+aliases, addresses, and rooms. Compiled identities form one table the engine
+matches against — attribution is a function of (evidence, identity table), no
+IO.
+
+Rooms are compiled differently from the lists before them in two ways. They
+match by exact equality with the id the source states, never by prefix and
+never organization-wide. And the row's say over them is its presence rather
+than its emptiness: a row that states `rooms`, even `[]`, is the project's
+rooms, and only a row with no `rooms` field adopts the manifest's
+`identity.rooms`. The emptiness rule the other lists use cannot tell `[]` from
+an absent field, and a bare hint cannot be refused at all; either would let a
+checkout claim a room its row refused
+([§FS-008-attribution.1](../functional-spec/FS-008-attribution.md#1-identity-is-declared-and-the-row-has-the-last-word)).
 
 ## 3. Two scopes, one precedence
 
 Stage one places a discussion or event on a matter; stage two places a
 matter on a project and branch. Both apply [§FS-008-attribution.3](../functional-spec/FS-008-attribution.md#3-venue-beats-reference-beats-resemblance): an
-explicit venue wins outright; a reference places on the named matter and
-links onward; resemblance may only synthesize a topic matter. Ambiguity —
+explicit venue wins outright; a reference places what has no subject of its
+own on the named matter, and links what has one onward without moving it;
+resemblance may only synthesize a topic matter. At stage two a claimed room is
+a venue, weighed at the strength of the forest and the territory, so a
+conversation in a project's room is that project's whatever it mentions; a
+conversation no room claims is placed by its references like anything else.
+Ambiguity —
 two projects claim the same evidence with equal strength — is not resolved
 by order: the item goes to the unattributed bucket carrying its candidates,
 because a guess that lands wrong amends someone's matter silently

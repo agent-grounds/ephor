@@ -158,6 +158,17 @@ class LiteralConfinementTests(unittest.TestCase):
         findings, _ = literals(home, [browser])
         self.assertEqual(findings, [])
 
+    def test_a_chat_vendor_has_no_adapter_to_be_named_in(self):
+        """§REQ-001-boundary.5: chat reaches ephor through a gateway (§FS-001-forge-interface.1),
+        so no file of ephor's may name a chat vendor outside a test, the provider table included."""
+        for name in ("slack", "discord"):
+            product = next(product for product in check_boundary.PRODUCTS if product.name == name)
+            for path in ("src/feed/providers/mod.rs", f"src/feed/providers/{name}.rs"):
+                with self.subTest(product=name, path=path):
+                    files = {path: read(f'let provider = "{name}";\n')}
+                    findings, _ = literals(files, [product])
+                    self.assertEqual(len(findings), 1, f"{path} names {name} and is not caught")
+
 
 class CoreIsIoFreeTests(unittest.TestCase):
     def setUp(self):
