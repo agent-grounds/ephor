@@ -33,7 +33,7 @@ set -euo pipefail
 request="$(cat)"
 case "${1:?subcommand}" in
   capabilities)
-    printf '{"pull_requests":true,"conversation":true,"gate":true,"react":true,"reply":true,"resolve_task":true}'
+    printf '{"pull_requests":true,"conversation":true,"gate":true,"reactions":true,"replies":true,"tasks":true}'
     ;;
   pull-requests)
     printf '%s' '[
@@ -464,7 +464,7 @@ set -euo pipefail
 request="$(cat)"
 case "${1:?subcommand}" in
   capabilities)
-    printf '{"pull_requests":true,"conversation":true,"gate":true,"failures":true,"react":true,"reply":true,"resolve_task":true,"restart":true}'
+    printf '{"pull_requests":true,"conversation":true,"gate":true,"failures":true,"reactions":true,"replies":true,"tasks":true,"restart":true}'
     ;;
   pull-requests)
     printf '%s' '[

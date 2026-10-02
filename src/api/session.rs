@@ -186,11 +186,7 @@ impl Session {
             .get(&item.project)
             .map(Vec::as_slice)
             .unwrap_or_default();
-        let blocks = self
-            .provider_blocks
-            .get(&item.project)
-            .map(Vec::as_slice)
-            .unwrap_or_default();
+        let sources = self.sources_for(&item.project);
         // One fold of the item's checkout answers both rebase offers and every
         // selector that asks about it (§FS-004-quick-actions.8).
         let trailing = self.item_trailing(item);
@@ -198,7 +194,7 @@ impl Session {
             .as_ref()
             .map(offers::Trailing::facts)
             .unwrap_or_default();
-        let mut recognized = crate::feed::providers::quick_actions(blocks, item);
+        let mut recognized = crate::feed::providers::quick_actions(&sources, item);
         // ephor's own quick actions, offered because of what is on disk rather
         // than because a source said something (§FS-004-quick-actions.6).
         if let Some(trailing) = &trailing {
@@ -557,13 +553,20 @@ impl Session {
         self.capabilities = table;
     }
 
-    /// A project's provider blocks, for a write that has to go back through
-    /// the source that reported what it acts on.
-    pub fn blocks_for(&self, project: &str) -> Vec<Value> {
-        self.provider_blocks
-            .get(project)
-            .cloned()
-            .unwrap_or_default()
+    /// Where a move on one of a project's matters may go back to: the
+    /// project's own sources, then the site's (§FS-001-forge-interface.9).
+    /// A project that binds nothing of its own — the unattributed bucket among
+    /// them — finds only the site's.
+    pub fn sources_for(&self, project: &str) -> crate::feed::providers::Sources {
+        crate::feed::providers::Sources {
+            project: project.to_string(),
+            own: self
+                .provider_blocks
+                .get(project)
+                .cloned()
+                .unwrap_or_default(),
+            site: self.config.sources.clone(),
+        }
     }
 
     pub fn org_projects(&self, org_id: &str) -> Vec<String> {
@@ -1258,12 +1261,15 @@ impl Session {
 
     /// One matter by its feed id. Named rather than guessed: a command that
     /// silently acted on the nearest match would be a command nobody can
-    /// script against (§REQ-002-parity.3).
+    /// script against (§REQ-002-parity.3). What nothing claimed is named the
+    /// same way, last: a matter still in the bucket is answered like any other
+    /// (§FS-001-forge-interface.9).
     pub fn item(&self, id: &str) -> Option<Item> {
         self.feeds
             .iter()
             .flat_map(|feed| feed.items())
             .find(|item| item.id == id)
+            .or_else(|| self.unattributed.iter().find(|item| item.id == id).cloned())
     }
 }
 

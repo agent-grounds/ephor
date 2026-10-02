@@ -791,15 +791,8 @@ impl Session {
                     .join(", ")
             ));
         };
-        let blocks = self.blocks_for(&item.project);
-        match crate::feed::react::post(
-            target,
-            name,
-            emoji,
-            &blocks,
-            &item.project,
-            &self.config.defaults,
-        ) {
+        let sources = self.sources_for(&item.project);
+        match crate::feed::react::post(target, name, emoji, &sources, &self.config.defaults) {
             Ok(()) => views::Outcome::ok(format!("{emoji} posted")),
             Err(err) => views::Outcome::refused(err.to_string()),
         }
@@ -824,8 +817,8 @@ impl Session {
         if task.resolved {
             return views::Outcome::refused("That task is already ticked");
         }
-        let blocks = self.blocks_for(&item.project);
-        match crate::feed::task::resolve(task, &blocks, &item.project, &self.config.defaults) {
+        let sources = self.sources_for(&item.project);
+        match crate::feed::task::resolve(task, &sources, &self.config.defaults) {
             Ok(()) => views::Outcome::ok("☑ ticked"),
             Err(err) => views::Outcome::refused(err.to_string()),
         }
@@ -882,21 +875,25 @@ impl Session {
                 (None, None) => "This channel declared no way to send a reply".to_string(),
             });
         };
+        // The source is found wherever it is bound and asked whether it can
+        // carry a reply, on a dry run as on a send (§FS-001-forge-interface.9).
+        let sources = self.sources_for(&item.project);
+        let prepared =
+            match crate::feed::reply::prepare(&target, &text, &sources, &self.config.defaults) {
+                Ok(prepared) => prepared,
+                Err(err) => return views::Outcome::refused(err.to_string()),
+            };
         // Everything above is what decides whether the reply can go out at all;
         // only the post itself is skipped. `says` carries the words, because
         // what a reader checks a dry run for is what would be sent
-        // (§REQ-002-parity.3).
+        // (§REQ-002-parity.3), and the source it would go through.
         if sending == Sending::Dry {
-            return views::Outcome::ok(format!("would send to {}:\n\n{text}", item.title));
+            return views::Outcome::ok(format!(
+                "would send to {} through {}:\n\n{text}",
+                item.title, item.source
+            ));
         }
-        let blocks = self.blocks_for(&item.project);
-        match crate::feed::reply::post(
-            &target,
-            &text,
-            &blocks,
-            &item.project,
-            &self.config.defaults,
-        ) {
+        match prepared.send() {
             Ok(()) => {
                 // Retiring the draft is the post's own second half: a reply
                 // that went out and is still offered would be sent twice.

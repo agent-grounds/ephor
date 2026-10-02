@@ -7,8 +7,6 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
-use serde_json::Value;
-
 use crate::branches::{BranchInfo, WorkspaceState};
 use crate::capabilities::Rung;
 use crate::feed::config::Minted;
@@ -761,10 +759,10 @@ fn ticket_row(ticket: &crate::work::runtime::watch::BoardTicket) -> views::Opera
     }
 }
 
-/// Kept so a surface can hand the blocks for a project to a provider without
-/// reaching past the API (§AR-009-surfaces.5).
-pub fn blocks(session: &Session, project: &str) -> Vec<Value> {
-    session.blocks_for(project)
+/// Kept so a surface can hand the sources a project's matters go back to a
+/// provider without reaching past the API (§AR-009-surfaces.5).
+pub fn sources(session: &Session, project: &str) -> crate::feed::providers::Sources {
+    session.sources_for(project)
 }
 
 impl Session {

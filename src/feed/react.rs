@@ -14,7 +14,7 @@ use serde_json::Value;
 
 use crate::error::{EphorError, Result};
 use crate::feed::config::Defaults;
-use crate::feed::providers::{self, forge_call, NativeWrite};
+use crate::feed::providers::{self, forge_call, NativeWrite, Sources};
 
 /// The palette offered by the TUI picker: (emoji, GitHub content name).
 /// These are exactly GitHub's eight reaction contents; other providers map
@@ -68,19 +68,20 @@ pub fn parse_target(message: &Value, source: &str) -> Option<ReactTarget> {
 
 /// Post a reaction. `content` is the palette content name (e.g. THUMBS_UP),
 /// `emoji` the same reaction as the interface spells it — a forge is asked in
-/// the vocabulary of §FS-001-forge-interface, not in GitHub's.
+/// the vocabulary of §FS-001-forge-interface, not in GitHub's. It goes to the
+/// source that reported the message, wherever that source is bound
+/// (§FS-001-forge-interface.9).
 pub fn post(
     target: &ReactTarget,
     content: &str,
     emoji: &str,
-    blocks: &[Value],
-    project: &str,
+    sources: &Sources,
     defaults: &Defaults,
 ) -> Result<()> {
     match target {
         ReactTarget::Native(write) => providers::post_reaction(write, content),
         ReactTarget::Forge { source, target } => {
-            let (forge, request) = forge_call(blocks, source, project, defaults)
+            let (forge, request) = forge_call(sources, source, defaults)
                 .map_err(|err| EphorError::Command(err.to_string()))?;
             forge
                 .react(&request, target, emoji)
