@@ -281,6 +281,13 @@ fn an_autorun_ceiling_of_zero_passes_due_work_over_without_failing_the_sweep() {
         .as_str()
         .unwrap()
         .contains("global work.max_concurrent 0"));
+    // The same hold as data, so a caller need not match the sentence
+    // (§FS-005-dispatch.24.2).
+    assert_eq!(
+        reading["runs"][0]["hold"],
+        json!({ "kind": "concurrency", "scope": "site", "key": "max_concurrent", "limit": 0, "count": 0 }),
+        "{reading}"
+    );
 }
 
 /// A budget can be written over the set of projects that actually share a
@@ -330,6 +337,18 @@ fn an_organization_ceiling_passes_due_work_over_and_names_the_organization() {
             .as_str()
             .is_some_and(|why| why.contains("organizations.guild.work.max_concurrent 0 is full")),
         "{reading}"
+    );
+    assert_eq!(
+        reading["runs"][0]["hold"],
+        json!({
+            "kind": "concurrency",
+            "scope": "organization",
+            "id": "guild",
+            "key": "max_concurrent",
+            "limit": 0,
+            "count": 0
+        }),
+        "the organization ceiling is named as data too (§FS-005-dispatch.24.2): {reading}"
     );
     // Nothing starts under the pause, and the project number left under it is
     // not called a contradiction: a paused ceiling is not a budget.

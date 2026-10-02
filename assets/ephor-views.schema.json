@@ -1143,6 +1143,9 @@
               { "required": ["plans"] },
               { "required": ["tickets"] }
             ],
+            "if": { "properties": { "outcome": { "const": "passed-over" } }, "required": ["outcome"] },
+            "then": { "required": ["hold"] },
+            "else": { "not": { "required": ["hold"] } },
             "properties": {
               "root": { "type": "string" },
               "checkout": { "type": "string", "description": "Where the runtime ran from: the checkout the work is about, not wherever this was typed (FS-005-dispatch.3)." },
@@ -1162,6 +1165,36 @@
               },
               "id": { "type": "string", "description": "What the run is called, where it named itself \u2014 the id the board prints and the runner's own attach command takes (FS-005-dispatch.20)." },
               "reason": { "type": "string", "description": "Why a `passed-over` autorun root got no run: the aggregate, organization, or project ceiling that was full, named as it is written in the configuration and by the key it refused on \u2014 `max_concurrent` over roots in flight, `max_active` over the ones being worked \u2014 or the run that holds that root's checkout, named as the refusal names it — one another work root over the same working tree already held when the sweep began, or one a launch earlier in the same sweep left live there; or the last run there having advanced nothing, naming that run and when the root is tried again \u2014 or that three runs in a row advanced nothing and nothing more will be started there until one does or somebody starts one by hand; or the `--except` value the reader gave, named back (FS-005-dispatch.24)." },
+              "hold": {
+                "type": "object",
+                "required": ["kind"],
+                "description": "The first hold that stopped a `passed-over` root, as data beside the `reason` rendered from it (FS-005-dispatch.24.2). Present on every `passed-over` row and on no other. `kind` is one of an open vocabulary, in the order the sweep asks: `excluded`, `rested`, `stopped`, `tree`, `pools`, `concurrency`, `budget`; a caller reads a kind it does not recognise as not startable. It names the first hold only, so `concurrency` means every earlier hold was asked and passed. The gated report carries only `excluded`, `rested` and `stopped`.",
+                "properties": {
+                  "kind": { "type": "string", "description": "Which hold: `excluded`, `rested`, `stopped`, `tree`, `pools`, `concurrency` or `budget` today. Open: a kind may be added without a breaking change." },
+                  "except": { "type": "string", "description": "`excluded`: the `--except` value the reader gave." },
+                  "run": { "type": "string", "description": "`rested` and `stopped`: the run judged to have advanced nothing, the last of them under `stopped`. `tree`: the id the run holding the checkout published, where it published one." },
+                  "root": { "type": "string", "description": "`tree`: the work root the run holding the checkout was started from." },
+                  "count": { "type": "integer", "minimum": 0, "description": "`rested` and `stopped`: how many runs in a row advanced nothing. `concurrency`: the live roots, or the active ones under `max_active`, that filled the ceiling." },
+                  "until": { "type": "string", "description": "An RFC 3339 instant. `rested`: when the root is tried again. `pools`: when the spent pool is free again, where its report named one. `budget`: when the window lets work start again, absent under a ceiling of `0`." },
+                  "plan": { "type": "string", "description": "`pools`: the plan held." },
+                  "pools": { "type": "array", "items": { "type": "string" }, "description": "`pools`: every pool the plan needs at once, in the order it named them." },
+                  "pool": { "type": "string", "description": "`pools`: the first of them that cannot be had." },
+                  "scope": { "type": "string", "description": "`concurrency` and `budget`: `site`, `organization` or `project` — the scope the full ceiling is written at." },
+                  "id": { "type": "string", "description": "`concurrency` and `budget`: the organization or project the ceiling is written on; absent at the site." },
+                  "key": { "type": "string", "description": "`concurrency`: `max_concurrent` or `max_active`. `budget`: `max_spend` or `max_tokens`." },
+                  "limit": { "type": "number", "minimum": 0, "description": "`concurrency`: the ceiling in force, the `--max-concurrent` number where the reader gave one. `budget`: the ceiling, in dollars under `max_spend` and tokens under `max_tokens`." },
+                  "total": { "type": "number", "minimum": 0, "description": "`budget`: what the window measured, in the ceiling's unit, where it measured anything." }
+                },
+                "allOf": [
+                  { "if": { "properties": { "kind": { "const": "excluded" } } }, "then": { "required": ["except"] } },
+                  { "if": { "properties": { "kind": { "const": "rested" } } }, "then": { "required": ["run", "count", "until"] } },
+                  { "if": { "properties": { "kind": { "const": "stopped" } } }, "then": { "required": ["run", "count"] } },
+                  { "if": { "properties": { "kind": { "const": "tree" } } }, "then": { "required": ["root"] } },
+                  { "if": { "properties": { "kind": { "const": "pools" } } }, "then": { "required": ["plan", "pools", "pool"] } },
+                  { "if": { "properties": { "kind": { "const": "concurrency" } } }, "then": { "required": ["scope", "key", "limit", "count"] } },
+                  { "if": { "properties": { "kind": { "const": "budget" } } }, "then": { "required": ["scope", "key", "limit"] } }
+                ]
+              },
               "says": {
                 "type": ["string", "null"]
               }

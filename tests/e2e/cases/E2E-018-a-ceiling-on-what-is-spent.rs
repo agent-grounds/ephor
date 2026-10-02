@@ -289,6 +289,28 @@ fn a_dollar_ceiling_the_site_wrote_passes_the_sweep_over_and_says_when_it_lifts(
         why.contains(&format!("resumes {}", instant(at + Duration::hours(24)))),
         "the refusal names the instant this spend ages out of the window: {why}"
     );
+    // The same facts as data, so a caller can tell a budget from a free-slot
+    // ceiling without reading the sentence (§FS-005-dispatch.24.2).
+    let hold = &swept["runs"][0]["hold"];
+    assert_eq!(hold["kind"], "budget", "{swept}");
+    assert_eq!(hold["scope"], "site", "{swept}");
+    assert!(
+        hold.get("id").is_none(),
+        "the site is not named by an id: {swept}"
+    );
+    assert_eq!(hold["key"], "max_spend", "{swept}");
+    assert_eq!(hold["limit"].as_f64(), Some(50.0), "{swept}");
+    assert!(
+        hold["total"]
+            .as_f64()
+            .is_some_and(|total| (total - 52.40).abs() < 0.005),
+        "the hold carries what the window measured, in dollars: {swept}"
+    );
+    assert_eq!(
+        hold["until"],
+        json!(instant(at + Duration::hours(24))),
+        "{swept}"
+    );
 }
 
 /// The sweep a timer runs is bound wherever it runs, and `ephor work sync`
@@ -614,6 +636,12 @@ fn the_outermost_full_scope_is_the_one_the_reader_is_sent_to() {
         why.contains("organizations.guild.work.max_spend 10 USD per 24h is full"),
         "the widest full ceiling is the reason: {why}"
     );
+    let hold = &swept["runs"][0]["hold"];
+    assert_eq!(hold["kind"], "budget", "{swept}");
+    assert_eq!(hold["scope"], "organization", "{swept}");
+    assert_eq!(hold["id"], "guild", "{swept}");
+    assert_eq!(hold["key"], "max_spend", "{swept}");
+    assert_eq!(hold["limit"].as_f64(), Some(10.0), "{swept}");
 }
 
 /// A ceiling of zero is a pause its author meant rather than a window that
@@ -640,6 +668,12 @@ fn a_ceiling_of_zero_admits_no_start_and_names_no_instant() {
         !why.contains("resumes"),
         "nothing ages out into room under a ceiling of zero: {why}"
     );
+    // A pause names no instant as data either (§FS-005-dispatch.24.2).
+    let hold = &swept["runs"][0]["hold"];
+    assert_eq!(hold["kind"], "budget", "{swept}");
+    assert_eq!(hold["key"], "max_tokens", "{swept}");
+    assert_eq!(hold["limit"].as_f64(), Some(0.0), "{swept}");
+    assert!(hold.get("until").is_none(), "{swept}");
 }
 
 /// A budget ephor cannot bind is refused where a site's typos already land —

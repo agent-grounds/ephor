@@ -408,6 +408,19 @@ fn a_plan_already_laid_is_passed_over_by_the_unattended_sweep() {
         reason.contains("north and south pools at once") && reason.contains(LIFTS),
         "the passed-over row does not carry the clause: {reading}"
     );
+    // And the hold as data: which plan, which pools, which of them is spent and
+    // until when (§FS-005-dispatch.24.2).
+    assert_eq!(
+        reading["runs"][0]["hold"],
+        json!({
+            "kind": "pools",
+            "plan": PLAN,
+            "pools": ["north", "south"],
+            "pool": "north",
+            "until": LIFTS
+        }),
+        "{reading}"
+    );
 
     // And the plan stays exactly where it is: passing over is not cancelling.
     assert!(
