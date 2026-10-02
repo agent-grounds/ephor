@@ -45,7 +45,7 @@ line CI and the pre-commit hook run.
   is why CI runs this line in the `grund` job as well as the `cargo test` job:
   only the former has the pin on `PATH`.
 - `test_check_changelog_pr_entry.py` — the pull-request changelog gate at both
-  of its moments ([§FS-002-release.6](../../docs/functional-spec/FS-002-release.md#6-the-changelog-gate-runs-before-the-pull-request-exists)).
+  of its moments ([§FS-002-release.6](../../docs/functional-spec/FS-002-release.md#6-no-change-is-gated-on-the-changelog)).
 - `test_prepare_changelog_release.py` — the release script: collecting,
   ordering, stamping and consuming the pending entries
   ([§FS-002-release.2](../../docs/functional-spec/FS-002-release.md#2-cutting-a-release)).

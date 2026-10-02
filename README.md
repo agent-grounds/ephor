@@ -83,7 +83,7 @@ just check         # the CI gate: fmt, build with -D warnings, tests, grund
 just pre-release   # everything a release verifies, publishing nothing
 ```
 
-Releases follow [§FS-002-release](docs/functional-spec/FS-002-release.md#fs-002-release-ephor-releases-from-a-tag-with-a-changelog-entry-per-change):
+Releases follow [§FS-002-release](docs/functional-spec/FS-002-release.md#fs-002-release-ephor-releases-from-a-tag-with-a-changelog-written-before-each-release):
 a version exists exactly when a `vX.Y.Z` tag does, every pull request adds one
 entry file of its own under
 [docs/changelog/unreleased/](docs/changelog/unreleased/README.md) — so no two

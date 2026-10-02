@@ -17,7 +17,7 @@ This part is shared. A repository that takes the format copies everything above 
 
 ## Part two: how this repository uses it
 
-The rules are [§FS-002-release.1.1](../../functional-spec/FS-002-release.md#11-one-file-per-pending-change-in-grunds-format), and a pull request that adds no entry of its own is refused before the push and again in CI ([§FS-002-release.6](../../functional-spec/FS-002-release.md#6-the-changelog-gate-runs-before-the-pull-request-exists)).
+The rules are [§FS-002-release.1.1](../../functional-spec/FS-002-release.md#11-one-file-per-pending-change-in-grunds-format), and a pull request that adds no entry of its own is refused before the push and again in CI ([§FS-002-release.6](../../functional-spec/FS-002-release.md#6-no-change-is-gated-on-the-changelog)).
 
 - **The category is required** and is one of `added`, `changed`, `deprecated`, `removed`, `fixed`, `security` or `note`. Sections are released in that order, each under the same word capitalized, and a category with no entry is omitted. `note` is this repository's own: its changelog has always carried a `### Note` section.
 - **The slug carries the entry's lifetime.** The release orders an entry, and stamps its number, by the commit on `main` that added its slug ([§FS-002-release.2.1](../../functional-spec/FS-002-release.md#21-an-entry-is-ordered-and-attributed-by-where-it-landed)). Rewording an entry or moving it to another category keeps both; changing its slug is refused. Editing an entry that is already here is not a pull request's own entry.

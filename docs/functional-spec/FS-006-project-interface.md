@@ -558,8 +558,8 @@ The manifest, the envelope, and the registry schema are published schemas,
 embedded in the binary and printable on demand, so a project can validate
 what it says without ephor present. They evolve by addition: an optional
 field costs nothing, unknown fields are ignored, and any incompatible
-change bumps the schema version with a changelog entry per
-[§FS-002-release.1](FS-002-release.md#1-changelog). The schemas are the interface's stability surface — what
+change bumps the schema version, noted by the release that ships it
+([§FS-002-release.1](FS-002-release.md#1-changelog)). The schemas are the interface's stability surface — what
 a release may change is answerable by diffing them.
 
 That reach includes the selector language a project's own offers and a reader's

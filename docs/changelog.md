@@ -1,7 +1,7 @@
 # Changelog
 
 Records every notable change to `ephor`. Versions follow semver
-([§FS-002-release](functional-spec/FS-002-release.md#fs-002-release-ephor-releases-from-a-tag-with-a-changelog-entry-per-change));
+([§FS-002-release](functional-spec/FS-002-release.md#fs-002-release-ephor-releases-from-a-tag-with-a-changelog-written-before-each-release));
 the **latest release is inline** in this file, and **older releases live
 one-per-file under `docs/changelog/`** so a reader — human or agent — only
 loads the history they ask for.
@@ -62,7 +62,7 @@ First version. Not yet tagged or published — publication is gated on
   counts, totalled across every repository the gate covers, with a per-repo
   breakdown when it spans more than one.
 - `grund` tree: [§FS-001-forge-interface](functional-spec/FS-001-forge-interface.md#fs-001-forge-interface-ephor-reaches-every-forge-and-issue-tracker-through-one-provider-interface)
-  and [§FS-002-release](functional-spec/FS-002-release.md#fs-002-release-ephor-releases-from-a-tag-with-a-changelog-entry-per-change),
+  and [§FS-002-release](functional-spec/FS-002-release.md#fs-002-release-ephor-releases-from-a-tag-with-a-changelog-written-before-each-release),
   with [§RM-001-forge-interface](roadmap.md#rm-001-forge-interface-put-every-forge-behind-the-interface)
   sequencing the work that has to land before anything ships.
 - Release pipeline: tag-triggered publication, profile-guided release binaries
