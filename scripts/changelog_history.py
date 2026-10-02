@@ -1,9 +1,8 @@
-"""What the changelog scripts ask git: trees, files at a commit, and where each entry landed. §FS-002-release.2.1
+"""What the release asks git: files at a commit, and where each entry landed. §FS-002-release.2.1
 
-The gate compares the entries two commits hold (§FS-002-release.6) and the
-release orders and attributes them by the history that added them
-(§FS-002-release.2.1). Both read the repository the script runs in, through
-the one wrapper here, and neither reads the checkout's files for a commit's.
+The release orders and attributes the entries by the history that added them
+(§FS-002-release.2.1). It reads the repository the script runs in, through the
+one wrapper here, and never reads the checkout's files for a commit's.
 
 Paths are compared in one canonical form: a path the caller names is resolved
 and taken relative to the resolved `git rev-parse --show-toplevel`, because on
@@ -63,13 +62,6 @@ def rev_parse(revision: str) -> str | None:
         return None
 
 
-def merge_base(revision: str) -> str | None:
-    try:
-        return git(["merge-base", "HEAD", revision]).strip() or None
-    except GitError:
-        return None
-
-
 def repository_path(path: Path) -> str:
     """`path` as git names it, from the repository root down, in posix form."""
     toplevel = Path(git(["rev-parse", "--show-toplevel"]).strip()).resolve()
@@ -85,24 +77,6 @@ def repository_path(path: Path) -> str:
         raise GitError(f"{path.as_posix()} is outside the repository at {toplevel}") from exc
 
 
-def files_at(commit: str, directory: str) -> dict[str, str]:
-    """The files under `directory` at `commit`, by path relative to it, each its blob id."""
-    listing = git(["ls-tree", "-r", "--full-tree", "-z", commit, "--", f"{directory}/"])
-    files = {}
-    for record in filter(None, listing.split("\0")):
-        description, _, path = record.partition("\t")
-        files[path[len(directory) + 1 :]] = description.split()[2]
-    return files
-
-
-def blob_text(blob: str) -> str | None:
-    """A blob's text, or `None` where it is not UTF-8."""
-    try:
-        return git_bytes(["cat-file", "blob", blob]).decode("utf-8")
-    except UnicodeDecodeError:
-        return None
-
-
 def file_at(commit: str, path: str) -> str | None:
     """The file's text at `commit`, or `None` where that commit does not hold it."""
     try:
@@ -113,24 +87,6 @@ def file_at(commit: str, path: str) -> str | None:
 
 def first_parent(commit: str) -> str | None:
     return rev_parse(f"{commit}^1")
-
-
-def renames(base: str, head: str, directory: str) -> list[tuple[str, str]]:
-    """The files under `directory` git sees renamed between two commits, as (old, new) names."""
-    output = git(["diff", "-z", "--name-status", "--find-renames", base, head, "--", f"{directory}/"])
-    fields = output.split("\0")
-    found = []
-    index = 0
-    while index < len(fields) and fields[index]:
-        status = fields[index]
-        if status.startswith(("R", "C")):
-            old, new = fields[index + 1], fields[index + 2]
-            if status.startswith("R"):
-                found.append((old[len(directory) + 1 :], new[len(directory) + 1 :]))
-            index += 3
-        else:
-            index += 2
-    return found
 
 
 def is_shallow() -> bool:

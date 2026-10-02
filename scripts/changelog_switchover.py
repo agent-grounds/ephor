@@ -5,8 +5,7 @@ under `## Unreleased` into an entry of its own. A copy is not a new change, and
 nothing a contributor writes marks it as one: it is recognized by its category
 and its complete bullet matching a bullet the shared section held, allowing
 only for the links it moved with and the number the old `stamp` wrote before the
-move. The gate spares a copy its demand for an added entry and its number check
-(§FS-002-release.6); the release never stamps one with the switch-over's number
+move. The release never stamps one with the switch-over's number
 (§FS-002-release.2.2). After the switch-over the shared section holds no bullet,
 so nothing written later is recognized as a copy.
 """

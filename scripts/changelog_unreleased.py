@@ -1,10 +1,10 @@
 """What a pending changelog entry is, and what the shared section it replaced held. §FS-002-release.1.1
 
-The gate and the release are the two ends of one format: one holds a change to
-the entries (§FS-002-release.6), the other collects, stamps and consumes them
-(§FS-002-release.2). They agree only if they read an entry identically, so the
-reading is written once, here. Git is `changelog_history`'s; recognizing what
-the switch-over moved is `changelog_switchover`'s.
+The release reads the entries in more than one step: it stamps them, collects
+them and consumes them (§FS-002-release.2). The steps agree only if they read an
+entry identically, so the reading is written once, here. Git is
+`changelog_history`'s; recognizing what the switch-over moved is
+`changelog_switchover`'s.
 
 Every caller imports this by adding its own directory to `sys.path` from
 `__file__`, which is set whether a script is run as `python scripts/...` or
@@ -183,7 +183,7 @@ def legacy_bullets(text: str) -> list[LegacyBullet]:
 
 
 def pr_numbers(text: str) -> list[int]:
-    """Every pull request number `text` writes, in any of the three spellings. §FS-002-release.6"""
+    """Every pull request number `text` writes, in any of the three spellings. §FS-002-release.2.2"""
     return [int(match) for pattern in PR_NUMBER_PATTERNS for match in pattern.findall(text)]
 
 
