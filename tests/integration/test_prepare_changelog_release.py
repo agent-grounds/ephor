@@ -1,286 +1,388 @@
-"""The release script: promoting `## Unreleased`, and stamping the numbers
-contributors could not know. §FS-002-release.2
+"""The release script: collecting, ordering, stamping and consuming the entries. §FS-002-release.2
+
+`stamp`, `prepare` and `notes` are run the way the release workflows run them,
+against a real history and a forge that answers what each case says. Where an
+entry landed decides its order and its number (§FS-002-release.2.1); stamping
+writes only the trailing number and never fails a release (§FS-002-release.2.2);
+preparing consumes the entries and refuses before it would lose one
+(§FS-002-release.2.3). What `notes` writes is still the inline section
+(§FS-002-release.3).
 """
 
-import io
 import os
-import subprocess
-import tempfile
+import re
 import unittest
-from contextlib import redirect_stderr, redirect_stdout
-from unittest.mock import patch
-from pathlib import Path
 
-from changelog_git import GIT_ENV, ChangelogRepo, load_script, working_directory
-
-prepare_changelog_release = load_script("prepare_changelog_release.py")
-
-
-SAMPLE_CHANGELOG = """# Changelog
-
-Intro.
-
-## Unreleased
-
-### Fixed
-
-- [§FS-distribution.4](functional-spec/FS-distribution.md#4-release-process): rotate release notes automatically.
-
-## 2. [0.2.0] — 2026-05-17
-
-Workspace and agent-entrypoint release. The main user-visible change is workspace aliases.
-
-### Added
-
-- [§FS-workspace](functional-spec/FS-workspace.md#fs-workspace-grund-validates-cross-project-citations-in-a-workspace): validate aliases.
-
-## 3. Older releases
-
-- [0.1.0](changelog/0.1.0.md) — 2026-05-14: first published release and baseline CLI surface.
-"""
-
-
-class PrepareChangelogReleaseTests(unittest.TestCase):
-    def write_changelog(self, text: str = SAMPLE_CHANGELOG) -> Path:
-        root = Path(self.tempdir.name)
-        changelog = root / "docs" / "changelog.md"
-        changelog.parent.mkdir(parents=True)
-        changelog.write_text(text, encoding="utf-8")
-        return changelog
-
-    def setUp(self) -> None:
-        self.tempdir = tempfile.TemporaryDirectory()
-
-    def tearDown(self) -> None:
-        self.tempdir.cleanup()
-
-    def test_prepare_promotes_unreleased_and_archives_previous_latest(self) -> None:
-        changelog = self.write_changelog()
-
-        prepare_changelog_release.prepare_release(changelog, "0.2.1", "2026-05-18")
-
-        updated = changelog.read_text(encoding="utf-8")
-        self.assertIn("## Unreleased\n\n## 2. [0.2.1] — 2026-05-18", updated)
-        self.assertIn("rotate release notes automatically.", updated)
-        self.assertIn(
-            "- [0.2.0](changelog/0.2.0.md) — 2026-05-17: Workspace and agent-entrypoint release.",
-            updated,
-        )
-        self.assertIn(
-            "- [0.1.0](changelog/0.1.0.md) — 2026-05-14: first published release and baseline CLI surface.",
-            updated,
-        )
-
-        archived = changelog.parent / "changelog" / "0.2.0.md"
-        self.assertEqual(
-            archived.read_text(encoding="utf-8"),
-            """# 0.2.0 — 2026-05-17
-
-Workspace and agent-entrypoint release. The main user-visible change is workspace aliases.
-
-### Added
-
-- [§FS-workspace](../functional-spec/FS-workspace.md#fs-workspace-grund-validates-cross-project-citations-in-a-workspace): validate aliases.
-
-""",
-        )
-
-    def test_prepare_fails_when_unreleased_has_no_bullets(self) -> None:
-        changelog = self.write_changelog(
-            """# Changelog
-
-## Unreleased
-
-## 2. [0.2.0] — 2026-05-17
-
-Previous release.
-
-## 3. Older releases
-"""
-        )
-
-        with self.assertRaisesRegex(prepare_changelog_release.ChangelogError, "no bullet entries"):
-            prepare_changelog_release.prepare_release(changelog, "0.2.1", "2026-05-18")
-
-    def test_extract_notes_writes_inline_release_body(self) -> None:
-        changelog = self.write_changelog()
-        output = changelog.parent / "release-notes.md"
-
-        prepare_changelog_release.extract_notes(changelog, "0.2.0", output)
-
-        notes = output.read_text(encoding="utf-8")
-        self.assertIn("Workspace and agent-entrypoint release.", notes)
-        self.assertIn("### Added", notes)
-        self.assertNotIn("Older releases", notes)
-
-
-class Outcome:
-    def __init__(self, code: int, out: str, err: str) -> None:
-        self.code = code
-        self.out = out
-        self.err = err
-
-    @property
-    def text(self) -> str:
-        return self.out + self.err
-
-    def __str__(self) -> str:
-        return f"exit={self.code}\n--- stdout ---\n{self.out}--- stderr ---\n{self.err}"
-
-
-def run_stamp(repo: ChangelogRepo) -> Outcome:
-    """Run `stamp` the way the release workflow does: in the checkout, by argv."""
-    out, err = io.StringIO(), io.StringIO()
-    with working_directory(repo.path), patch.dict(os.environ, GIT_ENV):
-        with redirect_stdout(out), redirect_stderr(err):
-            try:
-                code = prepare_changelog_release.main(["--changelog", "docs/changelog.md", "stamp"])
-            except SystemExit as exc:  # argparse refusing a subcommand the script does not have
-                code = exc.code if isinstance(exc.code, int) else 1
-    return Outcome(code, out.getvalue(), err.getvalue())
-
-
-THE_RELEASED_BULLET = (
-    "- **The beginning.** It shipped before the gate existed and carries no\n  number at all."
+from changelog_git import (
+    CATEGORIES,
+    ENTRY_DIR,
+    POINTER,
+    REPOSITORY_ROOT,
+    EntryRepoCase,
+    describe,
+    release_section,
+    unreleased_section,
 )
 
 
-class StampUnreleasedNumbersTests(unittest.TestCase):
-    """The release stamps what the contributor did not write, and never fails. §FS-002-release.2"""
+class CollectionTests(EntryRepoCase):
+    """`prepare` builds today's section shape from the entry files, and consumes them."""
 
-    def repo(self, unreleased: str) -> ChangelogRepo:
-        repo = ChangelogRepo(unreleased, with_origin=False, branch="main")
-        self.addCleanup(repo.cleanup)
-        return repo
+    def test_every_category_is_released_in_order_and_the_entries_are_consumed(self) -> None:
+        repo = self.repo()
+        for category in reversed(CATEGORIES):
+            repo.entry(
+                f"example-{category}.{category}.md",
+                f"- **The {category} change.**\n  Its continuation line stays with it. (PR #142)\n",
+            )
+        repo.commit("docs: one entry in every category")
+        readme = (repo.path / ENTRY_DIR / "README.md").read_bytes()
 
-    def resolver(self, pulls: dict[str, list[int]]):
-        """The one seam that reaches the forge, stubbed. No network call is made."""
-        return patch.object(
-            prepare_changelog_release,
-            "pull_requests_for_commit",
-            side_effect=lambda sha: pulls.get(sha, []),
-        )
+        text = self.prepare(repo)
 
-    def test_stamp_writes_the_number_when_every_line_agrees(self) -> None:
-        repo = self.repo(
-            "### Fixed\n"
+        section = release_section(text)
+        headings = re.findall(r"^### (.+)$", section, re.MULTILINE)
+        self.assertEqual(headings, [category.capitalize() for category in CATEGORIES], section)
+        for category in CATEGORIES:
+            self.assertIn(f"- **The {category} change.**\n  Its continuation line stays with it. (PR #142)\n", section)
+        self.assertEqual(repo.pending(), [])
+        self.assertEqual((repo.path / ENTRY_DIR / "README.md").read_bytes(), readme)
+        self.assertEqual(unreleased_section(text).strip(), POINTER)
+        self.assertIn("## 2. [0.1.1] — 2026-10-02\n", text)
+        older = text.split("## 3. Older releases\n", 1)[1]
+        self.assertIn("- [0.1.0](changelog/0.1.0.md) — 2026-01-01: The first release.", older)
+        self.assertIn("- [0.0.1](changelog/0.0.1.md) — 2025-12-01: the first release.", older)
+        archive = (repo.path / "docs" / "changelog" / "0.1.0.md").read_text()
+        self.assertTrue(archive.startswith("# 0.1.0 — 2026-01-01\n"), archive)
+        self.assertIn("- **The beginning.**", archive)
+
+    def test_a_category_with_no_entry_is_omitted(self) -> None:
+        repo = self.repo()
+        repo.entry("only-a-note.note.md", "- **Only a note.**\n")
+        repo.commit("docs: only a note")
+        section = release_section(self.prepare(repo))
+        self.assertEqual(re.findall(r"^### (.+)$", section, re.MULTILINE), ["Note"], section)
+
+    def test_an_entry_of_several_paragraphs_is_released_whole(self) -> None:
+        body = (
+            "- **A change that needs two paragraphs.** The first one wraps\n"
+            "  onto a second line.\n"
             "\n"
-            "- **A bullet one commit wrote.** It says what a user will notice, over\n"
-            "  two lines, and nobody wrote its number.\n"
+            "  **And a second paragraph.** It belongs to the same bullet. (PR #142)\n"
         )
-        with self.resolver({repo.base_sha: [142]}):
-            outcome = run_stamp(repo)
-        self.assertEqual(outcome.code, 0, outcome)
-        text = repo.read()
-        self.assertIn("(PR #142)", text, outcome)
-        self.assertIn("two lines, and nobody wrote its number.", text, outcome)
+        repo = self.repo()
+        # One commit, so the file name orders them: the long entry first.
+        repo.entry("a-paragraphs.changed.md", body)
+        repo.entry("b-after.changed.md", "- **The entry after it.** (PR #143)\n")
+        repo.commit("feat: a long entry and a short one")
+        section = release_section(self.prepare(repo))
+        self.assertIn(body, section)
+        self.assertLess(section.index("And a second paragraph"), section.index("The entry after it"))
 
-    def test_stamp_leaves_a_bullet_whose_lines_disagree_and_warns(self) -> None:
-        first = (
-            "### Fixed\n"
-            "\n"
-            "- **A bullet two commits wrote.** Its first line came with the bullet\n"
-            "  and its second line was added later.\n"
+
+class OrderTests(EntryRepoCase):
+    """Within a category, the oldest-landed entry comes first. §FS-002-release.2.1"""
+
+    def order_in(self, section: str, *labels: str) -> list[str]:
+        return sorted(labels, key=section.index)
+
+    def test_entries_are_released_in_first_parent_landing_order_not_file_name_order(self) -> None:
+        repo = self.repo()
+        # Written first, on a side branch, and merged last.
+        repo.git("checkout", "-q", "-b", "late-landing", repo.base)
+        repo.entry("a-landed-second.fixed.md", "- **Landed second.**\n")
+        repo.commit("fix: written first, landed second")
+        repo.git("checkout", "-q", "main")
+        repo.entry("z-landed-first.fixed.md", "- **Landed first.**\n")
+        repo.commit("fix: written second, landed first")
+        repo.git("merge", "-q", "--no-ff", "--no-edit", "late-landing")
+        section = release_section(self.prepare(repo))
+        self.assertEqual(self.order_in(section, "Landed second", "Landed first"), ["Landed first", "Landed second"])
+
+    def test_entries_that_landed_together_go_by_file_name_and_uncommitted_ones_go_last(self) -> None:
+        repo = self.repo()
+        repo.entry("z-together.fixed.md", "- **Z landed.**\n")
+        repo.entry("b-together.fixed.md", "- **B landed beside it.**\n")
+        repo.commit("fix: two entries in one commit")
+        repo.entry("a-uncommitted.fixed.md", "- **A is not committed.**\n")
+        repo.entry("c-uncommitted.fixed.md", "- **C is not committed.**\n")
+        section = release_section(self.prepare(repo))
+        labels = ("B landed", "Z landed", "A is not", "C is not")
+        self.assertEqual(self.order_in(section, *labels), list(labels), section)
+
+    def test_an_edit_or_a_change_of_category_keeps_where_the_entry_landed(self) -> None:
+        repo = self.repo()
+        z = repo.entry("z-first.fixed.md", "- **Z landed first.**\n")
+        repo.commit("fix: z")
+        repo.entry("a-second.changed.md", "- **A landed second.**\n")
+        repo.commit("feat: a")
+        z.unlink()
+        repo.entry("z-first.changed.md", "- **Z landed first, and was reworded and moved since.**\n")
+        repo.commit("docs: amend z")
+        section = release_section(self.prepare(repo))
+        self.assertEqual(self.order_in(section, "A landed second", "Z landed first"), ["Z landed first", "A landed second"])
+
+    def test_without_history_the_release_warns_orders_by_file_name_and_attributes_nothing(self) -> None:
+        repo = self.repo()
+        repo.entry("z-older.fixed.md", "- **Z landed first.**\n")
+        repo.commit("fix: z")
+        repo.entry("a-newer.fixed.md", "- **A landed second.**\n")
+        head = repo.commit("fix: a")
+        # What a depth-1 clone records: history ends at HEAD, which then looks
+        # as though it added every file in the tree.
+        (repo.path / ".git" / "shallow").write_text(head + "\n")
+        repo.forge({head: [999]})
+
+        stamped = repo.release("stamp")
+        self.assert_exit(stamped, 0)
+        self.assertIn("warning", stamped.stderr.lower(), describe(stamped))
+        for name in repo.pending():
+            self.assertNotIn("999", repo.read_entry(name))
+
+        prepared = repo.release("prepare", "0.1.1", "--date", "2026-10-02")
+        self.assert_exit(prepared, 0)
+        self.assertIn("warning", prepared.stderr.lower(), describe(prepared))
+        section = release_section(repo.changelog.read_text())
+        self.assertEqual(self.order_in(section, "Z landed", "A landed"), ["A landed", "Z landed"])
+
+
+class StampTests(EntryRepoCase):
+    """The number comes from the commit that added the entry. §FS-002-release.2.2"""
+
+    def test_stamp_writes_the_number_of_the_pull_request_that_added_the_entry(self) -> None:
+        repo = self.repo()
+        entry = repo.entry("mine.fixed.md", "- **Mine.**\n")
+        addition = repo.commit("fix: mine")
+        repo.forge({addition: [142]})
+        changelog = repo.changelog.read_bytes()
+        self.assert_exit(repo.release("stamp"), 0)
+        self.assertEqual(entry.read_text(), "- **Mine.** (PR #142)\n")
+        self.assertEqual(repo.changelog.read_bytes(), changelog)
+
+    def test_an_edit_or_a_change_of_category_keeps_the_original_pull_request(self) -> None:
+        repo = self.repo()
+        original = repo.entry("same.fixed.md", "- **Original.**\n  With context.\n")
+        addition = repo.commit("fix: original")
+        original.unlink()
+        moved = repo.entry("same.changed.md", "- **Original, reworded at length and moved.**\n  Other context.\n")
+        edit = repo.commit("docs: reword and recategorize")
+        repo.forge({addition: [142], edit: [143]})
+        self.assert_exit(repo.release("stamp"), 0)
+        self.assertEqual(moved.read_text(), "- **Original, reworded at length and moved.**\n  Other context. (PR #142)\n")
+
+    def test_a_merge_landing_is_attributed_to_its_pull_request(self) -> None:
+        repo = self.repo()
+        entry = repo.entry("merged.fixed.md", "- **Merged, not rebased.**\n")
+        side = repo.commit("fix: on the branch")
+        repo.git("checkout", "-q", "main")
+        repo.git("merge", "-q", "--no-ff", "--no-edit", "contribution")
+        landing = repo.git("rev-parse", "HEAD")
+        repo.forge({side: [142], landing: [142]})
+        self.assert_exit(repo.release("stamp"), 0)
+        self.assertEqual(entry.read_text(), "- **Merged, not rebased.** (PR #142)\n")
+
+    def test_a_slug_used_again_after_a_release_starts_a_new_lifetime(self) -> None:
+        repo = self.repo()
+        repo.entry("same.fixed.md", "- **The first lifetime.** (PR #142)\n")
+        first = repo.commit("fix: first lifetime")
+        self.prepare(repo)
+        repo.commit("release: 0.1.1")
+        reused = repo.entry("same.note.md", "- **The second lifetime.**\n")
+        second = repo.commit("docs: second lifetime")
+        self.assert_exit(repo.gate("--base-rev", f"{second}^", "--pr-number", "143"), 0)
+        repo.forge({first: [142], second: [143]})
+        self.assert_exit(repo.release("stamp"), 0)
+        self.assertEqual(reused.read_text(), "- **The second lifetime.** (PR #143)\n")
+
+    def test_stamp_changes_only_the_trailing_number(self) -> None:
+        prose = "- **Examples stay.** The example `(PR #TBD)` and PR #12 are prose."
+        cases = (
+            ("appended", f"{prose}\n", f"{prose} (PR #142)\n"),
+            ("placeholder replaced", f"{prose} (PR #TBD)\n", f"{prose} (PR #142)\n"),
+            ("written number kept", f"{prose} (PR #137)\n", f"{prose} (PR #137)\n"),
+            (
+                "last line of a wrapped entry",
+                f"{prose}\n  It wraps. (PR #TBD)\n",
+                f"{prose}\n  It wraps. (PR #142)\n",
+            ),
+            (
+                "last paragraph",
+                f"{prose}\n\n  **A second paragraph.**\n",
+                f"{prose}\n\n  **A second paragraph.** (PR #142)\n",
+            ),
         )
-        repo = self.repo(first)
-        repo.write_unreleased(first.replace("was added later.", "was rewritten later."))
-        later = repo.commit("changelog: reword the second line of the bullet")
-        with self.resolver({repo.base_sha: [137], later: [138]}):
-            outcome = run_stamp(repo)
-        self.assertEqual(outcome.code, 0, outcome)
-        text = repo.read()
-        self.assertNotIn("PR #137", text, outcome)
-        self.assertNotIn("PR #138", text, outcome)
-        self.assertIn("A bullet two commits wrote", outcome.text, outcome)
+        for name, before, after in cases:
+            with self.subTest(name):
+                repo = self.repo()
+                entry = repo.entry("examples.changed.md", before)
+                addition = repo.commit("docs: numbers in prose")
+                repo.forge({addition: [142]})
+                self.assert_exit(repo.release("stamp"), 0)
+                self.assertEqual(entry.read_text(), after)
 
-    def test_stamp_replaces_pr_tbd_in_place(self) -> None:
-        repo = self.repo("### Fixed\n\n- **A bullet with a placeholder.** (PR #TBD)\n")
-        with self.resolver({repo.base_sha: [142]}):
-            outcome = run_stamp(repo)
-        self.assertEqual(outcome.code, 0, outcome)
-        text = repo.read()
-        self.assertIn("(PR #142)", text, outcome)
-        self.assertNotIn("TBD", text, outcome)
-        self.assertEqual(text.count("PR #142"), 1, outcome)
+    def test_stamp_warns_and_publishes_when_the_forge_gives_no_single_pull_request(self) -> None:
+        for response in ([], [142, 143], "gh: HTTP 403: Resource not accessible by integration", "gh: API rate limit exceeded"):
+            with self.subTest(response=response):
+                repo = self.repo()
+                entry = repo.entry("unresolved.fixed.md", "- **Unresolved.**\n")
+                addition = repo.commit("fix: unresolved")
+                repo.forge({addition: response})
+                result = repo.release("stamp")
+                self.assert_exit(result, 0)
+                self.assertIn("warning", result.stderr.lower(), describe(result))
+                self.assertIn("unresolved.fixed.md", result.stderr, describe(result))
+                if isinstance(response, str):
+                    self.assertIn(response.removeprefix("gh: "), result.stderr, describe(result))
+                self.assertEqual(entry.read_text(), "- **Unresolved.**\n")
+                self.assertIn("- **Unresolved.**\n", release_section(self.prepare(repo)))
 
-    def test_stamp_leaves_an_existing_number_alone(self) -> None:
-        repo = self.repo("### Fixed\n\n- **A bullet whose author knew the number.** (PR #137)\n")
-        with self.resolver({repo.base_sha: [142]}):
-            outcome = run_stamp(repo)
-        self.assertEqual(outcome.code, 0, outcome)
-        text = repo.read()
-        self.assertIn("(PR #137)", text, outcome)
-        self.assertNotIn("142", text, outcome)
+    def test_stamp_never_fails_on_an_entry_it_cannot_read(self) -> None:
+        repo = self.repo()
+        broken = repo.path / ENTRY_DIR / "undecodable.fixed.md"
+        broken.write_bytes(b"- **\xff\xfe not UTF-8.**\n")
+        good = repo.entry("good.fixed.md", "- **Good.**\n")
+        addition = repo.commit("fix: two entries, one unreadable")
+        repo.forge({addition: [142]})
+        result = repo.release("stamp")
+        self.assert_exit(result, 0)
+        self.assertIn("warning", result.stderr.lower(), describe(result))
+        self.assertIn("undecodable.fixed.md", result.stderr, describe(result))
+        self.assertEqual(broken.read_bytes(), b"- **\xff\xfe not UTF-8.**\n")
+        self.assertEqual(good.read_text(), "- **Good.** (PR #142)\n")
 
-    def test_stamp_ignores_released_sections(self) -> None:
-        repo = self.repo("### Fixed\n\n- **A bullet of our own.** (PR #137)\n")
-        with self.resolver({repo.base_sha: [142]}):
-            outcome = run_stamp(repo)
-        self.assertEqual(outcome.code, 0, outcome)
-        text = repo.read()
-        self.assertIn(THE_RELEASED_BULLET, text, outcome)
-        self.assertNotIn("142", text, outcome)
+    @unittest.skipIf(hasattr(os, "geteuid") and os.geteuid() == 0, "harness: root writes through file permissions")
+    def test_stamp_never_fails_on_an_entry_it_cannot_write(self) -> None:
+        repo = self.repo()
+        entry = repo.entry("read-only.fixed.md", "- **Read-only.**\n")
+        addition = repo.commit("fix: read-only")
+        repo.forge({addition: [142]})
+        directory = entry.parent
+        entry.chmod(0o444)
+        directory.chmod(0o555)
+        self.addCleanup(entry.chmod, 0o644)
+        self.addCleanup(directory.chmod, 0o755)
+        result = repo.release("stamp")
+        self.assert_exit(result, 0)
+        self.assertIn("warning", result.stderr.lower(), describe(result))
+        self.assertIn("read-only.fixed.md", result.stderr, describe(result))
+        self.assertEqual(entry.read_text(), "- **Read-only.**\n")
 
-    def test_stamp_exits_zero_when_the_forge_call_fails(self) -> None:
-        """Never failing a release has to be true of a broken token, not only of an ambiguous bullet."""
-        causes = (
-            ("gh is not on PATH", FileNotFoundError("gh")),
-            ("the token is refused", prepare_changelog_release.ChangelogError("gh api: HTTP 401")),
-            ("the api errors", subprocess.CalledProcessError(1, ["gh", "api"], stderr="rate limit")),
+
+class RefusalTests(EntryRepoCase):
+    """`prepare` refuses with nothing consumed and nothing written. §FS-002-release.2.3"""
+
+    def assert_refused_untouched(self, repo, *details: str) -> None:
+        before = repo.snapshot()
+        self.assert_refused(repo.release("prepare", "0.1.1", "--date", "2026-10-02"), *details)
+        self.assertEqual(repo.snapshot(), before)
+
+    def test_a_malformed_entry_refuses_before_anything_is_written(self) -> None:
+        repo = self.repo()
+        repo.entry("good.fixed.md")
+        repo.entry("two-bullets.fixed.md", "- **One.**\n- **Two.**\n")
+        repo.commit("fix: a malformed entry beside a good one")
+        self.assert_refused_untouched(repo, "two-bullets.fixed.md")
+
+    def test_a_bullet_left_under_the_shared_section_refuses_before_anything_is_written(self) -> None:
+        repo = self.repo()
+        repo.entry("good.fixed.md")
+        repo.write(
+            "docs/changelog.md",
+            repo.changelog.read_text().replace("## Unreleased\n", "## Unreleased\n\n### Fixed\n\n- **Written the old way.**\n"),
         )
-        for description, failure in causes:
-            with self.subTest(description):
-                repo = self.repo("### Fixed\n\n- **A bullet with no number.**\n")
-                before = repo.read()
-                with patch.object(
-                    prepare_changelog_release, "pull_requests_for_commit", side_effect=failure
-                ):
-                    outcome = run_stamp(repo)
-                self.assertEqual(outcome.code, 0, outcome)
-                self.assertEqual(repo.read(), before, outcome)
-                self.assertIn("warning", outcome.text.lower(), outcome)
+        repo.commit("fix: an entry written the old way")
+        self.assert_refused_untouched(repo, "Unreleased")
 
-    def test_stamp_exits_zero_when_the_changelog_cannot_be_read(self) -> None:
-        """Never failing a release has to be true of the changelog too, not only of the forge."""
-        repo = self.repo("### Fixed\n\n- **A bullet with no number.**\n")
-        repo.changelog.write_bytes(b"# Changelog\n\n## Unreleased\n\n- \xff\xfe not utf-8.\n")
-        before = repo.changelog.read_bytes()
+    def test_an_existing_archive_refuses_before_anything_is_consumed(self) -> None:
+        repo = self.repo()
+        repo.entry("good.fixed.md")
+        repo.write("docs/changelog/0.1.0.md", "# 0.1.0 — already archived\n")
+        repo.commit("fix: and an archive that is already there")
+        self.assert_refused_untouched(repo, "archive already exists")
 
-        outcome = run_stamp(repo)
+    def test_the_readme_alone_is_nothing_to_release(self) -> None:
+        repo = self.repo()
+        self.assert_refused_untouched(repo, ENTRY_DIR)
 
-        self.assertEqual(outcome.code, 0, outcome)
-        self.assertEqual(repo.changelog.read_bytes(), before, outcome)
-        self.assertIn("warning", outcome.text.lower(), outcome)
+    def test_a_bad_version_or_date_refuses_before_anything_is_written(self) -> None:
+        """Unmoved by this change: the arguments are validated first."""
+        for argv in (("prepare", "one"), ("prepare", "0.1.1", "--date", "tomorrow")):
+            with self.subTest(argv=argv):
+                repo = self.repo()
+                repo.entry("good.fixed.md")
+                repo.commit("fix: good")
+                before = repo.snapshot()
+                self.assert_refused(repo.release(*argv), "must look like")
+                self.assertEqual(repo.snapshot(), before)
 
-    def test_stamp_exits_zero_when_the_changelog_cannot_be_written(self) -> None:
-        """The write is inside the never-fails boundary as much as the read is."""
-        repo = self.repo("### Fixed\n\n- **A bullet with no number.**\n")
-        before = repo.read()
-        refuse = patch.object(
-            prepare_changelog_release,
-            "_write_lines",
-            side_effect=PermissionError("read-only file system"),
+
+class LinkAndNotesTests(EntryRepoCase):
+    """A link means the same thing in its entry, inline, in the notes and in an archive."""
+
+    def test_links_keep_their_targets_through_two_releases(self) -> None:
+        repo = self.repo()
+        repo.write("docs/guide.md", "# Guide\n\n## Detail\n")
+        repo.write("docs/images/example.png", "fixture\n")
+        repo.entry(
+            "linked.fixed.md",
+            "- **Linked.** [guide](../../guide.md#detail), ![image](../../images/example.png),\n"
+            "  [readme](../../../README.md), [web](https://example.invalid/page#part). (PR #142)\n",
         )
-        with self.resolver({repo.base_sha: [142]}), refuse:
-            outcome = run_stamp(repo)
+        repo.commit("fix: an entry with links")
 
-        self.assertEqual(outcome.code, 0, outcome)
-        self.assertEqual(repo.read(), before, outcome)
-        self.assertIn("warning", outcome.text.lower(), outcome)
+        first = self.prepare(repo)
+        inline = release_section(first)
+        for link in ("[guide](guide.md#detail)", "![image](images/example.png)", "[readme](../README.md)"):
+            self.assertIn(link, inline)
+        self.assertIn("[web](https://example.invalid/page#part)", inline)
 
-    def test_the_warning_carries_the_failing_tool_s_own_words(self) -> None:
-        """The workflow log is the whole report, so a 403 may not read like a timeout."""
-        repo = self.repo("### Fixed\n\n- **A bullet with no number.**\n")
-        refused = subprocess.CalledProcessError(
-            1, ["gh", "api"], stderr="gh: Resource not accessible by integration (HTTP 403)\n"
-        )
-        with patch.object(
-            prepare_changelog_release, "pull_requests_for_commit", side_effect=refused
-        ):
-            outcome = run_stamp(repo)
+        notes = repo.root / "notes.md"
+        self.assert_exit(repo.release("notes", "0.1.1", "--output", str(notes)), 0)
+        self.assertEqual(notes.read_text().strip(), inline.strip())
 
-        self.assertEqual(outcome.code, 0, outcome)
-        self.assertIn("Resource not accessible by integration (HTTP 403)", outcome.text, outcome)
+        repo.commit("release: 0.1.1")
+        repo.entry("next.note.md", "- **The next release.**\n")
+        repo.commit("docs: the next release")
+        second = self.prepare(repo, "0.1.2")
+        archive = (repo.path / "docs" / "changelog" / "0.1.1.md").read_text()
+        for link in ("[guide](../guide.md#detail)", "![image](../images/example.png)", "[readme](../../README.md)"):
+            self.assertIn(link, archive)
+        self.assertIn("[web](https://example.invalid/page#part)", archive)
+        older = second.split("## 3. Older releases\n", 1)[1]
+        self.assertIn("[0.1.1](changelog/0.1.1.md)", older)
+        self.assertIn("[0.1.0](changelog/0.1.0.md)", older)
+        self.assertEqual(unreleased_section(second).strip(), POINTER)
+        self.assertEqual(repo.pending(), [])
+
+    def test_notes_are_the_inline_section_of_the_release(self) -> None:
+        """Unmoved by this change (§FS-002-release.3)."""
+        repo = self.repo()
+        notes = repo.root / "notes.md"
+        self.assert_exit(repo.release("notes", "0.1.0", "--output", str(notes)), 0)
+        text = notes.read_text()
+        self.assertIn("### Added", text)
+        self.assertIn("The beginning.", text)
+        self.assertNotIn("Older releases", text)
+        self.assertNotIn("Unreleased", text)
+
+
+class WorkflowTests(unittest.TestCase):
+    """The workflows give the release the history it reads, and commit what it consumed."""
+
+    def test_release_workflows_read_full_history_stamp_first_and_commit_the_entry_directory(self) -> None:
+        """Unmoved by this change, and what ordering and attribution now depend on (§FS-002-release.2)."""
+        for name in ("auto-bump.yml", "release-minor.yml"):
+            with self.subTest(workflow=name):
+                text = (REPOSITORY_ROOT / ".github" / "workflows" / name).read_text()
+                self.assertIn("fetch-depth: 0", text)
+                stamp = text.index("prepare_changelog_release.py stamp")
+                prepare = text.index("prepare_changelog_release.py prepare")
+                self.assertLess(stamp, prepare)
+                staged = [line for line in text.splitlines() if line.strip().startswith("git add")]
+                self.assertTrue(
+                    any(re.search(r"\sdocs/changelog(\s|$)", line) for line in staged),
+                    f"{name} does not stage docs/changelog/, so consumed entries would stay: {staged}",
+                )
 
 
 if __name__ == "__main__":
