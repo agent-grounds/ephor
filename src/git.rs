@@ -115,7 +115,9 @@ pub struct RepoReplay {
     /// `repo` and not instead of it: the machine form goes on carrying the
     /// path, because that is what a program opens a directory with.
     pub name: String,
-    /// The remote it was fetched from and measured against. Carried per
+    /// The remote it fetches from, where the base lives and is measured —
+    /// never the fork a branch is pushed to, whose copy `onto` names where the
+    /// replay was onto it (§AR-004-forest, §FS-004-quick-actions.8). Carried per
     /// repository rather than per rebase because a forest's repositories need
     /// not agree on one (§AR-004-forest.2), and a report naming a remote the
     /// reader does not have sends them to look for a ref that is not there.
@@ -570,15 +572,40 @@ pub fn head_branch(repo: &Path) -> Option<String> {
     (!name.is_empty()).then(|| name.to_string())
 }
 
-/// Which remote this repository's folds fetch from, push to and measure
-/// against. A fact that can be probed is probed, whatever a row says
+/// Which remote this repository's folds fetch from and measure the base
+/// against — where its base lives and what a new branch is grown from
+/// (§AR-004-forest). A fact that can be probed is probed, whatever a row says
 /// (§AR-004-forest.2): the branch's own upstream where git records one, the
 /// sole remote where the repository has exactly one, `origin` where it is
 /// among several, and otherwise the first git lists. [`ORIGIN`] is the answer
 /// only when there is no remote at all — a repository that calls its remote
-/// anything else is still measured and still replayed.
+/// anything else is still measured and still replayed. Where its branch is
+/// pushed is [`remotes`]' second answer.
 pub fn remote(repo: &Path) -> String {
-    let remotes: Vec<String> = git(repo, &["remote"])
+    fetch_remote(repo, &listed_remotes(repo))
+}
+
+/// The remote this repository fetches from, as [`remote`] answers it, and the
+/// one its checked-out branch is pushed to, asked together so the remotes git
+/// lists are listed once (§AR-004-forest.3).
+///
+/// The push remote is the second role a remote plays, and it differs from the
+/// first only in a checkout that publishes through a fork
+/// (§AR-004-forest.2): `branch.<HEAD>.pushRemote`, else `remote.pushDefault`,
+/// else the fetch remote itself, so a repository with no push configuration
+/// has one remote for both. Read as configuration rather than through
+/// `@{push}`, which under git's stock `push.default` resolves nothing for a
+/// branch with no upstream (§DA-003-upstream-is-the-published-copy.2).
+pub fn remotes(repo: &Path) -> (String, String) {
+    let listed = listed_remotes(repo);
+    let fetch = fetch_remote(repo, &listed);
+    let push = push_remote(repo, &listed).unwrap_or_else(|| fetch.clone());
+    (fetch, push)
+}
+
+/// The remotes `git remote` lists, in its order.
+fn listed_remotes(repo: &Path) -> Vec<String> {
+    git(repo, &["remote"])
         .into_iter()
         .flat_map(|listed| {
             listed
@@ -588,13 +615,60 @@ pub fn remote(repo: &Path) -> String {
                 .map(String::from)
                 .collect::<Vec<String>>()
         })
-        .collect();
+        .collect()
+}
+
+/// The remote the push configuration names for the checked-out branch, where
+/// it names one of `remotes` (§AR-004-forest.2). Only a repository with
+/// several remotes is asked: with one, the push remote can only be the remote
+/// it fetches from, and the question would cost a subprocess per repository
+/// on every fold for an answer already known (§AR-004-forest.3). Both keys
+/// come back from one read, the branch's own winning over the default
+/// (§DA-003-upstream-is-the-published-copy). A name that is not one of this
+/// repository's remotes — a URL, a remote since removed — keeps no copies to
+/// read, so it is no answer.
+fn push_remote(repo: &Path, remotes: &[String]) -> Option<String> {
+    if remotes.len() < 2 {
+        return None;
+    }
+    let branch = head_branch(repo)?;
+    let configured = git(
+        repo,
+        &[
+            "config",
+            "--get-regexp",
+            r"^(remote\.pushdefault|branch\..*\.pushremote)$",
+        ],
+    )?;
+    // git prints the section and the key folded to lower case and the branch
+    // between them as it is, one `<key> <value>` a line, and the last value
+    // of a key is the one git itself uses.
+    let own = format!("branch.{branch}.pushremote");
+    let mut for_branch = None;
+    let mut by_default = None;
+    for line in configured.lines() {
+        let Some((key, value)) = line.split_once(' ') else {
+            continue;
+        };
+        if key == own {
+            for_branch = Some(value.trim().to_string());
+        } else if key == "remote.pushdefault" {
+            by_default = Some(value.trim().to_string());
+        }
+    }
+    for_branch
+        .or(by_default)
+        .filter(|name| remotes.contains(name))
+}
+
+/// [`remote`]'s answer, from the remotes already listed.
+fn fetch_remote(repo: &Path, remotes: &[String]) -> String {
     match remotes.len() {
         0 => ORIGIN.to_string(),
         // A branch's upstream names a remote this repository has, so where it
         // has one the second question could only give the same answer.
         1 => remotes[0].clone(),
-        _ => upstream_remote(repo, &remotes)
+        _ => upstream_remote(repo, remotes)
             .or_else(|| remotes.iter().find(|name| *name == ORIGIN).cloned())
             .unwrap_or_else(|| remotes[0].clone()),
     }
@@ -696,8 +770,12 @@ pub struct Measured {
 /// `@{upstream}` where it is not `[gone]` and the resolved base says it does
 /// not name it — a base nobody could resolve cannot clear the record of
 /// naming it, so it fails closed (§FS-004-quick-actions.8); else
-/// `<remote>/<branch>` where the remote has one; else the branch is unpushed
-/// — an answer, not an error.
+/// `<push>/<branch>` where the remote the branch is pushed to has one, and
+/// `<remote>/<branch>` after it where the remote fetched from is another;
+/// else the branch is unpushed — an answer, not an error. `remote` is where
+/// the base lives and is all `base` is counted against
+/// (§FS-004-quick-actions.7.4); `push` is [`remotes`]' second answer, and the
+/// same remote where git records no other.
 ///
 /// The whole answer costs two subprocesses on the recorded path: one
 /// `for-each-ref` over the local branches gives the checked-out branch (the
@@ -708,8 +786,8 @@ pub struct Measured {
 /// no fetch — so distances are against what was last fetched, and each
 /// distance that found a ref to compare with costs one further short reflog
 /// read to say when that was (§FS-004-quick-actions.6).
-pub fn standing(repo: &Path, remote: &str, base: Option<&str>) -> Measured {
-    let mut measured = measure(repo, remote, base);
+pub fn standing(repo: &Path, remote: &str, push: &str, base: Option<&str>) -> Measured {
+    let mut measured = measure(repo, remote, push, base);
     // Asked of the ref the resolution above settled on, so what the entry
     // names and what it dates are one copy (§FS-004-quick-actions.8).
     measured.upstream_seen = match &measured.upstream {
@@ -723,7 +801,7 @@ pub fn standing(repo: &Path, remote: &str, base: Option<&str>) -> Measured {
 
 /// Everything [`standing`] answers except the published copy's freshness,
 /// which is read once from the copy this settles on.
-fn measure(repo: &Path, remote: &str, base: Option<&str>) -> Measured {
+fn measure(repo: &Path, remote: &str, push: &str, base: Option<&str>) -> Measured {
     let Some(listed) = git(
         repo,
         &[
@@ -779,8 +857,10 @@ fn measure(repo: &Path, remote: &str, base: Option<&str>) -> Measured {
     if !upstream.is_empty() && track != "[gone]" {
         // A record naming the pushed copy of the branch's own name is what
         // the probe below could only re-derive — same ref, same distances —
-        // so it is taken whatever it says about the base: a branch parked on
-        // the base and tracking it lands here, and the fact is true
+        // where the branch is pushed where it is fetched from, and a recorded
+        // upstream comes before a push remote where it is not; so it is taken
+        // whatever it says about the base: a branch parked on the base and
+        // tracking it lands here, and the fact is true
         // (§DA-003-upstream-is-the-published-copy).
         if upstream == own_copy {
             return Measured {
@@ -816,14 +896,23 @@ fn measure(repo: &Path, remote: &str, base: Option<&str>) -> Measured {
         }
     }
     // The pushed copy of the branch's own name — the shape `worktree add -b`
-    // leaves behind (§DA-003-upstream-is-the-published-copy). The ref's
-    // existence and its distances are one question, asked of git once: a
-    // count that fails is a copy that is not there.
-    match left_right(repo, &format!("refs/remotes/{own_copy}")) {
-        Some(track) => Measured {
+    // leaves behind — on the remote it is pushed to first, and on the one the
+    // repository fetches from after it, where that is another
+    // (§DA-003-upstream-is-the-published-copy). The ref's existence and its
+    // distances are one question, asked of git once: a count that fails is a
+    // copy that is not there.
+    let mut looked_on = vec![push];
+    if remote != push {
+        looked_on.push(remote);
+    }
+    let found = looked_on.into_iter().find_map(|on| {
+        left_right(repo, &format!("refs/remotes/{on}/{branch}")).map(|track| (on, track))
+    });
+    match found {
+        Some((on, track)) => Measured {
             branch: Some(branch.clone()),
             upstream: Upstream::Published {
-                remote: remote.to_string(),
+                remote: on.to_string(),
                 branch,
             },
             track: Some(track),
@@ -831,10 +920,12 @@ fn measure(repo: &Path, remote: &str, base: Option<&str>) -> Measured {
             base_seen,
             upstream_seen: None,
         },
+        // Named for the remote the branch is pushed to, which is where its
+        // copy would be (§DA-003-upstream-is-the-published-copy).
         None => Measured {
             branch: Some(branch),
             upstream: Upstream::Unpushed {
-                remote: remote.to_string(),
+                remote: push.to_string(),
             },
             track: None,
             behind_base,
@@ -976,8 +1067,14 @@ pub fn rebase(forest: &Forest, onto: &Onto, stopped: Stopped) -> Rebase {
                 Onto::Base(_) => None,
                 Onto::Upstream => forest.base(repo),
             };
-            let (reference, replay) =
-                replay_one(&repo.path, &repo.remote, base.as_deref(), onto, stopped);
+            let (reference, replay) = replay_one(
+                &repo.path,
+                &repo.remote,
+                &repo.push_remote,
+                base.as_deref(),
+                onto,
+                stopped,
+            );
             RepoReplay {
                 repo: repo.name.clone(),
                 // Asked of the forest, which is where a declaration was read
@@ -1017,6 +1114,7 @@ pub fn rebase(forest: &Forest, onto: &Onto, stopped: Stopped) -> Rebase {
 fn replay_one(
     repo: &Path,
     remote: &str,
+    push: &str,
     base: Option<&str>,
     onto: &Onto,
     stopped: Stopped,
@@ -1058,6 +1156,15 @@ fn replay_one(
     if let Err(message) = run(repo, &["fetch", remote, "--prune"]) {
         return (None, Replay::Refused(message));
     }
+    // The copy is looked for on the remote the branch is pushed to first, so
+    // that remote is fetched too where it is another: a fixup a reviewer
+    // pushed to the fork is what this replays onto (§FS-004-quick-actions.8).
+    // A replay onto the base has no use for it.
+    if *onto == Onto::Upstream && push != remote {
+        if let Err(message) = run(repo, &["fetch", push, "--prune"]) {
+            return (None, Replay::Refused(message));
+        }
+    }
     // Resolved after the fetch, so a copy pushed since the last one is seen —
     // and so "nothing published" means nothing is published now.
     let reference = match onto {
@@ -1073,7 +1180,7 @@ fn replay_one(
             }
             reference
         }
-        Onto::Upstream => match standing(repo, remote, base).upstream {
+        Onto::Upstream => match standing(repo, remote, push, base).upstream {
             Upstream::Published { remote, branch } => format!("{remote}/{branch}"),
             // Never pushed, or not on a branch at all: an answer, not a
             // refusal (§FS-004-quick-actions.8).
@@ -1168,8 +1275,9 @@ pub struct RepoCreated {
     /// `repo` and not instead of it: the machine form goes on carrying the
     /// path, because that is what a program opens a directory with.
     pub name: String,
-    /// The remote the branch was looked for on, and the base grown from
-    /// (§AR-004-forest.2).
+    /// The remote the repository fetches from: the branch was looked for on
+    /// it, and the base grown from it — never the fork a branch is pushed to
+    /// (§AR-004-forest.2, §FS-004-quick-actions.7.4).
     pub remote: String,
     pub created: Created,
 }
@@ -2705,7 +2813,7 @@ mod tests {
         // The published copy carries its own day, off the ref the entry about
         // it names (§FS-004-quick-actions.8).
         advance_published_feature(temp.path(), "app", "theirs.txt");
-        let measured = standing(&checkout, ORIGIN, Some("master"));
+        let measured = standing(&checkout, ORIGIN, ORIGIN, Some("master"));
         assert_eq!(measured.base_seen, Some(moved));
         assert!(measured.upstream_seen.is_some());
 
