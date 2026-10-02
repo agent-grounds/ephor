@@ -418,6 +418,11 @@ pub fn evidence_of(item: &Item) -> Evidence {
     Evidence {
         venue: Some(SubjectKey::stated(&item.id)),
         repo: item.repo(),
+        room: item
+            .raw
+            .get("room")
+            .and_then(Value::as_str)
+            .map(String::from),
         tickets: crate::ticket_ids::tickets_in(&spoken),
         repos: repos_in(&spoken)
             .into_iter()
@@ -1480,6 +1485,68 @@ mod tests {
         assert!(evidence.repos.contains(&"acme/widget".to_string()));
         assert_eq!(evidence.addresses, vec!["ada"]);
         assert!(evidence.words.contains("Retry window"));
+    }
+
+    /// A conversation's key is never read for a repository, however it is
+    /// spelled; a notice's still is, for now (§AR-003-attribution.1). Read
+    /// as one, a chat id would let gadget's organization-wide territory tie
+    /// with the room that actually claims the conversation.
+    #[test]
+    fn a_conversations_key_is_never_read_for_a_repository() {
+        use crate::attribution::Identity;
+        use crate::forge::{policy, Conversation, Notice};
+        let room = "whatsapp/acme#120363@g.us";
+        let conversation = policy::conversation_item(
+            "chatgw",
+            "",
+            &Conversation {
+                id: room.to_string(),
+                title: "Widget rollout".to_string(),
+                url: None,
+                updated_at: "2026-10-01T09:12:00Z".parse().unwrap(),
+                room: Some(room.to_string()),
+                reasons: Vec::new(),
+                threads: Vec::new(),
+            },
+        );
+        let evidence = evidence_of(&conversation);
+        assert_eq!(evidence.repo, None);
+        assert_eq!(evidence.room.as_deref(), Some(room));
+
+        let widget = Identity {
+            project: "widget".to_string(),
+            rooms: vec![room.to_string()],
+            ..Identity::default()
+        };
+        let gadget = Identity {
+            project: "gadget".to_string(),
+            territory: vec!["whatsapp".to_string()],
+            ..Identity::default()
+        };
+        assert_eq!(
+            crate::attribution::place(&evidence, &[widget, gadget]),
+            crate::attribution::Placed::On {
+                project: "widget".to_string(),
+                how: crate::attribution::Strength::Venue
+            }
+        );
+
+        let notice = policy::notice_item(
+            "chatgw",
+            "",
+            &Notice {
+                id: "whatsapp/acme#7".to_string(),
+                title: "You were mentioned".to_string(),
+                url: None,
+                reason: "mention".to_string(),
+                subject: crate::forge::SubjectKind::Other,
+                repo: None,
+                number: None,
+                updated_at: "2026-10-01T09:12:00Z".parse().unwrap(),
+                read: false,
+            },
+        );
+        assert_eq!(evidence_of(&notice).repo.as_deref(), Some("whatsapp/acme"));
     }
 
     #[test]

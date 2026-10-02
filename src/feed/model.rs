@@ -322,9 +322,14 @@ impl Item {
 
     /// The repository, best effort: `raw.repo`, or the `owner/name` between
     /// the source prefix and `#` in the id (`github-prs:acme/widget#42`).
+    /// Never out of a conversation's id, which is the gateway's own word for
+    /// it and only happens to be spelled that way (§AR-003-attribution.1).
     pub fn repo(&self) -> Option<String> {
         if let Some(repo) = self.raw.get("repo").and_then(Value::as_str) {
             return Some(repo.to_string());
+        }
+        if self.raw.get("conversation").and_then(Value::as_bool) == Some(true) {
+            return None;
         }
         let tail = self.id.split_once(':')?.1;
         let (repo, _) = tail.rsplit_once('#')?;
