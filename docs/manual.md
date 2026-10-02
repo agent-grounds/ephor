@@ -2375,8 +2375,8 @@ beside it is offered there (§7.1): handing a level rebase to an agent is a
 ticket to do nothing, while pressing the key runs git and finds out. It is
 measured in your own checkout, not asked of a forge: each of the
 branch workspace's repositories is counted against `<its remote>/<its base>` as
-it was last fetched — the remote it fetches from, read off the repository and
-never the fork a branch is pushed to, and the base its own
+it was last fetched — the remote it fetches from, as read off the repository,
+and the base its own
 `default_branch` where the row names one that is a branch rather than a
 template, the project's `main_branch` otherwise, and what its remote calls its
 default where neither says. An item ephor cannot measure — no branch, or nothing on
