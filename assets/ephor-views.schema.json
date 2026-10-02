@@ -205,7 +205,7 @@
       "required": ["repo", "replay"],
       "properties": {
         "repo": { "type": "string" },
-        "remote": { "type": "string", "description": "The remote this repository fetches from, where its base lives and is measured (AR-004-forest.2). Never the fork a branch is pushed to: a replay onto a copy there names that copy in `onto`, and fetches the fork as well (FS-004-quick-actions.8)." },
+        "remote": { "type": "string", "description": "The remote this repository fetches from, as probed, where its base lives and is measured (AR-004-forest.2). Where push configuration names another remote, the published copy is looked for on that one first: a replay onto a copy there names that copy in `onto`, and fetches that remote as well (FS-004-quick-actions.8)." },
         "branch": { "type": "string" },
         "onto": { "type": "string", "description": "The ref this repository replayed onto, resolved inside it (FS-004-quick-actions.8)." },
         "replay": {
@@ -318,7 +318,7 @@
       "required": ["repo", "created"],
       "properties": {
         "repo": { "type": "string" },
-        "remote": { "type": "string", "description": "The remote this repository fetches from, which the branch was looked for on and a new one grown from — never the fork a branch is pushed to (AR-004-forest.2, FS-004-quick-actions.7.4)." },
+        "remote": { "type": "string", "description": "The remote this repository fetches from, as probed, which the branch was looked for on and a new one grown from (AR-004-forest.2, FS-004-quick-actions.7.4)." },
         "created": {
           "enum": ["tracking", "branched", "unpublished", "present", "refused"],
           "description": "How the working tree came to be there, or why it did not. `unpublished` is a branch the repository already had that the forge has no copy of (FS-004-quick-actions.7)."

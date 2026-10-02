@@ -115,12 +115,14 @@ pub struct RepoReplay {
     /// `repo` and not instead of it: the machine form goes on carrying the
     /// path, because that is what a program opens a directory with.
     pub name: String,
-    /// The remote it fetches from, where the base lives and is measured —
-    /// never the fork a branch is pushed to, whose copy `onto` names where the
-    /// replay was onto it (§AR-004-forest, §FS-004-quick-actions.8). Carried per
-    /// repository rather than per rebase because a forest's repositories need
-    /// not agree on one (§AR-004-forest.2), and a report naming a remote the
-    /// reader does not have sends them to look for a ref that is not there.
+    /// The remote it fetches from, as probed, where the base lives and is
+    /// measured (§AR-004-forest.2). Where push configuration names another
+    /// remote, the published copy is looked for on that one first, and
+    /// `onto` names it where the replay was onto it (§FS-004-quick-actions.8).
+    /// Carried per repository rather than per rebase because a forest's
+    /// repositories need not agree on one (§AR-004-forest.2), and a report
+    /// naming a remote the reader does not have sends them to look for a ref
+    /// that is not there.
     pub remote: String,
     /// The branch it was on, where git could say.
     pub branch: Option<String>,
@@ -1275,9 +1277,9 @@ pub struct RepoCreated {
     /// `repo` and not instead of it: the machine form goes on carrying the
     /// path, because that is what a program opens a directory with.
     pub name: String,
-    /// The remote the repository fetches from: the branch was looked for on
-    /// it, and the base grown from it — never the fork a branch is pushed to
-    /// (§AR-004-forest.2, §FS-004-quick-actions.7.4).
+    /// The remote the repository fetches from, as probed: the branch was
+    /// looked for on it, and the base grown from it (§AR-004-forest.2,
+    /// §FS-004-quick-actions.7.4).
     pub remote: String,
     pub created: Created,
 }
