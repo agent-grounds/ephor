@@ -11,21 +11,27 @@ loads the history they ask for.
 ### 1.1 Sections per release
 
 `Added`, `Changed`, `Deprecated`, `Removed`, `Fixed`, `Security` — the
-Keep-a-Changelog set; omit any with no entries.
+Keep-a-Changelog set — then `Note`; omit any with no entries.
 
 ### 1.2 Entry style
 
 One bullet per change, present tense, leading with the affected area. Every
-pull request adds or changes one bullet; the number is optional, because the
-release fills it in — write `PR #12` if you know it, `PR #TBD` if you want a
-placeholder, or nothing at all. A number you do write must be your own pull
-request's ([§FS-002-release.1](functional-spec/FS-002-release.md#1-changelog)).
+pull request adds an entry of its own: one file under
+[`changelog/unreleased/`](changelog/unreleased/README.md), named
+`<slug>.<category>.md` and holding that one bullet, in the format the
+directory's README gives. Nothing is written under `## Unreleased` by hand. The
+number is optional, because the release fills it in — end the bullet with
+`(PR #12)` if you know it, `(PR #TBD)` if you want a placeholder, or nothing at
+all. A number you do write must be your own pull request's
+([§FS-002-release.1](functional-spec/FS-002-release.md#1-changelog)).
 
 ### 1.3 Progressive discovery
 
-Only **Unreleased** and the most recent release are inline. When a new release
-ships, the previous "latest" section moves verbatim to
-`docs/changelog/<version>.md` and a one-line link is added under
+Pending changes are one file each under `docs/changelog/unreleased/`, which
+`## Unreleased` points to, and only the most recent release is inline. When a
+new release ships, its entries are collected inline under it and their files
+deleted, the previous "latest" section moves whole to
+`docs/changelog/<version>.md`, and a one-line link is added under
 [§3 Older releases](#3-older-releases).
 
 ## Unreleased

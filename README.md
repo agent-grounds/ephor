@@ -84,9 +84,12 @@ just pre-release   # everything a release verifies, publishing nothing
 ```
 
 Releases follow [§FS-002-release](docs/functional-spec/FS-002-release.md#fs-002-release-ephor-releases-from-a-tag-with-a-changelog-entry-per-change):
-a version exists exactly when a `vX.Y.Z` tag does, every pull request adds a
-bullet under `## Unreleased` in [docs/changelog.md](docs/changelog.md) and the
-release fills in its number, and publication is a workflow rather than a
+a version exists exactly when a `vX.Y.Z` tag does, every pull request adds one
+entry file of its own under
+[docs/changelog/unreleased/](docs/changelog/unreleased/README.md) — so no two
+pull requests edit the same changelog lines — and the release fills in its
+number and collects it into [docs/changelog.md](docs/changelog.md), and
+publication is a workflow rather than a
 hand-run command — `Auto bump` cuts a
 patch release on Mondays when main has observable changes and green CI,
 `Release minor` does the same on demand for a minor, and both dry-run the whole

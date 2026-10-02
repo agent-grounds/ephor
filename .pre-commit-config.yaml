@@ -22,9 +22,10 @@ repos:
       #   - `scripts/check_changelog_pr_entry.py --local-pr` is the CI changelog
       #     gate reached at the push instead — one predicate at two moments
       #     (§FS-002-release.6), which is what keeps it matching rather than
-      #     exceeding. It asks for a new or changed bullet under `## Unreleased`
-      #     relative to the base, a question answerable before a pull request
-      #     exists, and adds the number clause only when `gh` reports a number.
+      #     exceeding. It asks for an entry file under `docs/changelog/unreleased/`
+      #     whose slug the base did not have, a question answerable before a
+      #     pull request exists, and adds the number clause only when `gh`
+      #     reports a number.
       #     It refuses the push rather than standing down; the refusal names
       #     `SKIP=changelog-pr-entry git push`, which drops this hook alone and
       #     leaves `cargo-test` below still running.
