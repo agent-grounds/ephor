@@ -94,6 +94,10 @@ fn a_contributor_working_through_a_fork() -> World {
         &world.forest(),
         &["clone", "-q", &upstream.to_string_lossy(), "main"],
     );
+    // The rebase ephor runs commits in these trees, under a home with no
+    // identity of its own; its worktrees share this config.
+    git(&main, &["config", "user.email", "t@example.com"]);
+    git(&main, &["config", "user.name", "t"]);
     git(&main, &["remote", "add", "fork", &fork.to_string_lossy()]);
     git(&main, &["fetch", "-q", "fork"]);
     git(&main, &["config", "remote.pushDefault", "fork"]);
