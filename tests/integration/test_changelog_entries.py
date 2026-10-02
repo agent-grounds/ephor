@@ -7,9 +7,14 @@ And the reason for all of it — two pull requests that each record a change
 integrate in either order, merged or rebased, and both entries then pass the
 gate (§FS-002-release.6), are stamped with their own numbers and are released
 (§FS-002-release.2).
+
+And no change is asked for one: neither the hook nor CI gates a change on the
+changelog, and what is written is checked where the release reads it
+(§FS-002-release.6).
 """
 
 import hashlib
+import re
 import shutil
 import unittest
 
@@ -20,6 +25,7 @@ from changelog_git import (
     REPOSITORY_ROOT,
     SCHEMA_COMMIT,
     EntryRepoCase,
+    list_items,
     release_section,
     unreleased_section,
 )
@@ -79,6 +85,49 @@ class ThisRepositoryTests(EntryRepoCase):
         self.assertEqual(len(published), len(entries), "a release of this tree did not publish one bullet per entry")
         self.assertEqual(repo.pending(), [])
         self.assertTrue((repo.path / ENTRY_DIR / "README.md").is_file())
+
+
+# A script under `scripts/` whose name says it is about the changelog. Only what
+# a hook or a step runs counts: a hook's name, a comment, or `git add docs/changelog`
+# is not a check.
+CHANGELOG_SCRIPT_RE = re.compile(r"[\w./-]*scripts/[\w.-]*changelog[\w.-]*\.(?:py|sh)\b")
+# The release reading its entries, which is the release and not a gate on a change.
+RELEASE_SCRIPT = "prepare_changelog_release.py"
+
+
+def changelog_checks(text: str) -> list[str]:
+    """Every changelog script `text` runs other than the release's own."""
+    return [
+        match.group(0)
+        for match in CHANGELOG_SCRIPT_RE.finditer(text)
+        if match.group(0).rsplit("/", 1)[-1] != RELEASE_SCRIPT
+    ]
+
+
+class NoGateTests(unittest.TestCase):
+    """No change is gated on the changelog, at either moment it once was. §FS-002-release.6"""
+
+    def test_no_hook_and_no_workflow_step_asks_a_change_for_an_entry(self) -> None:
+        # The predicate is narrow: the release reading its entries and a name are not a check.
+        self.assertEqual(changelog_checks("python3 release-tools/scripts/prepare_changelog_release.py notes 1.0.0"), [])
+        self.assertEqual(changelog_checks("id: changelog-lint\nentry: cargo test\ngit add docs/changelog"), [])
+        self.assertEqual(changelog_checks("python scripts/lint_changelog.py"), ["scripts/lint_changelog.py"])
+
+        found = []
+        hooks = list_items((REPOSITORY_ROOT / ".pre-commit-config.yaml").read_text(encoding="utf-8"), "hooks")
+        self.assertIn("cargo-test", [hook.keys.get("id") for hook in hooks], "the pre-commit hooks were not read")
+        for hook in hooks:
+            found += [f".pre-commit-config.yaml: hook `{hook.keys.get('id')}` runs {script}" for script in changelog_checks(hook.text)]
+
+        release_reads = 0
+        for workflow in sorted((REPOSITORY_ROOT / ".github" / "workflows").glob("*.yml")):
+            for step in list_items(workflow.read_text(encoding="utf-8"), "steps"):
+                label = step.keys.get("name") or step.keys.get("uses") or "?"
+                release_reads += RELEASE_SCRIPT in step.text
+                found += [f"{workflow.name}: step `{label}` runs {script}" for script in changelog_checks(step.text)]
+        self.assertGreater(release_reads, 0, "no workflow step was read running the release script")
+
+        self.assertEqual(found, [], "a change is still asked for a changelog entry:\n  " + "\n  ".join(found))
 
 
 class IntegrationTests(EntryRepoCase):

@@ -7,7 +7,7 @@ Behavior and requirements, one declaration per file. Each H1 declares an
 | ID | Subject |
 |---|---|
 | [FS-001-forge-interface](FS-001-forge-interface.md) | ephor reaches every forge and issue tracker through one provider interface |
-| [FS-002-release](FS-002-release.md) | ephor releases from a tag, with a changelog entry per change |
+| [FS-002-release](FS-002-release.md) | ephor releases from a tag, with a changelog written before each release |
 | [FS-003-feed-categories](FS-003-feed-categories.md) | the feed sorts itself into categories, and finished work lands in Recent |
 | [FS-004-quick-actions](FS-004-quick-actions.md) | a problem ephor recognizes arrives with the action for it |
 | [FS-005-dispatch](FS-005-dispatch.md) | what ephor watches, it can hand to an agent runtime |
@@ -24,7 +24,7 @@ Behavior and requirements, one declaration per file. Each H1 declares an
 | [FS-016-browser-opening](FS-016-browser-opening.md) | a browser action reaches the reader or leaves the address with them |
 | [FS-017-clean](FS-017-clean.md) | an idle checkout gives back what its builds took, through the project's own verb |
 | [§FS-001-forge-interface](FS-001-forge-interface.md#fs-001-forge-interface-ephor-reaches-every-forge-and-issue-tracker-through-one-provider-interface) | ephor reaches every forge and issue tracker through one provider interface |
-| [§FS-002-release](FS-002-release.md#fs-002-release-ephor-releases-from-a-tag-with-a-changelog-entry-per-change) | ephor releases from a tag, with a changelog entry per change |
+| [§FS-002-release](FS-002-release.md#fs-002-release-ephor-releases-from-a-tag-with-a-changelog-written-before-each-release) | ephor releases from a tag, with a changelog written before each release |
 | [§FS-003-feed-categories](FS-003-feed-categories.md#fs-003-feed-categories-the-feed-sorts-itself-into-categories-and-finished-work-lands-in-recent) | the feed sorts itself into categories, and finished work lands in Recent |
 | [§FS-004-quick-actions](FS-004-quick-actions.md#fs-004-quick-actions-a-problem-ephor-recognizes-arrives-with-the-action-for-it) | a problem ephor recognizes arrives with the action for it |
 | [§FS-005-dispatch](FS-005-dispatch.md#fs-005-dispatch-what-ephor-watches-it-can-hand-to-an-agent-runtime) | what ephor watches, it can hand to an agent runtime |

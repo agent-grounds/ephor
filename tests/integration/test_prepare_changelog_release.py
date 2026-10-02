@@ -1,12 +1,14 @@
 """The release script: collecting, ordering, stamping and consuming the entries. §FS-002-release.2
 
-`stamp`, `prepare` and `notes` are run the way the release workflows run them,
-against a real history and a forge that answers what each case says. Where an
-entry landed decides its order and its number (§FS-002-release.2.1); stamping
-writes only the trailing number and never fails a release (§FS-002-release.2.2);
-preparing consumes the entries and refuses before it would lose one
-(§FS-002-release.2.3). What `notes` writes is still the inline section
-(§FS-002-release.3).
+`stamp`, `prepare`, `notes` and `pending` are run the way the release
+workflows run them, against a real history and a forge that answers what each
+case says. Where an entry landed decides its order and its number
+(§FS-002-release.2.1); stamping writes only the trailing number and never fails
+a release (§FS-002-release.2.2); preparing consumes the entries and refuses
+before it would lose one (§FS-002-release.2.3). What `notes` writes is still the
+inline section (§FS-002-release.3). `pending` is what the scheduled release
+holds on while no section is written, and the workflows are read for that hold
+(§FS-002-release.2).
 """
 
 import os
@@ -20,9 +22,15 @@ from changelog_git import (
     REPOSITORY_ROOT,
     EntryRepoCase,
     describe,
+    list_items,
+    output,
     release_section,
     unreleased_section,
 )
+
+
+# What the refusal of an empty directory says to do (§FS-002-release.2.3), matched without case.
+WRITE_IT_FIRST = "write the release section first"
 
 
 class CollectionTests(EntryRepoCase):
@@ -303,6 +311,8 @@ class RefusalTests(EntryRepoCase):
     def test_the_readme_alone_is_nothing_to_release(self) -> None:
         repo = self.repo()
         self.assert_refused_untouched(repo, ENTRY_DIR)
+        refusal = output(repo.release("prepare", "0.1.1", "--date", "2026-10-02"))
+        self.assertIn(WRITE_IT_FIRST, refusal.lower(), "the refusal does not say to write the section first:\n" + refusal)
 
     def test_a_bad_version_or_date_refuses_before_anything_is_written(self) -> None:
         """Unmoved by this change: the arguments are validated first."""
@@ -314,6 +324,127 @@ class RefusalTests(EntryRepoCase):
                 before = repo.snapshot()
                 self.assert_refused(repo.release(*argv), "must look like")
                 self.assertEqual(repo.snapshot(), before)
+
+
+class PendingTests(EntryRepoCase):
+    """`pending` counts what `prepare` would read, so the hold and the refusal agree. §FS-002-release.2"""
+
+    def assert_pending(self, repo, expected: str) -> None:
+        before = repo.snapshot()
+        result = repo.release("pending")
+        self.assert_exit(result, 0)
+        self.assertEqual(result.stdout.strip(), expected, describe(result))
+        self.assertEqual(repo.snapshot(), before, "pending wrote to the tree")
+
+    def test_the_readme_alone_is_nothing_pending(self) -> None:
+        self.assert_pending(self.repo(), "0")
+
+    def test_every_entry_is_counted(self) -> None:
+        repo = self.repo()
+        for name in ("one.fixed.md", "two.added.md", "three.note.md"):
+            repo.entry(name)
+        repo.commit("docs: three entries")
+        self.assert_pending(repo, "3")
+
+    def test_a_malformed_entry_is_pending_so_the_release_goes_on_and_prepare_names_it(self) -> None:
+        repo = self.repo()
+        repo.entry("good.fixed.md")
+        repo.entry("two-bullets.fixed.md", "- **One.**\n- **Two.**\n")
+        repo.entry("no-category.md")
+        repo.commit("docs: one good entry and two malformed ones")
+        self.assert_pending(repo, "3")
+
+    def test_pending_and_the_empty_refusal_agree_on_what_counts(self) -> None:
+        cases = {
+            "the readme alone": (),
+            "one entry": (("good.fixed.md", "- **Good.**\n"),),
+            "one malformed entry": (("two-bullets.fixed.md", "- **One.**\n- **Two.**\n"),),
+            "a file named as no entry": (("notes.txt", "- **Not an entry.**\n"),),
+        }
+        for case, files in cases.items():
+            with self.subTest(case):
+                repo = self.repo()
+                for name, body in files:
+                    repo.entry(name, body)
+                counted = repo.release("pending")
+                self.assert_exit(counted, 0)
+                refused = repo.release("prepare", "0.1.1", "--date", "2026-10-02")
+                held = counted.stdout.strip() == "0"
+                self.assertEqual(held, WRITE_IT_FIRST in output(refused).lower(), describe(counted) + describe(refused))
+
+
+class WriteUpTests(EntryRepoCase):
+    """The section written before a release, in one pull request of its own. §FS-002-release.1
+
+    These pass on the code as it stands, by design: ordering and stamping do not
+    change. They pin what §FS-002-release.2.1 and §FS-002-release.2.2 now say
+    about a write-up's entries, which all land in the one commit.
+    """
+
+    WRITE_UP = 170
+
+    def write_up(self, repo, entries: dict[str, str]) -> str:
+        for name, body in entries.items():
+            repo.entry(name, body)
+        addition = repo.commit("docs: write the release section")
+        repo.forge({addition: [self.WRITE_UP]})
+        return addition
+
+    def test_a_write_up_s_entries_keep_their_own_numbers_and_go_by_file_name(self) -> None:
+        repo = self.repo()
+        repo.entry("z-landed-before.fixed.md", "- **Landed with its change, the old way.** (PR #150)\n")
+        earlier = repo.commit("fix: an entry written with its change")
+        repo.write("src/lib.rs", "// a change that wrote no entry\n")
+        repo.commit("fix: no entry")
+        entries = {
+            "b-refresh-keeps-unreachable.fixed.md": (
+                "- **`ephor refresh` keeps a project whose remote is unreachable.** It stays in\n"
+                "  the feed, marked stale. (PR #160)\n"
+            ),
+            "a-stale-feed.fixed.md": "- **A stale feed says so.** (PR #161)\n",
+            "clean-verb.added.md": "- **`ephor clean` gives an idle checkout's build output back.** (PR #154)\n",
+        }
+        self.write_up(repo, entries)
+        repo.forge({earlier: [150]})
+
+        self.assert_exit(repo.release("stamp"), 0)
+        for name, body in entries.items():
+            with self.subTest(stamped=name):
+                self.assertEqual(repo.read_entry(name), body)
+
+        section = release_section(self.prepare(repo))
+        for body in entries.values():
+            self.assertIn(body, section)
+        order = sorted(("Landed with its change", "A stale feed", "`ephor refresh` keeps"), key=section.index)
+        self.assertEqual(order, ["Landed with its change", "A stale feed", "`ephor refresh` keeps"], section)
+        self.assertNotIn(f"PR #{self.WRITE_UP}", section)
+
+    def test_an_entry_the_write_up_leaves_unnumbered_takes_the_write_up_s_number(self) -> None:
+        repo = self.repo()
+        self.write_up(
+            repo,
+            {
+                "numbered.fixed.md": "- **Numbered.** (PR #160)\n",
+                "unnumbered.fixed.md": "- **Unnumbered.**\n",
+            },
+        )
+        self.assert_exit(repo.release("stamp"), 0)
+        self.assertEqual(repo.read_entry("numbered.fixed.md"), "- **Numbered.** (PR #160)\n")
+        self.assertEqual(repo.read_entry("unnumbered.fixed.md"), f"- **Unnumbered.** (PR #{self.WRITE_UP})\n")
+
+    def test_a_changed_slug_starts_a_new_lifetime_where_it_changed(self) -> None:
+        repo = self.repo()
+        old = repo.entry("a-old-slug.fixed.md", "- **Renamed by the write-up.**\n")
+        first = repo.commit("fix: an entry under its first slug")
+        repo.entry("m-between.fixed.md", "- **Landed between.** (PR #151)\n")
+        repo.commit("fix: another entry")
+        old.unlink()
+        renamed = self.write_up(repo, {"b-new-slug.fixed.md": "- **Renamed by the write-up.**\n"})
+        repo.forge({first: [150], renamed: [self.WRITE_UP]})
+        self.assert_exit(repo.release("stamp"), 0)
+        self.assertEqual(repo.read_entry("b-new-slug.fixed.md"), f"- **Renamed by the write-up.** (PR #{self.WRITE_UP})\n")
+        section = release_section(self.prepare(repo))
+        self.assertLess(section.index("Landed between"), section.index("Renamed by the write-up"), section)
 
 
 class LinkAndNotesTests(EntryRepoCase):
@@ -383,6 +514,42 @@ class WorkflowTests(unittest.TestCase):
                     any(re.search(r"\sdocs/changelog(\s|$)", line) for line in staged),
                     f"{name} does not stage docs/changelog/, so consumed entries would stay: {staged}",
                 )
+
+    @staticmethod
+    def steps(name: str) -> list:
+        return list_items((REPOSITORY_ROOT / ".github" / "workflows" / name).read_text(encoding="utf-8"), "steps")
+
+    def hold(self, steps: list) -> int:
+        """The index of the `Auto bump` step that asks `pending`, failing the test where there is none."""
+        asking = [index for index, step in enumerate(steps) if "prepare_changelog_release.py pending" in step.text]
+        self.assertEqual(len(asking), 1, "Auto bump does not ask `prepare_changelog_release.py pending` in one step")
+        return asking[0]
+
+    def test_auto_bump_asks_pending_before_it_stamps_and_holds_with_a_notice(self) -> None:
+        steps = self.steps("auto-bump.yml")
+        hold = self.hold(steps)
+        stamping = [index for index, step in enumerate(steps) if "prepare_changelog_release.py stamp" in step.text]
+        self.assertTrue(stamping and hold < stamping[0], "Auto bump asks `pending` only after it stamps")
+        self.assertTrue(steps[hold].keys.get("id"), "the hold has no `id:`, so no later step can read it")
+        self.assertIn("::notice::", steps[hold].text, "Auto bump holds without a notice saying why")
+
+    def test_every_auto_bump_step_after_the_hold_carries_it_the_dev_advance_included(self) -> None:
+        steps = self.steps("auto-bump.yml")
+        hold = self.hold(steps)
+        reads = f"steps.{steps[hold].keys.get('id')}."
+        unheld = [step.keys.get("name") or step.keys.get("uses") for step in steps[hold + 1 :] if reads not in step.keys.get("if", "")]
+        self.assertEqual(unheld, [], f"these steps run while the release is held; their `if:` does not read `{reads}`")
+        conditions = {step.keys.get("name"): step.keys.get("if") for step in steps}
+        self.assertEqual(
+            conditions.get("Advance main to the next dev version"),
+            conditions.get("Publish release commit and dispatch release"),
+            "the dev-version advance does not carry the release's own condition",
+        )
+
+    def test_release_minor_is_not_held(self) -> None:
+        """A guard, and it passes today: a release a person asks for reaches `prepare`'s refusal instead."""
+        asking = [step.keys.get("name") for step in self.steps("release-minor.yml") if "prepare_changelog_release.py pending" in step.text]
+        self.assertEqual(asking, [], "Release minor holds on `pending`; it should reach prepare's refusal")
 
 
 if __name__ == "__main__":

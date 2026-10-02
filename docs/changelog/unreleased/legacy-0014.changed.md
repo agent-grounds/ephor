@@ -1,6 +1,6 @@
 - **The changelog gate asks for a bullet, not for a number nobody can know yet**
   ([§FS-002-release.1](../../functional-spec/FS-002-release.md#1-changelog),
-  [§FS-002-release.6](../../functional-spec/FS-002-release.md#6-the-changelog-gate-runs-before-the-pull-request-exists)).
+  [§FS-002-release.6](../../functional-spec/FS-002-release.md#6-no-change-is-gated-on-the-changelog)).
   A pull request is now asked for a new or changed bullet under `## Unreleased`
   relative to its own base, rather than for `PR #<n>`: the number does not exist
   when the bullet is written, so an outside contributor's first CI run used to

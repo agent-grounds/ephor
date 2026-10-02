@@ -32,7 +32,7 @@ name is confined to its own adapter and held there by the build
 configuration, against a public GitHub repository, producing a feed — which is
 what says the examples are a starting point rather than a shape. And the first
 release itself, which has to be tagged by hand before the bump workflows have
-anything to count from ([§FS-002-release](functional-spec/FS-002-release.md#fs-002-release-ephor-releases-from-a-tag-with-a-changelog-entry-per-change)).
+anything to count from ([§FS-002-release](functional-spec/FS-002-release.md#fs-002-release-ephor-releases-from-a-tag-with-a-changelog-written-before-each-release)).
 
 The boundary half of the same law — the seams a capability is reached across,
 rather than the forges reached through them — is

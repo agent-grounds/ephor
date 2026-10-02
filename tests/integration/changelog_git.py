@@ -30,6 +30,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from typing import NamedTuple
 
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
@@ -95,6 +96,61 @@ if match is not None:
 print("unexpected forge call: gh " + " ".join(args), file=sys.stderr)
 sys.exit(2)
 '''
+
+
+class ListItem(NamedTuple):
+    """One item of a YAML block list — a workflow step, a pre-commit hook — as its own keys and its text."""
+
+    keys: dict[str, str]
+    text: str
+
+
+ITEM_KEY_RE = re.compile(r"^(?:- +)?(?P<key>[A-Za-z_][\w-]*):(?:\s+(?P<value>.*))?$")
+
+
+def list_items(text: str, key: str) -> list[ListItem]:
+    """Every item of every `<key>:` block list in `text`, in file order, with comment lines dropped.
+
+    Line-based, because the Python CI sets up carries no YAML parser. An item
+    opens at a `- ` at the list's own indentation and runs to the next one, or
+    to the first line not indented past `<key>:`. Only the item's own lines are
+    read as keys, so a `run: |` body that happens to say `id:` is text.
+    """
+    lines = [line for line in text.splitlines() if line.strip() and not line.lstrip().startswith("#")]
+    opener = re.compile(rf"^(?P<indent> *){re.escape(key)}:\s*$")
+    items: list[list[str]] = []
+    index = 0
+    while index < len(lines):
+        match = opener.match(lines[index])
+        index += 1
+        if match is None:
+            continue
+        outer = len(match.group("indent"))
+        indent_of_items: int | None = None
+        while index < len(lines):
+            line = lines[index]
+            indent = len(line) - len(line.lstrip(" "))
+            opens = line.lstrip().startswith("- ") and indent >= outer and indent_of_items in (None, indent)
+            if not opens and (indent <= outer or indent_of_items is None):
+                break
+            if opens:
+                indent_of_items = indent
+                items.append([])
+            items[-1].append(line)
+            index += 1
+
+    found = []
+    for item in items:
+        own = len(item[0]) - len(item[0].lstrip(" "))
+        keys: dict[str, str] = {}
+        for line in item:
+            if len(line) - len(line.lstrip(" ")) not in (own, own + 2):
+                continue
+            match = ITEM_KEY_RE.match(line.strip())
+            if match is not None:
+                keys.setdefault(match.group("key"), (match.group("value") or "").strip())
+        found.append(ListItem(keys, "\n".join(item)))
+    return found
 
 
 def load_script(name: str):

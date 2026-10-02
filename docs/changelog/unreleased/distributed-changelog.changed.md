@@ -7,7 +7,7 @@
   record a change merge or rebase in either order. The pre-push hook and CI ask
   for an entry whose slug the base did not have, and refuse one that is
   malformed, renames an entry already there, or names another pull request
-  ([§FS-002-release.6](../../functional-spec/FS-002-release.md#6-the-changelog-gate-runs-before-the-pull-request-exists)). The release stamps each entry's number from
+  ([§FS-002-release.6](../../functional-spec/FS-002-release.md#6-no-change-is-gated-on-the-changelog)). The release stamps each entry's number from
   the commit that added it, collects the entries under their categories in the
   order they landed, and deletes the files
   ([§FS-002-release.2](../../functional-spec/FS-002-release.md#2-cutting-a-release)). What was pending under the shared section moved
