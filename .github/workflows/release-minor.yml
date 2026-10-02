@@ -97,8 +97,11 @@ jobs:
           set -euo pipefail
           cargo set-version "${{ steps.versions.outputs.next }}"
           cargo update --workspace
-          # §FS-002-release.2: write the numbers the contributors could not know
-          # before ## Unreleased is promoted. Warns and never fails the release.
+          # §FS-002-release.2.2: write the numbers the contributors could not know
+          # onto the pending entries under docs/changelog/unreleased/, then collect
+          # them into the release and delete them. Order and numbers come from the
+          # full history checked out above (§FS-002-release.2.1). Stamping warns and
+          # never fails the release.
           python3 scripts/prepare_changelog_release.py stamp
           python3 scripts/prepare_changelog_release.py prepare "${{ steps.versions.outputs.next }}"
 
