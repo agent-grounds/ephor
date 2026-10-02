@@ -274,6 +274,17 @@ impl Provider for ForgeProvider {
                 items.push(policy::notice_item(self.name, &ctx.project_id, &notice));
             }
         }
+        // The other places people talk, each conversation whole
+        // (§FS-001-forge-interface.1).
+        if capabilities.messages {
+            for conversation in self.forge.messages(&request)? {
+                items.push(policy::conversation_item(
+                    self.name,
+                    &ctx.project_id,
+                    &conversation,
+                ));
+            }
+        }
         Ok(items)
     }
 }

@@ -25,8 +25,8 @@ use chrono::{TimeZone, Utc};
 use serde_json::{json, Value};
 
 use super::{
-    Capabilities, Issue, IssueDependency, Message, Notice, PullRequest, Reaction, Reason, Review,
-    Role, SubjectKind, Thread,
+    Capabilities, Conversation, Issue, IssueDependency, Message, Notice, PullRequest, Reaction,
+    Reason, Review, Role, SubjectKind, Thread,
 };
 use crate::feed::gate::{Gate, RepoGate};
 
@@ -260,6 +260,23 @@ fn notice() -> Notice {
     }
 }
 
+/// A conversation from a chat room, every field set, with threads in the
+/// shape a pull request's take.
+fn conversation() -> Conversation {
+    Conversation {
+        id: "whatsapp/acme#120363@g.us".into(),
+        title: "Widget rollout: can we ship Friday?".into(),
+        url: Some("https://chat.example/acme/120363".into()),
+        updated_at: at(),
+        room: Some("whatsapp/acme#120363@g.us".into()),
+        reasons: vec![Reason::Mentioned],
+        threads: vec![Thread {
+            messages: vec![message()],
+            reply: json!({ "chat": "120363@g.us" }),
+        }],
+    }
+}
+
 fn wire<T: serde::Serialize>(value: &T) -> Value {
     serde_json::to_value(value).expect("a forge type serializes")
 }
@@ -297,6 +314,14 @@ fn a_full_issue_is_exactly_what_the_schema_declares() {
 #[test]
 fn a_full_notice_is_exactly_what_the_schema_declares() {
     let problems = holds(&wire(&notice()), "notice");
+    assert!(problems.is_empty(), "{}", problems.join("\n"));
+}
+
+/// The `messages` row a gateway author reads about is the one ephor reads
+/// (§FS-001-forge-interface.1).
+#[test]
+fn a_full_conversation_is_exactly_what_the_schema_declares() {
+    let problems = holds(&wire(&conversation()), "conversation");
     assert!(problems.is_empty(), "{}", problems.join("\n"));
 }
 
@@ -343,7 +368,7 @@ here=$(dirname "$0")
 echo "$1" >> "$here/calls"
 cat > "$here/$1.json"
 case "$1" in
-  pull-requests | issues | notices | failures) printf '[]' ;;
+  pull-requests | issues | notices | messages | failures) printf '[]' ;;
   *) printf '{}' ;;
 esac
 "#;
@@ -369,6 +394,7 @@ esac
         forge.pull_requests(&request).expect("pull-requests");
         forge.issues(&request).expect("issues");
         forge.notices(&request).expect("notices");
+        forge.messages(&request).expect("messages");
         forge.failures(&request, "acme/app", "7").expect("failures");
         forge
             .restart(&request, "acme/app", "7", Scope::Failed)

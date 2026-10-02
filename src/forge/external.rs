@@ -10,6 +10,7 @@
 //!     ephor-forge-<name> pull-requests  <<< '{"config":…,"tickets":[…],…}'
 //!     ephor-forge-<name> issues         <<< '{"config":…,"tickets":[…],…}'
 //!     ephor-forge-<name> notices        <<< '{"config":…,"tickets":[…],…}'
+//!     ephor-forge-<name> messages       <<< '{"config":…,"project":…,…}'
 //!     ephor-forge-<name> failures       <<< '{"config":…,"repo":…,"number":…}'
 //!     ephor-forge-<name> restart        <<< '{"config":…,"repo":…,"number":…,"scope":…}'
 //!     ephor-forge-<name> react          <<< '{"config":…,"target":…,"emoji":…}'
@@ -28,7 +29,7 @@ use std::process::Command;
 
 use serde_json::{json, Value};
 
-use super::{Capabilities, Forge, Issue, Notice, PullRequest, Request, Restarted};
+use super::{Capabilities, Conversation, Forge, Issue, Notice, PullRequest, Request, Restarted};
 use crate::feed::gate::Failure;
 use crate::feed::provider::{command_exists, run_json_stdin, ProviderError};
 
@@ -36,11 +37,12 @@ use crate::feed::provider::{command_exists, run_json_stdin, ProviderError};
 /// (§FS-001-forge-interface.2). One list, so the published schema can be held
 /// to it: a subcommand added here and not described there is a move a gateway
 /// author has no way to learn about.
-pub const SUBCOMMANDS: [&str; 9] = [
+pub const SUBCOMMANDS: [&str; 10] = [
     "capabilities",
     "pull-requests",
     "issues",
     "notices",
+    "messages",
     "failures",
     "restart",
     "react",
@@ -156,6 +158,11 @@ impl Forge for ExternalForge {
     fn notices(&self, request: &Request) -> Result<Vec<Notice>, ProviderError> {
         let value = self.call("notices", request, json!({}))?;
         self.decode("notices", value)
+    }
+
+    fn messages(&self, request: &Request) -> Result<Vec<Conversation>, ProviderError> {
+        let value = self.call("messages", request, json!({}))?;
+        self.decode("messages", value)
     }
 
     fn failures(

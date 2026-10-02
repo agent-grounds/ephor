@@ -7,7 +7,9 @@
 
 use serde_json::{json, Value};
 
-use super::{Issue, Message, Notice, PullRequest, Reason, Review, Role, SubjectKind, Thread};
+use super::{
+    Conversation, Issue, Message, Notice, PullRequest, Reason, Review, Role, SubjectKind, Thread,
+};
 use crate::feed::model::{Item, ItemKind, ItemRole};
 
 /// Review states that mean the author has work to do. Matched as substrings
@@ -351,6 +353,71 @@ pub fn notice_item(forge: &str, project: &str, notice: &Notice) -> Item {
         state: (!reason.is_empty()).then(|| reason.clone()),
         needs_response: !notice.read && NOTICE_AWAITS.iter().any(|needle| reason.contains(needle)),
         updated_at: notice.updated_at,
+        raw: Value::Object(raw),
+    };
+    settle(&mut item);
+    item
+}
+
+/// One conversation as a feed item (§FS-001-forge-interface.1): a Messages row
+/// keyed by the source and the id the implementation gave it, with no side of
+/// a review to be on, and its threads carried exactly as a pull request's are.
+///
+/// Whether it waits on the reader is ephor's to work out, by the rule a pull
+/// request's threads get (§FS-001-forge-interface.3): an open task, or
+/// somebody else's last word the user neither answered nor reacted to, and
+/// for a conversation the user is named in, no answer after the naming. The
+/// implementation's say is the `mine` on each message, and nothing more.
+pub fn conversation_item(forge: &str, project: &str, conversation: &Conversation) -> Item {
+    let mut raw = serde_json::Map::new();
+    // The room it stated, kept apart from its key: it is what a project's
+    // identity claims it by (§FS-008-attribution.1).
+    if let Some(room) = &conversation.room {
+        raw.insert("room".to_string(), json!(room));
+    }
+    let threads = threads_json(&conversation.threads);
+    if threads.as_array().is_some_and(|list| !list.is_empty()) {
+        raw.insert("threads".to_string(), threads);
+    }
+    let mut reasons: Vec<Reason> = conversation.reasons.clone();
+    reasons.sort_unstable();
+    reasons.dedup();
+    if !reasons.is_empty() {
+        raw.insert(
+            "reasons".to_string(),
+            json!(reasons
+                .iter()
+                .map(|reason| reason.label())
+                .collect::<Vec<_>>()),
+        );
+    }
+    // What the row leads with: being asked or named before merely being in it.
+    let lead = [
+        Reason::ReviewRequested,
+        Reason::Mentioned,
+        Reason::Assigned,
+        Reason::InThread,
+        Reason::Authored,
+    ]
+    .into_iter()
+    .find(|reason| reasons.contains(reason));
+    let needs_response = if reasons.contains(&Reason::Mentioned) {
+        !citation_answered(&conversation.threads)
+    } else {
+        conversation.threads.iter().any(thread_pending)
+    };
+
+    let mut item = Item {
+        id: format!("{forge}:{}", conversation.id),
+        project: project.to_string(),
+        source: forge.to_string(),
+        kind: ItemKind::Message,
+        role: None,
+        title: conversation.title.clone(),
+        url: conversation.url.clone(),
+        state: lead.map(|reason| reason.label().to_string()),
+        needs_response,
+        updated_at: conversation.updated_at,
         raw: Value::Object(raw),
     };
     settle(&mut item);
@@ -1343,5 +1410,161 @@ mod dissolve_tests {
         let gate = crate::feed::gate::Gate::of(&merged[0]).expect("the gate came with it");
         assert!(gate.is_red());
         assert_eq!(gate.failed(), 2);
+    }
+}
+
+/// A conversation from the other places people talk, as a feed row
+/// (§FS-001-forge-interface.1, §FS-001-forge-interface.3).
+#[cfg(test)]
+mod conversation_tests {
+    use super::*;
+    use chrono::{TimeZone, Utc};
+
+    const ROOM: &str = "whatsapp/acme#120363@g.us";
+
+    fn said(author: &str, mine: bool) -> Message {
+        Message {
+            author: author.to_string(),
+            text: "Can we ship on Friday?".to_string(),
+            mine,
+            ..Message::default()
+        }
+    }
+
+    fn thread(messages: Vec<Message>) -> Thread {
+        Thread {
+            messages,
+            reply: json!({ "chat": "120363@g.us" }),
+        }
+    }
+
+    fn conversation(reasons: Vec<Reason>, threads: Vec<Thread>) -> Conversation {
+        Conversation {
+            id: ROOM.to_string(),
+            title: "Widget rollout".to_string(),
+            url: None,
+            updated_at: Utc.with_ymd_and_hms(2026, 10, 1, 9, 12, 0).unwrap(),
+            room: Some(ROOM.to_string()),
+            reasons,
+            threads,
+        }
+    }
+
+    fn awaits(reasons: Vec<Reason>, messages: Vec<Message>) -> bool {
+        conversation_item("chatgw", "", &conversation(reasons, vec![thread(messages)]))
+            .needs_response
+    }
+
+    /// Keyed by the source and the gateway's own id, a Messages row, on no
+    /// side of any review, leading with why it is the reader's.
+    #[test]
+    fn a_conversation_is_a_messages_row_keyed_by_its_source() {
+        let item = conversation_item(
+            "chatgw",
+            "widget",
+            &conversation(
+                vec![Reason::InThread, Reason::Mentioned],
+                vec![thread(vec![said("dana", false)])],
+            ),
+        );
+        assert_eq!(item.id, format!("chatgw:{ROOM}"));
+        assert_eq!(item.kind, ItemKind::Message);
+        assert_eq!(item.role, None);
+        assert_eq!(item.source, "chatgw");
+        assert_eq!(item.state.as_deref(), Some("mentioned"));
+        assert_eq!(item.raw["room"], ROOM);
+        assert_eq!(item.raw["reasons"], json!(["in-thread", "mentioned"]));
+        assert_eq!(item.raw["threads"][0]["messages"][0]["author"], "dana");
+    }
+
+    /// Somebody else's last word waits on the reader; their own reply, or
+    /// their reaction on it, is an answer (§FS-003-feed-categories.4).
+    #[test]
+    fn a_conversation_waits_while_somebody_else_has_the_last_word() {
+        assert!(awaits(vec![Reason::InThread], vec![said("dana", false)]));
+        assert!(!awaits(
+            vec![Reason::InThread],
+            vec![said("dana", false), said("you", true)]
+        ));
+        let acknowledged = Message {
+            reactions: vec![crate::forge::Reaction {
+                emoji: "👍".to_string(),
+                users: vec!["you".to_string()],
+                mine: true,
+            }],
+            ..said("dana", false)
+        };
+        assert!(!awaits(vec![Reason::InThread], vec![acknowledged]));
+    }
+
+    /// An open task is work left however the conversation ended.
+    #[test]
+    fn an_open_task_keeps_a_conversation_waiting() {
+        let task = Message {
+            task: json!({ "id": "t1", "state": "open" }),
+            ..said("dana", false)
+        };
+        assert!(awaits(
+            vec![Reason::InThread],
+            vec![task, said("you", true)]
+        ));
+    }
+
+    /// Named in it, the reader owes an answer until they give one after the
+    /// naming, and a conversation with nothing recorded still owes it.
+    #[test]
+    fn a_mention_waits_until_it_is_answered() {
+        assert!(awaits(vec![Reason::Mentioned], vec![said("dana", false)]));
+        assert!(!awaits(
+            vec![Reason::Mentioned],
+            vec![said("dana", false), said("you", true)]
+        ));
+        assert!(
+            conversation_item(
+                "chatgw",
+                "",
+                &conversation(vec![Reason::Mentioned], Vec::new())
+            )
+            .needs_response
+        );
+    }
+
+    /// Each thread keeps the descriptor a reply to it goes back with.
+    #[test]
+    fn each_thread_carries_its_own_reply_descriptor() {
+        let other = Thread {
+            messages: vec![said("eli", false)],
+            reply: json!({ "chat": "120363@g.us", "thread": "t2" }),
+        };
+        let item = conversation_item(
+            "chatgw",
+            "",
+            &conversation(vec![], vec![thread(vec![said("dana", false)]), other]),
+        );
+        assert_eq!(
+            item.raw["threads"][0]["reply"],
+            json!({ "chat": "120363@g.us" })
+        );
+        assert_eq!(
+            item.raw["threads"][1]["reply"],
+            json!({ "chat": "120363@g.us", "thread": "t2" })
+        );
+    }
+
+    /// The gateway's own word on whether it waits is not read: the type has
+    /// no field for it, and the messages decide either way.
+    #[test]
+    fn a_needs_response_on_the_wire_is_ignored() {
+        let wire = |needs: bool, mine: bool| -> Conversation {
+            serde_json::from_value(json!({
+                "id": ROOM, "title": "Widget rollout",
+                "updated_at": "2026-10-01T09:12:00Z",
+                "needs_response": needs,
+                "threads": [{ "messages": [{ "author": "dana", "text": "Friday?", "mine": mine }] }]
+            }))
+            .expect("a conversation parses")
+        };
+        assert!(!conversation_item("chatgw", "", &wire(true, true)).needs_response);
+        assert!(conversation_item("chatgw", "", &wire(false, false)).needs_response);
     }
 }

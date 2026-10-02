@@ -60,6 +60,12 @@ pub struct Capabilities {
     /// every other one returns what ephor knew to ask for, this one returns
     /// what the forge knew to say.
     pub notices: bool,
+    /// Answers [`Forge::messages`] — the conversations addressed to the user
+    /// in the other places people talk, each one whole
+    /// (§FS-001-forge-interface.1). Kept apart from `notices` because a notice
+    /// is a title and a reason, and a conversation that arrives without its
+    /// words can be neither judged nor answered.
+    pub messages: bool,
     /// Answers [`Forge::react`]; without it, messages are display-only.
     pub reactions: bool,
     /// Answers [`Forge::resolve_task`]; without it, the tasks a forge reports
@@ -448,6 +454,38 @@ pub struct Notice {
     pub read: bool,
 }
 
+/// One conversation addressed to the user in a place people talk that is not
+/// a forge — a chat room, a direct conversation, a mail thread
+/// (§FS-001-forge-interface.1).
+///
+/// Whole on purpose: whether it waits on the reader, and what it refers to,
+/// are read off its messages by policy (§FS-001-forge-interface.3). What the
+/// implementation says about each message is who wrote it and whether that
+/// was the user. A `needs_response` on the wire is not a field here, so an
+/// implementation's own verdict never arrives.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Conversation {
+    /// Stable across refreshes: it becomes the row's key, and the key the
+    /// reader's unread state is kept under.
+    pub id: String,
+    pub title: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub url: Option<String>,
+    /// When it last moved.
+    pub updated_at: DateTime<Utc>,
+    /// The room it is in, as the venue names it. `None` for a direct
+    /// conversation, which is in no room at all.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub room: Option<String>,
+    /// Why it is the user's, in the vocabulary pull requests use.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub reasons: Vec<Reason>,
+    /// Its threads in the shape a pull request's take, each carrying its own
+    /// reply descriptor.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub threads: Vec<Thread>,
+}
+
 /// Everything an implementation is told about the request. Out of process this
 /// is the JSON written to the implementation's stdin: its own configuration
 /// block verbatim, plus the context ephor holds.
@@ -516,6 +554,12 @@ pub trait Forge: Send + Sync {
     /// since its whole value is that the reader can believe it
     /// (§FS-001-forge-interface.6).
     fn notices(&self, _request: &Request) -> Result<Vec<Notice>, ProviderError> {
+        Ok(Vec::new())
+    }
+
+    /// The conversations addressed to the user in the other places people
+    /// talk, each with its words (§FS-001-forge-interface.1).
+    fn messages(&self, _request: &Request) -> Result<Vec<Conversation>, ProviderError> {
         Ok(Vec::new())
     }
 
