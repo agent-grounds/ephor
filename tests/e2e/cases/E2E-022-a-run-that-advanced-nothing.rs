@@ -23,6 +23,10 @@
 //! it may not narrow the width the `--act` gate is counted over
 //! (§FS-011-command-line.10) — otherwise the flag that says *skip this one*
 //! would also be the flag that walks past the gate.
+//!
+//! And every one of those rows names its hold as data beside the sentence, so
+//! a script can tell a root a free slot would start from one ephor has stopped
+//! starting without matching on the words (§FS-005-dispatch.24.2).
 
 #[path = "../support.rs"]
 mod support;
@@ -251,6 +255,19 @@ fn a_root_whose_last_run_advanced_nothing_is_passed_over_and_says_so() {
         why.contains("acme-run-1"),
         "the reason names the run it judged, so the reader can go and read it: {why}"
     );
+    // And the same, as data: a rest names the run it judged, how many in a row
+    // have advanced nothing, and when the root is tried again
+    // (§FS-005-dispatch.24.2).
+    let hold = &second["runs"][0]["hold"];
+    assert_eq!(hold["kind"], "rested", "{second:#}");
+    assert_eq!(hold["run"], "acme-run-1", "{second:#}");
+    assert_eq!(hold["count"], 1, "{second:#}");
+    assert!(
+        hold["until"]
+            .as_str()
+            .is_some_and(|until| until.parse::<chrono::DateTime<chrono::Utc>>().is_ok()),
+        "a rest names the instant the root is tried again: {second:#}"
+    );
 
     // And it is said in prose in the same row and the same words, because a
     // reader told only that nothing started goes looking for a full ceiling.
@@ -324,6 +341,11 @@ fn a_root_the_driver_excluded_is_passed_over_and_the_exclusion_is_named() {
         why.contains(&root),
         "and it names the value it was given: {why}"
     );
+    assert_eq!(
+        excluded["runs"][0]["hold"],
+        json!({ "kind": "excluded", "except": root }),
+        "the exclusion is named back as data too (§FS-005-dispatch.24.2): {excluded:#}"
+    );
 
     // A matter id resolves the same way, against the ledger, so a driver that
     // knows which item is stuck need not know where its work root is.
@@ -332,6 +354,11 @@ fn a_root_the_driver_excluded_is_passed_over_and_the_exclusion_is_named() {
     let by_item = json_of(&by_item);
     assert_eq!(starts(&world), 0, "an item exclusion started a run anyway");
     assert_eq!(by_item["runs"][0]["outcome"], "passed-over", "{by_item:#}");
+    assert_eq!(
+        by_item["runs"][0]["hold"],
+        json!({ "kind": "excluded", "except": ITEM }),
+        "{by_item:#}"
+    );
 
     // And with nothing excluded the sweep is the sweep it always was.
     let plain = sweep(&world, &[]);
@@ -444,6 +471,11 @@ fn an_exclusion_never_narrows_the_width_the_act_gate_is_counted_over() {
         "the report says what the sweep would say, exclusions included, rather \
          than promising a run it would not make: {held:#}"
     );
+    assert_eq!(
+        held["runs"][0]["hold"],
+        json!({ "kind": "excluded", "except": root }),
+        "the gated report names the hold it asked (§FS-005-dispatch.24.2): {held:#}"
+    );
     assert_eq!(starts(&world), 1, "a gated sweep started a run");
     assert!(
         !ledger_names_a_rest(&world),
@@ -482,4 +514,181 @@ fn ledger_names_a_rest(world: &World) -> bool {
     std::fs::read_to_string(world.path().join("state/ephor/work.json"))
         .unwrap_or_default()
         .contains("acme-run-")
+}
+
+/// The ticket's own failure, from the outside: one sweep, two roots passed over
+/// for two different holds, and a script that has to tell them apart. One root
+/// would start the moment a slot frees up; the other will not start until a
+/// person starts it. The rows must say which is which as data, not only in the
+/// sentence the contract leaves free to change (§FS-005-dispatch.24.2).
+#[test]
+fn a_passed_over_row_names_its_hold_as_data() {
+    let world = two_roots();
+    the_next_run_advances(&world, false);
+
+    // Three runs in a row on the first root advance nothing. The sweep makes the
+    // first; the reader starts the next two by name, which the rest never
+    // refuses, and each sweep in between takes its verdict on the last one.
+    let first = sweep(&world, &["--project", PROJECT]);
+    assert_eq!(json_of(&first)["runs"][0]["outcome"], "done", "{first:?}");
+    for _ in 0..2 {
+        let rested = json_of(&sweep(&world, &["--project", PROJECT]));
+        assert_eq!(rested["runs"][0]["outcome"], "passed-over", "{rested:#}");
+        world
+            .ephor()
+            .args(["work", "run", "--item", ITEM, "--json"])
+            .assert()
+            .success();
+    }
+    assert_eq!(starts(&world), 3, "three runs, none of which advanced");
+
+    // The sweep from the ticket: both projects, a zero-wide ceiling so the sweep
+    // itself starts nothing, acting.
+    let output = world
+        .ephor_raw()
+        .args([
+            "work",
+            "run",
+            "--due",
+            "--max-concurrent",
+            "0",
+            "--act",
+            "--json",
+        ])
+        .output()
+        .expect("the sweep runs");
+    assert!(output.status.success(), "{output:?}");
+    let reading = json_of(&output);
+    assert_eq!(starts(&world), 3, "a zero-wide sweep started a run");
+    assert_eq!(reading["failed"], 0, "{reading:#}");
+
+    // Today the two rows differ only in `reason`, and that sentence stays
+    // exactly what it was.
+    let stopped = row_of(&reading, PROJECT);
+    let waiting = row_of(&reading, OTHER);
+    assert_eq!(stopped["outcome"], "passed-over", "{reading:#}");
+    assert_eq!(waiting["outcome"], "passed-over", "{reading:#}");
+    assert_eq!(
+        stopped["reason"],
+        json!(
+            "3 runs in a row here advanced nothing, the last of them acme-run-3 — nothing more \
+             will be started on this root until a run advances there or you start one by hand"
+        ),
+        "{reading:#}"
+    );
+    assert_eq!(
+        waiting["reason"],
+        json!("global work.max_concurrent 0 is full (0 live run(s))"),
+        "{reading:#}"
+    );
+
+    // And beside it, the hold each row was stopped by — the first one asked:
+    // the stop comes before the ceilings, so the stopped root says `stopped`
+    // even though the ceiling is full for it too.
+    assert_eq!(
+        stopped["hold"],
+        json!({ "kind": "stopped", "run": "acme-run-3", "count": 3 }),
+        "a root ephor will not start must say so as data, not only in prose: {reading:#}"
+    );
+    assert_eq!(
+        waiting["hold"],
+        json!({
+            "kind": "concurrency",
+            "scope": "site",
+            "key": "max_concurrent",
+            "limit": 0,
+            "count": 0
+        }),
+        "a root a free slot would start must say so as data, not only in prose: {reading:#}"
+    );
+    shaped("work-run", &output);
+
+    // The gated report at the same width holds less: it asks only the reader's
+    // exclusions and the no-advance holds, so the stopped root still says
+    // `stopped` and the other is a `would-run` with no hold at all
+    // (§FS-011-command-line.10).
+    let gated = world
+        .ephor_raw()
+        .args(["work", "run", "--due", "--json"])
+        .output()
+        .expect("the gated sweep runs");
+    assert!(gated.status.success(), "{gated:?}");
+    let report = json_of(&gated);
+    assert_eq!(report["gated"], json!(true), "{report:#}");
+    assert_eq!(
+        row_of(&report, PROJECT)["hold"],
+        json!({ "kind": "stopped", "run": "acme-run-3", "count": 3 }),
+        "the gated report names the stop it read: {report:#}"
+    );
+    assert_eq!(row_of(&report, OTHER)["outcome"], "would-run", "{report:#}");
+    assert!(
+        row_of(&report, OTHER).get("hold").is_none(),
+        "a row that is not passed over carries no hold: {report:#}"
+    );
+    shaped("work-run", &gated);
+    assert_eq!(starts(&world), 3, "a gated sweep started a run");
+}
+
+/// Two projects, each with one due root: the first is the forge-watching one
+/// every case here uses, the second reports one status item a second autorun
+/// recipe hands over. The tickets are written with autorun off, so nothing has
+/// run when the case begins (§FS-005-dispatch.24).
+fn two_roots() -> World {
+    let world = World::new();
+    world.stub("ephor-forge-acmeforge", ACME_FORGE);
+    world.stub("acme-runtime", ACME_RUNTIME);
+    let far = world.path().join(OTHER);
+    std::fs::create_dir_all(&far).expect("the other forest");
+    std::fs::write(far.join("status.txt"), "far needs a look\n").expect("its status");
+    let mut registry = world.registry_doc();
+    let mut row = registry["projects"][0].clone();
+    row["id"] = json!(OTHER);
+    row["display_name"] = json!("Far");
+    row["root"] = json!(far.to_string_lossy());
+    registry["projects"]
+        .as_array_mut()
+        .expect("projects")
+        .push(row);
+    write_json(&world.registry_path(), &registry);
+
+    world.configure(two_configured(false));
+    world.ephor().args(["refresh"]).assert().success();
+    world
+        .ephor()
+        .args(["work", "dispatch", "--act"])
+        .assert()
+        .success();
+    assert_eq!(starts(&world), 0, "the tickets are written before any run");
+    world.configure(two_configured(true));
+    world
+}
+
+/// The configuration [`two_roots`] sweeps under: the one recipe every case here
+/// uses, and a second for the other project's status item.
+fn two_configured(autorun: bool) -> serde_json::Value {
+    let mut settings = configured(autorun);
+    settings["projects"][OTHER] = json!({ "providers": [
+        { "provider": "custom-status", "command": "cat status.txt" }
+    ] });
+    settings["work"]["recipes"]
+        .as_array_mut()
+        .expect("recipes")
+        .push(json!({
+            "id": "look",
+            "description": "look at it",
+            "state": "fix",
+            "needs_checkout": false,
+            "autorun": autorun,
+            "when": { "kinds": ["status"] },
+            "brief": "Look at {title}."
+        }));
+    settings
+}
+
+/// The one row of a reading about this project's root.
+fn row_of<'a>(reading: &'a serde_json::Value, project: &str) -> &'a serde_json::Value {
+    reading["runs"]
+        .as_array()
+        .and_then(|runs| runs.iter().find(|run| run["project"] == project))
+        .unwrap_or_else(|| panic!("no row about {project}: {reading:#}"))
 }

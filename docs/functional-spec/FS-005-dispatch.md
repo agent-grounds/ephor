@@ -2684,6 +2684,89 @@ reading of one command answering one situation in one voice
 ([§REQ-002-parity.2](../requirements/REQ-002-parity.md#2-parity-runs-both-ways),
 [§REQ-002-parity.3](../requirements/REQ-002-parity.md#3-every-reading-answers-a-program)).
 
+### 24.2 A passed-over row names its hold as data
+
+The reason a root was passed over is a sentence, and a sentence is for a
+reader. A program deciding what to do about the root — fill a free slot with
+the roots a slot would start, alert on a root ephor has stopped starting, count
+the roots that are resting — needs to know **which** hold it was, and the
+sentence's wording is not something a field protects
+([§REQ-002-parity.4](../requirements/REQ-002-parity.md#4-the-machine-form-is-a-contract-not-a-dump)). A caller made to match on the words reads the
+kind out of text the contract leaves free to change, and the first rewording
+breaks it with nothing to warn it. So **every `passed-over` row of
+`ephor work run --json` carries `hold`, an object naming the first hold that
+stopped the root**, as a `kind` from a declared vocabulary together with the
+numbers that hold rests on — the same facts the reason already says, as data
+([§REQ-002-parity.3](../requirements/REQ-002-parity.md#3-every-reading-answers-a-program)). `reason` stays beside it, word for word
+what it was, and it is the sentence rendered from the same hold rather than a
+second account of it. A row whose outcome is anything other than `passed-over`
+carries no `hold`.
+
+The kinds, in the order the sweep asks them ([§FS-005-dispatch.24](FS-005-dispatch.md#24-work-nobody-has-to-start-starts-itself)), and what
+each one carries beside its `kind`:
+
+- `excluded` — the reader's `--except` named the root. `except` is the value
+  the reader gave, as they gave it.
+- `rested` — the last run there advanced nothing, and the root is tried again
+  later. `run` is the run that was judged, `count` how many runs in a row have
+  advanced nothing, and `until` the instant the root is tried again.
+- `stopped` — past three runs in a row that advanced nothing, the sweep has
+  stopped starting the root until a run advances there or somebody starts one
+  by hand. `run` is the last of them and `count` how many there were.
+- `tree` — a live run holds the checkout the root's work would run in. `root`
+  is the work root that run was started from, and `run` its id where it
+  published one.
+- `pools` — a plan needs pools this site cannot have together right now
+  ([§FS-005-dispatch.33](FS-005-dispatch.md#33-work-that-needs-several-pools-at-once-is-admitted-whole)). `plan` is the plan held, `pools` every pool it needs
+  in the order it named them, `pool` the first of them that cannot be had, and
+  `until` the instant that pool is free again, where its report named one.
+- `concurrency` — a ceiling on roots in flight or on working roots is full.
+  `scope` is `site`, `organization` or `project`, `id` the organization or
+  project the ceiling is written on (absent at the site), `key` is
+  `max_concurrent` or `max_active`, `limit` the ceiling in force — the
+  `--max-concurrent` number where the reader gave one — and `count` the live
+  roots, or the active ones under `max_active`, that filled it.
+- `budget` — a ceiling on what unattended work may spend is full
+  ([§FS-015-spend-ceiling.9](FS-015-spend-ceiling.md#9-a-refusal-names-the-scope-the-ceiling-the-total-the-hole-and-the-instant)). `scope` and `id` as for `concurrency`,
+  `key` is `max_spend` or `max_tokens`, `limit` the ceiling — dollars under
+  `max_spend`, tokens under `max_tokens` — `total` what the window measured,
+  where it measured anything, and `until` the instant the window lets work
+  start again, absent under a ceiling of `0`, which is a pause rather than a
+  window that will pass.
+
+Three things about the field are part of its contract, because a caller will
+come to depend on each of them.
+
+**The vocabulary is open.** The kinds above are the ones there are today, and
+a kind may be added without that being a breaking change — a root passed over
+because it waits on a person is the next one asked for. So a caller reads a
+`kind` it does not recognise as *not startable*, never as *startable*: the safe
+reading of a hold one does not understand is that it holds.
+
+**It names the first hold, and only the first.** A root two holds would stop
+is stopped once, by the first in the order above — one row, one reason, first
+match ([§FS-005-dispatch.24](FS-005-dispatch.md#24-work-nobody-has-to-start-starts-itself)), and among the ceilings the outermost scope first
+and, within one scope, roots in flight, then working roots, then money, then
+tokens ([§FS-015-spend-ceiling.5](FS-015-spend-ceiling.md#5-every-ceiling-is-evaluated-and-the-outermost-full-one-is-the-reason)). So that order is now part of what
+the field promises: `concurrency` means every hold before it was asked and
+passed, and nothing after it was asked at all. Under `--max-concurrent 0` a row
+held by the site ceiling may stand over an organization, project or budget
+ceiling that is full as well; the field does not say whether a root would start
+if every slot were free, and a caller that needs to know that is not told it
+here.
+
+**The gated report holds less.** A sweep at a width that is gated reports
+rather than acts ([§FS-011-command-line.10](FS-011-command-line.md#10-a-mutating-verb-above-one-project-reports-and-acts-under---act)), and what it asks before it
+reports is the reader's `--except` and the no-advance rest — the holds that
+need no capacity read. Its `passed-over` rows carry `hold` exactly as an acting
+sweep's do, and can only carry `excluded`, `rested` or `stopped`. A gated
+`would-run` therefore does not say that nothing holds the root; it says that
+none of those three does.
+
+The published `work-run` shape declares `hold` in the same change, with its
+kinds named in its description rather than closed in an enumeration, so the
+schema reads the vocabulary as open exactly as a caller is told to.
+
 ## 25. Work about a matter with no branch can mint the branch it needs
 
 A pull request arrives with a branch, and everything above resolves from it:
