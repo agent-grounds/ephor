@@ -52,6 +52,9 @@ pub struct Identity {
     /// Names it answers to.
     pub aliases: Vec<String>,
     pub addresses: Vec<String>,
+    /// The rooms it claims on a conversation source, each the id the source
+    /// states (§FS-008-attribution.1).
+    pub rooms: Vec<String>,
 }
 
 /// How firmly the evidence points at a project (§FS-008-attribution.3). An
@@ -234,6 +237,7 @@ mod tests {
             territory: vec!["acme-labs".to_string(), "other/plugin".to_string()],
             aliases: vec!["the widget".to_string()],
             addresses: vec!["widget@acme.example".to_string()],
+            rooms: Vec::new(),
         }
     }
 

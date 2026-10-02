@@ -961,6 +961,27 @@ mod tests {
         );
     }
 
+    /// A row's `rooms` is a list of room ids (§FS-008-attribution.1), and a
+    /// row that wrote something else there is refused rather than read as
+    /// silent, which would let a checkout's hint stand in for it.
+    #[test]
+    fn rooms_on_a_row_is_a_list_of_room_ids() {
+        let schema: Value = serde_json::from_str(EMBEDDED_SCHEMA).unwrap();
+        let validator = jsonschema::validator_for(&schema).unwrap();
+        let refused = |rooms: Value| {
+            let registry = serde_json::json!({ "projects": [{ "id": "widget", "rooms": rooms }] });
+            let at: Vec<String> = validator
+                .iter_errors(&registry)
+                .map(|error| error.instance_path.to_string())
+                .collect();
+            at.iter().any(|path| path.starts_with("/projects/0/rooms"))
+        };
+        assert!(refused(serde_json::json!("whatsapp/acme#120363@g.us")));
+        assert!(refused(serde_json::json!([""])));
+        assert!(!refused(serde_json::json!(["whatsapp/acme#120363@g.us"])));
+        assert!(!refused(serde_json::json!([])));
+    }
+
     /// §FS-005-dispatch.24: a binding written over an organization no
     /// registry row places a project inside is a binding over nobody, and the
     /// caller is told which name it was. Membership is the `organization`

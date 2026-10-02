@@ -219,6 +219,11 @@ pub struct Placement {
     /// its forest — what places a mention or an issue filed in its ecosystem
     /// (§FS-008-attribution.1).
     pub territory: Vec<String>,
+    /// The rooms on a conversation source it claims, named exactly as the
+    /// source states them (§FS-008-attribution.1). `None` where the row says
+    /// nothing, kept apart from `Some([])`: a row that lists none has refused
+    /// every room a checkout might claim for it.
+    pub rooms: Option<Vec<String>>,
     /// How much of the project's own manifest the row is willing to believe
     /// (§FS-006-project-interface.2).
     pub trust: crate::manifest::Trust,
@@ -689,6 +694,8 @@ impl Placement {
             repos: declarations(registry_doc, entry),
             aliases: strings(entry, "aliases"),
             territory: strings(entry, "territory"),
+            // Presence is the row's word: an empty list is still an answer.
+            rooms: entry.get("rooms").map(|_| strings(entry, "rooms")),
             trust: registry::str_field(entry, "manifest_trust")
                 .map(crate::manifest::Trust::parse)
                 .transpose()
@@ -833,6 +840,13 @@ impl Placement {
             territory: adopt(self.territory.clone(), hint(|identity| &identity.territory)),
             aliases: adopt(self.aliases.clone(), hint(|identity| &identity.aliases)),
             addresses: hint(|identity| &identity.addresses),
+            // Not `adopt`: it cannot tell a row that listed no rooms from one
+            // silent on them, and only the second may take a checkout's word
+            // for which rooms are this project's (§FS-008-attribution.1).
+            rooms: self
+                .rooms
+                .clone()
+                .unwrap_or_else(|| hint(|identity| &identity.rooms)),
         }
     }
 
@@ -1272,6 +1286,7 @@ mod tests {
             repos: Vec::new(),
             aliases: Vec::new(),
             territory: Vec::new(),
+            rooms: None,
             trust: crate::manifest::Trust::Full,
             organization: None,
         }
@@ -1387,6 +1402,27 @@ mod tests {
 
         let sprocket = Placement::load(&doc, "sprocket").expect("a row");
         assert_eq!(sprocket.organization, None, "the row names no organization");
+    }
+
+    /// A row's rooms are read for whether it named them at all, not only for
+    /// what it named: an empty list is the row refusing every room, and
+    /// silence leaves the manifest's hint to stand (§FS-008-attribution.1).
+    #[test]
+    fn a_row_that_lists_no_rooms_is_told_apart_from_one_silent_on_them() {
+        let doc = json!({
+            "projects": [
+                { "id": "widget", "root": "/w/widget", "rooms": ["whatsapp/acme#120363@g.us"] },
+                { "id": "gadget", "root": "/w/gadget", "rooms": [] },
+                { "id": "sprocket", "root": "/w/sprocket" }
+            ]
+        });
+        let rooms = |project: &str| Placement::load(&doc, project).expect("a row").rooms;
+        assert_eq!(
+            rooms("widget"),
+            Some(vec!["whatsapp/acme#120363@g.us".to_string()])
+        );
+        assert_eq!(rooms("gadget"), Some(Vec::new()));
+        assert_eq!(rooms("sprocket"), None);
     }
 
     #[test]

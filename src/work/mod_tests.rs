@@ -19,6 +19,7 @@ fn placement(project: &str, root: &Path, template: Option<&str>) -> Placement {
         repos: Vec::new(),
         aliases: Vec::new(),
         territory: Vec::new(),
+        rooms: None,
         trust: Default::default(),
         organization: None,
     }
