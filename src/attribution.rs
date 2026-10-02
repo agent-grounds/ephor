@@ -22,6 +22,9 @@ pub struct Evidence {
     pub venue: Option<SubjectKey>,
     /// The repository the venue belongs to, as the forge names it.
     pub repo: Option<String>,
+    /// The room a conversation states it happened in, kept apart from its
+    /// key and from what it references (§AR-003-attribution.1).
+    pub room: Option<String>,
     /// Ticket keys found in the text.
     pub tickets: Vec<String>,
     /// Repositories named in the text or the url.
@@ -58,8 +61,9 @@ pub struct Identity {
 }
 
 /// How firmly the evidence points at a project (§FS-008-attribution.3). An
-/// explicit venue wins outright; a reference places on the named matter; only
-/// resemblance may be argued with.
+/// explicit venue — a repository of the forest or the territory, or a room the
+/// project claims — wins outright; a reference places on the named matter;
+/// only resemblance may be argued with.
 ///
 /// It is kept on the placement rather than consumed and dropped: what may be
 /// done with a placement depends on how it was reached — resemblance may start
@@ -101,6 +105,14 @@ impl Identity {
         // bucket.
         if let Some(repo) = &evidence.repo {
             if self.repos.iter().any(|own| own == repo) || self.claims_territory(repo) {
+                return Some(Strength::Venue);
+            }
+        }
+        // A claimed room is a venue on the same terms, so a conversation in it
+        // is the project's whatever it mentions. Exact equality only: chat ids
+        // share no grammar a prefix could be read in (§FS-008-attribution.1).
+        if let Some(room) = &evidence.room {
+            if self.rooms.iter().any(|own| own == room) {
                 return Some(Strength::Venue);
             }
         }
@@ -237,7 +249,7 @@ mod tests {
             territory: vec!["acme-labs".to_string(), "other/plugin".to_string()],
             aliases: vec!["the widget".to_string()],
             addresses: vec!["widget@acme.example".to_string()],
-            rooms: Vec::new(),
+            rooms: vec![ROOM.to_string()],
         }
     }
 
@@ -248,6 +260,74 @@ mod tests {
             repos: vec!["acme/gadget".to_string()],
             ..Identity::default()
         }
+    }
+
+    const ROOM: &str = "whatsapp/acme#120363@g.us";
+
+    fn in_room(room: &str) -> Evidence {
+        Evidence {
+            room: Some(room.to_string()),
+            ..Evidence::default()
+        }
+    }
+
+    /// A room is to a conversation what a repository is to a pull request,
+    /// and claims it as firmly (§FS-008-attribution.3).
+    #[test]
+    fn a_claimed_room_is_a_venue() {
+        assert_eq!(widget().claim(&in_room(ROOM)), Some(Strength::Venue));
+        assert_eq!(
+            place(&in_room(ROOM), &[gadget(), widget()]),
+            Placed::On {
+                project: "widget".to_string(),
+                how: Strength::Venue
+            }
+        );
+    }
+
+    /// Only the id the source states, whole: a longer id with the same start
+    /// and a shorter one it starts with are other rooms (§FS-008-attribution.1).
+    #[test]
+    fn a_room_matches_only_exactly() {
+        assert_eq!(widget().claim(&in_room(&format!("{ROOM}/t2"))), None);
+        assert_eq!(widget().claim(&in_room("whatsapp/acme")), None);
+        assert_eq!(widget().claim(&in_room("whatsapp/acme#120363")), None);
+    }
+
+    /// A conversation in widget's room that names gadget's ticket and
+    /// repository is widget's (§FS-008-attribution.3).
+    #[test]
+    fn a_room_outranks_what_the_conversation_references() {
+        let evidence = Evidence {
+            room: Some(ROOM.to_string()),
+            tickets: vec!["XYZ-9".to_string()],
+            repos: vec!["acme/gadget".to_string()],
+            ..Evidence::default()
+        };
+        assert_eq!(gadget().claim(&evidence), Some(Strength::Reference));
+        assert_eq!(
+            place(&evidence, &[gadget(), widget()]),
+            Placed::On {
+                project: "widget".to_string(),
+                how: Strength::Venue
+            }
+        );
+    }
+
+    /// A room two projects claim is the ordinary tie, sent to the bucket with
+    /// both as candidates (§FS-008-attribution.4).
+    #[test]
+    fn a_room_claimed_twice_is_a_tie() {
+        let also = Identity {
+            rooms: vec![ROOM.to_string()],
+            ..gadget()
+        };
+        assert_eq!(
+            place(&in_room(ROOM), &[widget(), also]),
+            Placed::Ambiguous {
+                candidates: vec!["widget".to_string(), "gadget".to_string()]
+            }
+        );
     }
 
     fn words(text: &str) -> Evidence {

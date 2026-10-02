@@ -370,6 +370,9 @@ pub fn notice_item(forge: &str, project: &str, notice: &Notice) -> Item {
 /// implementation's say is the `mine` on each message, and nothing more.
 pub fn conversation_item(forge: &str, project: &str, conversation: &Conversation) -> Item {
     let mut raw = serde_json::Map::new();
+    // Its id is the gateway's own word, never a repository and a number,
+    // however it is spelled (§AR-003-attribution.1).
+    raw.insert("conversation".to_string(), json!(true));
     // The room it stated, kept apart from its key: it is what a project's
     // identity claims it by (§FS-008-attribution.1).
     if let Some(room) = &conversation.room {
