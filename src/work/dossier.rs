@@ -16,6 +16,7 @@ use serde_json::Value;
 use crate::branches::{Checkout, Organization, WorkspaceState};
 use crate::feed::gate::Gate;
 use crate::feed::model::Item;
+use crate::fence::fence_for;
 use crate::work::recipe::Recipe;
 
 /// How much conversation a ticket quotes (§FS-005-dispatch.2). A transcript is
@@ -914,10 +915,9 @@ fn render_threads(threads: &[Thread], url: Option<&str>) -> String {
 /// A message body, fenced so that nothing inside it can be read as structure.
 /// A pull request discussing markdown will contain fences, headings, and lists
 /// of its own; a fence one backtick longer than the longest run inside is what
-/// keeps the plan a plan.
+/// keeps the plan a plan (§FS-011-command-line.11.1.1, §FS-005-dispatch.3.2).
 fn fenced(text: &str) -> String {
-    let longest = text.split(|ch| ch != '`').map(str::len).max().unwrap_or(0);
-    let fence = "`".repeat(longest.max(2) + 1);
+    let fence = fence_for(text);
     format!("{fence}\n{}\n{fence}\n", text.trim_end())
 }
 

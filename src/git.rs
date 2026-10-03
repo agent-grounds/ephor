@@ -15,6 +15,7 @@ use std::process::{Command, Stdio};
 
 use chrono::{DateTime, Utc};
 
+use crate::fence::fence_for;
 use crate::forest::{under, Forest, Upstream, ORIGIN};
 
 /// What a replay puts the branch on top of. `Base` is one branch name for the
@@ -429,7 +430,11 @@ impl Rebase {
             let came = repo.came_to(&self.onto_of(repo), &self.checkout.join(&repo.repo));
             out.push_str(&came.sentence);
             match came.verbatim {
-                Some(message) => out.push_str(&format!("\n\n```\n{message}\n```\n\n")),
+                // A run git's own fences cannot close (§FS-011-command-line.11.1.1).
+                Some(message) => {
+                    let fence = fence_for(&message);
+                    out.push_str(&format!("\n\n{fence}\n{message}\n{fence}\n\n"))
+                }
                 None => out.push_str("\n\n"),
             }
             for path in &came.paths {
@@ -1547,7 +1552,11 @@ impl Creation {
             let came = repo.came_to(&self.branch);
             out.push_str(&came.sentence);
             match came.verbatim {
-                Some(message) => out.push_str(&format!("\n\n```\n{message}\n```\n\n")),
+                // A run git's own fences cannot close (§FS-011-command-line.11.1.1).
+                Some(message) => {
+                    let fence = fence_for(&message);
+                    out.push_str(&format!("\n\n{fence}\n{message}\n{fence}\n\n"))
+                }
                 None => out.push_str("\n\n"),
             }
         }
