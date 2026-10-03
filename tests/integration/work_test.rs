@@ -700,6 +700,76 @@ fn a_replay_handed_over_as_a_plan_body_names_the_repository_it_is_about() {
     }
 }
 
+/// A replay a hook refused, with words that carry fences of their own, handed
+/// over as a plan body: git's words arrive as git wrote them. The report fences
+/// them in a run they cannot close (§FS-011-command-line.11.1.1), so the
+/// flattening that keeps a plan's headings its own (§FS-005-dispatch.3) finds
+/// git's heading inside a fence and leaves it alone — rather than rewriting
+/// `### Task 1: …` to `**Task 1: …**` and leaving the plan inside the
+/// message's four-backtick fence (agent-grounds/ephor#164).
+#[test]
+fn a_replay_a_hook_refused_reaches_the_plan_body_in_git_words() {
+    let tmp = tempdir();
+    let checkout = trailing_checkout(tmp.path(), false);
+    let says = tmp.path().join("hook-says.md");
+    fs::write(
+        &says,
+        "hook: this branch must keep the plan skeleton below unchanged:\n\
+         ````markdown\n\
+         # Rhei: the retry window\n\
+         ```text\n\
+         an example the skeleton carries\n\
+         ```\n\
+         ### Task 1: after the inner pair\n\
+         ````\n\
+         hook: restore it, then try again.\n",
+    )
+    .unwrap();
+    let hook = checkout.join(".git/hooks/pre-rebase");
+    fs::create_dir_all(hook.parent().unwrap()).unwrap();
+    fs::write(
+        &hook,
+        format!(
+            "#!/usr/bin/env bash\ncat '{}' >&2\nexit 1\n",
+            says.display()
+        ),
+    )
+    .unwrap();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(&hook, fs::Permissions::from_mode(0o755)).unwrap();
+    }
+    fixture_on(tmp.path(), &checkout, "master");
+    ephor(tmp.path())
+        .args(["refresh", "demo"])
+        .assert()
+        .success();
+
+    ephor(tmp.path())
+        .args(["work", "dispatch", "--recipe", "rebase"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("1 ticket(s) opened"));
+
+    let plan =
+        fs::read_to_string(checkout.join("panta/github-prs-acme-widget-42-922ddbdc.rhei.md"))
+            .unwrap();
+    assert!(
+        plan.contains("pre-rebase hook refused"),
+        "the replay was not refused by the hook, so there is nothing to judge:\n{plan}"
+    );
+    assert!(
+        !plan.contains("**Task 1: after the inner pair**"),
+        "git's heading was flattened, so ephor rewrote what git said:\n{plan}"
+    );
+    assert!(
+        plan.lines()
+            .any(|line| line == "### Task 1: after the inner pair"),
+        "git's heading did not reach the plan body as git wrote it:\n{plan}"
+    );
+}
+
 /// The other caller that reaches a plan body from a dispatch: the hand-over
 /// `ephor rebase --dispatch` makes, which flattens the same report through
 /// the same rule (§FS-005-dispatch.3). A rule each caller carries its own copy
