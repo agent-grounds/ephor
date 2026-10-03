@@ -66,6 +66,10 @@ pub fn parse_registry(text: &str, registry_path: &Path, schema: &Value) -> Resul
     Ok(registry)
 }
 
+/// Validates a parsed registry against its schema, then checks what the schema
+/// cannot say. A registry the schema refuses is refused whole: every violation
+/// one schema pass sees, one line each, under a header that counts them and
+/// above a pointer at the shipped example (§FS-006-project-interface.11.1).
 pub fn validate_registry(registry: &Value, schema: &Value) -> Result<()> {
     if schema.get("type").and_then(Value::as_str) != Some("object") {
         return Err(registry_error("Schema root must be an object."));
@@ -73,10 +77,21 @@ pub fn validate_registry(registry: &Value, schema: &Value) -> Result<()> {
 
     let validator = jsonschema::validator_for(schema)
         .map_err(|err| registry_error(format!("Invalid registry schema: {err}")))?;
-    if let Some(error) = validator.iter_errors(registry).next() {
+    let violations: Vec<String> = validator
+        .iter_errors(registry)
+        .map(|error| format!("  {}: {}", error.instance_path, error))
+        .collect();
+    if !violations.is_empty() {
+        let noun = if violations.len() == 1 {
+            "violation"
+        } else {
+            "violations"
+        };
         return Err(registry_error(format!(
-            "Registry does not match schema at '{}': {}",
-            error.instance_path, error
+            "Registry does not match schema ({} {noun}):\n{}\n\
+             config/workspaces.example.json is a complete registry to start from.",
+            violations.len(),
+            violations.join("\n")
         )));
     }
 
