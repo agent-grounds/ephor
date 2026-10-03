@@ -3820,7 +3820,10 @@ blocked by an unfinished one, and a matter whose last word is answered all
 carry `needs_response` false, and an `awaits` selector refuses them. **A matter
 that waits and records no reason waits on its conversation**, because that was
 the only reason a matter waited before the other was told apart; a source has
-nothing new to report for the key to be asked of it.
+nothing new to report for the key to be asked of it. **Where several reports
+are one matter** ([§FS-003-feed-categories.5](FS-003-feed-categories.md#5-one-subject-is-one-row-however-many-sources-reported-it)), its reasons are every reason any of
+them waits for, so a mention owing an answer keeps `conversation` beside an
+issue report that saw only that nobody holds it.
 
 **The key is an addition.** The item gains the reasons as a fact beside
 `needs_response`; nothing a caller of `feed --json` already reads changes

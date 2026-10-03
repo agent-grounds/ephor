@@ -87,6 +87,28 @@ impl Awaiting {
     }
 }
 
+/// Why a report waits, read from its flag and its `raw`
+/// (§FS-005-dispatch.31.2). Shared by the flat item and the fold, which adds
+/// up the reasons of every report of one matter.
+pub(crate) fn awaiting(needs_response: bool, raw: &Value) -> Vec<Awaiting> {
+    if !needs_response {
+        return Vec::new();
+    }
+    let mut reasons: Vec<Awaiting> = raw
+        .get(AWAITS)
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|reason| serde_json::from_value(reason.clone()).ok())
+        .collect();
+    reasons.sort();
+    reasons.dedup();
+    if reasons.is_empty() {
+        reasons.push(Awaiting::Conversation);
+    }
+    reasons
+}
+
 /// The original metadata overlay remains readable but is not evidence of
 /// provenance: legacy JSON could already contain it (§FS-006-project-interface.4).
 pub(crate) const SOURCE_METADATA: &str = "_ephor";
@@ -399,23 +421,7 @@ impl Item {
     /// reason, which was the only reason a matter waited before the others were
     /// told apart.
     pub fn awaiting(&self) -> Vec<Awaiting> {
-        if !self.needs_response {
-            return Vec::new();
-        }
-        let mut reasons: Vec<Awaiting> = self
-            .raw
-            .get(AWAITS)
-            .and_then(Value::as_array)
-            .into_iter()
-            .flatten()
-            .filter_map(|reason| serde_json::from_value(reason.clone()).ok())
-            .collect();
-        reasons.sort();
-        reasons.dedup();
-        if reasons.is_empty() {
-            reasons.push(Awaiting::Conversation);
-        }
-        reasons
+        awaiting(self.needs_response, &self.raw)
     }
 
     /// The pull request or issue number, best effort: the digits after the
