@@ -2287,7 +2287,7 @@ yours to start. It is said on the thing that hands work over and nowhere else
 — a recipe, or an entry that lays a workflow down (§8.15.1) — because trusting
 the gate-fixer to start itself says nothing about the rest of the menu, and
 every refusal dispatch makes still applies, including refusing to run in a
-working tree standing on another branch. Arguments after `--` on `ephor work dispatch` are passed unchanged and in order to every autorun that invocation starts; ephor neither interprets nor remembers them, later due sweeps, syncs, and interface runs receive none, and dry runs still start no runtime.
+working tree standing on another branch. Arguments after `--` on `ephor work dispatch` or `ephor work sync` are passed unchanged and in order to every autorun that invocation starts; ephor neither interprets nor remembers them, later due sweeps, syncs, and interface runs receive none, and dry runs still start no runtime.
 
 **`dispatch`** is the same shape one step earlier: it says that the sweep which
 *finds* the matters needs nobody either, and how often that sweep should happen

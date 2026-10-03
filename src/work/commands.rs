@@ -1666,11 +1666,12 @@ fn sync_work(
         // Nobody typed this one: `work sync` is what a timer runs before
         // `work run --due`, and a budget that bound only the second would let
         // the first start the night's work unbound
-        // (§FS-015-spend-ceiling.6).
+        // (§FS-015-spend-ceiling.6). The runner arguments are this
+        // invocation's alone, as dispatch's are (§FS-005-dispatch.24).
         started(
             &mut dispatcher,
             projects,
-            &[],
+            &args.runner_args,
             args.json,
             crate::work::spend::Budget::Binds,
         )?;
