@@ -404,8 +404,8 @@
           "required": ["configured", "asked", "answering"],
           "properties": {
             "configured": { "type": "integer" },
-            "asked": { "type": "integer" },
-            "answering": { "type": "integer" }
+            "asked": { "type": ["integer", "null"], "description": "How many sources the last refresh asked. null: no refresh has produced a cache for this project yet, so nothing was asked (FS-010-doctor.2.1)." },
+            "answering": { "type": ["integer", "null"], "description": "How many of those answered. null: no refresh has produced a cache for this project yet, so nothing was asked — never 0, which reads as unreachable (FS-010-doctor.2.1)." }
           }
         },
         "held": {
