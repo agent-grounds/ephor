@@ -569,6 +569,27 @@ scalar values, so a list or a nested map written where a value belongs is
 refused offline and by name rather than becoming a selector that silently never
 matches.
 
+### 11.1 A registry the schema refuses is refused whole
+
+A registry that does not match its schema is answered with **every violation
+one schema pass sees**, not the first of them: one line per violation, each
+naming the instance path it sits at and what that place owes, under a header
+that counts them. A registry written by hand from the schema owes its missing
+fields all at once, and an answer naming one of them turns N missing fields
+into N edit-and-rerun rounds, each one another command and another read of the
+file ([§GOAL-001-fewest-moves](../goals.md#goal-001-fewest-moves-the-most-frequent-response-is-the-cheapest-one)). The answer closes by naming
+`config/workspaces.example.json` as a complete registry to start from, because
+copying the shipped example and cutting it down answers every one of those
+lines at once.
+
+It is the same refusal, only whole: the error, its exit code and the shape of
+`--json` stay what they were, and under `--json` the list is carried inside the
+answer's existing `says` sentence rather than in a field of its own. Every
+command that loads the registry — `validate`, `validate --schema-only`,
+`refresh` and the rest — gives this one answer, because they all load it the
+same way. What a registry owes *after* the schema passes — unique ids, a
+project's type, its derived ids — is not part of this pass.
+
 ## 12. What the toolchain keeps in a checkout has a home, and a deprecated one
 
 `.agents/` is, by convention, where an agent's *instructions* live, and agent

@@ -7,6 +7,10 @@ describes what the concepts *mean* rather than restating the schema.
 
 Your own registry lives at `~/.config/ephor/workspaces.json`;
 `config/workspaces.example.json` is a worked example of everything below.
+A registry the schema refuses is answered with every violation one pass sees,
+each at its path, and the answer names that example as a complete registry to
+start from
+([§FS-006-project-interface.11.1](functional-spec/FS-006-project-interface.md#111-a-registry-the-schema-refuses-is-refused-whole)).
 
 ## Four top-level sections
 
