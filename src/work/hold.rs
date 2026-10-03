@@ -22,6 +22,11 @@ use super::spend::Scope;
 pub enum Hold {
     /// The reader's `--except` named the root; `except` is the value as given.
     Excluded { except: String },
+    /// Every ticket that would have made the root due sits in a top-level
+    /// tree an open ticket in a gating state holds (§FS-005-dispatch.24.3.2).
+    /// `tickets` is each gated ticket, plan-qualified, with the gating state
+    /// it waits in.
+    Person { tickets: Vec<(String, String)> },
     /// The last run advanced nothing and the root rests until `until`. `left`
     /// is how long that was when the sweep read it, in the words the reason
     /// uses — the sweep's clock, not the renderer's.
@@ -105,6 +110,7 @@ impl Hold {
     pub fn kind(&self) -> &'static str {
         match self {
             Hold::Excluded { .. } => "excluded",
+            Hold::Person { .. } => "person",
             Hold::Rested { .. } => "rested",
             Hold::Stopped { .. } => "stopped",
             Hold::Tree { .. } => "tree",
@@ -120,6 +126,16 @@ impl Hold {
         match self {
             Hold::Excluded { except } => {
                 format!("--except {except} — left out of this sweep at your asking")
+            }
+            Hold::Person { tickets } => {
+                let gates: Vec<String> = tickets
+                    .iter()
+                    .map(|(ticket, state)| format!("{ticket} is in '{state}'"))
+                    .collect();
+                format!(
+                    "it waits on a person — {}; it is started again once that ticket moves",
+                    gates.join(", ")
+                )
             }
             Hold::Rested { run, left, .. } => {
                 format!("the last run here ({run}) advanced nothing — this root is tried again in {left}")
@@ -167,6 +183,13 @@ impl Hold {
         match self {
             Hold::Excluded { except } => {
                 object.insert("except".into(), json!(except));
+            }
+            Hold::Person { tickets } => {
+                let tickets: Vec<Value> = tickets
+                    .iter()
+                    .map(|(ticket, state)| json!({ "ticket": ticket, "state": state }))
+                    .collect();
+                object.insert("tickets".into(), Value::Array(tickets));
             }
             Hold::Rested {
                 run, count, until, ..

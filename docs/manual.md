@@ -3333,7 +3333,14 @@ ephor work states
   order. An eligible root omitted only because a ceiling is full, or because a
   live run in another work root holds its checkout, is printed as `passed-over`
   with the reason naming the key or that run (also under `--json`) and does not
-  increase `failed`. The reading says how many roots are live and how
+  increase `failed`. A root not live whose every ticket that would have made it
+  due sits in a tree an open gate holds — a supervisor above a subtask in a
+  gating state — waits on a person: it is passed over naming the gated ticket
+  and its state, takes no slot and no no-advance strike, drops any no-advance
+  rest or stop it had, and is due again on the first sweep after the ticket
+  leaves its gate
+  ([§FS-005-dispatch.24.3](functional-spec/FS-005-dispatch.md#243-a-root-waiting-on-a-person-is-passed-over-not-started)).
+  The reading says how many roots are live and how
   many of those are parked, in prose and under `--json`, so a full ceiling never
   hides that a person is holding one of the slots. Ceilings gate starts, not
   runs already under way: several parked roots resuming at once can carry
@@ -3351,8 +3358,9 @@ ephor work states
   | `kind` | held because | members beside `kind` |
   |---|---|---|
   | `excluded` | your `--except` named the root | `except`, the value as you gave it |
+  | `person` | every ticket that would have made it due is held by a gate in its own tree | `tickets`, each `{ticket, state}` gated |
   | `rested` | the last run advanced nothing; tried again later | `run`, `count`, `until` |
-  | `stopped` | three runs in a row advanced nothing; started again only by hand or by a run that advances | `run`, `count` |
+  | `stopped` | three runs in a row advanced nothing; started again only by hand, by a run that advances, or once found waiting on a person | `run`, `count` |
   | `tree` | a live run holds the checkout | `root` it was started from, `run` where it published an id |
   | `pools` | a plan needs pools that cannot be had together ([8.19](#819-what-a-provider-has-left-and-which-alternate-gets-the-ticket)) | `plan`, `pools`, `pool`, `until` where known |
   | `concurrency` | `max_concurrent` or `max_active` is full | `scope` (`site`, `organization`, `project`), `id` below the site, `key`, `limit`, `count` |
@@ -3362,9 +3370,9 @@ ephor work states
   *not startable*. Only the first hold is named, so a `concurrency` row under
   `--max-concurrent 0` may stand over another ceiling that is full as well;
   a free slot starts a root held by `concurrency`, and not one held by
-  `budget`. A sweep above one project without `--act` asks only `--except`
-  and the no-advance holds, so its rows carry only `excluded`, `rested` or
-  `stopped`, and its `would-run` rows carry no `hold` at all.
+  `budget`. A sweep above one project without `--act` asks only `--except`,
+  a root waiting on a person and the no-advance holds, so its rows carry only
+  `excluded`, `person`, `rested` or `stopped`, and its `would-run` rows carry no `hold` at all.
 - **`workflows`** and **`lay`** are the runtime's own workflows, offered as
   actions (§8.15). `lay` writes a plan of its own beside the matter's and runs
   nothing; `--dry-run` shows what would answer every input first. Where the
