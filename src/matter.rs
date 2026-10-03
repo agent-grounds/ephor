@@ -15,7 +15,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::attribution::Evidence;
-use crate::feed::model::{Item, ItemKind, ItemRole};
+use crate::feed::model::{awaiting, Awaiting, Item, ItemKind, ItemRole, AWAITS};
 
 /// A matter's identity: the subject key its source stated
 /// (§FS-007-matters.1). Never guessed from resemblance — two pull requests
@@ -663,6 +663,14 @@ impl Matter {
     /// (§FS-003-feed-categories.5).
     pub fn absorb(&mut self, other: Matter) {
         let awaited = self.needs_response || other.needs_response;
+        // Why it waits adds up across reports, as whether it waits does: a
+        // notice owing an answer keeps its conversation reason beside an issue
+        // report that saw only that nobody holds it (§FS-005-dispatch.31.2), so
+        // that issue is still offered `answer` (§FS-005-dispatch.13.1).
+        let mut reasons = awaiting(self.needs_response, &self.raw);
+        reasons.extend(awaiting(other.needs_response, &other.raw));
+        reasons.sort();
+        reasons.dedup();
         let updated_at = self.updated_at.max(other.updated_at);
         let (mut winner, loser) = if other.detail() > self.detail() {
             (other, std::mem::replace(self, Matter::placeholder()))
@@ -691,6 +699,7 @@ impl Matter {
         }
         winner.raw = merge_raw(winner.raw, loser.raw);
         winner.needs_response = awaited;
+        settle_awaits(&mut winner.raw, &reasons);
         winner.updated_at = updated_at;
         // The thin report that knew somebody was waiting may be the one that
         // did not know the subject had finished — a notice's state is the
@@ -723,6 +732,24 @@ impl Matter {
             fingerprint: Fingerprint::default(),
             raw: Value::Null,
         }
+    }
+}
+
+/// Write the folded reasons back. Only a matter one of whose reasons is that
+/// nobody holds it carries the key: one that waits on its conversation alone
+/// reads so from silence (§FS-005-dispatch.31.2), and a key either report kept
+/// would otherwise speak for the fold.
+fn settle_awaits(raw: &mut Value, reasons: &[Awaiting]) {
+    if reasons.contains(&Awaiting::Unclaimed) {
+        let labels: Vec<&str> = reasons.iter().map(|reason| reason.label()).collect();
+        if raw.is_null() {
+            *raw = Value::Object(serde_json::Map::new());
+        }
+        if let Some(raw) = raw.as_object_mut() {
+            raw.insert(AWAITS.to_string(), serde_json::json!(labels));
+        }
+    } else if let Some(raw) = raw.as_object_mut() {
+        raw.remove(AWAITS);
     }
 }
 

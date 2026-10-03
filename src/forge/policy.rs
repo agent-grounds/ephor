@@ -1252,6 +1252,64 @@ mod tests {
         assert!(!issue_item("github-issues", "widget", &closed, Unclaimed::Awaits).needs_response);
     }
 
+    /// Why a matter waits adds up across its reports (§FS-005-dispatch.31.2):
+    /// an issue report that saw only that nobody holds the issue, folded with a
+    /// mention that owes an answer, waits on both, so the shipped `answer` is
+    /// still offered (§FS-005-dispatch.13.1) — whichever report arrives first.
+    #[test]
+    fn the_reasons_an_issue_waits_add_up_across_its_reports() {
+        let unheld = Issue {
+            key: "acme/widget#7".to_string(),
+            title: "Widen the retry window".to_string(),
+            status: Some("open".to_string()),
+            url: None,
+            updated_at: Utc::now(),
+            role: Role::Author,
+            assigned: Some(false),
+            assignees: None,
+            labels: None,
+            blocked_by: None,
+            messages: Vec::new(),
+        };
+        let issue = issue_item("github-issues", "widget", &unheld, Unclaimed::Awaits);
+        assert_eq!(issue.awaiting(), [Awaiting::Unclaimed]);
+        let answer = crate::work::recipe::shipped()
+            .into_iter()
+            .find(|recipe| recipe.id == "answer")
+            .unwrap();
+        let facts = crate::work::recipe::Facts::default();
+
+        let mention = notice(SubjectKind::Issue, Some("7"), "mention");
+        assert!(mention.needs_response);
+        for reports in [
+            vec![issue.clone(), mention.clone()],
+            vec![mention, issue.clone()],
+        ] {
+            let merged = merge_reports(reports);
+            assert_eq!(merged.len(), 1);
+            assert_eq!(
+                merged[0].awaiting(),
+                [Awaiting::Conversation, Awaiting::Unclaimed]
+            );
+            assert_eq!(merged[0].raw[AWAITS], json!(["conversation", "unclaimed"]));
+            assert!(answer.when.explain(&merged[0], &facts).is_empty());
+        }
+
+        // A notice that owes nothing adds no reason: nobody holding it is still
+        // the only one, and `answer` still passes it over.
+        let kept_informed = notice(SubjectKind::Issue, Some("7"), "subscribed");
+        assert!(!kept_informed.needs_response);
+        for reports in [
+            vec![issue.clone(), kept_informed.clone()],
+            vec![kept_informed, issue.clone()],
+        ] {
+            let merged = merge_reports(reports);
+            assert_eq!(merged.len(), 1);
+            assert_eq!(merged[0].awaiting(), [Awaiting::Unclaimed]);
+            assert!(!answer.when.explain(&merged[0], &facts).is_empty());
+        }
+    }
+
     /// A dependency is the forge saying which work comes first, so it
     /// outranks both the unclaimed backlog and the issue conversation
     /// (§FS-003-feed-categories.4).
