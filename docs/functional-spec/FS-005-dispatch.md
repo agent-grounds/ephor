@@ -31,7 +31,7 @@ running refuses with the configured runner named.
 
 A **recipe** is a named piece of configuration with a selector and a brief: the
 selector says which items it applies to — kind, role, whether the gate is red,
-whether a response is owed, which source reported it — and the brief is what
+whether a response is owed and why, which source reported it — and the brief is what
 the ticket asks for, in the reader's own words. Those words may be written
 inline or kept in a file the recipe names, which is the same brief arriving by
 another door ([§FS-005-dispatch.34](FS-005-dispatch.md#34-a-brief-may-be-kept-in-the-file-that-owns-it)).
@@ -1071,6 +1071,45 @@ declares reply ([§FS-007-matters.4](FS-007-matters.md#4-a-channel-says-what-it-
 posting, edited or as it stands, exactly as a reaction is posted today; on
 a channel that does not, the proposal is what the person copies — a stated
 degrade ([§REQ-001-boundary.1](../requirements/REQ-001-boundary.md#1-the-anatomy)), not a failure.
+
+### 13.1 An issue nobody holds is owed work, not an answer
+
+A matter can wait on the reader for more than one reason, and only one of them
+is a conversation. An issue nobody has taken awaits somebody where its source
+asks for that, and [§FS-003-feed-categories.4](FS-003-feed-categories.md#4-a-conversation-is-answered-in-whatever-form-the-forge-recorded-it) is plain that this way of waiting
+"is not a conversation at all": nobody asked anything, and the talk may never
+have started. What such an issue is owed is the work it describes, which is
+the shipped issue recipe's, not a reply.
+
+So **the shipped answer recipe takes a matter only where its conversation
+awaits the reader.** An issue whose only reason for waiting is that nobody
+holds it is not offered `answer`, and a plain dispatch lays the issue recipe
+on it instead. An issue nobody holds whose conversation *also* awaits the
+reader — somebody asked a question and nobody has taken the issue — waits for
+both reasons, and is offered `answer` as before; so is an issue somebody
+holds whose conversation awaits the reader.
+
+Three things do not move. **The feed is unchanged**: an unclaimed issue still
+awaits the reader, bolded in the feed and counted in the glance, and
+`needs_response` reads exactly as it did
+([§FS-003-feed-categories.4](FS-003-feed-categories.md#4-a-conversation-is-answered-in-whatever-form-the-forge-recorded-it)). **The `needs_response` selector key is
+unchanged**: a configured recipe that asks it is still asking whether the
+matter waits at all, for whatever reason. **Nothing is lost for a matter whose
+source recorded no reason**: a matter that waits and does not say why waits on
+its conversation, which is the only reason there was before this one was told
+apart.
+
+**The dossier says which reason it is.** Its `waiting on` row
+([§FS-005-dispatch.2](FS-005-dispatch.md#2-the-ticket-carries-what-ephor-knows-not-a-link-to-it)) reads "an answer from me" only where the conversation
+awaits the reader. Where the only reason is that nobody holds the issue it
+says so — "somebody to take it (nobody holds it)" — and where both hold it
+names both. A brief that tells an agent somebody is waiting on a reply when
+nobody asked anything spends a run finding that out.
+
+The shipped recipe expresses this with a selector key of its own, `awaits`
+([§FS-005-dispatch.31.2](FS-005-dispatch.md#312-and-it-can-ask-why-the-matter-waits)), rather than with a rule hidden in ephor, so that a
+configured recipe replacing `answer` ([§FS-005-dispatch.1](FS-005-dispatch.md#1-a-recipe-decides-which-items-deserve-work-and-what-to-ask-for)) can say the same
+thing.
 
 ## 14. Who does the work is chosen, and defaulted per project
 
@@ -3754,6 +3793,46 @@ it. The refusal names `meta` and what the matter carried, as
 would have to mean *carried, and not this* — a second rule for a case nobody has
 asked for. One rule now; the other can be added later without unsaying
 anything here.
+
+### 31.2 And it can ask why the matter waits
+
+`needs_response` says *whether* a matter waits on the reader, and one yes
+covers reasons that ask for different work: a conversation awaiting a reply,
+and an issue nobody has taken ([§FS-003-feed-categories.4](FS-003-feed-categories.md#4-a-conversation-is-answered-in-whatever-form-the-forge-recorded-it)). A selector that can
+only ask whether cannot send the first to a reply and the second to the work
+([§FS-005-dispatch.13.1](FS-005-dispatch.md#131-an-issue-nobody-holds-is-owed-work-not-an-answer)). So a selector may also ask **`awaits`** — the reasons
+the matter waits on the reader, as a list of any of:
+
+- **`conversation`** — the conversation awaits the reader, in any of the forms
+  [§FS-003-feed-categories.4](FS-003-feed-categories.md#4-a-conversation-is-answered-in-whatever-form-the-forge-recorded-it) reads the talk for, and every other way a matter
+  waits that is not the one below;
+- **`unclaimed`** — the matter is an issue nobody has taken, on a source that
+  counts that as waiting.
+
+**It asks for any of them.** `["conversation"]` matches a matter whose
+conversation awaits the reader, whether or not nobody holds it as well; it
+refuses one that waits only because nobody holds it. `["unclaimed"]` is the
+other half. This is the any-of rule `kinds`, `roles` and `sources` follow
+([§FS-005-dispatch.1](FS-005-dispatch.md#1-a-recipe-decides-which-items-deserve-work-and-what-to-ask-for)), and there is no negative form.
+
+**A matter that does not wait answers none of them.** Finished work, an issue
+blocked by an unfinished one, and a matter whose last word is answered all
+carry `needs_response` false, and an `awaits` selector refuses them. **A matter
+that waits and records no reason waits on its conversation**, because that was
+the only reason a matter waited before the other was told apart; a source has
+nothing new to report for the key to be asked of it.
+
+**The key is an addition.** The item gains the reasons as a fact beside
+`needs_response`; nothing a caller of `feed --json` already reads changes
+shape or meaning, and a configured recipe that does not ask `awaits` matches
+exactly as before.
+
+**A refusal names it, as every other refusal does**
+([§FS-005-dispatch.27](FS-005-dispatch.md#27-an-offer-that-a-selector-refused-says-why)). `ephor work offers` names `awaits` and what the matter
+carried instead of what the selector asked for: "the matter waits only because
+nobody holds it; the selector asks for one awaiting `conversation`", or, where
+it does not wait at all, "the matter is not waiting on me; the selector asks
+for one awaiting `conversation`".
 
 ## 32. A recipe can ask for its own sweep, and say how often
 

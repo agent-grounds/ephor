@@ -1898,6 +1898,116 @@ mod tests {
         assert!(ids(&recipes, &status).is_empty());
     }
 
+    /// An issue as the issue source makes it (§FS-003-feed-categories.4): the
+    /// reader's own, held by `holders`, with `messages` as its conversation,
+    /// from a source that counts an issue nobody has taken as waiting.
+    fn issue(holders: &[&str], messages: Vec<crate::forge::Message>) -> Item {
+        let issue = crate::forge::Issue {
+            key: "acme/widget#378".to_string(),
+            title: "Retry window".to_string(),
+            status: Some("open".to_string()),
+            url: None,
+            updated_at: chrono::Utc::now(),
+            role: crate::forge::Role::Author,
+            assigned: Some(!holders.is_empty()),
+            assignees: Some(holders.iter().map(|holder| holder.to_string()).collect()),
+            labels: None,
+            blocked_by: None,
+            messages,
+        };
+        crate::forge::policy::issue_item(
+            "github-issues",
+            "widget",
+            &issue,
+            crate::forge::policy::Unclaimed::Awaits,
+        )
+    }
+
+    fn said(author: &str, mine: bool) -> crate::forge::Message {
+        crate::forge::Message {
+            author: author.to_string(),
+            text: "…".to_string(),
+            when: None,
+            reactions: Vec::new(),
+            react: Value::Null,
+            task: Value::Null,
+            mine,
+        }
+    }
+
+    /// §FS-005-dispatch.13.1: an issue that waits only because nobody holds it
+    /// is owed work, not a reply, and the shipped `answer` passes it over —
+    /// while one whose conversation also awaits the reader is still answered.
+    #[test]
+    fn the_shipped_answer_takes_a_conversation_and_not_an_issue_nobody_holds() {
+        let recipes = shipped();
+        let answer = "answer".to_string();
+
+        let unspoken = issue(&[], vec![said("me", true)]);
+        // The feed does not move: nobody holds it, so it awaits the reader.
+        assert!(unspoken.needs_response);
+        assert_eq!(ids(&recipes, &unspoken), ["implement"]);
+
+        let asked_and_unheld = issue(&[], vec![said("me", true), said("Ada", false)]);
+        assert!(ids(&recipes, &asked_and_unheld).contains(&answer));
+
+        let asked_and_held = issue(&["me"], vec![said("me", true), said("Ada", false)]);
+        assert!(ids(&recipes, &asked_and_held).contains(&answer));
+    }
+
+    /// §FS-005-dispatch.31.2: `awaits` asks why a matter waits, any-of, and a
+    /// matter that waits without saying why waits on its conversation.
+    #[test]
+    fn awaits_asks_why_the_matter_waits() {
+        let conversation = selector(json!({ "awaits": ["conversation"] }));
+        let unclaimed = selector(json!({ "awaits": ["unclaimed"] }));
+        let facts = Facts::default();
+
+        let unspoken = issue(&[], vec![said("me", true)]);
+        assert!(!conversation.matches(&unspoken, &facts));
+        assert!(unclaimed.matches(&unspoken, &facts));
+
+        // Both reasons hold: either half matches.
+        let asked_and_unheld = issue(&[], vec![said("me", true), said("Ada", false)]);
+        assert!(conversation.matches(&asked_and_unheld, &facts));
+        assert!(unclaimed.matches(&asked_and_unheld, &facts));
+
+        let asked_and_held = issue(&["me"], vec![said("me", true), said("Ada", false)]);
+        assert!(conversation.matches(&asked_and_held, &facts));
+        assert!(!unclaimed.matches(&asked_and_held, &facts));
+
+        // A matter that does not wait answers neither.
+        let quiet = issue(&["me"], vec![said("me", true)]);
+        assert!(!conversation.matches(&quiet, &facts));
+        assert!(!unclaimed.matches(&quiet, &facts));
+
+        // A matter that waits and recorded no reason waits on its
+        // conversation, the one reason there was before.
+        let mut unsaid = item(ItemKind::Pr, Some(ItemRole::Author));
+        unsaid.needs_response = true;
+        assert!(conversation.matches(&unsaid, &facts));
+        assert!(!unclaimed.matches(&unsaid, &facts));
+
+        // The refusal names the field and the reason (§FS-005-dispatch.27).
+        let refused = conversation.explain(&unspoken, &facts);
+        assert_eq!(refused.len(), 1, "{refused:?}");
+        assert_eq!(refused[0].field, "awaits");
+        assert!(
+            refused[0]
+                .reason
+                .contains("waits only because nobody holds it"),
+            "{}",
+            refused[0].reason
+        );
+        let refused = conversation.explain(&quiet, &facts);
+        assert_eq!(refused[0].field, "awaits");
+        assert!(
+            refused[0].reason.contains("not waiting on me"),
+            "{}",
+            refused[0].reason
+        );
+    }
+
     /// The rebase is offered on what has actually fallen behind, and nothing
     /// else (§FS-004-quick-actions.6).
     #[test]
