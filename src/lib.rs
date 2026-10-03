@@ -22,6 +22,7 @@ pub mod commands;
 pub mod doctor;
 pub mod error;
 pub mod feed;
+pub mod fence;
 pub mod forest;
 pub mod forge;
 pub mod git;
