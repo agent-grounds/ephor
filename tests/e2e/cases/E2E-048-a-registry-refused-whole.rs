@@ -1,4 +1,4 @@
-//! E2E-045-a-registry-refused-whole: a registry written by hand from the schema
+//! E2E-048-a-registry-refused-whole: a registry written by hand from the schema
 //! learns everything it still owes from one run, not one field per run.
 //!
 //! The scenario is §FS-006-project-interface.11.1 end to end, on the registry
