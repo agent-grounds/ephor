@@ -305,6 +305,7 @@ fn the_roots_are_the_configured_places_and_the_ledger_keeps_its_matter() {
         entries: BTreeMap::new(),
         starts: BTreeMap::new(),
         advances: BTreeMap::new(),
+        waited: Default::default(),
     };
     ledger.entries.insert(
         "forge:widget/7".to_string(),
@@ -711,6 +712,7 @@ fn a_shared_root_is_listed_once_and_an_item_template_is_skipped() {
         entries: BTreeMap::new(),
         starts: BTreeMap::new(),
         advances: BTreeMap::new(),
+        waited: Default::default(),
     };
     let groups = enumerate_roots(
         &WorkConfig::default(),
@@ -763,6 +765,7 @@ fn an_aliased_workspace_is_one_root_not_two() {
         entries: BTreeMap::new(),
         starts: BTreeMap::new(),
         advances: BTreeMap::new(),
+        waited: Default::default(),
     };
     let groups = enumerate_roots(
         &WorkConfig::default(),
@@ -850,6 +853,7 @@ fn a_plan_under_an_organization_root_is_enumerated_and_one_with_no_answer_is_ski
         entries: BTreeMap::new(),
         starts: BTreeMap::new(),
         advances: BTreeMap::new(),
+        waited: Default::default(),
     };
     let groups = enumerate_roots(
         &WorkConfig::default(),
@@ -1102,6 +1106,7 @@ fn empty_ledger() -> Ledger {
         entries: BTreeMap::new(),
         starts: BTreeMap::new(),
         advances: BTreeMap::new(),
+        waited: Default::default(),
     }
 }
 
@@ -2719,6 +2724,53 @@ fn remembering(root: &Path, run: &str, misses: u32, at: DateTime<Utc>) -> Ledger
         },
     );
     ledger
+}
+
+/// A root found waiting on a person whose last empty run was never judged —
+/// the run halted at the gate before any sweep read it — earns no strike from
+/// that run once the gate moves; the next run there is judged as ever
+/// (§FS-005-dispatch.24.3.3).
+#[test]
+fn the_run_before_a_root_waited_on_a_person_is_never_a_miss() {
+    let tmp = tempfile::tempdir().unwrap();
+    let root = tmp.path().join("panta");
+    let group = due_root(&root, &ticket_at("fix-gate-1", "collect"));
+    last_run(&root, "acme-run-1", "failed", false);
+    let now = Utc::now();
+    let mut ledger = empty_ledger();
+    ledger.waited.insert(root_key(&root));
+    let sweep = |ledger: &Ledger| {
+        due_among(
+            &work_config(),
+            std::slice::from_ref(&group),
+            &asking(&["fix-gate"]),
+            &laying(&[]),
+            ledger,
+            now,
+            Reach::Sweep,
+        )
+    };
+
+    let due = sweep(&ledger);
+    assert_eq!(due.len(), 1);
+    assert!(
+        due[0].passed_over().is_none(),
+        "the run read when the root waited rests nothing: {:?}",
+        due[0].passed_over()
+    );
+    let kept = match &due[0].verdict {
+        Some(Verdict::Nothing(judged)) => judged.clone(),
+        other => panic!("the run is known, with no miss: {other:?}"),
+    };
+    assert_eq!((kept.run.as_str(), kept.misses), ("acme-run-1", 0));
+
+    // A later run that advances nothing is a miss like any other.
+    let mut ledger = empty_ledger();
+    ledger.advances.insert(root_key(&root), kept);
+    last_run(&root, "acme-run-2", "failed", false);
+    let due = sweep(&ledger);
+    let why = due[0].passed_over().expect("rested").to_string();
+    assert!(why.contains("acme-run-2") && why.contains("5m"), "{why}");
 }
 
 /// The reproduction, from the inside. A root whose last run advanced nothing
