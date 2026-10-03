@@ -470,6 +470,11 @@ pub struct WorkSyncArgs {
     /// Emit the outcome as JSON.
     #[arg(long)]
     pub json: bool,
+
+    /// Arguments passed through to the runtime for autoruns started by this
+    /// sync, after `--` (§FS-005-dispatch.24).
+    #[arg(last = true)]
+    pub runner_args: Vec<String>,
 }
 
 #[derive(Args, Debug)]
