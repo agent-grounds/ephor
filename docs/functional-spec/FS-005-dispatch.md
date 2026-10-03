@@ -2255,6 +2255,12 @@ the checkout that root's work would run in. A ticket a hand wrote into such a
 plan is due exactly as a dispatched one is; the recipe is a fact about the
 ticket, not about who appended it.
 
+*Parked on a question* is judged over the ticket's tree, not the ticket alone:
+an open ticket in a gating state holds every open ticket of its top-level tree
+out of the due reading, and a root whose every would-be-due ticket is held that
+way is **waiting on a person** — passed over, never started
+([§FS-005-dispatch.24.3](FS-005-dispatch.md#243-a-root-waiting-on-a-person-is-passed-over-not-started)).
+
 **A dispatch or a sync may give the runs it starts arguments, for that
 invocation alone.** `ephor work dispatch -- <RUNNER_ARGS>...` and
 `ephor work sync -- <RUNNER_ARGS>...` supply the trailing vector to every
@@ -2611,7 +2617,8 @@ was written to expose.** The interval is the failed start's — five minutes,
 doubling with each consecutive miss, capped at two hours — so a root left alone
 is always tried again eventually. But past three consecutive runs that advanced
 nothing the root stops being rested and stops being admitted at all, until a run
-advances there or somebody starts one by hand, and every sweep from then on says
+advances there, somebody starts one by hand, or the sweep finds the root waiting
+on a person ([§FS-005-dispatch.24.3](FS-005-dispatch.md#243-a-root-waiting-on-a-person-is-passed-over-not-started)), and every sweep from then on says
 so in the row where it used to say *started*. That is
 [§FS-005-dispatch.11](FS-005-dispatch.md#11-a-failure-that-is-not-the-changes-fault-is-restarted-not-fixed)'s own
 fourth clause arriving here: past a small number of restarts the infrastructure
@@ -2655,8 +2662,10 @@ or excluded root is never a candidate, so it consumes no slot, frees none, and
 counts toward no ceiling; an excluded root whose own run is **live** still counts
 live, because capacity is live work and not attempts. And a root two of these
 would refuse is refused once, by the first: a live run of its own is silent as
-ever, then the reader's `--except`, then the no-advance rest, then a tree another
-root's run holds, then the ceilings — one row, one reason, first match.
+ever, then the reader's `--except`, then a root waiting on a person
+([§FS-005-dispatch.24.3](FS-005-dispatch.md#243-a-root-waiting-on-a-person-is-passed-over-not-started)), then the no-advance rest, then a tree another
+root's run holds, then the pools, then the ceilings — one row, one reason, first
+match.
 
 **A runner that writes no such record leaves all of this inert.** Where there is
 no stream, or one this reader cannot understand, no verdict is taken, nothing is
@@ -2690,7 +2699,9 @@ that started, and on no root that did not.
 
 **Both non-starts are bound, not only the ceiling's.** A root passed over is
 announced as passed over — whether a full ceiling refused it, the reader's own
-`--except` named it, the last run there having advanced nothing rested it,
+`--except` named it, it waits on a person
+([§FS-005-dispatch.24.3](FS-005-dispatch.md#243-a-root-waiting-on-a-person-is-passed-over-not-started)),
+the last run there having advanced nothing rested it,
 another root's run holds its tree, or its plan needs pools this site cannot
 have together ([§FS-005-dispatch.33](FS-005-dispatch.md#33-work-that-needs-several-pools-at-once-is-admitted-whole)).
 A root whose launch was refused is announced as that refusal. The two are
@@ -2739,6 +2750,11 @@ each one carries beside its `kind`:
 
 - `excluded` — the reader's `--except` named the root. `except` is the value
   the reader gave, as they gave it.
+- `person` — the root waits on a person: every ticket that would have made it
+  due is held by an open ticket in a gating state in its own tree
+  ([§FS-005-dispatch.24.3](FS-005-dispatch.md#243-a-root-waiting-on-a-person-is-passed-over-not-started)). `tickets` is a list naming each gated ticket that
+  holds the root, as `{ticket, state}`, `ticket` plan-qualified as the row's
+  ticket list is and `state` the gating state it sits in.
 - `rested` — the last run there advanced nothing, and the root is tried again
   later. `run` is the run that was judged, `count` how many runs in a row have
   advanced nothing, and `until` the instant the root is tried again.
@@ -2770,8 +2786,8 @@ Three things about the field are part of its contract, because a caller will
 come to depend on each of them.
 
 **The vocabulary is open.** The kinds above are the ones there are today, and
-a kind may be added without that being a breaking change — a root passed over
-because it waits on a person is the next one asked for. So a caller reads a
+a kind may be added without that being a breaking change — `person` was the
+first one added after the field shipped. So a caller reads a
 `kind` it does not recognise as *not startable*, never as *startable*: the safe
 reading of a hold one does not understand is that it holds.
 
@@ -2789,15 +2805,84 @@ here.
 
 **The gated report holds less.** A sweep at a width that is gated reports
 rather than acts ([§FS-011-command-line.10](FS-011-command-line.md#10-a-mutating-verb-above-one-project-reports-and-acts-under---act)), and what it asks before it
-reports is the reader's `--except` and the no-advance rest — the holds that
-need no capacity read. Its `passed-over` rows carry `hold` exactly as an acting
-sweep's do, and can only carry `excluded`, `rested` or `stopped`. A gated
-`would-run` therefore does not say that nothing holds the root; it says that
-none of those three does.
+reports is the reader's `--except`, a root waiting on a person, and the
+no-advance rest — the holds that need no capacity read. Its `passed-over` rows
+carry `hold` exactly as an acting sweep's do, and can only carry `excluded`,
+`person`, `rested` or `stopped`. A gated `would-run` therefore does not say that
+nothing holds the root; it says that none of those four does.
 
 The published `work-run` shape declares `hold` in the same change, with its
 kinds named in its description rather than closed in an enumeration, so the
 schema reads the vocabulary as open exactly as a caller is told to.
+
+### 24.3 A root waiting on a person is passed over, not started
+
+A gate is where the machine says a person moves the work next
+([§FS-005-dispatch.9](FS-005-dispatch.md#9-work-that-stops-for-a-person-says-so-where-the-person-is-looking)), and a runtime halts at an open gate rather than
+working around it. So a ticket beside the gate in the same tree — a supervisor
+in a state that is not a gate, waiting on the subtask that is — is not work a
+run would advance either, though it passes the due test taken ticket by ticket.
+Judged that way the root is due, the sweep starts it, the run halts at the gate
+having done nothing, and every rest the no-advance rule grants ends in another
+such start until the root is stopped — on a plan working exactly as designed,
+and stopped past the moment the person answers. This point is the due test
+taken over the tree instead
+([§FS-005-dispatch.24](FS-005-dispatch.md#24-work-nobody-has-to-start-starts-itself)).
+
+#### 24.3.1 A gate holds its own top-level tree
+
+A ticket's **top-level tree** is the top-level ticket it belongs to together
+with every ticket whose id extends that ticket's id with a `.` — `fix-gate-1`,
+`fix-gate-1.triage` and `fix-gate-1.triage.repro` are one tree, and
+`fix-gate-10` is another. An open ticket in a state the machine in force calls
+gating holds **every open ticket of its top-level tree** out of the due
+reading, itself included, and nothing outside it: a gate never holds a sibling
+tree in the same plan, nor anything in another plan of the root. Gating is the
+machine's word, read per plan exactly as the due test already reads it, and
+nothing else is consulted — not the last run's stream, not its report, not when
+the plan file last changed. The plan is the world
+([§FS-005-dispatch.15](FS-005-dispatch.md#15-every-operation-is-visible-in-one-place)).
+
+A ticket whose poll waits on a person's answer is **not** held by this and
+stays due exactly as before: it moves itself only when a run polls it, so
+holding it would mean it never moves. Only a gating state holds.
+
+#### 24.3.2 A root with nothing else due is passed over, naming its gates
+
+A root where every ticket that would have been due is held this way **waits on
+a person**. The sweep starts nothing there and gives it a `passed-over` row
+whose reason says it waits on a person and names the gated ticket and its
+state, carrying the hold `person`
+([§FS-005-dispatch.24.2](FS-005-dispatch.md#242-a-passed-over-row-names-its-hold-as-data)), with the gated tickets as the ticket list under it
+([§FS-005-dispatch.24.1](FS-005-dispatch.md#241-the-sweep-announces-each-root-by-the-outcome-it-reached)). It is a successful non-launch: it raises no
+`failed` count, takes no slot, and counts toward no ceiling. Where the reader's
+`--except` names the same root the exclusion is the row, the reader's word
+coming first. The gated report gives the same row, since nothing here needs a
+capacity read
+([§FS-011-command-line.10](FS-011-command-line.md#10-a-mutating-verb-above-one-project-reports-and-acts-under---act)).
+
+A **mixed root** — one tree held, another tree or plan in it with a ticket that
+is due — is due, and its row lists the due tickets only. The run made there does
+the ready work and stops at the gate; one plan never holds back another.
+
+The moment the gated ticket leaves its gate, the tree is judged as before, and
+the next sweep finds the root due with nothing remembered against it.
+
+#### 24.3.3 Waiting on a person is never a strike, and it lifts the stop
+
+A root waiting on a person is never started, so no empty run is made there and
+none is judged. And a sweep that acts and finds a root waiting on a person
+**drops that root's no-advance record** — a rest or a stop alike — exactly as a
+run that advances drops it. A root that was stopped before this point applied,
+or that collected strikes from runs that halted at the gate, therefore comes
+back by itself once the person moves the ticket, rather than staying stopped
+until somebody starts it by hand. Nothing new is written for it: only an
+existing record is dropped, so the ledger caches no work state
+([§FS-005-dispatch.4](FS-005-dispatch.md#4-the-ledger-is-ephors-record-and-never-the-truth-about-the-work)), and a gated report writes no ledger at all.
+
+A run asked for by name is blind to all of this, as to every guard the sweep
+has because nobody is present
+([§FS-005-dispatch.30](FS-005-dispatch.md#30-a-run-asked-for-by-name-reaches-the-whole-of-that-matters-work)).
 
 ## 25. Work about a matter with no branch can mint the branch it needs
 

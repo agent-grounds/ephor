@@ -2356,6 +2356,117 @@ fn finished_parked_and_claimed_tickets_make_nothing_due() {
     .is_empty());
 }
 
+/// The sweep's reading on a root, as the tickets each row names.
+fn due_tickets(group: &runtime::watch::RootPlans) -> Vec<Vec<String>> {
+    due_among(
+        &work_config(),
+        std::slice::from_ref(group),
+        &asking(&["fix-gate"]),
+        &laying(&[]),
+        &empty_ledger(),
+        Utc::now(),
+        Reach::Sweep,
+    )
+    .into_iter()
+    .map(|due| due.tickets)
+    .collect()
+}
+
+fn subtask_at(id: &str, state: &str) -> String {
+    format!("#### Task {id}: do a step\n**State:** {state}\n\nstep\n\n")
+}
+
+/// The reported shape: a supervisor in a state that is not a gate, above a
+/// subtask in one that is. The gate holds its whole top-level tree, so the
+/// supervisor makes nothing due and no row names it as work
+/// (§FS-005-dispatch.24.3.1, §FS-005-dispatch.24.3.2).
+#[test]
+fn a_gated_subtask_holds_its_supervisor_out_of_the_due_reading() {
+    let tmp = tempfile::tempdir().unwrap();
+    let group = due_root(
+        &tmp.path().join("panta"),
+        &format!(
+            "{}{}",
+            ticket_at("fix-gate-1", "fix"),
+            subtask_at("fix-gate-1.triage", "needs-human"),
+        ),
+    );
+    let rows = due_tickets(&group);
+    assert!(
+        rows.iter()
+            .all(|tickets| !tickets.contains(&"widget-42.fix-gate-1".to_string())),
+        "a ticket in a tree a gate holds made the root due: {rows:?}"
+    );
+}
+
+/// A mixed root: the gate holds every open ticket of its own tree, the
+/// supervisor and its other steps alike, and the ready tree beside it is the
+/// row's whole ticket list (§FS-005-dispatch.24.3.1, §FS-005-dispatch.24.3.2).
+#[test]
+fn a_gate_holds_its_whole_tree_and_the_row_lists_only_the_ready_tree() {
+    let tmp = tempfile::tempdir().unwrap();
+    let group = due_root(
+        &tmp.path().join("panta"),
+        &format!(
+            "{}{}{}{}",
+            ticket_at("fix-gate-1", "fix"),
+            subtask_at("fix-gate-1.triage", "needs-human"),
+            subtask_at("fix-gate-1.review", "fix"),
+            ticket_at("fix-gate-2", "fix"),
+        ),
+    );
+    let rows = due_tickets(&group);
+    let ready: Vec<&Vec<String>> = rows
+        .iter()
+        .filter(|tickets| tickets.contains(&"widget-42.fix-gate-2".to_string()))
+        .collect();
+    assert_eq!(
+        ready,
+        vec![&vec!["widget-42.fix-gate-2".to_string()]],
+        "the row lists the ready tree alone: {rows:?}"
+    );
+}
+
+/// A gate never holds a sibling tree: `fix-gate-10` does not extend
+/// `fix-gate-1` with a `.`, so it is a tree of its own and stays due
+/// (§FS-005-dispatch.24.3.1).
+#[test]
+fn a_gate_never_holds_a_sibling_tree() {
+    let tmp = tempfile::tempdir().unwrap();
+    let group = due_root(
+        &tmp.path().join("panta"),
+        &format!(
+            "{}{}",
+            ticket_at("fix-gate-1", "needs-human"),
+            ticket_at("fix-gate-10", "fix"),
+        ),
+    );
+    assert_eq!(
+        due_tickets(&group),
+        vec![vec!["widget-42.fix-gate-10".to_string()]]
+    );
+}
+
+/// A poll waiting on a person's answer moves only when a run polls it, so it
+/// holds nothing: neither itself nor the supervisor above it
+/// (§FS-005-dispatch.24.3.1).
+#[test]
+fn a_poll_waiting_on_a_person_stays_due() {
+    let tmp = tempfile::tempdir().unwrap();
+    let group = due_root(
+        &tmp.path().join("panta"),
+        &format!(
+            "{}{}",
+            ticket_at("fix-gate-1", "plan-approval"),
+            subtask_at("fix-gate-1.plan", "plan-approval"),
+        ),
+    );
+    assert_eq!(
+        due_tickets(&group),
+        vec![vec!["widget-42.fix-gate-1".to_string()]]
+    );
+}
+
 /// A root a run already holds gets nothing: the runtime schedules one run
 /// per root, and the live run reaches a ticket written beneath it
 /// (§FS-005-dispatch.24).
