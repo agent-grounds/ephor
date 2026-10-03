@@ -27,6 +27,9 @@
 //! listing only ever sharpens what the files said (§FS-005-dispatch.15).
 //! Watch-only throughout: nothing in here starts, stops, or touches a run.
 
+#[path = "../support.rs"]
+mod support;
+
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -141,6 +144,10 @@ fn fake_runner(dir: &Path, listing: &str) -> (WorkConfig, PathBuf) {
         use std::os::unix::fs::PermissionsExt;
         fs::set_permissions(&runner, fs::Permissions::from_mode(0o755)).unwrap();
     }
+    // The board runs it inside `sh -c`, where a sibling fork's busy descriptor
+    // would fail the listing into the floor (§FS-005-dispatch.15); no argument
+    // takes `*) exit 1`, which records nothing.
+    support::settle(&runner);
     (
         WorkConfig {
             runner: Some(runner.to_string_lossy().into_owned()),
