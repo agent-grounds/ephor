@@ -206,6 +206,10 @@ name = "e2e_045_a_help_that_says_what_it_refuses"
 path = "tests/e2e/cases/E2E-045-a-help-that-says-what-it-refuses.rs"
 
 [[test]]
+name = "e2e_046_a_root_waiting_on_a_person"
+path = "tests/e2e/cases/E2E-046-a-root-waiting-on-a-person.rs"
+
+[[test]]
 name = "agents_test"
 path = "tests/integration/agents_test.rs"
 
