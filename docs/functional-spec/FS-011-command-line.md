@@ -176,7 +176,8 @@ behaviour
 `--workspace`, `--tag` and `--org` are declared once and carried by every
 command, so every command's help advertises all three. A command therefore
 either **honours** the selector it was given or **refuses** it by name and
-exits non-zero. A flag that parses, prints in its help and changes
+exits non-zero, and a command that refuses them says so in that same help
+([§FS-011-command-line.9.1](FS-011-command-line.md#91-a-help-that-lists-a-selector-says-whether-the-verb-takes-it)). A flag that parses, prints in its help and changes
 nothing is worse than one that errors, because the caller cannot tell the two
 apart from the output: a sweep that believes it is scoped to one organization
 runs over the whole site and nothing in what it prints says so
@@ -310,6 +311,35 @@ rather than after it: a report path nothing filled that is noticed only once
 the branch has been replayed has left the replay standing and taken the exit
 code the replay's own outcome needed.
 
+### 9.1 A help that lists a selector says whether the verb takes it
+
+The selectors stay global — where one may stand on the line, what a refusal
+says and the exit code it takes are unchanged — so every command's help keeps
+listing all three, under the one description they share. That description is
+true of the verbs that honour them and false of the rest, and a reader who
+steers by the help spends an attempt on a flag the verb was never going to
+take. So the help of every verb that refuses the selectors **says so**, in the
+words its refusal gives as its reason: `<verb> takes no scope selector:`
+followed by *it is about what it is given, not about a set of projects*, or,
+for `doctor`, `capabilities`, `operations` and `burn`, *it reads every project
+the site is configured with and answers for the site itself, not for a group
+the registry names*. A verb with commands of its own — `job`, `actions`,
+`operations` — says it on its own help and on each of theirs, since each one
+prints the selectors.
+
+The sentence is derived from the one classification this section's refusal
+reads, never written beside it, so a verb cannot be moved from one side of the
+rule to the other while its help goes on saying the old thing. A verb that
+honours the selectors carries no such sentence, and its help is what it was.
+
+Four forms share their help with a form that honours them: `validate
+--manifest` and `validate --schema-only` with `validate`, `ensure-agents
+--type` with `ensure-agents`, and `feed --unattributed` with `feed`. Hiding
+the flags could not have told those apart, and the sentence does: the shared
+help names the form that refuses, as its refusal does — `validate --manifest
+takes no scope selector: …` — and says nothing of the kind about the verb
+without it.
+
 ## 10. A mutating verb above one project reports, and acts under `--act`
 
 A selector that is honoured decides which projects a verb **reads**
@@ -397,6 +427,23 @@ A gated report is an answer like any other: under `--json` it is the dry run's
 own reading with the gate named in it, and a refused `--act` lands on standard
 output as an outcome with `ok` false ([§FS-011-command-line.7](FS-011-command-line.md#7---json-is-the-same-answer-not-a-second-one),
 [§REQ-002-parity.3](../requirements/REQ-002-parity.md#3-every-reading-answers-a-program)).
+
+### 10.1 A help that lists `--act` says whether the verb takes it
+
+`--act` is global for the selectors' reason, and its help is the selectors'
+case again: every verb's help lists it, and most verbs refuse it. So the help
+of every verb that refuses `--act` says so in the terms its refusal uses —
+`<verb> does not take --act.` and why: that it sweeps no set of projects, or,
+for `update` and `ensure-agents`, that it is not held to the gate and acts at
+every width. A form whose answer differs from its verb's is named there as it
+is under [§FS-011-command-line.9.1](FS-011-command-line.md#91-a-help-that-lists-a-selector-says-whether-the-verb-takes-it):
+`ensure-agents --type` sweeps no set of projects where `ensure-agents` is
+ungated, and says so on the help they share.
+`rebase`, which takes `--act` only where a selector makes it sweep, says that
+condition — with no selector it is about the one checkout it was given — rather
+than either half alone. The four verbs the gate can fire on, `work dispatch`,
+`work sync`, `work run` and `clean`, carry no such sentence. As with the
+selectors, the sentence is derived from the classification the refusal reads.
 
 ## 11. A report reaches a terminal as prose and a file as markdown
 
