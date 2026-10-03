@@ -5,6 +5,7 @@ use ephor::{
 use std::path::PathBuf;
 use std::process::ExitCode;
 
+use clap::error::ErrorKind;
 use clap::{ArgMatches, CommandFactory, FromArgMatches};
 use serde_json::Value;
 
@@ -17,7 +18,20 @@ fn main() -> ExitCode {
     // asked for a machine form. A refusal is an answer too, and under `--json`
     // it belongs on standard output in a shape a program can read
     // (§REQ-002-parity.3).
-    let matches = Cli::command().get_matches();
+    let matches = match Cli::command().try_get_matches() {
+        Ok(matches) => matches,
+        // A page of help says which global flags its verb refuses, and that
+        // page is built only here, where it is printed (§FS-011-command-line.9.1).
+        Err(err)
+            if matches!(
+                err.kind(),
+                ErrorKind::DisplayHelp | ErrorKind::DisplayHelpOnMissingArgumentOrSubcommand
+            ) =>
+        {
+            scope::help_says_what_it_refuses(Cli::command()).get_matches()
+        }
+        Err(err) => err.exit(),
+    };
     let json = asked_for_json(&matches);
     let cli = match Cli::from_arg_matches(&matches) {
         Ok(cli) => cli,
