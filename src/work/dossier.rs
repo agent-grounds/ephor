@@ -630,6 +630,13 @@ fn read_instruction(
 /// — which is how an author quotes a document with fences of its own, a plan
 /// skeleton with an example inside it — and a fence nothing closes runs to
 /// the end of the text.
+///
+/// The end of the text is where its place in the body ends, though, not the
+/// end of the plan: what the caller writes after it — the rendered `brief`,
+/// the next ticket a reopen appends — is ephor's own text and must be read as
+/// written. So a fence the text leaves open is closed after its last line,
+/// with a bare run of the opening character as long as the opening run, and
+/// a text whose fences all close gets nothing added (§FS-005-dispatch.3.3).
 pub fn in_a_body(text: &str) -> String {
     let mut out = String::new();
     // The character and the length of the run that opened the fence this line
@@ -661,6 +668,11 @@ pub fn in_a_body(text: &str) -> String {
             Some(text) => out.push_str(&format!("**{}**\n", text.trim_end())),
             None => out.push_str(&format!("{line}\n")),
         }
+    }
+    // Every line above ends in a newline, so the close stands on its own line
+    // (§FS-005-dispatch.3.3).
+    if let Some((marker, run)) = open {
+        out.push_str(&format!("{}\n", marker.to_string().repeat(run)));
     }
     out
 }
