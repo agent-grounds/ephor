@@ -42,6 +42,26 @@ project's rungs — held, and missing with their reasons — so that "why is thi
 action not offered here" is a question with a cheap answer. `doctor`'s first
 pass is this for every configured project.
 
+### 2.1 A project nobody has asked yet says so, and does not say zero
+
+`capabilities` reads the cache as it stands; it asks no source. So a project
+whose first refresh has not run yet has no answer to count: how many of its
+sources were asked and how many answered are **not known**, which is its own
+answer and not a count of none. The terminal form already says it that way —
+`?` for answering, and the configuration's number for asked, since nothing else
+is known. The machine form says it as `null` for both `sources.asked` and
+`sources.answering`, beside `sources.configured`, which is always a number.
+
+Zero is never printed in its place. "0 of 3 answering" is the reading that makes
+a project *unreachable* ([§FS-001-forge-interface.6](FS-001-forge-interface.md#6-a-source-that-did-not-answer-says-so-and-says-which-kind-of-not)), so printing it for a project
+nobody has asked would report a fault that does not exist, and a program could
+not tell the two apart. Nor is the `null` a gap in the contract: the published
+shape declares both counts as an integer *or* `null`, and says what `null`
+means, because a field declared a number that is printed as `null` is a
+program that fails on the first fresh site it reads ([§REQ-002-parity.4](../requirements/REQ-002-parity.md#4-the-machine-form-is-a-contract-not-a-dump)).
+After the first refresh both are numbers, as they are in every `doctor` reading,
+which refreshes before it diagnoses ([§FS-010-doctor.3](FS-010-doctor.md#3-two-passes-the-site-and-ephor-itself)).
+
 ## 3. Two passes: the site, and ephor itself
 
 **The site pass** asks the world: the registry parses, every project's row

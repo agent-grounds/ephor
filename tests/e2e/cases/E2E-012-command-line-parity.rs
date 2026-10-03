@@ -674,6 +674,36 @@ fn every_machine_form_prints_the_shape_it_publishes() {
     }
 }
 
+/// The sweep above refreshes first, so it only ever reads a project that has
+/// been asked. `capabilities` reads the cache as it stands, and on a fresh site
+/// there is none: how many sources were asked and how many answered are not
+/// known yet. That is printed as `null`, never as a zero that would read as
+/// unreachable, and the published shape has to say so (§FS-010-doctor.2.1).
+#[test]
+fn a_project_nobody_has_asked_yet_prints_the_shape_it_publishes() {
+    let world = World::new();
+    world.configure(json!({}));
+
+    let out = world
+        .ephor()
+        .args(["capabilities", "--json"])
+        .output()
+        .expect("run `ephor capabilities --json`");
+    assert!(
+        out.status.success(),
+        "`ephor capabilities --json` did not succeed:\n{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let reading = shaped("capabilities", &out);
+
+    let sources = &reading["projects"][0]["sources"];
+    assert_eq!(
+        sources,
+        &json!({ "configured": 0, "asked": null, "answering": null }),
+        "before the first refresh nothing was asked, so neither count is known"
+    );
+}
+
 /// A world whose project keeps a branch workspace per branch, and whose one
 /// matter is on a branch nobody has checked out. This is where the chain lives:
 /// an entry that needs the workspace runs the checkout first, and then runs
