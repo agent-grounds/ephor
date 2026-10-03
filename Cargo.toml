@@ -214,6 +214,10 @@ name = "e2e_047_an_issue_nobody_holds_is_work"
 path = "tests/e2e/cases/E2E-047-an-issue-nobody-holds-is-work.rs"
 
 [[test]]
+name = "e2e_045_a_registry_refused_whole"
+path = "tests/e2e/cases/E2E-045-a-registry-refused-whole.rs"
+
+[[test]]
 name = "agents_test"
 path = "tests/integration/agents_test.rs"
 
