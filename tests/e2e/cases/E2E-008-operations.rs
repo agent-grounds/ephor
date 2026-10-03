@@ -508,6 +508,52 @@ fn the_runners_own_listing_sharpens_rows_and_skips_idle_roots() {
     );
 }
 
+/// The listing the board takes is the runner's, not a race the harness lost
+/// (§FS-005-dispatch.15): `exec` on a file open for writing fails with
+/// `ETXTBSY`, and a child another test thread forked while `fake_runner` was
+/// writing holds the script open until its own `exec`. The shell's exec
+/// inside the board's `sh -c` then fails, the listing is lost, and the board
+/// rightly falls back to the plan's `luna` — the flake of agent-grounds/ephor#171.
+/// Here that child is a descriptor held for 50 ms, far past any real
+/// fork-to-exec, so the race is forced rather than hoped for. Replacing the
+/// file is no way out: the forked child holds whatever inode the write wrote,
+/// so the held descriptor must still be on the script the board runs.
+#[cfg(unix)]
+#[test]
+fn a_runner_a_sibling_fork_still_holds_open_is_listed_all_the_same() {
+    use std::os::unix::fs::MetadataExt;
+
+    let tmp = tempfile::tempdir().unwrap();
+    let claimed = work_root(&tmp.path().join("work"), true);
+    let runner = tmp.path().join("acme-runtime");
+    let held = fs::OpenOptions::new()
+        .create(true)
+        .write(true)
+        .open(&runner)
+        .unwrap();
+    let held_inode = held.metadata().unwrap().ino();
+    let release = std::thread::spawn(move || {
+        std::thread::sleep(std::time::Duration::from_millis(50));
+        drop(held);
+    });
+    let (bound, _calls) = fake_runner(
+        tmp.path(),
+        r#"[{"id":"widget-42.fix-gate-1","state":"fix","assignee":"nadia"}]"#,
+    );
+    assert_eq!(
+        fs::metadata(&runner).unwrap().ino(),
+        held_inode,
+        "the runner was swapped out from under the held descriptor, which no forked child would allow"
+    );
+
+    let board = watch::board(&bound, &[claimed]);
+    release.join().unwrap();
+    match &board.operations[0].tickets[0].doing {
+        Doing::Claimed { assignee, .. } => assert_eq!(assignee, "nadia"),
+        other => panic!("the listing's claim should show: {other:?}"),
+    }
+}
+
 /// A subtask is a ticket at whatever depth the runtime nests it
 /// (§FS-005-dispatch.15): the floor reads `####` and deeper with the dotted
 /// ids the runtime's grammar gives them, so a subtask parked for a person
