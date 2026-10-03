@@ -364,6 +364,33 @@ fn set_executable(path: &Path) {
     }
 }
 
+/// Wait until a stand-in this process just wrote can be executed, for one a
+/// case binds by path and ephor then runs inside a shell, where nothing could
+/// wait.
+///
+/// While the file was open for writing, a child another test thread forked
+/// inherited that descriptor, and until the child reaches its own `exec` every
+/// `exec` of the file fails with `ETXTBSY`. Executing it once here, retrying
+/// that error 20 x 5 ms as the library's own `settle_executable` does, settles
+/// it for good: nothing writes the file again. Run with no arguments, so a
+/// stand-in settled here must do nothing a case observes when given none; its
+/// output is discarded and its exit code ignored.
+pub fn settle(path: &Path) {
+    for _ in 0..20 {
+        let probe = std::process::Command::new(path)
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status();
+        match probe {
+            Err(err) if err.raw_os_error() == Some(26) => {
+                std::thread::sleep(std::time::Duration::from_millis(5));
+            }
+            _ => return,
+        }
+    }
+}
+
 /// Deep-merge `overlay` into `base`, so a case states only the fields its
 /// scenario is about.
 fn merge(base: &mut Value, overlay: Value) {
