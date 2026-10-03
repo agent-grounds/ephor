@@ -78,7 +78,8 @@ struct Diagnosis {
     /// (§FS-001-forge-interface.6).
     silent: Vec<(String, String, bool)>,
     /// How many sources answered, and how many were asked. None where no
-    /// refresh has produced a cache for this project at all.
+    /// refresh has produced a cache for this project at all, printed as
+    /// `null` rather than zero (§FS-010-doctor.2.1).
     answering: Option<usize>,
     asked: Option<usize>,
     /// How many the configuration names — which is not the same number: a
