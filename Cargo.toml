@@ -198,6 +198,10 @@ name = "e2e_043_a_gateway_that_cannot_vouch_for_its_spool"
 path = "tests/e2e/cases/E2E-043-a-gateway-that-cannot-vouch-for-its-spool.rs"
 
 [[test]]
+name = "e2e_044_git_words_quoted_whole"
+path = "tests/e2e/cases/E2E-044-git-words-quoted-whole.rs"
+
+[[test]]
 name = "agents_test"
 path = "tests/integration/agents_test.rs"
 

@@ -439,6 +439,28 @@ writing a file nests each as markdown — because the nested report's reader is
 the document it arrived in, and a form chosen from anything else would put a
 fence in the middle of a page of prose.
 
+#### 11.1.1 git's words are fenced in a run they cannot close
+
+**The markdown form fences git's message in a backtick run longer than any
+backtick run the message holds, and never shorter than three.** The message is
+everything git printed, so it carries whatever a hook or the far side of a
+fetch chose to print — and a hook guarding a plan prints fences of its own, a
+gate's log the code it failed on. A fixed run of three is closed by the first
+bare three-backtick line inside the message: the lines after it stand outside
+every fence and read as the report's own prose, a heading among them reads as
+one of the report's own sections, and a longer run inside opens a fence the
+report's closing line is too short to close, which swallows whatever the
+report says next. Carried into a plan body, that same message has its headings
+flattened, so ephor rewrites the words it promised to carry whole.
+
+The rule is the plan language's, not a second one: a longer fence holds shorter
+ones ([§FS-005-dispatch.3.2](FS-005-dispatch.md#32-what-is-already-fenced-is-what-the-plan-language-fences)). So **every line of git's message lies inside the
+report's fence, and the report ends with no fence open**, whatever the message
+holds — in the `--report` file, in the `report` field of `--json`, and in the
+plan body a recipe embeds the report in. This holds for every report that
+quotes git, the replay's and the checkout's alike, and they reach for one rule
+rather than each keeping its own.
+
 ### 11.2 A report names a repository for its reader
 
 A report about a forest says something per repository, and what it calls each
