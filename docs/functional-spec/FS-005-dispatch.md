@@ -520,6 +520,32 @@ reaches the body unchanged, the headings of a nested example among them; only
 what stands outside every fence is flattened. A brief whose whole purpose is to
 show what a plan looks like must not arrive saying that a plan has no headings.
 
+### 3.3 An embedded text ends where its place in the body ends
+
+**A fence an embedded text leaves open is closed at the end of that text.** A
+text ephor puts into a body — an instruction file a recipe named, a rebase
+report quoting git — may open a fence and never close it. The reading rule of
+[§FS-005-dispatch.3.2](FS-005-dispatch.md#32-what-is-already-fenced-is-what-the-plan-language-fences) does not change: inside that text, such a fence still runs to the
+end of the text, and nothing after it in the text is flattened. But the end of
+the text is not the end of the plan. So the writer adds one line at the end of
+the text: a bare run of the character that opened the fence, at least as long
+as the run that opened it. A text whose fences are all closed gets no line.
+
+**This is [§FS-005-dispatch.3](FS-005-dispatch.md#3-one-rhei-per-item-one-ticket-per-dispatch) from the other side.** The flattening keeps a
+heading ephor did not mean from standing as a task. Closing the fence keeps a
+heading ephor did mean from being hidden. Without the close, whatever ephor
+writes after the text is read as quoted content: the rendered `brief` after an
+instruction file, the note after a rebase report, and the next `### Task` that
+a reopen appends to the plan
+([§FS-005-dispatch.5](FS-005-dispatch.md#5-an-item-that-moved-reopens-its-work)). The runtime
+would then never see that ticket, and neither would any ticket appended after
+it, while the verb that appended it reports it as handed over.
+
+**The close is written after the hash.** The hash a ticket records is of the
+instruction file's bytes as read
+([§FS-005-dispatch.34.2](FS-005-dispatch.md#342-which-text-a-ticket-was-given-is-recorded-on-the-ticket)), and it stays that hash. The closing
+line belongs to how ephor places the text in the body, not to the file.
+
 ## 4. The ledger is ephor's record, and never the truth about the work
 
 ephor keeps a ledger of what it dispatched: the item, the recipe, the plan, and

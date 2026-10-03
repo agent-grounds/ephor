@@ -1577,6 +1577,50 @@ mod tests {
         );
     }
 
+    /// The reported symptom at the caller: an instruction file that opens a
+    /// fence and never closes it must not swallow the rendered `brief` written
+    /// after it, and the hash stays the hash of the file as read
+    /// (§FS-005-dispatch.3.3, §FS-005-dispatch.34.2).
+    #[test]
+    fn a_fence_the_instruction_file_leaves_open_does_not_reach_the_brief_after_it() {
+        let tmp = tempfile::tempdir().expect("a scratch root");
+        let file = "**Standing instruction**\n\nQuote what the gate printed:\n\n\
+                    ````text\n```\nerror: the gate printed this\n```\n\nThat is all.\n";
+        std::fs::write(tmp.path().join("DESIRES.md"), file).expect("the instruction");
+        let recipe = keeping(Some("Work {title}."), Some("{root}/DESIRES.md"));
+        let asked = brief(&recipe, &values(tmp.path())).expect("the file is there");
+        // Walk the body by the plan language's rule (§FS-005-dispatch.3.2):
+        // the line ephor wrote after the file must stand outside every fence.
+        let mut open: Option<(char, usize)> = None;
+        let mut said_outside = false;
+        for line in asked.text.lines() {
+            match (open, fence_run(line)) {
+                (None, Some((marker, run, _))) => open = Some((marker, run)),
+                (Some((marker, opened)), Some((closing, run, true)))
+                    if closing == marker && run >= opened =>
+                {
+                    open = None
+                }
+                _ if line.starts_with("Work ") => said_outside = open.is_none(),
+                _ => {}
+            }
+        }
+        assert!(
+            said_outside,
+            "the rendered brief is fenced:\n{}",
+            asked.text
+        );
+        assert!(
+            open.is_none(),
+            "the body ends inside a fence:\n{}",
+            asked.text
+        );
+        assert_eq!(
+            asked.instruction.expect("it read a file").sha256,
+            sha256(file.as_bytes())
+        );
+    }
+
     /// A longer fence holds shorter ones: a three-backtick pair inside a
     /// four-backtick block is content of the block, not its end, so the
     /// headings of the nested example are what its author wrote
@@ -1635,10 +1679,53 @@ mod tests {
     /// after it is content (§FS-005-dispatch.3.2).
     #[test]
     fn an_unclosed_fence_runs_to_the_end_of_the_text() {
+        // Inside the text the fence runs to its end, so nothing after it is
+        // flattened (§FS-005-dispatch.3.2) — and at the end of the text it is
+        // closed, so it reaches no further (§FS-005-dispatch.3.3).
         assert_eq!(
             in_a_body("# Before\n```text\n# Quoted\n\n## Also quoted\n"),
-            "**Before**\n```text\n# Quoted\n\n## Also quoted\n"
+            "**Before**\n```text\n# Quoted\n\n## Also quoted\n```\n"
         );
+    }
+
+    /// A fence of tildes the text left open is closed with tildes: a run of
+    /// backticks would be a line of the block, not its end
+    /// (§FS-005-dispatch.3.3).
+    #[test]
+    fn an_unclosed_tilde_fence_is_closed_with_tildes() {
+        assert_eq!(
+            in_a_body("Before.\n~~~~text\n# Quoted\n"),
+            "Before.\n~~~~text\n# Quoted\n~~~~\n"
+        );
+    }
+
+    /// The issue's shape: a four-backtick block holding a closed
+    /// three-backtick pair, its own closing line forgotten. The inner pair
+    /// closes nothing, so the close is a run of four (§FS-005-dispatch.3.3).
+    #[test]
+    fn an_unclosed_longer_fence_holding_a_closed_pair_is_closed_with_its_own_run() {
+        assert_eq!(
+            in_a_body("Quote it:\n\n````text\n```\nerror: printed\n```\n\nThat is all.\n"),
+            "Quote it:\n\n````text\n```\nerror: printed\n```\n\nThat is all.\n````\n"
+        );
+    }
+
+    /// A text whose fences are all closed gets no line it did not have
+    /// (§FS-005-dispatch.3.3).
+    #[test]
+    fn a_text_whose_fences_are_closed_gets_no_closing_line() {
+        for text in [
+            "# Before\n```text\n# Quoted\n```\n# After\n",
+            "````\n```\n# Inner\n```\n````\n",
+            "No fence at all.\n",
+        ] {
+            assert_eq!(
+                in_a_body(text).lines().count(),
+                text.lines().count(),
+                "{text:?} -> {:?}",
+                in_a_body(text)
+            );
+        }
     }
 
     /// A closing run need only be at least as long as the one that opened the
