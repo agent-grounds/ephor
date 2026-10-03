@@ -2,7 +2,9 @@
 //! refuses it (§FS-011-command-line.9).
 //!
 //! `--workspace`, `--tag` and `--org` are declared once on [`Cli`] and
-//! carried into every subcommand's help, so every verb advertises all three.
+//! carried into every subcommand's help, so every verb advertises all three —
+//! and [`help_says_what_it_refuses`] adds, to the help of each verb that
+//! refuses them, the sentence its refusal gives (§FS-011-command-line.9.1).
 //! For most of ephor's life exactly three sites read them, and every other
 //! verb parsed a selector and changed nothing — a scope that looked honoured
 //! and was not, which is worse than an error because the output of the scoped
@@ -347,26 +349,9 @@ impl Act {
             return Ok(());
         }
         let mut says = format!("{verb} does not take --act.");
-        match sweeps {
-            Sweeps::Nothing => says.push_str(&format!(
-                " --act lets a sweep act at a scope wider than one project, and {verb} \
-                 sweeps no set of projects: it is the same act however many the site has."
-            )),
-            // Said plainly rather than as an apology: the reader is owed the
-            // fact that this verb acts at every width, which is what makes
-            // the flag meaningless on it rather than merely unimplemented.
-            Sweeps::Ungated => says.push_str(&format!(
-                " --act lets a sweep act at a scope wider than one project, and {verb} is \
-                 not held to that gate: it acts at every width, as it always has."
-            )),
-            // Not "sweeps nothing": this verb sweeps, and what the reader is
-            // missing is the selector that makes it (§FS-011-command-line.10).
-            Sweeps::NothingWithoutASelector => says.push_str(&format!(
-                " --act lets a sweep act at a scope wider than one project, and this {verb} \
-                 sweeps nothing: with no selector it is about the one checkout it was given, \
-                 where the gate cannot fire. Pass --workspace, --tag or --org to sweep."
-            )),
-            Sweeps::Gated => unreachable!("returned above"),
+        if let Some(reason) = act_reason(verb, sweeps) {
+            says.push(' ');
+            says.push_str(&reason);
         }
         says.push_str(
             " `work dispatch`, `work sync`, `work run`, `clean`, and `rebase` where a \
@@ -517,17 +502,12 @@ impl Scope {
         }
         let flags: Vec<&str> = refused.iter().map(|selector| selector.flag()).collect();
         let mut says = format!("{verb} does not take {}.", spoken(&flags));
-        match honours {
-            Honours::Nothing => says.push_str(&format!(
-                " {verb} takes no scope selector: it is about what it is given, \
-                 not about a set of projects."
-            )),
-            Honours::NothingOverTheSite => says.push_str(&format!(
-                " {verb} takes no scope selector: it reads every project the \
-                 site is configured with and answers for the site itself, not \
-                 for a group the registry names."
-            )),
-            _ => {
+        match selector_reason(verb, honours) {
+            Some(reason) => {
+                says.push(' ');
+                says.push_str(&reason);
+            }
+            None => {
                 let takes: Vec<&str> = honours
                     .selectors()
                     .iter()
@@ -622,6 +602,183 @@ impl Scope {
             )));
         }
         Ok(asked)
+    }
+}
+
+/// What `rebase` is about where no selector made it sweep, said alike by its
+/// refusal of `--act` and by its help (§FS-011-command-line.10.1).
+const UNSELECTED: &str =
+    "with no selector it is about the one checkout it was given, where the gate cannot fire";
+
+/// Why a verb refuses `--act`, in the words its refusal and its help share
+/// (§FS-011-command-line.10, §FS-011-command-line.10.1). `None` where the gate
+/// can fire, which is the one place the flag is taken.
+fn act_reason(verb: &str, sweeps: Sweeps) -> Option<String> {
+    const WIDER: &str = "--act lets a sweep act at a scope wider than one project";
+    match sweeps {
+        Sweeps::Nothing => Some(format!(
+            "{WIDER}, and {verb} sweeps no set of projects: it is the same act however many \
+             the site has."
+        )),
+        // Said plainly rather than as an apology: the reader is owed the
+        // fact that this verb acts at every width, which is what makes
+        // the flag meaningless on it rather than merely unimplemented.
+        Sweeps::Ungated => Some(format!(
+            "{WIDER}, and {verb} is not held to that gate: it acts at every width, as it \
+             always has."
+        )),
+        // Not "sweeps nothing": this verb sweeps, and what the reader is
+        // missing is the selector that makes it (§FS-011-command-line.10).
+        Sweeps::NothingWithoutASelector => Some(format!(
+            "{WIDER}, and this {verb} sweeps nothing: {UNSELECTED}. Pass --workspace, --tag \
+             or --org to sweep."
+        )),
+        Sweeps::Gated => None,
+    }
+}
+
+/// Why a verb refuses the selectors, in the words its refusal and its help
+/// share (§FS-011-command-line.9, §FS-011-command-line.9.1). `None` for a verb
+/// that honours them.
+fn selector_reason(verb: &str, honours: Honours) -> Option<String> {
+    match honours {
+        Honours::Nothing => Some(format!(
+            "{verb} takes no scope selector: it is about what it is given, not about a set of \
+             projects."
+        )),
+        Honours::NothingOverTheSite => Some(format!(
+            "{verb} takes no scope selector: it reads every project the site is configured \
+             with and answers for the site itself, not for a group the registry names."
+        )),
+        Honours::Watched | Honours::Registry => None,
+    }
+}
+
+/// The command tree with every page of help saying which global flags its
+/// verb refuses (§FS-011-command-line.9.1, §FS-011-command-line.10.1).
+///
+/// The flags stay global, so clap lists them on every page; what is added is
+/// the sentence the refusal would have given. It is read off [`honoured`] and
+/// [`sweeps`] by parsing a command line for each page, never written per verb,
+/// so a verb moved across either rule takes its help with it. Built only when
+/// help is asked for: the walk parses every page, which a run has no use for.
+pub fn help_says_what_it_refuses(root: clap::Command) -> clap::Command {
+    annotate(root, &[])
+}
+
+fn annotate(mut command: clap::Command, path: &[String]) -> clap::Command {
+    let names: Vec<String> = command
+        .get_subcommands()
+        .map(|sub| sub.get_name().to_string())
+        .filter(|name| name != "help")
+        .collect();
+    for name in names {
+        let mut path = path.to_vec();
+        path.push(name.clone());
+        command = command.mut_subcommand(&name, |sub| {
+            let notes = refusals_on(&sub, &path);
+            let sub = if notes.is_empty() {
+                sub
+            } else {
+                sub.after_help(notes.join("\n\n"))
+            };
+            annotate(sub, &path)
+        });
+    }
+    command
+}
+
+/// What one page says it refuses: its verb's refusals, then those of each form
+/// sharing the page whose answer differs from the verb's — `validate
+/// --manifest` on `validate`'s help — found by parsing the page's command line
+/// once more with each of its flags (§FS-011-command-line.9.1).
+fn refusals_on(page: &clap::Command, path: &[String]) -> Vec<String> {
+    let mut argv = vec!["ephor".to_string()];
+    argv.extend(path.iter().cloned());
+    for arg in page.get_arguments() {
+        if !arg.is_required_set() || arg.is_global_set() {
+            continue;
+        }
+        let value = some_value(arg);
+        if arg.is_positional() {
+            argv.push(value);
+        } else if let Some(long) = arg.get_long() {
+            argv.push(format!("--{long}"));
+            argv.push(value);
+        }
+    }
+    let Some((verb, honours, sweeps)) = classified(&argv) else {
+        return Vec::new();
+    };
+    let mut notes = Vec::new();
+    notes.extend(selector_note(&verb, honours));
+    notes.extend(act_note(&verb, sweeps));
+    for arg in page.get_arguments() {
+        if arg.is_positional() || arg.is_required_set() || arg.is_global_set() {
+            continue;
+        }
+        let Some(long) = arg.get_long() else {
+            continue;
+        };
+        let mut with = argv.clone();
+        with.push(format!("--{long}"));
+        if arg.get_action().takes_values() {
+            with.push(some_value(arg));
+        }
+        let Some((form, form_honours, form_sweeps)) = classified(&with) else {
+            continue;
+        };
+        if form == verb {
+            continue;
+        }
+        if form_honours != honours {
+            notes.extend(selector_note(&form, form_honours));
+        }
+        if form_sweeps != sweeps {
+            notes.extend(act_note(&form, form_sweeps));
+        }
+    }
+    notes
+}
+
+/// A value an argument accepts, for a command line that is only classified.
+fn some_value(arg: &clap::Arg) -> String {
+    arg.get_possible_values()
+        .first()
+        .map(|value| value.get_name().to_string())
+        .unwrap_or_else(|| "1".to_string())
+}
+
+/// The verb a command line names and both of its answers, with no selector
+/// given — which is what a page of help is about.
+fn classified(argv: &[String]) -> Option<(String, Honours, Sweeps)> {
+    use clap::Parser;
+    let cli = Cli::try_parse_from(argv).ok()?;
+    let (verb, honours) = honoured(&cli.command);
+    Some((verb, honours, sweeps(&cli.command, &Scope::default())))
+}
+
+/// The help's half of a selector refusal (§FS-011-command-line.9.1).
+fn selector_note(verb: &str, honours: Honours) -> Option<String> {
+    let reason = selector_reason(verb, honours)?;
+    Some(format!(
+        "{verb} does not take --workspace, --tag or --org, though every command lists them. \
+         {reason}"
+    ))
+}
+
+/// The help's half of an `--act` refusal (§FS-011-command-line.10.1). `rebase`
+/// says its condition rather than either half of it.
+fn act_note(verb: &str, sweeps: Sweeps) -> Option<String> {
+    match sweeps {
+        Sweeps::NothingWithoutASelector => Some(format!(
+            "{verb} takes --act only where --workspace, --tag or --org makes it sweep: \
+             {UNSELECTED}."
+        )),
+        _ => Some(format!(
+            "{verb} does not take --act. {}",
+            act_reason(verb, sweeps)?
+        )),
     }
 }
 

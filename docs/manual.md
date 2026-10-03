@@ -290,6 +290,14 @@ watched project, but what they answer is about the site rather than about a
 group the registry names — `doctor --project P` and `ephor capabilities P` are
 how one project is named to them.
 
+A verb that refuses them still lists them in its help, because they are
+global, and its help says that it refuses them in the words its refusal gives:
+`ephor work lay --help` ends with "work lay does not take --workspace, --tag or
+--org, though every command lists them. work lay takes no scope selector: …".
+`validate`, `ensure-agents` and `feed` name their refusing form the same way
+(`validate --manifest takes no scope selector: …`)
+([§FS-011-command-line.9.1](functional-spec/FS-011-command-line.md#91-a-help-that-lists-a-selector-says-whether-the-verb-takes-it)).
+
 A selection that comes out empty is refused rather than printed as an empty
 reading, so a mistyped organization is a message rather than a quiet table —
 and with the same exit 2, so one comparison tells a script that its scope was
@@ -337,7 +345,9 @@ watching four is a sweep over four, which is why
 wherever the gate cannot fire — including `update` and `ensure-agents`, which
 rewrite every managed workspace their scope reaches and are deliberately
 outside the gate for now. Their refusal says so rather than pretending they
-sweep nothing.
+sweep nothing. Every verb that refuses `--act` says so in its help too, and
+`rebase` says the condition it takes it on
+([§FS-011-command-line.10.1](functional-spec/FS-011-command-line.md#101-a-help-that-lists---act-says-whether-the-verb-takes-it)).
 
 `ensure-agents` also renders an ad-hoc workspace that is in no registry:
 
