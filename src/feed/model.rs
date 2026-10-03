@@ -63,6 +63,30 @@ pub fn is_terminal(state: Option<&str>) -> bool {
 /// finished work that has none.
 pub const UNANSWERED: &str = "unanswered";
 
+/// The reserved `raw` key carrying why a waiting matter waits, where that is
+/// more than its conversation (§FS-005-dispatch.31.2). Written only where a
+/// reason other than the conversation contributes, because a matter that waits
+/// and records no reason waits on its conversation.
+pub const AWAITS: &str = "awaits";
+
+/// One reason a matter waits on the reader (§FS-005-dispatch.31.2): its
+/// conversation, or that it is an issue nobody holds.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Awaiting {
+    Conversation,
+    Unclaimed,
+}
+
+impl Awaiting {
+    pub fn label(self) -> &'static str {
+        match self {
+            Awaiting::Conversation => "conversation",
+            Awaiting::Unclaimed => "unclaimed",
+        }
+    }
+}
+
 /// The original metadata overlay remains readable but is not evidence of
 /// provenance: legacy JSON could already contain it (§FS-006-project-interface.4).
 pub(crate) const SOURCE_METADATA: &str = "_ephor";
@@ -368,6 +392,30 @@ impl Item {
                 .filter_map(|(key, value)| Some((key.clone(), bounded_entry(key, value)?)))
                 .collect(),
         )
+    }
+
+    /// Why the matter waits on the reader (§FS-005-dispatch.31.2): empty where
+    /// it does not wait, and the conversation where it waits and recorded no
+    /// reason, which was the only reason a matter waited before the others were
+    /// told apart.
+    pub fn awaiting(&self) -> Vec<Awaiting> {
+        if !self.needs_response {
+            return Vec::new();
+        }
+        let mut reasons: Vec<Awaiting> = self
+            .raw
+            .get(AWAITS)
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+            .filter_map(|reason| serde_json::from_value(reason.clone()).ok())
+            .collect();
+        reasons.sort();
+        reasons.dedup();
+        if reasons.is_empty() {
+            reasons.push(Awaiting::Conversation);
+        }
+        reasons
     }
 
     /// The pull request or issue number, best effort: the digits after the

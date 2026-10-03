@@ -10,7 +10,7 @@ use serde_json::{json, Value};
 use super::{
     Conversation, Issue, Message, Notice, PullRequest, Reason, Review, Role, SubjectKind, Thread,
 };
-use crate::feed::model::{Item, ItemKind, ItemRole};
+use crate::feed::model::{Awaiting, Item, ItemKind, ItemRole, AWAITS};
 
 /// Review states that mean the author has work to do. Matched as substrings
 /// because forges spell them differently (`CHANGES_REQUESTED`, `NEEDS_WORK`).
@@ -492,7 +492,8 @@ pub fn issue_item(forge: &str, project: &str, issue: &Issue, unclaimed: Unclaime
             .iter()
             .any(|dependency| !crate::feed::model::is_terminal(dependency.status.as_deref()))
     });
-    let pending = !blocked && (unclaimed || thread_pending(&thread));
+    let conversation = thread_pending(&thread);
+    let pending = !blocked && (unclaimed || conversation);
     let threads = threads_json(std::slice::from_ref(&thread));
     let mut raw = serde_json::Map::new();
     if threads.as_array().is_some_and(|list| !list.is_empty()) {
@@ -531,6 +532,22 @@ pub fn issue_item(forge: &str, project: &str, issue: &Issue, unclaimed: Unclaime
         raw,
     };
     settle(&mut item);
+    // Why it waits, where nobody holding it is one of the reasons: an issue
+    // nobody holds is owed work, not an answer (§FS-005-dispatch.13.1), and the
+    // flag alone cannot tell the two apart (§FS-005-dispatch.31.2).
+    if item.needs_response && unclaimed {
+        let mut reasons = Vec::new();
+        if conversation {
+            reasons.push(Awaiting::Conversation.label());
+        }
+        reasons.push(Awaiting::Unclaimed.label());
+        if item.raw.is_null() {
+            item.raw = json!({});
+        }
+        if let Some(raw) = item.raw.as_object_mut() {
+            raw.insert(AWAITS.to_string(), json!(reasons));
+        }
+    }
     item
 }
 

@@ -15,7 +15,7 @@ use serde_json::Value;
 
 use crate::branches::{Checkout, Organization, WorkspaceState};
 use crate::feed::gate::Gate;
-use crate::feed::model::Item;
+use crate::feed::model::{Awaiting, Item};
 use crate::fence::fence_for;
 use crate::work::recipe::Recipe;
 
@@ -313,8 +313,18 @@ impl Subject<'_> {
             "checkout",
             Some(self.checkout.workspace.to_string_lossy().into_owned()),
         );
-        if item.needs_response {
-            rows.push(("waiting on", "an answer from me".to_string()));
+        // "An answer" only where the conversation owes one: an issue nobody
+        // holds is owed somebody to take it (§FS-005-dispatch.13.1).
+        let waiting: Vec<&str> = item
+            .awaiting()
+            .into_iter()
+            .map(|reason| match reason {
+                Awaiting::Conversation => "an answer from me",
+                Awaiting::Unclaimed => "somebody to take it (nobody holds it)",
+            })
+            .collect();
+        if !waiting.is_empty() {
+            rows.push(("waiting on", waiting.join(", and ")));
         }
 
         let width = rows.iter().map(|(label, _)| label.len()).max().unwrap_or(0);

@@ -15,7 +15,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::feed::gate::Gate;
-use crate::feed::model::{Item, ItemKind, ItemRole};
+use crate::feed::model::{Awaiting, Item, ItemKind, ItemRole};
 
 /// The work half of the feed configuration.
 #[derive(Debug, Clone, Deserialize)]
@@ -847,6 +847,11 @@ pub struct Selector {
     pub gate: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub needs_response: Option<bool>,
+    /// Why the matter waits on the reader (§FS-005-dispatch.31.2), any-of:
+    /// `conversation` or `unclaimed`. A matter that does not wait answers
+    /// neither; one that waits without saying why waits on its conversation.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub awaits: Vec<Awaiting>,
     /// Provider names, for a recipe that only makes sense on one source.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub sources: Vec<String>,
@@ -1004,16 +1009,19 @@ impl Selector {
                 refusals.push(Refusal::new(
                     "needs_response",
                     format!(
-                        "the matter {} an answer; the selector asks for one that {}",
-                        if item.needs_response {
-                            "needs"
+                        "the matter {}; the selector asks for one that {}",
+                        waiting_on(item),
+                        if needs_response {
+                            "waits on me"
                         } else {
-                            "does not need"
-                        },
-                        if needs_response { "does" } else { "does not" }
+                            "does not"
+                        }
                     ),
                 ));
             }
+        }
+        if let Some(refusal) = awaiting(&self.awaits, item) {
+            refusals.push(refusal);
         }
         if let Some(want) = self.gate.as_deref() {
             if !gate_matches(Gate::of(item), want) {
@@ -1044,6 +1052,43 @@ impl Selector {
         }
         refusals
     }
+}
+
+/// What the matter waits on, in the words a refusal uses
+/// (§FS-005-dispatch.13.1): a conversation is an answer owed, an issue nobody
+/// holds is not, and a matter that does not wait is neither.
+fn waiting_on(item: &Item) -> &'static str {
+    match item.awaiting().as_slice() {
+        [] => "is not waiting on me",
+        [Awaiting::Unclaimed] => "waits only because nobody holds it",
+        [Awaiting::Conversation] => "waits on an answer from me",
+        _ => "waits on an answer from me, and nobody holds it",
+    }
+}
+
+/// The `awaits` field against why the matter waits (§FS-005-dispatch.31.2).
+/// `None` where it held: the matter waits for at least one reason the selector
+/// names.
+fn awaiting(selector: &[Awaiting], item: &Item) -> Option<Refusal> {
+    if selector.is_empty() {
+        return None;
+    }
+    let carried = item.awaiting();
+    if carried.iter().any(|reason| selector.contains(reason)) {
+        return None;
+    }
+    let found = match carried.as_slice() {
+        [Awaiting::Conversation] => "waits only on its conversation",
+        _ => waiting_on(item),
+    };
+    let asked: Vec<&str> = selector.iter().map(|reason| reason.label()).collect();
+    Some(Refusal::new(
+        "awaits",
+        format!(
+            "the matter {found}; the selector asks for one awaiting {}",
+            join_quoted_str(&asked)
+        ),
+    ))
 }
 
 /// The `meta` field against what this matter's source said about it
@@ -1405,6 +1450,9 @@ pub fn shipped() -> Vec<Recipe> {
             Selector {
                 kinds: vec!["pr".to_string(), "issue".to_string(), "message".to_string()],
                 needs_response: Some(true),
+                // An issue nobody holds is owed work, not an answer
+                // (§FS-005-dispatch.13.1).
+                awaits: vec![Awaiting::Conversation],
                 ..Selector::default()
             },
             // The reply is asked for as a file of its own, because ephor reads

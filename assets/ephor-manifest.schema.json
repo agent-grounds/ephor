@@ -218,6 +218,11 @@
         "roles": { "type": "array", "items": { "enum": ["author", "reviewer"] } },
         "gate": { "enum": ["failing", "blocked", "red", "green", "any"] },
         "needs_response": { "type": "boolean" },
+        "awaits": {
+          "type": "array",
+          "items": { "enum": ["conversation", "unclaimed"] },
+          "description": "Why the matter waits on the reader, any one of them (FS-005-dispatch.31.2): 'conversation' — its conversation awaits the reader; 'unclaimed' — it is an issue nobody holds, on a source that counts that as waiting. A matter that does not wait answers neither; one that waits and records no reason waits on its conversation."
+        },
         "sources": { "type": "array", "items": { "type": "string" } },
         "assignees": {
           "type": "array",

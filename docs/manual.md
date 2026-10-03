@@ -2090,7 +2090,7 @@ Five ship and apply with no configuration at all:
 | Recipe | Applies to | Needs the branch on disk |
 |---|---|---|
 | `fix-gate` 🛠 | a pull request of yours whose **jobs failed** | yes |
-| `answer` 💬 | anything owing a reply — pr, issue, message | no |
+| `answer` 💬 | anything owing a reply — pr, issue, message; not an issue that waits only because nobody holds it | no |
 | `review` 👓 | a pull request you are reviewing | no |
 | `implement` 🧩 | an issue you opened | yes |
 | `rebase` ⤴ | anything whose branch is here and **trails main** | yes |
@@ -2374,6 +2374,7 @@ Finished work never matches.
 | `roles` | `author`, `reviewer` — an item whose source reported no role matches only when this is empty |
 | `gate` | `failing` (jobs failed) · `blocked` (the forge refuses) · `red` (either) · `green` · `any` |
 | `needs_response` | `true` / `false` |
+| `awaits` | why it waits: `conversation` (an answer is owed) · `unclaimed` (an issue nobody holds) — any of them ([§FS-005-dispatch.31.2](functional-spec/FS-005-dispatch.md#312-and-it-can-ask-why-the-matter-waits)) |
 | `sources` | provider names |
 | `assignees` | logins the matter must be held by; `!login` one it must not |
 | `labels` | labels the matter must carry; `!label` one it must not |
