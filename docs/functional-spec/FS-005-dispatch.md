@@ -2255,16 +2255,22 @@ the checkout that root's work would run in. A ticket a hand wrote into such a
 plan is due exactly as a dispatched one is; the recipe is a fact about the
 ticket, not about who appended it.
 
-**A dispatch may give its autoruns arguments, for that invocation alone.**
-`ephor work dispatch -- <RUNNER_ARGS>...` supplies the trailing vector to
-every runtime run started by that dispatch's own sweep, unchanged and in the
-order it was given. Ephor neither interprets the arguments nor stores them in
-the plan, ledger, or configuration: a later due sweep does not inherit them.
-Omitting the vector is the empty vector and preserves the behaviour dispatch
-had before this form existed. The passthrough already accepted by `work run`
-is unchanged, and `work sync` and interface actions still supply no runner
-arguments. A dry run still starts no runtime, whether or not a trailing vector
-was supplied.
+**A dispatch or a sync may give the runs it starts arguments, for that
+invocation alone.** `ephor work dispatch -- <RUNNER_ARGS>...` and
+`ephor work sync -- <RUNNER_ARGS>...` supply the trailing vector to every
+runtime run started by that invocation's own sweep, unchanged and in the order
+it was given. Ephor neither interprets the arguments nor stores them in the
+plan, ledger, or configuration: a later due sweep or sync does not inherit
+them. Omitting the vector is the empty vector and preserves the behaviour each
+verb had before this form existed. The passthrough already accepted by
+`work run` is unchanged, and interface actions still supply no runner
+arguments. A dry run, or a sweep held at the `--act` gate
+([§FS-011-command-line.10](FS-011-command-line.md#10-a-mutating-verb-above-one-project-reports-and-acts-under---act)), still starts no runtime, whether or not a trailing
+vector was supplied. Sync takes the vector for the reason its sweep is bound
+by the budget: it is the trigger a timer runs before `work run --due`
+([§FS-015-spend-ceiling.6](FS-015-spend-ceiling.md#6-only-the-sweep-is-bound-and-the-persons-key-never-is)), so a vector that reached only dispatch and the
+backstop would miss the sweep that usually starts the work, and which verb
+reached a root first would decide the command line its run was given.
 
 **One live run per checkout, because a run is an agent editing a working
 tree.** A root a run already holds is left alone: the runtime schedules one

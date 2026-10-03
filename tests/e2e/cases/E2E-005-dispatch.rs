@@ -235,6 +235,199 @@ fn dispatch_autoruns_receive_runner_arguments_unchanged_and_in_order() {
     );
 }
 
+/// A world whose one recipe asks to run itself, bound to the runtime that
+/// records the arguments it was handed. Its runs finish without moving the
+/// ticket, so the root is due again for whichever sweep comes next.
+fn autorunning() -> World {
+    let world = watching();
+    world.stub("argument-runtime", ARGUMENT_RUNTIME);
+    world.configure(json!({
+        "projects": { PROJECT: { "providers": [
+            { "provider": "acmeforge", "user": "you", "repos": ["app"] }
+        ] } },
+        "work": {
+            "runner": "argument-runtime",
+            "recipes": [{
+                "id": "fix-gate",
+                "icon": "🛠",
+                "description": "fix the red gate",
+                "state": "fix",
+                "needs_checkout": true,
+                "autorun": true,
+                "when": { "kinds": ["pr"], "roles": ["author"], "gate": "failing" },
+                "brief": "Fix the gate on {title}."
+            }]
+        }
+    }));
+    world
+}
+
+/// What the last run started was handed after ephor's own arguments, or
+/// `None` when no run has been started since the record was last cleared.
+fn handed(world: &World) -> Option<Vec<String>> {
+    std::fs::read_to_string(world.path().join("dispatch-runner-args"))
+        .ok()
+        .map(|text| {
+            // The stand-in prints one line per argument, and an empty line
+            // for an empty vector.
+            text.lines()
+                .filter(|line| !line.is_empty())
+                .map(str::to_string)
+                .collect()
+        })
+}
+
+/// Lays the ticket with a dispatch of its own and clears what that dispatch's
+/// run was handed, so whatever is recorded next was started by the sync.
+fn laid(world: &World) {
+    world
+        .ephor()
+        .args([
+            "work",
+            "dispatch",
+            "--item",
+            "acmeforge:app/101",
+            "--recipe",
+            "fix-gate",
+        ])
+        .assert()
+        .success();
+    assert_eq!(
+        handed(world),
+        Some(vec![]),
+        "the dispatch's own run was handed nothing"
+    );
+    std::fs::remove_file(world.path().join("dispatch-runner-args")).expect("the record clears");
+}
+
+/// `work sync` is the trigger a timer runs before `work run --due`, and the
+/// sweep it ends in starts the work as often as either of the others does. The
+/// vector after its `--` reaches every run that sweep starts, unchanged and in
+/// order, exactly as dispatch's does (§FS-005-dispatch.24).
+#[test]
+fn a_sync_hands_the_runs_its_sweep_starts_its_runner_arguments_unchanged_and_in_order() {
+    let world = autorunning();
+    laid(&world);
+    let price_book = world.file("config/price book.json", "{}\n");
+    let price_book = price_book.to_str().expect("the fixture path is UTF-8");
+
+    let synced = world
+        .ephor()
+        .args([
+            "work",
+            "sync",
+            "--project",
+            PROJECT,
+            "--",
+            "--prices",
+            price_book,
+            "--agent",
+            "cld",
+            "--trace-runtime",
+        ])
+        .output()
+        .expect("the sync runs");
+    assert!(
+        synced.status.success(),
+        "work sync takes a trailing runner vector:\n{}",
+        String::from_utf8_lossy(&synced.stderr)
+    );
+    assert_eq!(
+        handed(&world),
+        Some(
+            ["--prices", price_book, "--agent", "cld", "--trace-runtime"]
+                .map(str::to_string)
+                .to_vec()
+        ),
+        "the run the sync started was handed its vector"
+    );
+}
+
+/// The vector lasts for the invocation that was given it: it is stored
+/// nowhere, so the next sync and the next due sweep start the same root with
+/// nothing after ephor's own arguments (§FS-005-dispatch.24).
+#[test]
+fn a_later_sweep_does_not_inherit_what_a_sync_was_given() {
+    let world = autorunning();
+    laid(&world);
+    world
+        .ephor()
+        .args([
+            "work",
+            "sync",
+            "--project",
+            PROJECT,
+            "--",
+            "--effort",
+            "high",
+        ])
+        .assert()
+        .success();
+    assert_eq!(
+        handed(&world),
+        Some(vec!["--effort".to_string(), "high".to_string()])
+    );
+
+    world
+        .ephor()
+        .args(["work", "sync", "--project", PROJECT])
+        .assert()
+        .success();
+    assert_eq!(
+        handed(&world),
+        Some(vec![]),
+        "the next sync starts with no vector"
+    );
+
+    std::fs::remove_file(world.path().join("dispatch-runner-args")).expect("the record clears");
+    world
+        .ephor()
+        .args(["work", "run", "--due", "--project", PROJECT])
+        .assert()
+        .success();
+    assert_eq!(
+        handed(&world),
+        Some(vec![]),
+        "the due sweep starts with no vector"
+    );
+}
+
+/// A dry sync accepts the vector and still starts nothing, because a dry run
+/// starts no runtime whatever it was handed (§FS-005-dispatch.24).
+#[test]
+fn a_dry_sync_takes_a_vector_and_starts_nothing() {
+    let world = autorunning();
+    laid(&world);
+    world
+        .ephor()
+        .args([
+            "work",
+            "sync",
+            "--project",
+            PROJECT,
+            "--dry-run",
+            "--",
+            "--effort",
+            "high",
+        ])
+        .assert()
+        .success();
+    assert_eq!(handed(&world), None, "a dry sync started no run");
+}
+
+/// The trailing form is part of the command, so its help says so
+/// (§FS-011-command-line.8).
+#[test]
+fn the_sync_help_advertises_the_trailing_runner_arguments() {
+    let world = World::new();
+    world
+        .ephor()
+        .args(["work", "sync", "--help"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("[-- <RUNNER_ARGS>...]"));
+}
+
 /// Autorun is safe to leave enabled because a zero ceiling writes the work
 /// but starts none of it, and the due command publishes that decision as a
 /// successful machine-readable outcome (§FS-005-dispatch.24).

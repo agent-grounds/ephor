@@ -161,12 +161,13 @@ It refuses a plan whose checkout a live run already holds, naming that run, and
 `--force` starts it anyway
 ([§FS-005-dispatch.24](FS-005-dispatch.md#24-work-nobody-has-to-start-starts-itself)).
 
-`ephor work dispatch -- <RUNNER_ARGS>...` accepts the same trailing command
-line shape and passes that vector, in order and without interpretation, to
-every autorun its dispatch starts. The command's help advertises the trailing
-arguments. Their lifetime is this dispatch invocation only: they are not
-stored for `work sync`, interface actions, or later sweeps, and omitting them
-keeps the existing dispatch behaviour
+`ephor work dispatch -- <RUNNER_ARGS>...` and
+`ephor work sync -- <RUNNER_ARGS>...` accept the same trailing command line
+shape and pass that vector, in order and without interpretation, to every run
+the invocation's own sweep starts. Each command's help advertises the trailing
+arguments. Their lifetime is that one invocation only: they are not stored for
+interface actions or later sweeps, and omitting them keeps each verb's existing
+behaviour
 ([§FS-005-dispatch.24](FS-005-dispatch.md#24-work-nobody-has-to-start-starts-itself)).
 
 
