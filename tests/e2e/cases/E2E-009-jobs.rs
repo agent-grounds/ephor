@@ -111,6 +111,25 @@ fn hold_lock(dir: &Path) -> fs::File {
     file
 }
 
+/// Released means "reads as not live promptly", not instantaneously
+/// (§FS-005-dispatch.17 has the OS release the lock, with no promise of when):
+/// a child forked by a parallel test between `hold_lock`'s open and our drop
+/// keeps a duplicate of the flocked descriptor until its exec closes it. Poll
+/// past that window rather than racing it, as the runtime watch's unit tests do.
+fn assert_released(world: &World) {
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+    loop {
+        if one(world)["live"] == false {
+            return;
+        }
+        assert!(
+            std::time::Instant::now() < deadline,
+            "the lock went with the holder"
+        );
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+}
+
 /// Everything the reader would have watched is kept, and the outcome is a
 /// sentence rather than a code to look up. The step ran where the job said and
 /// with the matter's own `EPHOR_*` vocabulary (§FS-005-dispatch.8), because a
@@ -165,8 +184,7 @@ fn a_held_lock_is_what_running_means() {
     );
 
     drop(held);
-    let job = one(&world);
-    assert_eq!(job["live"], false, "the lock went with the holder");
+    assert_released(&world);
 }
 
 /// A job with neither a lock nor an outcome is one whose supervisor died. It
