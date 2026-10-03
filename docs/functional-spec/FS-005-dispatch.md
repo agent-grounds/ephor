@@ -2876,8 +2876,12 @@ none is judged. And a sweep that acts and finds a root waiting on a person
 run that advances drops it. A root that was stopped before this point applied,
 or that collected strikes from runs that halted at the gate, therefore comes
 back by itself once the person moves the ticket, rather than staying stopped
-until somebody starts it by hand. Nothing new is written for it: only an
-existing record is dropped, so the ledger caches no work state
+until somebody starts it by hand. What is kept in its place is only a mark that
+the root was found waiting, so the run that was last there when it was found is
+read as already judged once the gate moves, and never counted as a miss — a
+strike it earned before is not counted twice, and one it never earned is not
+counted at all; a later run is judged as ever. The mark names no run and no
+ticket and is gone with the first verdict after it, so the ledger caches no work state
 ([§FS-005-dispatch.4](FS-005-dispatch.md#4-the-ledger-is-ephors-record-and-never-the-truth-about-the-work)), and a gated report writes no ledger at all.
 
 A run asked for by name is blind to all of this, as to every guard the sweep

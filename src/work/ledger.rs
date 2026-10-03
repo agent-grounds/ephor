@@ -7,7 +7,7 @@
 //! from the plan, and a cached copy of it here would be ephor reporting on
 //! itself instead of on the world.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -45,6 +45,13 @@ pub struct Ledger {
     /// reads unchanged (§FS-006-project-interface.11).
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub advances: BTreeMap<String, Judged>,
+    /// The work roots a sweep found waiting on a person, keyed as `advances`
+    /// is (§FS-005-dispatch.24.3.3). A mark and nothing more — no run, no
+    /// ticket, no state — that the last run there was already read, so the
+    /// first verdict after the gate moves counts no miss against it. An
+    /// addition, like `advances` (§FS-006-project-interface.11).
+    #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
+    pub waited: BTreeSet<String>,
     /// What is known about each provider pool, keyed by the pool
     /// (§FS-005-dispatch.29). The same kind of thing `starts` is — ephor's
     /// record of what it was told and of its own act, never work state
@@ -208,9 +215,11 @@ impl Judged {
     }
 
     /// Whether the rest is over: past [`ENOUGH_MISSES`] the root is not
-    /// rested at all but [`Judged::held`], which no interval ends.
+    /// rested at all but [`Judged::held`], which no interval ends. A run kept
+    /// with no misses — the last one before a root waited on a person — rests
+    /// nothing (§FS-005-dispatch.24.3.3).
     pub fn resting(&self, now: DateTime<Utc>) -> bool {
-        !self.held() && now < self.ready_at()
+        self.misses > 0 && !self.held() && now < self.ready_at()
     }
 
     /// Whether the sweep has stopped starting runs here altogether, until one
@@ -537,6 +546,7 @@ pub fn load() -> Result<Ledger> {
             entries: BTreeMap::new(),
             starts: BTreeMap::new(),
             advances: BTreeMap::new(),
+            waited: Default::default(),
             pools: BTreeMap::new(),
         });
     }

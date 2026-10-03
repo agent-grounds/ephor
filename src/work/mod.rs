@@ -3864,8 +3864,8 @@ pub fn due_among(
         // (§FS-005-dispatch.24, §FS-005-dispatch.30).
         //
         // A root waiting on a person is never started, so there is no run to
-        // judge, and finding it so drops what was remembered against it
-        // (§FS-005-dispatch.24.3.3). A mixed root is due for its ready work
+        // judge, and finding it so drops what was remembered against it and
+        // marks the run there as read (§FS-005-dispatch.24.3.3). A mixed root is due for its ready work
         // alone and judged as ever (§FS-005-dispatch.24.3.2).
         let person = tickets.is_empty().then(|| Hold::Person {
             tickets: waiting.tickets.clone(),
@@ -4070,6 +4070,14 @@ fn judge(
                     misses: kept.misses.saturating_add(1),
                     at: now,
                 },
+                // The last run before the root waited on a person was read
+                // then, and halted at the gate: it is known, never a miss
+                // (§FS-005-dispatch.24.3.3).
+                None if ledger.waited.contains(&root_key(root)) => Judged {
+                    run,
+                    misses: 0,
+                    at: now,
+                },
                 None => Judged {
                     run,
                     misses: 1,
@@ -4134,8 +4142,8 @@ pub enum Verdict {
     /// It advanced nothing: this is the record to keep.
     Nothing(Judged),
     /// No run is owed here: the root waits on a person. Whatever was
-    /// remembered is dropped, a rest or a stop alike, and nothing is kept in
-    /// its place (§FS-005-dispatch.24.3.3).
+    /// remembered is dropped, a rest or a stop alike, and only a mark that the
+    /// root waited is kept in its place (§FS-005-dispatch.24.3.3).
     Waiting,
 }
 
@@ -4400,10 +4408,16 @@ impl Dispatcher {
         for root in &due {
             let key = root_key(&root.root);
             match &root.verdict {
-                Some(Verdict::Advanced) | Some(Verdict::Waiting) => {
+                Some(Verdict::Advanced) => {
                     self.ledger.advances.remove(&key);
+                    self.ledger.waited.remove(&key);
+                }
+                Some(Verdict::Waiting) => {
+                    self.ledger.advances.remove(&key);
+                    self.ledger.waited.insert(key);
                 }
                 Some(Verdict::Nothing(judged)) => {
+                    self.ledger.waited.remove(&key);
                     self.ledger.advances.insert(key, judged.clone());
                 }
                 None => {}
