@@ -3680,6 +3680,10 @@ pub fn due_among(
         let mut tickets: Vec<String> = Vec::new();
         let mut items: Vec<String> = Vec::new();
         let mut projects: BTreeSet<String> = BTreeSet::new();
+        // What a gate holds instead, kept apart: a root left with nothing but
+        // this waits on a person, and its row names the gates rather than the
+        // work they hold (§FS-005-dispatch.24.3.2).
+        let mut waiting = Waiting::default();
         for plan_ref in &group.plans {
             // Which entry laid this plan down, where a workflow did — and so
             // which set of "asked to run itself" answers for what is inside
@@ -3739,7 +3743,24 @@ pub fn due_among(
             let Ok(Some(plan)) = Plan::read(&plan_ref.path) else {
                 continue;
             };
-            for ticket in plan.tickets() {
+            let plan_tickets = plan.tickets();
+            // Every open ticket in a gating state here, by the machine in
+            // force for this plan and nothing else — not the last run's
+            // stream, not its report, not a file's time. Each holds its own
+            // top-level tree and no other (§FS-005-dispatch.24.3.1). Never
+            // for the key, which is blind to the wait (§FS-005-dispatch.24.3.3).
+            let gates: Vec<(&str, &str)> = match key {
+                true => Vec::new(),
+                false => plan_tickets
+                    .iter()
+                    .filter_map(|ticket| {
+                        let state = ticket.state.as_deref()?;
+                        (judge.is_gating(state) && !judge.is_final(state))
+                            .then_some((ticket.id.as_str(), state))
+                    })
+                    .collect(),
+            };
+            for ticket in plan_tickets.iter() {
                 let state = ticket.state.as_deref();
                 // Over, waiting on a person, or somebody's to move: none
                 // of them is work a run would advance
@@ -3774,6 +3795,18 @@ pub fn due_among(
                         continue;
                     }
                 }
+                // Would be due, but a gate in its own tree holds it: the run
+                // would halt at that gate having done nothing
+                // (§FS-005-dispatch.24.3.1).
+                let tree = top_level(&ticket.id);
+                let holding: Vec<&(&str, &str)> = gates
+                    .iter()
+                    .filter(|(gated, _)| top_level(gated) == tree)
+                    .collect();
+                if !holding.is_empty() {
+                    waiting.hold(plan_ref, &holding);
+                    continue;
+                }
                 if !plans.contains(&plan_ref.plan_id) {
                     plans.push(plan_ref.plan_id.clone());
                 }
@@ -3786,7 +3819,7 @@ pub fn due_among(
                 tickets.push(format!("{}.{}", plan_ref.plan_id, ticket.id));
             }
         }
-        if tickets.is_empty() {
+        if tickets.is_empty() && waiting.tickets.is_empty() {
             continue;
         }
         // Where the run is made from, and whether it may be made there at
@@ -3829,10 +3862,31 @@ pub fn due_among(
         // resting on is started at once for the reader who typed its matter,
         // and no verdict is owed about a run they are asking after
         // (§FS-005-dispatch.24, §FS-005-dispatch.30).
-        let (verdict, rested) = match key {
-            true => (None, None),
-            false => judge(ledger, &group.root, now),
+        //
+        // A root waiting on a person is never started, so there is no run to
+        // judge, and finding it so drops what was remembered against it
+        // (§FS-005-dispatch.24.3.3). A mixed root is due for its ready work
+        // alone and judged as ever (§FS-005-dispatch.24.3.2).
+        let person = tickets.is_empty().then(|| Hold::Person {
+            tickets: waiting.tickets.clone(),
+        });
+        let (verdict, rested) = match (key, &person) {
+            (_, Some(_)) => (Some(Verdict::Waiting), None),
+            (true, None) => (None, None),
+            (false, None) => judge(ledger, &group.root, now),
         };
+        // The row of a root waiting on a person names the gates, and is
+        // attributed to the plans that hold them (§FS-005-dispatch.24.3.2).
+        if person.is_some() {
+            plans = waiting.plans;
+            tickets = waiting
+                .tickets
+                .into_iter()
+                .map(|(ticket, _)| ticket)
+                .collect();
+            items = waiting.items;
+            projects = waiting.projects;
+        }
         due.push(Due {
             project: group
                 .plans
@@ -3870,11 +3924,53 @@ pub fn due_among(
             // witness is one file per root, and a root with nothing to run is
             // not a root a verdict is owed about (§FS-005-dispatch.24).
             excluded: None,
+            person,
             rested,
             verdict,
         });
     }
     due
+}
+
+/// What the gates in one root hold out of the due reading, gathered so the
+/// root can be passed over naming them where nothing else there is due
+/// (§FS-005-dispatch.24.3.2).
+#[derive(Default)]
+struct Waiting {
+    /// Each gated ticket that holds a would-be-due ticket, plan-qualified,
+    /// with the gating state it sits in; each named once.
+    tickets: Vec<(String, String)>,
+    plans: Vec<String>,
+    items: Vec<String>,
+    projects: BTreeSet<String>,
+}
+
+impl Waiting {
+    /// One would-be-due ticket in `plan_ref`, held by `gates` in its tree.
+    fn hold(&mut self, plan_ref: &runtime::watch::PlanRef, gates: &[&(&str, &str)]) {
+        for (gated, state) in gates {
+            let qualified = format!("{}.{gated}", plan_ref.plan_id);
+            if !self.tickets.iter().any(|(ticket, _)| ticket == &qualified) {
+                self.tickets.push((qualified, state.to_string()));
+            }
+        }
+        if !self.plans.contains(&plan_ref.plan_id) {
+            self.plans.push(plan_ref.plan_id.clone());
+        }
+        if let Some(item) = &plan_ref.item {
+            if !self.items.contains(item) {
+                self.items.push(item.clone());
+            }
+        }
+        self.projects.insert(plan_ref.project.clone());
+    }
+}
+
+/// The top-level ticket a ticket's tree hangs from: its id up to the first
+/// `.`, so `fix-gate-1.triage` is in `fix-gate-1`'s tree and `fix-gate-10`
+/// is a tree of its own (§FS-005-dispatch.24.3.1).
+fn top_level(id: &str) -> &str {
+    id.split('.').next().unwrap_or(id)
 }
 
 /// Whether this reading's reader has a plan of their own in this root — the
@@ -3928,6 +4024,7 @@ fn refused_root(ledger: &Ledger, group: &runtime::watch::RootPlans, says: String
         // refusal and nothing else (§FS-005-dispatch.24,
         // §FS-005-dispatch.30).
         excluded: None,
+        person: None,
         rested: None,
         verdict: None,
     }
@@ -4036,6 +4133,10 @@ pub enum Verdict {
     Advanced,
     /// It advanced nothing: this is the record to keep.
     Nothing(Judged),
+    /// No run is owed here: the root waits on a person. Whatever was
+    /// remembered is dropped, a rest or a stop alike, and nothing is kept in
+    /// its place (§FS-005-dispatch.24.3.3).
+    Waiting,
 }
 
 /// The work roots the reader told one sweep to leave alone
@@ -4299,7 +4400,7 @@ impl Dispatcher {
         for root in &due {
             let key = root_key(&root.root);
             match &root.verdict {
-                Some(Verdict::Advanced) => {
+                Some(Verdict::Advanced) | Some(Verdict::Waiting) => {
                     self.ledger.advances.remove(&key);
                 }
                 Some(Verdict::Nothing(judged)) => {
@@ -4314,10 +4415,11 @@ impl Dispatcher {
         let runs = due
             .into_iter()
             .map(|mut root| {
-                // The reader's own instruction, then the rest ephor decided
-                // on: both are successful non-launch outcomes, both happen
-                // before capacity is spent, and both are said in the row
-                // where this used to say *started* (§FS-005-dispatch.24).
+                // The reader's own instruction, then a root waiting on a
+                // person, then the rest ephor decided on: all successful
+                // non-launch outcomes, all before capacity is spent, and all
+                // said in the row where this used to say *started*
+                // (§FS-005-dispatch.24, §FS-005-dispatch.24.3.2).
                 if let Some(hold) = root.hold().cloned() {
                     return Launched::passed_over(&root, hold);
                 }
@@ -5036,6 +5138,12 @@ pub struct Due {
     /// the reader's instruction rather than anything ephor worked out. Always
     /// [`Hold::Excluded`] (§FS-005-dispatch.24.2).
     pub excluded: Option<Hold>,
+    /// Why this root waits on a person, where it does: every ticket that
+    /// would have made it due is held by a gate in its own tree
+    /// (§FS-005-dispatch.24.3.2). Always [`Hold::Person`], and asked after
+    /// the reader's `--except` and before the no-advance rest
+    /// (§FS-005-dispatch.24).
+    pub person: Option<Hold>,
     /// Why the last run here having advanced nothing leaves this root alone —
     /// the rest, or the end of resting (§FS-005-dispatch.24): [`Hold::Rested`]
     /// or [`Hold::Stopped`] (§FS-005-dispatch.24.2).
@@ -5058,7 +5166,10 @@ impl Due {
     /// The same first match as data, for the row a program reads
     /// (§FS-005-dispatch.24.2).
     pub fn hold(&self) -> Option<&Hold> {
-        self.excluded.as_ref().or(self.rested.as_ref())
+        self.excluded
+            .as_ref()
+            .or(self.person.as_ref())
+            .or(self.rested.as_ref())
     }
 }
 

@@ -2487,8 +2487,9 @@ fn would_sweep(
                         None => "would-run",
                     },
                     "reason": root.passed_over(),
-                    // Only the holds this report asks: excluded, rested,
-                    // stopped (§FS-005-dispatch.24.2).
+                    // Only the holds this report asks: excluded, person,
+                    // rested, stopped (§FS-005-dispatch.24.2,
+                    // §FS-005-dispatch.24.3.2).
                     "hold": root.hold().map(Hold::data),
                 }))
             })

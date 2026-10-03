@@ -1666,6 +1666,7 @@ fn candidate(id: &str, project: &str) -> Due {
         held_by: None,
         refusal: None,
         excluded: None,
+        person: None,
         rested: None,
         verdict: None,
     }
