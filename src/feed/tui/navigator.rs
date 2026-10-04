@@ -1345,6 +1345,35 @@ mod tests {
         assert_eq!(landed, ["Recent"]);
     }
 
+    /// §FS-003-feed-categories.1: repository-followed issues use the same
+    /// actual-role categories as role and label searches. The CLI fixture
+    /// pins which roles open retrieval produces; these are their real filters.
+    #[test]
+    fn open_issue_question_keeps_actual_issue_categories() {
+        let mut item = match row("github-issues:acme/widget#1") {
+            Entry::Item(row) => row.item,
+            _ => unreachable!("the fixture is a row"),
+        };
+        item.kind = ItemKind::Issue;
+        item.state = Some("open".to_string());
+        for (role, expected) in [
+            (ItemRole::Author, "My Issues"),
+            (ItemRole::Reviewer, "Participating"),
+        ] {
+            item.role = Some(role);
+            let landed: Vec<&str> = SECTIONS
+                .iter()
+                .filter(|(_, filter)| filter(&item))
+                .map(|(header, _)| *header)
+                .collect();
+            assert_eq!(
+                landed,
+                [expected],
+                "{role:?} belongs to exactly one category"
+            );
+        }
+    }
+
     /// §FS-011-command-line.9: the refresh key asks about the projects this
     /// screen was opened over, so a screen opened under a scope selector
     /// fetches its organization and not the site. Detail keeps its own
