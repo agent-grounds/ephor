@@ -130,16 +130,43 @@ ephor degrades to what is answered rather than failing.
   for: following a label is following work, and a search that took the closed
   too would spend its bound on history rather than on the queue.
 
-  Each enabled issue question — authored, participating, and every label being
-  followed — is an answer in its own right. A question that comes back as full
+  A source may also opt in to **follow every open issue in its repositories**
+  with `open: true`, whoever opened it and whatever its labels, including none.
+  Each is reported under the reader's actual role: author if they opened it,
+  participant otherwise. This question asks only for open issues; it does not
+  replace enabled authored or participating questions, which also reach closed
+  issues. `open` defaults to false, and omitting it or setting it to false
+  preserves the existing questions and their defaults. It counts as a question
+  when both role switches are off and no labels are named.
+
+  Open mode requires nonempty `repos` and clearly refuses an empty list rather
+  than searching the whole forge. This restriction applies only to open mode:
+  existing role and label configurations may still search without repositories.
+  All named repositories are combined in one GraphQL search question, never
+  one request per repository. It carries the same `updated_within_days` bound
+  as every other issue question: default 30 days, zero unbounded. Following
+  every open issue regardless of age therefore requires
+  `updated_within_days: 0`; with a nonzero window, older activity is outside the
+  question. No existing default changes.
+
+  Each enabled issue question — authored, participating, every label being
+  followed, and the combined open-repository question — is an answer in its own
+  right. A question that comes back as full
   as its configured limit has not answered
   ([§FS-001-forge-interface.6](FS-001-forge-interface.md#6-a-source-that-did-not-answer-says-so-and-says-which-kind-of-not)):
   it may have delivered only a prefix nobody can size. The implementation
   therefore fails the source rather than showing that unknown fraction as the
   whole answer. Its diagnosis names the question and the limit it reached,
   says that matching work may remain, and tells the reader how to obtain a
-  complete answer. Questions that return fewer results than their limit remain
-  complete and do not fail.
+  complete answer. For the open question, completeness is checked before
+  deduplication, label selection, or role classification, against the combined
+  answer over all named repositories. Saturation fails even when nodes overlap
+  or only a few carry followed labels, and even if the forge reports no further
+  page. Its remedies are to raise `limit`, narrow `repos`, shorten the update
+  window, or disable `open` and follow narrower `labels`. Narrowing labels
+  alone cannot narrow an enabled open question. Questions whose complete
+  answers return fewer results than their limit do not fail; paging and forge
+  error handling continue to apply.
 - **Notices** — what the forge itself says is directed at the user: one entry
   per thing it decided to tell them, carrying the reason it gives, the subject
   it concerns, when it arrived, and whether the forge considers it read. This
@@ -342,6 +369,14 @@ reasons are still reported one by one
 implementation that cannot recover the separate reasons from a combined answer
 asks the separate questions instead: a reason is a claim about the reader's
 involvement, and one that was not established is not reported.
+
+Where an open-issue answer covers the source's followed-label questions under
+the same repository and time bounds, those questions are answered from it:
+the request contains one combined open search and no redundant label searches.
+The open answer includes issues without a followed label too. Enabled authored
+and participating questions remain in the batch because they also ask for
+closed issues, which the open answer cannot cover. Overlapping results remain
+one issue, with author taking precedence over participant.
 
 ### 8.2 The scarce meter is the last resort
 

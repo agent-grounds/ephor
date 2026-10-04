@@ -1,5 +1,6 @@
 mod common;
 mod custom_status_compat;
+mod github_issues_open;
 
 use std::fs;
 use std::path::Path;

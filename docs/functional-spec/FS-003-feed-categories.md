@@ -20,13 +20,17 @@ role on it:
 | Reviewing | pull requests the user is on as a reviewer |
 | CI | gate and build results |
 | My Issues | issues the user opened |
-| Participating | issues the user is in but did not open, or follows by a label the source names ([§FS-001-forge-interface.1](FS-001-forge-interface.md#1-capabilities)) |
+| Participating | issues the user did not open and follows through participation, a label the source names, or a source configured to follow every open issue in its repositories ([§FS-001-forge-interface.1](FS-001-forge-interface.md#1-capabilities)) |
 | Tasks | the project's own tasks, from a store in its checkout ([§FS-006-project-interface.7](FS-006-project-interface.md#7-the-projects-own-tasks-are-read-where-they-live)) |
 | Messages | anything addressed to the user that is not a pull request or an issue |
 | Recent | finished work that still leaves something to do — see [§FS-003-feed-categories.2](FS-003-feed-categories.md#2-recent) |
 
 Exactly one, so that the size of a category is the size of that pile of work
 and not a double count.
+
+Following a label or every open issue does not change the reader's actual
+role: an issue they opened belongs to My Issues, and another author's issue
+belongs to Participating, including when the reader has never spoken in it.
 
 ## 2. Recent
 
