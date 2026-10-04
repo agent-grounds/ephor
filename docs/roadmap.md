@@ -9,7 +9,7 @@ citation does not dangle.
 ## RM-001-forge-interface: put every forge behind the interface
 
 Implements [§FS-001-forge-interface](functional-spec/FS-001-forge-interface.md#fs-001-forge-interface-ephor-reaches-every-forge-and-issue-tracker-through-one-provider-interface).
-Most of it has landed — see `## Unreleased` in [docs/changelog.md](changelog.md)
+Most of it has landed — see the pull requests merged on `main` since the last tag
 — and what remains is the last mile before anything is published.
 
 ### 1. What
@@ -32,7 +32,7 @@ name is confined to its own adapter and held there by the build
 configuration, against a public GitHub repository, producing a feed — which is
 what says the examples are a starting point rather than a shape. And the first
 release itself, which has to be tagged by hand before the bump workflows have
-anything to count from ([§FS-002-release](functional-spec/FS-002-release.md#fs-002-release-ephor-releases-from-a-tag-with-a-changelog-written-before-each-release)).
+anything to count from ([§FS-002-release](functional-spec/FS-002-release.md#fs-002-release-ephor-releases-from-a-tag-and-the-release-writes-its-changelog-from-the-pull-requests-it-ships)).
 
 The boundary half of the same law — the seams a capability is reached across,
 rather than the forges reached through them — is
@@ -59,7 +59,7 @@ Serves [§REQ-001-boundary](requirements/REQ-001-boundary.md#req-001-boundary-ev
 The law landed with the interface it describes — the summons executor, the
 capability table, the verb seams, the runtime binding, the manifest, and a
 literal-confinement check that fails the build
-([`## Unreleased`](changelog.md#unreleased)). Four things it names are not
+(merged on `main` since the last tag). Four things it names are not
 finished, and each is small enough to say exactly.
 [§RM-001-forge-interface](roadmap.md#rm-001-forge-interface-put-every-forge-behind-the-interface)
 is the forge half of the same law.
@@ -139,7 +139,7 @@ once green: every test binary failed to compile, so nothing behind that had
 ever been looked at. Compiling it was one line, and what came out from behind
 it is a port. `windows-latest` is off the matrix until this is done, because a
 leg that is always red is a leg nobody reads
-([`## Unreleased`](changelog.md#unreleased)).
+(merged on `main` since the last tag).
 
 ### 1. What is already fixed
 
@@ -180,7 +180,7 @@ Serves [§FS-014-work-root-scopes](functional-spec/FS-014-work-root-scopes.md#fs
 A work root exists at three scopes — organization, project, checkout — and a
 plan belongs in the smallest one that can see everything the work touches. The
 rule is written down now, and the mechanism under most of it has shipped
-([`## Unreleased`](changelog.md#unreleased)). What is missing is any
+(merged on `main` since the last tag). What is missing is any
 construction that holds a reader to it:
 [§FS-014-work-root-scopes.7](functional-spec/FS-014-work-root-scopes.md#7-what-is-not-yet-held)
 names three parts of the rule that are this program's to enforce and are not

@@ -189,7 +189,7 @@ Neither is line-measured, and neither is hand-trimmed. If one is genuinely this 
 id = "append-only"
 text = """
 The changelog is append-only and is not line-measured (§FS-012-file-size.1): splitting it at a line count would cut a release in half. It is bounded in bytes only, as the backstop against a file too expensive to open at all.
-It already has its own rotation: §FS-002-release.1 moves each release out to `docs/changelog/<version>.md` when the next one ships, leaving only the `## Unreleased` pointer and the latest release inline; what is pending is one small file per change under `docs/changelog/unreleased/`, which the release collects and deletes. If this file is large, that rotation is what is owed, not a split.
+It already has its own rotation: §FS-002-release.2.3 moves each release out to `docs/changelog/<version>.md` when the next one ships, leaving only the conventions and the latest release inline. If this file is large, that rotation is what is owed, not a split.
 """
 
 [[messages]]
@@ -316,7 +316,7 @@ count_comment_lines = true
 priority = 30
 message = "manual-chapter"
 
-# The append-only changelog, its archives and its pending entries remain byte-measured (§FS-002-release.1).
+# The append-only changelog and its archives remain byte-measured (§FS-002-release.1).
 [[rules]]
 id = "changelog"
 include = ["docs/changelog.md", "docs/changelog/**/*.md"]

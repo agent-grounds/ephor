@@ -27,8 +27,9 @@ is the seam it is missing — never a trim to fit.
   line. It gets a rule of its own.
 - **The changelog** is append-only and is not line-measured at all. A line budget
   on one only asks it to cut a release in half, and it already carries the
-  bounding that means something: each release rotates out to its own file when
-  the next ships ([§FS-002-release.1](FS-002-release.md#1-changelog)).
+  bounding that means something: it holds only the latest release inline, and
+  each release rotates out to its own file when the next ships
+  ([§FS-002-release.2.3](FS-002-release.md#23-preparing-a-release-reads-everything-before-it-writes-and-refuses-rather-than-guess)).
 - **Code** — sources, tests, scripts, workflows — is opened whole by whoever
   changes it, and is budgeted per tree from what that tree measures.
 - **Shipped artifacts** — the published schemas and the worked example

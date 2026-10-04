@@ -83,18 +83,16 @@ just check         # the CI gate: fmt, build with -D warnings, tests, grund
 just pre-release   # everything a release verifies, publishing nothing
 ```
 
-Releases follow [§FS-002-release](docs/functional-spec/FS-002-release.md#fs-002-release-ephor-releases-from-a-tag-with-a-changelog-written-before-each-release):
-a version exists exactly when a `vX.Y.Z` tag does; no change writes the
-changelog — before a release, one pull request writes its section as one entry
-file per change under
-[docs/changelog/unreleased/](docs/changelog/unreleased/README.md), from the pull
-requests merged since the last tag, the issues they closed and the schema diff,
-each entry ending with its own `(PR #N)`, and the release collects them into
-[docs/changelog.md](docs/changelog.md); and publication is a workflow rather
-than a hand-run command — `Auto bump` cuts a patch release on Mondays when main
-has observable changes, green CI and a written release section, holding with a
-notice while none is written; `Release minor` cuts a minor on demand and refuses
-without one; and both dry-run the whole release on a candidate branch before
+Releases follow [§FS-002-release](docs/functional-spec/FS-002-release.md#fs-002-release-ephor-releases-from-a-tag-and-the-release-writes-its-changelog-from-the-pull-requests-it-ships):
+a version exists exactly when a `vX.Y.Z` tag does; nobody writes the
+changelog — `prepare` lists the pull requests merged since the last tag, newest
+first, as `- [<title>](<url>) (PR #N)`, with compatibility notices for any
+schema field removed or changed since that tag, into
+[docs/changelog.md](docs/changelog.md), and refuses, writing nothing, when the
+forge cannot be reached, a listing is incomplete or nothing qualifies; and
+publication is a workflow rather than a hand-run command — `Auto bump` cuts a
+patch release on Mondays when main has observable changes and green CI;
+`Release minor` cuts a minor on demand; and both dry-run the whole release on a candidate branch before
 fast-forwarding main. `Release` then builds a profile-guided binary per target,
 publishes the crate, and attaches
 the archives to a GitHub release whose notes are that version's changelog

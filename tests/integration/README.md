@@ -44,23 +44,20 @@ line CI and the pre-commit hook run.
   it skips with a `harness:` message where that binary is not installed — which
   is why CI runs this line in the `grund` job as well as the `cargo test` job:
   only the former has the pin on `PATH`.
-- `test_prepare_changelog_release.py` — the release script: counting,
-  collecting, ordering, stamping and consuming the pending entries, and the
-  scheduled release's hold while none is written
-  ([§FS-002-release.2](../../docs/functional-spec/FS-002-release.md#2-cutting-a-release)).
-- `test_changelog_migration.py` — how the release treats the entries the
-  switch-over moved out of `## Unreleased`
-  ([§FS-002-release.1.2](../../docs/functional-spec/FS-002-release.md#12-the-switch-over-moves-what-was-pending-and-loses-nothing)).
-- `test_changelog_entries.py` — the entry format against the grund copy it
-  is pinned to, this repository's own pending entries, two pull requests
-  landing in every order ([§FS-002-release.1](../../docs/functional-spec/FS-002-release.md#1-changelog)), and that no
-  hook or workflow step asks a change for an entry
-  ([§FS-002-release.6](../../docs/functional-spec/FS-002-release.md#6-no-change-is-gated-on-the-changelog)).
-- `changelog_git.py` — not a test, and not collected as one: the throwaway git
-  repository, with a stub `gh` on `PATH`, those three share. The release reads
-  the history that added the entries, so it cannot be shown with loose files.
-  `fixtures/` holds grund's README part one at the commit the format is pinned
-  to.
+- `test_prepare_changelog_release.py` — the release script writing its own
+  notes: the range, the pull requests that qualify, complete listings, order
+  and rendering, rotation, and every refusal leaving the tree untouched
+  ([§FS-002-release.1.3](../../docs/functional-spec/FS-002-release.md#13-the-release-lists-the-pull-requests-merged-since-the-previous-tag-and-every-one-of-them), [§FS-002-release.2.3](../../docs/functional-spec/FS-002-release.md#23-preparing-a-release-reads-everything-before-it-writes-and-refuses-rather-than-guess)).
+- `test_release_notices.py` — the compatibility notices a later release writes
+  for a schema that lost or changed a field ([§FS-002-release.1.4](../../docs/functional-spec/FS-002-release.md#14-compatibility-notices-from-the-previous-tag-onwards)).
+- `test_release_workflows.py` — the release workflows: nothing stamped, counted
+  or held on, the shared path predicate behind the schedule's gate, and no hook
+  or step that asks a change for a changelog entry ([§FS-002-release.2](../../docs/functional-spec/FS-002-release.md#2-cutting-a-release),
+  [§FS-002-release.6](../../docs/functional-spec/FS-002-release.md#6-no-change-is-gated-on-the-changelog)).
+- `release_forge.py` — not a test, and not collected as one: the throwaway git
+  repository, with a `gh` stand-in on `PATH` that answers as GitHub's REST API
+  does, those three share. The release reads first-parent history and the pull
+  requests that landed on it, so it cannot be shown with loose files.
 
 Unit tests stay beside the code under `code`'s rule; there is no third kind
 for them.

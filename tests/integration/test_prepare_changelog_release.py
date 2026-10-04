@@ -1,554 +1,353 @@
-"""The release script: collecting, ordering, stamping and consuming the entries. §FS-002-release.2
+"""The release writes its own notes from the pull requests it ships. §FS-002-release.1.3
 
-`stamp`, `prepare`, `notes` and `pending` are run the way the release
-workflows run them, against a real history and a forge that answers what each
-case says. Where an entry landed decides its order and its number
-(§FS-002-release.2.1); stamping writes only the trailing number and never fails
-a release (§FS-002-release.2.2); preparing consumes the entries and refuses
-before it would lose one (§FS-002-release.2.3). What `notes` writes is still the
-inline section (§FS-002-release.3). `pending` is what the scheduled release
-holds on while no section is written, and the workflows are read for that hold
-(§FS-002-release.2).
+`prepare` and `notes` are run the way the release workflows run them, against a
+real history and a forge stand-in that answers what each case says. Nobody
+writes an entry first: the first release lists every qualifying pull request
+from the root commit, a later one what landed since the previous tag
+(§FS-002-release.1.3), and the release rotates the previous section out as it
+always has. Everything is read before anything is written, and a release the
+forge or the history cannot vouch for is refused with the tree untouched
+(§FS-002-release.2.3). What `notes` writes is still the inline section
+(§FS-002-release.3).
 """
 
-import os
 import re
 import unittest
 
-from changelog_git import (
-    CATEGORIES,
-    ENTRY_DIR,
-    POINTER,
+from release_forge import (
+    FIRST_CHANGELOG,
+    PATHS_SCRIPT,
+    PULL_URL,
+    REPO,
     REPOSITORY_ROOT,
-    EntryRepoCase,
+    ReleaseCase,
     describe,
-    list_items,
-    output,
+    line,
+    listed_numbers,
     release_section,
-    unreleased_section,
 )
 
 
-# What the refusal of an empty directory says to do (§FS-002-release.2.3), matched without case.
-WRITE_IT_FIRST = "write the release section first"
+def with_release(version: str, date: str, *lines: str) -> str:
+    """`FIRST_CHANGELOG` with `version` already released inline."""
+    section = f"## 2. [{version}] — {date}\n\n" + "".join(f"{text}\n" for text in lines) + "\n"
+    return FIRST_CHANGELOG.replace("## 3. Older releases\n", section + "## 3. Older releases\n")
 
 
-class CollectionTests(EntryRepoCase):
-    """`prepare` builds today's section shape from the entry files, and consumes them."""
+class FirstReleaseTests(ReleaseCase):
+    """No tag, no store: the first release lists everything from the root commit."""
 
-    def test_every_category_is_released_in_order_and_the_entries_are_consumed(self) -> None:
+    def first_history(self, repo):
+        repo.land_merge(1, "feat: the first feature", ("src/one.rs",))
+        repo.push(("src/direct.rs",), "chore: a substantive push no pull request landed")
+        repo.land_squash(2, "fix: a squashed fix", ("src/two.rs",))
+        repo.land_rebase(3, "feat: a rebased change", ("src/three.rs", "src/three_more.rs"))
+
+    def test_the_first_release_lists_every_qualifying_pull_request_from_the_root_commit(self) -> None:
         repo = self.repo()
-        for category in reversed(CATEGORIES):
-            repo.entry(
-                f"example-{category}.{category}.md",
-                f"- **The {category} change.**\n  Its continuation line stays with it. (PR #142)\n",
-            )
-        repo.commit("docs: one entry in every category")
-        readme = (repo.path / ENTRY_DIR / "README.md").read_bytes()
+        self.first_history(repo)
 
         text = self.prepare(repo)
 
-        section = release_section(text)
-        headings = re.findall(r"^### (.+)$", section, re.MULTILINE)
-        self.assertEqual(headings, [category.capitalize() for category in CATEGORIES], section)
-        for category in CATEGORIES:
-            self.assertIn(f"- **The {category} change.**\n  Its continuation line stays with it. (PR #142)\n", section)
-        self.assertEqual(repo.pending(), [])
-        self.assertEqual((repo.path / ENTRY_DIR / "README.md").read_bytes(), readme)
-        self.assertEqual(unreleased_section(text).strip(), POINTER)
-        self.assertIn("## 2. [0.1.1] — 2026-10-02\n", text)
+        lines = (
+            line(3, "feat: a rebased change"),
+            line(2, "fix: a squashed fix"),
+            line(1, "feat: the first feature"),
+        )
+        self.assertEqual(text, with_release("0.1.0", self.DATE, *lines))
+        self.assertFalse((repo.path / "docs" / "changelog").exists(), "a first release archived something")
+
+    def test_notes_publish_the_first_release_s_list(self) -> None:
+        repo = self.repo()
+        self.first_history(repo)
+        section = release_section(self.prepare(repo), "0.1.0")
+        notes = repo.root / "release-notes.md"
+        self.assert_exit(repo.release("notes", "0.1.0", "--output", str(notes)), 0)
+        self.assertEqual(notes.read_text(encoding="utf-8"), section.strip() + "\n")
+        self.assertEqual(listed_numbers(notes.read_text(encoding="utf-8")), [3, 2, 1])
+
+    def test_origin_names_the_repository_when_github_repository_is_unset(self) -> None:
+        repo = self.repo(origin=f"git@github.com:{REPO}.git", repository_env=False)
+        repo.land_squash(1, "feat: found through origin", ("src/one.rs",))
+        self.assertEqual(self.released(repo), [1])
+
+    def test_this_repository_s_changelog_takes_its_first_release(self) -> None:
+        shipping = (REPOSITORY_ROOT / "docs" / "changelog.md").read_text(encoding="utf-8")
+        repo = self.repo(shipping)
+        repo.land_squash(1, "feat: the change that ships first", ("src/one.rs",))
+        text = self.prepare(repo)
+        head, older = shipping.split("## 3. Older releases\n", 1)
+        self.assertEqual(
+            text,
+            head + f"## 2. [0.1.0] — {self.DATE}\n\n" + line(1, "feat: the change that ships first") + "\n\n"
+            "## 3. Older releases\n" + older,
+        )
+
+
+class LaterReleaseTests(ReleaseCase):
+    """A later release lists what followed the previous tag, and rotates that release out."""
+
+    def cut(self, repo, version: str, date: str) -> str:
+        text = self.prepare(repo, version, date)
+        repo.write("Cargo.toml", f'[package]\nversion = "{version}"\n')
+        repo.commit(f"Release v{version}")
+        repo.tag(version)
+        return text
+
+    def test_a_later_release_lists_only_what_followed_its_tag_and_rotates_the_previous_one(self) -> None:
+        repo = self.repo()
+        repo.land_squash(1, "feat: shipped in 0.1.0", ("src/one.rs",))
+        first = release_section(self.cut(repo, "0.1.0", "2026-10-04"), "0.1.0")
+        repo.land_merge(2, "fix: after the tag", ("src/two.rs",))
+        repo.land_squash(3, "feat: later still", ("src/three.rs",))
+
+        text = self.cut(repo, "0.1.1", "2026-11-02")
+
+        self.assertEqual(listed_numbers(release_section(text, "0.1.1")), [3, 2])
+        archive = (repo.path / "docs" / "changelog" / "0.1.0.md").read_text(encoding="utf-8")
+        self.assertTrue(archive.startswith("# 0.1.0 — 2026-10-04\n"), archive)
+        self.assertIn(line(1, "feat: shipped in 0.1.0"), archive)
+        self.assertEqual(listed_numbers(archive), listed_numbers(first))
         older = text.split("## 3. Older releases\n", 1)[1]
-        self.assertIn("- [0.1.0](changelog/0.1.0.md) — 2026-01-01: The first release.", older)
-        self.assertIn("- [0.0.1](changelog/0.0.1.md) — 2025-12-01: the first release.", older)
-        archive = (repo.path / "docs" / "changelog" / "0.1.0.md").read_text()
-        self.assertTrue(archive.startswith("# 0.1.0 — 2026-01-01\n"), archive)
-        self.assertIn("- **The beginning.**", archive)
+        self.assertRegex(older, r"(?m)^- \[0\.1\.0\]\(changelog/0\.1\.0\.md\) — 2026-10-04")
+        self.assertNotIn("_None yet._", older)
+        self.assertNotIn("[0.1.0]", text.split("## 3. Older releases\n", 1)[0])
 
-    def test_a_category_with_no_entry_is_omitted(self) -> None:
-        repo = self.repo()
-        repo.entry("only-a-note.note.md", "- **Only a note.**\n")
-        repo.commit("docs: only a note")
-        section = release_section(self.prepare(repo))
-        self.assertEqual(re.findall(r"^### (.+)$", section, re.MULTILINE), ["Note"], section)
-
-    def test_an_entry_of_several_paragraphs_is_released_whole(self) -> None:
-        body = (
-            "- **A change that needs two paragraphs.** The first one wraps\n"
-            "  onto a second line.\n"
-            "\n"
-            "  **And a second paragraph.** It belongs to the same bullet. (PR #142)\n"
-        )
-        repo = self.repo()
-        # One commit, so the file name orders them: the long entry first.
-        repo.entry("a-paragraphs.changed.md", body)
-        repo.entry("b-after.changed.md", "- **The entry after it.** (PR #143)\n")
-        repo.commit("feat: a long entry and a short one")
-        section = release_section(self.prepare(repo))
-        self.assertIn(body, section)
-        self.assertLess(section.index("And a second paragraph"), section.index("The entry after it"))
+        repo.land_squash(4, "fix: in the third release", ("src/four.rs",))
+        third = self.prepare(repo, "0.1.2", "2026-12-01")
+        self.assertEqual(listed_numbers(release_section(third, "0.1.2")), [4])
+        links = re.findall(r"(?m)^- \[(0\.1\.[01])\]\(changelog/", third.split("## 3. Older releases\n", 1)[1])
+        self.assertEqual(links, ["0.1.1", "0.1.0"])
 
 
-class OrderTests(EntryRepoCase):
-    """Within a category, the oldest-landed entry comes first. §FS-002-release.2.1"""
+class RangeTests(ReleaseCase):
+    """The range is first-parent history between the previous tag and the committed HEAD. §FS-002-release.1.3"""
 
-    def order_in(self, section: str, *labels: str) -> list[str]:
-        return sorted(labels, key=section.index)
-
-    def test_entries_are_released_in_first_parent_landing_order_not_file_name_order(self) -> None:
-        repo = self.repo()
-        # Written first, on a side branch, and merged last.
-        repo.git("checkout", "-q", "-b", "late-landing", repo.base)
-        repo.entry("a-landed-second.fixed.md", "- **Landed second.**\n")
-        repo.commit("fix: written first, landed second")
+    def test_only_pull_requests_landed_on_the_range_are_listed(self) -> None:
+        repo = self.repo(with_release("0.1.0", "2026-09-01", line(1, "feat: before the tag")))
+        repo.land_squash(1, "feat: before the tag", ("src/one.rs",))
+        repo.tag("0.1.0")
+        # Branched from the root commit and tagged there: reachable after its merge, never first-parent.
+        repo.land_merge(2, "feat: merged with a merge commit", ("src/two.rs",), branch_from=repo.root_commit)
+        repo.tag("0.0.5", "pr-2")
+        repo.land_squash(3, "fix: squashed", ("src/three.rs",))
+        repo.git("tag", "v1.0")
+        repo.git("tag", "nightly")
+        repo.land_rebase(4, "feat: rebased in two commits", ("src/four.rs", "src/four_more.rs"))
+        repo.git("checkout", "-q", "-b", "next")
+        repo.land_merge(5, "feat: merged into another branch", ("src/five.rs",), into="next")
         repo.git("checkout", "-q", "main")
-        repo.entry("z-landed-first.fixed.md", "- **Landed first.**\n")
-        repo.commit("fix: written second, landed first")
-        repo.git("merge", "-q", "--no-ff", "--no-edit", "late-landing")
-        section = release_section(self.prepare(repo))
-        self.assertEqual(self.order_in(section, "Landed second", "Landed first"), ["Landed first", "Landed second"])
+        repo.git("merge", "-q", "--no-ff", "-m", "Merge pull request #7", "next")
+        repo.record(7, "chore: bring next into main", repo.git("rev-parse", "HEAD"), [{"filename": "src/five.rs", "status": "added"}])
+        candidate = repo.git("rev-parse", "HEAD")
+        repo.land_squash(6, "fix: merged after the candidate", ("src/six.rs",))
+        repo.sync_origin()
+        repo.git("checkout", "-q", "--detach", candidate)
 
-    def test_entries_that_landed_together_go_by_file_name_and_uncommitted_ones_go_last(self) -> None:
+        self.assertEqual(self.released(repo, "0.1.1"), [7, 4, 3, 2])
+
+
+class SelectionTests(ReleaseCase):
+    """Which pull requests qualify, in what order, and how each line is written. §FS-002-release.1.3"""
+
+    def test_newest_merge_first_and_the_higher_number_first_within_a_second(self) -> None:
         repo = self.repo()
-        repo.entry("z-together.fixed.md", "- **Z landed.**\n")
-        repo.entry("b-together.fixed.md", "- **B landed beside it.**\n")
-        repo.commit("fix: two entries in one commit")
-        repo.entry("a-uncommitted.fixed.md", "- **A is not committed.**\n")
-        repo.entry("c-uncommitted.fixed.md", "- **C is not committed.**\n")
-        section = release_section(self.prepare(repo))
-        labels = ("B landed", "Z landed", "A is not", "C is not")
-        self.assertEqual(self.order_in(section, *labels), list(labels), section)
+        repo.land_squash(10, "feat: oldest", ("src/a.rs",), merged_at="2026-03-01T10:00:00Z")
+        repo.land_squash(11, "feat: tied, lower number", ("src/b.rs",), merged_at="2026-03-02T10:00:00Z")
+        repo.land_squash(12, "feat: tied, higher number", ("src/c.rs",), merged_at="2026-03-02T10:00:00Z")
+        repo.land_squash(9, "feat: newest, opened first", ("src/d.rs",), merged_at="2026-03-03T10:00:00Z")
+        self.assertEqual(self.released(repo), [9, 12, 11, 10])
 
-    def test_an_edit_or_a_change_of_category_keeps_where_the_entry_landed(self) -> None:
+    def test_a_title_is_written_as_literal_link_text(self) -> None:
         repo = self.repo()
-        z = repo.entry("z-first.fixed.md", "- **Z landed first.**\n")
-        repo.commit("fix: z")
-        repo.entry("a-second.changed.md", "- **A landed second.**\n")
-        repo.commit("feat: a")
-        z.unlink()
-        repo.entry("z-first.changed.md", "- **Z landed first, and was reworded and moved since.**\n")
-        repo.commit("docs: amend z")
-        section = release_section(self.prepare(repo))
-        self.assertEqual(self.order_in(section, "A landed second", "Z landed first"), ["Z landed first", "A landed second"])
+        repo.land_squash(5, "fix: `a` [b] *c* _d_ <e> \\ f\r\n  next  ", ("src/a.rs",))
+        section = release_section(self.prepare(repo), "0.1.0")
+        expected = r"- [fix: \`a\` \[b\] \*c\* \_d\_ \<e\> \\ f next](" + PULL_URL.format(number=5) + ") (PR #5)"
+        self.assertEqual(section.strip(), expected)
 
-    def test_without_history_the_release_warns_orders_by_file_name_and_attributes_nothing(self) -> None:
+    def test_paths_are_judged_by_the_shared_predicate_and_renames_by_where_they_went(self) -> None:
         repo = self.repo()
-        repo.entry("z-older.fixed.md", "- **Z landed first.**\n")
-        repo.commit("fix: z")
-        repo.entry("a-newer.fixed.md", "- **A landed second.**\n")
-        head = repo.commit("fix: a")
-        # What a depth-1 clone records: history ends at HEAD, which then looks
-        # as though it added every file in the tree.
-        (repo.path / ".git" / "shallow").write_text(head + "\n")
-        repo.forge({head: [999]})
+        skipped = {
+            20: ("docs/guide.md",),
+            21: ("docs/images/a.png",),
+            22: (".github/workflows/ci.yml",),
+            23: (".agents/rhei/x.yaml",),
+            24: (".agent-grounds/fissile.toml",),
+            25: ("tests/e2e/cases/E2E-001.rs",),
+            26: ("src/notes.md",),
+            27: ("LICENSE", "AGENTS.md", "CLAUDE.md", "grund.toml"),
+            28: (("rename", "src/old.rs", "docs/old.rs"),),
+        }
+        listed = {
+            30: ("docs/guide.md", "src/mixed.rs"),
+            31: (("rename", "docs/moved.txt", "src/moved.rs"),),
+            32: ("tests/integration/test_x.py",),
+            33: ("scripts/x.py",),
+            34: ("docsy/not-docs.rs",),
+            35: ("sub/LICENSE",),
+        }
+        for number, paths in {**skipped, **listed}.items():
+            repo.land_squash(number, f"change {number}", paths)
+        self.assertEqual(sorted(self.released(repo)), sorted(listed))
 
-        stamped = repo.release("stamp")
-        self.assert_exit(stamped, 0)
-        self.assertIn("warning", stamped.stderr.lower(), describe(stamped))
-        for name in repo.pending():
-            self.assertNotIn("999", repo.read_entry(name))
-
-        prepared = repo.release("prepare", "0.1.1", "--date", "2026-10-02")
-        self.assert_exit(prepared, 0)
-        self.assertIn("warning", prepared.stderr.lower(), describe(prepared))
-        section = release_section(repo.changelog.read_text())
-        self.assertEqual(self.order_in(section, "Z landed", "A landed"), ["A landed", "Z landed"])
-
-
-class StampTests(EntryRepoCase):
-    """The number comes from the commit that added the entry. §FS-002-release.2.2"""
-
-    def test_stamp_writes_the_number_of_the_pull_request_that_added_the_entry(self) -> None:
+    def test_the_predicate_is_one_script_the_schedule_can_call(self) -> None:
         repo = self.repo()
-        entry = repo.entry("mine.fixed.md", "- **Mine.**\n")
-        addition = repo.commit("fix: mine")
-        repo.forge({addition: [142]})
-        changelog = repo.changelog.read_bytes()
-        self.assert_exit(repo.release("stamp"), 0)
-        self.assertEqual(entry.read_text(), "- **Mine.** (PR #142)\n")
-        self.assertEqual(repo.changelog.read_bytes(), changelog)
-
-    def test_an_edit_or_a_change_of_category_keeps_the_original_pull_request(self) -> None:
-        repo = self.repo()
-        original = repo.entry("same.fixed.md", "- **Original.**\n  With context.\n")
-        addition = repo.commit("fix: original")
-        original.unlink()
-        moved = repo.entry("same.changed.md", "- **Original, reworded at length and moved.**\n  Other context.\n")
-        edit = repo.commit("docs: reword and recategorize")
-        repo.forge({addition: [142], edit: [143]})
-        self.assert_exit(repo.release("stamp"), 0)
-        self.assertEqual(moved.read_text(), "- **Original, reworded at length and moved.**\n  Other context. (PR #142)\n")
-
-    def test_a_merge_landing_is_attributed_to_its_pull_request(self) -> None:
-        repo = self.repo()
-        entry = repo.entry("merged.fixed.md", "- **Merged, not rebased.**\n")
-        side = repo.commit("fix: on the branch")
-        repo.git("checkout", "-q", "main")
-        repo.git("merge", "-q", "--no-ff", "--no-edit", "contribution")
-        landing = repo.git("rev-parse", "HEAD")
-        repo.forge({side: [142], landing: [142]})
-        self.assert_exit(repo.release("stamp"), 0)
-        self.assertEqual(entry.read_text(), "- **Merged, not rebased.** (PR #142)\n")
-
-    def test_a_slug_used_again_after_a_release_starts_a_new_lifetime(self) -> None:
-        repo = self.repo()
-        repo.entry("same.fixed.md", "- **The first lifetime.** (PR #142)\n")
-        first = repo.commit("fix: first lifetime")
-        self.prepare(repo)
-        repo.commit("release: 0.1.1")
-        reused = repo.entry("same.note.md", "- **The second lifetime.**\n")
-        second = repo.commit("docs: second lifetime")
-        repo.forge({first: [142], second: [143]})
-        self.assert_exit(repo.release("stamp"), 0)
-        self.assertEqual(reused.read_text(), "- **The second lifetime.** (PR #143)\n")
-
-    def test_stamp_changes_only_the_trailing_number(self) -> None:
-        prose = "- **Examples stay.** The example `(PR #TBD)` and PR #12 are prose."
-        cases = (
-            ("appended", f"{prose}\n", f"{prose} (PR #142)\n"),
-            ("placeholder replaced", f"{prose} (PR #TBD)\n", f"{prose} (PR #142)\n"),
-            ("written number kept", f"{prose} (PR #137)\n", f"{prose} (PR #137)\n"),
-            (
-                "last line of a wrapped entry",
-                f"{prose}\n  It wraps. (PR #TBD)\n",
-                f"{prose}\n  It wraps. (PR #142)\n",
-            ),
-            (
-                "last paragraph",
-                f"{prose}\n\n  **A second paragraph.**\n",
-                f"{prose}\n\n  **A second paragraph.** (PR #142)\n",
-            ),
-        )
-        for name, before, after in cases:
-            with self.subTest(name):
-                repo = self.repo()
-                entry = repo.entry("examples.changed.md", before)
-                addition = repo.commit("docs: numbers in prose")
-                repo.forge({addition: [142]})
-                self.assert_exit(repo.release("stamp"), 0)
-                self.assertEqual(entry.read_text(), after)
-
-    def test_stamp_warns_and_publishes_when_the_forge_gives_no_single_pull_request(self) -> None:
-        for response in ([], [142, 143], "gh: HTTP 403: Resource not accessible by integration", "gh: API rate limit exceeded"):
-            with self.subTest(response=response):
-                repo = self.repo()
-                entry = repo.entry("unresolved.fixed.md", "- **Unresolved.**\n")
-                addition = repo.commit("fix: unresolved")
-                repo.forge({addition: response})
-                result = repo.release("stamp")
-                self.assert_exit(result, 0)
-                self.assertIn("warning", result.stderr.lower(), describe(result))
-                self.assertIn("unresolved.fixed.md", result.stderr, describe(result))
-                if isinstance(response, str):
-                    self.assertIn(response.removeprefix("gh: "), result.stderr, describe(result))
-                self.assertEqual(entry.read_text(), "- **Unresolved.**\n")
-                self.assertIn("- **Unresolved.**\n", release_section(self.prepare(repo)))
-
-    def test_stamp_never_fails_on_an_entry_it_cannot_read(self) -> None:
-        repo = self.repo()
-        broken = repo.path / ENTRY_DIR / "undecodable.fixed.md"
-        broken.write_bytes(b"- **\xff\xfe not UTF-8.**\n")
-        good = repo.entry("good.fixed.md", "- **Good.**\n")
-        addition = repo.commit("fix: two entries, one unreadable")
-        repo.forge({addition: [142]})
-        result = repo.release("stamp")
+        paths = ["docs/a.md", "src/lib.rs", ".github/x.yml", "README.md", "LICENSE", "sub/LICENSE", "tests/e2e/a.rs", "assets/x.json"]
+        result = repo.run(PATHS_SCRIPT, stdin="\n".join(paths) + "\n")
         self.assert_exit(result, 0)
-        self.assertIn("warning", result.stderr.lower(), describe(result))
-        self.assertIn("undecodable.fixed.md", result.stderr, describe(result))
-        self.assertEqual(broken.read_bytes(), b"- **\xff\xfe not UTF-8.**\n")
-        self.assertEqual(good.read_text(), "- **Good.** (PR #142)\n")
+        self.assertEqual(result.stdout.splitlines(), ["src/lib.rs", "sub/LICENSE", "assets/x.json"], describe(result))
 
-    @unittest.skipIf(hasattr(os, "geteuid") and os.geteuid() == 0, "harness: root writes through file permissions")
-    def test_stamp_never_fails_on_an_entry_it_cannot_write(self) -> None:
+    def test_unmerged_pull_requests_are_never_listed(self) -> None:
         repo = self.repo()
-        entry = repo.entry("read-only.fixed.md", "- **Read-only.**\n")
-        addition = repo.commit("fix: read-only")
-        repo.forge({addition: [142]})
-        directory = entry.parent
-        entry.chmod(0o444)
-        directory.chmod(0o555)
-        self.addCleanup(entry.chmod, 0o644)
-        self.addCleanup(directory.chmod, 0o755)
-        result = repo.release("stamp")
-        self.assert_exit(result, 0)
-        self.assertIn("warning", result.stderr.lower(), describe(result))
-        self.assertIn("read-only.fixed.md", result.stderr, describe(result))
-        self.assertEqual(entry.read_text(), "- **Read-only.**\n")
+        repo.land_squash(1, "feat: merged", ("src/a.rs",))
+        repo.record(2, "feat: closed without merging", "0" * 40, [{"filename": "src/b.rs", "status": "added"}], merged=False)
+        repo.record(3, "feat: still open", "1" * 40, [{"filename": "src/c.rs", "status": "added"}], state="open", merged=False)
+        self.assertEqual(self.released(repo), [1])
 
 
-class RefusalTests(EntryRepoCase):
-    """`prepare` refuses with nothing consumed and nothing written. §FS-002-release.2.3"""
+class CompletenessTests(ReleaseCase):
+    """Every page is read, and a listing that stops short is refused. §FS-002-release.1.3"""
 
-    def assert_refused_untouched(self, repo, *details: str) -> None:
-        before = repo.snapshot()
-        self.assert_refused(repo.release("prepare", "0.1.1", "--date", "2026-10-02"), *details)
-        self.assertEqual(repo.snapshot(), before)
+    def many(self, repo, count: int) -> None:
+        for number in range(1, count + 1):
+            repo.land_squash(number, f"feat: change {number}", (f"src/gen/p{number}.rs",))
 
-    def test_a_malformed_entry_refuses_before_anything_is_written(self) -> None:
+    def test_every_page_of_merged_pull_requests_is_read(self) -> None:
         repo = self.repo()
-        repo.entry("good.fixed.md")
-        repo.entry("two-bullets.fixed.md", "- **One.**\n- **Two.**\n")
-        repo.commit("fix: a malformed entry beside a good one")
-        self.assert_refused_untouched(repo, "two-bullets.fixed.md")
+        self.many(repo, 130)
+        self.assertEqual(self.released(repo), list(range(130, 0, -1)))
 
-    def test_a_bullet_left_under_the_shared_section_refuses_before_anything_is_written(self) -> None:
+    def test_a_pull_request_listing_that_stops_short_is_refused(self) -> None:
         repo = self.repo()
-        repo.entry("good.fixed.md")
-        repo.write(
-            "docs/changelog.md",
-            repo.changelog.read_text().replace("## Unreleased\n", "## Unreleased\n\n### Fixed\n\n- **Written the old way.**\n"),
-        )
-        repo.commit("fix: an entry written the old way")
-        self.assert_refused_untouched(repo, "Unreleased")
+        self.many(repo, 130)
+        repo.forge_extra["truncate_pulls_after"] = 100
+        repo.sync_origin()
+        self.assert_refused_until(repo, "0.1.0", lambda: repo.forge_extra.pop("truncate_pulls_after"))
 
-    def test_an_existing_archive_refuses_before_anything_is_consumed(self) -> None:
+    def files_beyond_the_first_pages(self, repo, docs: int) -> None:
+        """#1 changes `docs` documentation files and one source file, listed last; #2 only the docs."""
+        repo.land_squash(1, "feat: the source change is on the last page", [f"docs/gen/a{i}.md" for i in range(docs)] + ["src/last.rs"])
+        repo.land_squash(2, "docs: only documentation", [f"docs/gen/b{i}.md" for i in range(docs)])
+
+    def test_every_page_of_a_pull_request_s_files_is_read(self) -> None:
         repo = self.repo()
-        repo.entry("good.fixed.md")
-        repo.write("docs/changelog/0.1.0.md", "# 0.1.0 — already archived\n")
-        repo.commit("fix: and an archive that is already there")
-        self.assert_refused_untouched(repo, "archive already exists")
+        self.files_beyond_the_first_pages(repo, 250)
+        self.assertEqual(self.released(repo), [1])
 
-    def test_the_readme_alone_is_nothing_to_release(self) -> None:
+    def test_a_file_listing_short_of_changed_files_is_refused(self) -> None:
         repo = self.repo()
-        self.assert_refused_untouched(repo, ENTRY_DIR)
-        refusal = output(repo.release("prepare", "0.1.1", "--date", "2026-10-02"))
-        self.assertIn(WRITE_IT_FIRST, refusal.lower(), "the refusal does not say to write the section first:\n" + refusal)
+        self.files_beyond_the_first_pages(repo, 250)
+        repo.forge_extra["truncate_files"] = {"1": 200}
+        repo.sync_origin()
+        self.assert_refused_until(repo, "0.1.0", lambda: repo.forge_extra.pop("truncate_files"))
 
-    def test_a_bad_version_or_date_refuses_before_anything_is_written(self) -> None:
-        """Unmoved by this change: the arguments are validated first."""
-        for argv in (("prepare", "one"), ("prepare", "0.1.1", "--date", "tomorrow")):
+    def test_a_pull_request_past_the_file_cap_is_refused(self) -> None:
+        repo = self.repo()
+        repo.land_squash(1, "feat: too many files to list", [f"docs/gen/c{i}.md" for i in range(3000)] + ["src/last.rs"])
+        repo.sync_origin()
+
+        def within_the_cap() -> None:
+            # The forge's word only: the same pull request, one documentation file fewer.
+            pull = repo.pulls[0]
+            pull["files"] = pull["files"][1:]
+            pull["changed_files"] = len(pull["files"])
+
+        self.assert_refused_until(repo, "0.1.0", within_the_cap)
+
+
+class RefusalTests(ReleaseCase):
+    """`prepare` names the reason and writes nothing; without the reason it releases. §FS-002-release.2.3"""
+
+    def ready(self, changelog: str = FIRST_CHANGELOG):
+        repo = self.repo(changelog)
+        repo.land_squash(1, "feat: would be released", ("src/one.rs",))
+        repo.sync_origin()
+        return repo
+
+    def tagged(self):
+        """`v0.1.0` released and tagged; nothing landed since."""
+        repo = self.repo(with_release("0.1.0", "2026-09-01", line(1, "feat: shipped")))
+        repo.land_squash(1, "feat: shipped", ("src/one.rs",))
+        repo.tag("0.1.0")
+        return repo
+
+    def qualifying(self, repo, number: int = 90):
+        """Undo for a range with nothing to release: land one pull request that qualifies."""
+        return lambda: repo.land_squash(number, "feat: a change that qualifies", (f"src/q{number}.rs",))
+
+    def test_no_forge_on_path(self) -> None:
+        repo = self.ready()
+        self.assert_refused_until(repo, "0.1.0", lambda: None, "gh", env=repo.without_gh())
+
+    def test_a_failing_forge_response_in_its_own_words(self) -> None:
+        repo = self.ready()
+        repo.forge_extra["fail"] = {r"pulls/1/files$": "HTTP 502: Bad Gateway"}
+        self.assert_refused_until(repo, "0.1.0", lambda: repo.forge_extra.pop("fail"), "HTTP 502: Bad Gateway")
+
+    def test_a_shallow_history(self) -> None:
+        repo = self.ready()
+        shallow = repo.path / ".git" / "shallow"
+        shallow.write_text(repo.git("rev-parse", "HEAD") + "\n")
+        self.assert_refused_until(repo, "0.1.0", shallow.unlink, "shallow")
+
+    def test_a_head_off_the_default_branch_s_first_parent_history(self) -> None:
+        repo = self.ready()
+        repo.git("checkout", "-q", "-b", "elsewhere")
+        repo.push(("src/elsewhere.rs",), "feat: not on main")
+        self.assert_refused_until(repo, "0.1.0", lambda: repo.git("checkout", "-q", "main"))
+
+    def test_a_version_not_past_the_previous_tag(self) -> None:
+        for version in ("0.1.0", "0.0.9"):
+            with self.subTest(version=version):
+                repo = self.tagged()
+                repo.land_squash(2, "feat: next", ("src/two.rs",))
+                repo.sync_origin()
+                self.assert_refused_until(repo, version, lambda: None, version, then="0.1.1")
+
+    def test_a_malformed_version_or_date(self) -> None:
+        """A guard, unmoved by this change: the arguments are validated first."""
+        repo = self.ready()
+        for argv in (("prepare", "one", "--date", self.DATE), ("prepare", "0.1.0", "--date", "tomorrow")):
             with self.subTest(argv=argv):
-                repo = self.repo()
-                repo.entry("good.fixed.md")
-                repo.commit("fix: good")
                 before = repo.snapshot()
-                self.assert_refused(repo.release(*argv), "must look like")
+                result = repo.release(*argv)
+                self.assertNotEqual(result.returncode, 0, describe(result))
+                self.assertIn("must look like", result.stderr, describe(result))
                 self.assertEqual(repo.snapshot(), before)
 
+    def test_a_changelog_without_its_layout(self) -> None:
+        repo = self.ready(FIRST_CHANGELOG.replace("## 3. Older releases\n\n_None yet._\n", ""))
+        self.assert_refused_until(repo, "0.1.0", lambda: repo.changelog.write_text(FIRST_CHANGELOG), "Older releases")
 
-class PendingTests(EntryRepoCase):
-    """`pending` counts what `prepare` would read, so the hold and the refusal agree. §FS-002-release.2"""
+    def test_an_archive_that_already_exists(self) -> None:
+        repo = self.tagged()
+        archive = repo.write("docs/changelog/0.1.0.md", "# 0.1.0 — already archived\n")
+        repo.land_squash(2, "feat: next", ("src/two.rs",))
+        repo.sync_origin()
+        self.assert_refused_until(repo, "0.1.1", archive.unlink, "already exists")
 
-    def assert_pending(self, repo, expected: str) -> None:
-        before = repo.snapshot()
-        result = repo.release("pending")
-        self.assert_exit(result, 0)
-        self.assertEqual(result.stdout.strip(), expected, describe(result))
-        self.assertEqual(repo.snapshot(), before, "pending wrote to the tree")
+    def test_an_empty_range(self) -> None:
+        repo = self.tagged()
+        repo.sync_origin()
+        self.assert_refused_until(repo, "0.1.1", self.qualifying(repo), "pull request")
 
-    def test_the_readme_alone_is_nothing_pending(self) -> None:
-        self.assert_pending(self.repo(), "0")
-
-    def test_every_entry_is_counted(self) -> None:
+    def test_a_range_of_documentation_only_pull_requests(self) -> None:
         repo = self.repo()
-        for name in ("one.fixed.md", "two.added.md", "three.note.md"):
-            repo.entry(name)
-        repo.commit("docs: three entries")
-        self.assert_pending(repo, "3")
+        repo.land_squash(1, "docs: only documentation", ("docs/guide.md",))
+        repo.sync_origin()
+        self.assert_refused_until(repo, "0.1.0", self.qualifying(repo), "pull request")
 
-    def test_a_malformed_entry_is_pending_so_the_release_goes_on_and_prepare_names_it(self) -> None:
+    def test_a_range_of_pushes_no_pull_request_landed(self) -> None:
         repo = self.repo()
-        repo.entry("good.fixed.md")
-        repo.entry("two-bullets.fixed.md", "- **One.**\n- **Two.**\n")
-        repo.entry("no-category.md")
-        repo.commit("docs: one good entry and two malformed ones")
-        self.assert_pending(repo, "3")
+        repo.push(("src/direct.rs",))
+        repo.sync_origin()
+        self.assert_refused_until(repo, "0.1.0", self.qualifying(repo), "pull request")
 
-    def test_pending_and_the_empty_refusal_agree_on_what_counts(self) -> None:
-        cases = {
-            "the readme alone": (),
-            "one entry": (("good.fixed.md", "- **Good.**\n"),),
-            "one malformed entry": (("two-bullets.fixed.md", "- **One.**\n- **Two.**\n"),),
-            "a file named as no entry": (("notes.txt", "- **Not an entry.**\n"),),
-        }
-        for case, files in cases.items():
-            with self.subTest(case):
-                repo = self.repo()
-                for name, body in files:
-                    repo.entry(name, body)
-                counted = repo.release("pending")
-                self.assert_exit(counted, 0)
-                refused = repo.release("prepare", "0.1.1", "--date", "2026-10-02")
-                held = counted.stdout.strip() == "0"
-                self.assertEqual(held, WRITE_IT_FIRST in output(refused).lower(), describe(counted) + describe(refused))
-
-
-class WriteUpTests(EntryRepoCase):
-    """The section written before a release, in one pull request of its own. §FS-002-release.1
-
-    These pass on the code as it stands, by design: ordering and stamping do not
-    change. They pin what §FS-002-release.2.1 and §FS-002-release.2.2 now say
-    about a write-up's entries, which all land in the one commit.
-    """
-
-    WRITE_UP = 170
-
-    def write_up(self, repo, entries: dict[str, str]) -> str:
-        for name, body in entries.items():
-            repo.entry(name, body)
-        addition = repo.commit("docs: write the release section")
-        repo.forge({addition: [self.WRITE_UP]})
-        return addition
-
-    def test_a_write_up_s_entries_keep_their_own_numbers_and_go_by_file_name(self) -> None:
+    def test_a_pull_request_url_outside_this_repository(self) -> None:
         repo = self.repo()
-        repo.entry("z-landed-before.fixed.md", "- **Landed with its change, the old way.** (PR #150)\n")
-        earlier = repo.commit("fix: an entry written with its change")
-        repo.write("src/lib.rs", "// a change that wrote no entry\n")
-        repo.commit("fix: no entry")
-        entries = {
-            "b-refresh-keeps-unreachable.fixed.md": (
-                "- **`ephor refresh` keeps a project whose remote is unreachable.** It stays in\n"
-                "  the feed, marked stale. (PR #160)\n"
-            ),
-            "a-stale-feed.fixed.md": "- **A stale feed says so.** (PR #161)\n",
-            "clean-verb.added.md": "- **`ephor clean` gives an idle checkout's build output back.** (PR #154)\n",
-        }
-        self.write_up(repo, entries)
-        repo.forge({earlier: [150]})
-
-        self.assert_exit(repo.release("stamp"), 0)
-        for name, body in entries.items():
-            with self.subTest(stamped=name):
-                self.assertEqual(repo.read_entry(name), body)
-
-        section = release_section(self.prepare(repo))
-        for body in entries.values():
-            self.assertIn(body, section)
-        order = sorted(("Landed with its change", "A stale feed", "`ephor refresh` keeps"), key=section.index)
-        self.assertEqual(order, ["Landed with its change", "A stale feed", "`ephor refresh` keeps"], section)
-        self.assertNotIn(f"PR #{self.WRITE_UP}", section)
-
-    def test_an_entry_the_write_up_leaves_unnumbered_takes_the_write_up_s_number(self) -> None:
-        repo = self.repo()
-        self.write_up(
-            repo,
-            {
-                "numbered.fixed.md": "- **Numbered.** (PR #160)\n",
-                "unnumbered.fixed.md": "- **Unnumbered.**\n",
-            },
-        )
-        self.assert_exit(repo.release("stamp"), 0)
-        self.assertEqual(repo.read_entry("numbered.fixed.md"), "- **Numbered.** (PR #160)\n")
-        self.assertEqual(repo.read_entry("unnumbered.fixed.md"), f"- **Unnumbered.** (PR #{self.WRITE_UP})\n")
-
-    def test_a_changed_slug_starts_a_new_lifetime_where_it_changed(self) -> None:
-        repo = self.repo()
-        old = repo.entry("a-old-slug.fixed.md", "- **Renamed by the write-up.**\n")
-        first = repo.commit("fix: an entry under its first slug")
-        repo.entry("m-between.fixed.md", "- **Landed between.** (PR #151)\n")
-        repo.commit("fix: another entry")
-        old.unlink()
-        renamed = self.write_up(repo, {"b-new-slug.fixed.md": "- **Renamed by the write-up.**\n"})
-        repo.forge({first: [150], renamed: [self.WRITE_UP]})
-        self.assert_exit(repo.release("stamp"), 0)
-        self.assertEqual(repo.read_entry("b-new-slug.fixed.md"), f"- **Renamed by the write-up.** (PR #{self.WRITE_UP})\n")
-        section = release_section(self.prepare(repo))
-        self.assertLess(section.index("Landed between"), section.index("Renamed by the write-up"), section)
-
-
-class LinkAndNotesTests(EntryRepoCase):
-    """A link means the same thing in its entry, inline, in the notes and in an archive."""
-
-    def test_links_keep_their_targets_through_two_releases(self) -> None:
-        repo = self.repo()
-        repo.write("docs/guide.md", "# Guide\n\n## Detail\n")
-        repo.write("docs/images/example.png", "fixture\n")
-        repo.entry(
-            "linked.fixed.md",
-            "- **Linked.** [guide](../../guide.md#detail), ![image](../../images/example.png),\n"
-            "  [readme](../../../README.md), [web](https://example.invalid/page#part). (PR #142)\n",
-        )
-        repo.commit("fix: an entry with links")
-
-        first = self.prepare(repo)
-        inline = release_section(first)
-        for link in ("[guide](guide.md#detail)", "![image](images/example.png)", "[readme](../README.md)"):
-            self.assertIn(link, inline)
-        self.assertIn("[web](https://example.invalid/page#part)", inline)
-
-        notes = repo.root / "notes.md"
-        self.assert_exit(repo.release("notes", "0.1.1", "--output", str(notes)), 0)
-        self.assertEqual(notes.read_text().strip(), inline.strip())
-
-        repo.commit("release: 0.1.1")
-        repo.entry("next.note.md", "- **The next release.**\n")
-        repo.commit("docs: the next release")
-        second = self.prepare(repo, "0.1.2")
-        archive = (repo.path / "docs" / "changelog" / "0.1.1.md").read_text()
-        for link in ("[guide](../guide.md#detail)", "![image](../images/example.png)", "[readme](../../README.md)"):
-            self.assertIn(link, archive)
-        self.assertIn("[web](https://example.invalid/page#part)", archive)
-        older = second.split("## 3. Older releases\n", 1)[1]
-        self.assertIn("[0.1.1](changelog/0.1.1.md)", older)
-        self.assertIn("[0.1.0](changelog/0.1.0.md)", older)
-        self.assertEqual(unreleased_section(second).strip(), POINTER)
-        self.assertEqual(repo.pending(), [])
-
-    def test_notes_are_the_inline_section_of_the_release(self) -> None:
-        """Unmoved by this change (§FS-002-release.3)."""
-        repo = self.repo()
-        notes = repo.root / "notes.md"
-        self.assert_exit(repo.release("notes", "0.1.0", "--output", str(notes)), 0)
-        text = notes.read_text()
-        self.assertIn("### Added", text)
-        self.assertIn("The beginning.", text)
-        self.assertNotIn("Older releases", text)
-        self.assertNotIn("Unreleased", text)
-
-
-class WorkflowTests(unittest.TestCase):
-    """The workflows give the release the history it reads, and commit what it consumed."""
-
-    def test_release_workflows_read_full_history_stamp_first_and_commit_the_entry_directory(self) -> None:
-        """Unmoved by this change, and what ordering and attribution now depend on (§FS-002-release.2)."""
-        for name in ("auto-bump.yml", "release-minor.yml"):
-            with self.subTest(workflow=name):
-                text = (REPOSITORY_ROOT / ".github" / "workflows" / name).read_text()
-                self.assertIn("fetch-depth: 0", text)
-                stamp = text.index("prepare_changelog_release.py stamp")
-                prepare = text.index("prepare_changelog_release.py prepare")
-                self.assertLess(stamp, prepare)
-                staged = [line for line in text.splitlines() if line.strip().startswith("git add")]
-                self.assertTrue(
-                    any(re.search(r"\sdocs/changelog(\s|$)", line) for line in staged),
-                    f"{name} does not stage docs/changelog/, so consumed entries would stay: {staged}",
-                )
-
-    @staticmethod
-    def steps(name: str) -> list:
-        return list_items((REPOSITORY_ROOT / ".github" / "workflows" / name).read_text(encoding="utf-8"), "steps")
-
-    def hold(self, steps: list) -> int:
-        """The index of the `Auto bump` step that asks `pending`, failing the test where there is none."""
-        asking = [index for index, step in enumerate(steps) if "prepare_changelog_release.py pending" in step.text]
-        self.assertEqual(len(asking), 1, "Auto bump does not ask `prepare_changelog_release.py pending` in one step")
-        return asking[0]
-
-    def test_auto_bump_asks_pending_before_it_stamps_and_holds_with_a_notice(self) -> None:
-        steps = self.steps("auto-bump.yml")
-        hold = self.hold(steps)
-        stamping = [index for index, step in enumerate(steps) if "prepare_changelog_release.py stamp" in step.text]
-        self.assertTrue(stamping and hold < stamping[0], "Auto bump asks `pending` only after it stamps")
-        self.assertTrue(steps[hold].keys.get("id"), "the hold has no `id:`, so no later step can read it")
-        self.assertIn("::notice::", steps[hold].text, "Auto bump holds without a notice saying why")
-
-    def test_every_auto_bump_step_after_the_hold_carries_it_the_dev_advance_included(self) -> None:
-        steps = self.steps("auto-bump.yml")
-        hold = self.hold(steps)
-        reads = f"steps.{steps[hold].keys.get('id')}."
-        unheld = [step.keys.get("name") or step.keys.get("uses") for step in steps[hold + 1 :] if reads not in step.keys.get("if", "")]
-        self.assertEqual(unheld, [], f"these steps run while the release is held; their `if:` does not read `{reads}`")
-        conditions = {step.keys.get("name"): step.keys.get("if") for step in steps}
-        self.assertEqual(
-            conditions.get("Advance main to the next dev version"),
-            conditions.get("Publish release commit and dispatch release"),
-            "the dev-version advance does not carry the release's own condition",
-        )
-
-    def test_release_minor_is_not_held(self) -> None:
-        """A guard, and it passes today: a release a person asks for reaches `prepare`'s refusal instead."""
-        asking = [step.keys.get("name") for step in self.steps("release-minor.yml") if "prepare_changelog_release.py pending" in step.text]
-        self.assertEqual(asking, [], "Release minor holds on `pending`; it should reach prepare's refusal")
+        repo.land_squash(1, "feat: linked elsewhere", ("src/one.rs",), url="https://github.com/someone/else/pull/1")
+        repo.sync_origin()
+        self.assert_refused_until(repo, "0.1.0", lambda: repo.pulls[0].update(html_url=PULL_URL.format(number=1)))
 
 
 if __name__ == "__main__":

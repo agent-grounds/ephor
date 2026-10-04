@@ -1,81 +1,36 @@
 # Changelog
 
 Records every notable change to `ephor`. Versions follow semver
-([§FS-002-release](functional-spec/FS-002-release.md#fs-002-release-ephor-releases-from-a-tag-with-a-changelog-written-before-each-release));
+([§FS-002-release](functional-spec/FS-002-release.md#fs-002-release-ephor-releases-from-a-tag-and-the-release-writes-its-changelog-from-the-pull-requests-it-ships));
 the **latest release is inline** in this file, and **older releases live
 one-per-file under `docs/changelog/`** so a reader — human or agent — only
 loads the history they ask for.
 
 ## 1. Conventions
 
-### 1.1 Sections per release
+### 1.1 The release writes its own section
 
-`Added`, `Changed`, `Deprecated`, `Removed`, `Fixed`, `Security` — the
-Keep-a-Changelog set — then `Note`; omit any with no entries.
+Nobody writes this file before a release, by hand or by agent, and no change
+edits it. A release lists the pull requests merged on `main` since the previous
+`vX.Y.Z` tag — every one before the first release — that touched more than
+documentation and CI, one line each, newest first:
+`- [<title>](<url>) (PR #N)`. The title is the pull request's own, so the
+title a change merges with is its line in the release
+([§FS-002-release.1.3](functional-spec/FS-002-release.md#13-the-release-lists-the-pull-requests-merged-since-the-previous-tag-and-every-one-of-them)).
 
-### 1.2 Entry style
+### 1.2 Compatibility notices
 
-One bullet per change, present tense, leading with the affected area. No
-change writes one. Before a release, one pull request writes the release
-section: one file per change merged since the last tag under
-[`changelog/unreleased/`](changelog/unreleased/README.md), named
-`<slug>.<category>.md` and holding that one bullet, in the format the
-directory's README gives. It reads the pull requests merged since the tag, the
-issues they closed, and the schema diff since the tag. Nothing is written under
-`## Unreleased` by hand. Each bullet ends with the number of the pull request
-it describes, `(PR #12)`: the write-up's entries all land in one commit, so one
-left without a number would be released with the write-up's own
-([§FS-002-release.1](functional-spec/FS-002-release.md#1-changelog)).
+From the second release on, a published schema that lost or changed a field
+since the previous tag is noticed under `### Compatibility notices`, after the
+list: a removed property by its JSON Pointer, a changed constraint with its old
+and new value and the commit that changed it
+([§FS-002-release.1.4](functional-spec/FS-002-release.md#14-compatibility-notices-from-the-previous-tag-onwards)).
 
 ### 1.3 Progressive discovery
 
-Pending changes are one file each under `docs/changelog/unreleased/`, which
-`## Unreleased` points to, and only the most recent release is inline. When a
-new release ships, its entries are collected inline under it and their files
-deleted, the previous "latest" section moves whole to
-`docs/changelog/<version>.md`, and a one-line link is added under
-[§3 Older releases](#3-older-releases).
-
-## Unreleased
-
-Pending changes are one file each under
-[`changelog/unreleased/`](changelog/unreleased/README.md), whose README says how
-to write one; the next release collects them here and deletes the files.
-
-## 2. [0.1.0] — 2026-08-11
-
-First version. Not yet tagged or published — publication is gated on
-[§RM-001-forge-interface](roadmap.md#rm-001-forge-interface-put-every-forge-behind-the-interface).
-
-### Added
-
-- Registry engine ported from the `automation` repo's Python `dev/projects`
-  tool: `list`, `validate`, `ensure-agents`, and `update`, with the registry
-  JSON Schema embedded in the binary and `required_branch_ids` replacing the
-  previously hardcoded release-branch check.
-- Per-project status feed with pluggable providers, cached under
-  `~/.local/state/ephor/`. A failing provider keeps its last-good items marked
-  `(stale)` rather than blanking the feed.
-- Two-screen TUI (`ephor tui`): a navigator organized per organization, project,
-  type, and branch, and a thread screen rendering a item's conversation with
-  reactions. Item actions run configured commands in the item's checkout with
-  the `EPHOR_*` context exported.
-- Gate status on every pull request row — passed, failed, and running job
-  counts, totalled across every repository the gate covers, with a per-repo
-  breakdown when it spans more than one.
-- `grund` tree: [§FS-001-forge-interface](functional-spec/FS-001-forge-interface.md#fs-001-forge-interface-ephor-reaches-every-forge-and-issue-tracker-through-one-provider-interface)
-  and [§FS-002-release](functional-spec/FS-002-release.md#fs-002-release-ephor-releases-from-a-tag-with-a-changelog-written-before-each-release),
-  with [§RM-001-forge-interface](roadmap.md#rm-001-forge-interface-put-every-forge-behind-the-interface)
-  sequencing the work that has to land before anything ships.
-- Release pipeline: tag-triggered publication, profile-guided release binaries
-  per target, a scheduled patch release and an on-demand minor release, and a
-  pre-release gate that refuses to publish while the tree still carries
-  site-specific configuration.
-
-### Changed
-
-- Renamed from `hub` to `ephor`, including the `EPHOR_*` environment contract,
-  the state and secrets directories, and the systemd units.
+Only the most recent release is inline. When a new release ships, the previous
+one moves whole to `docs/changelog/<version>.md`, and a one-line link is added
+under [§3 Older releases](#3-older-releases).
 
 ## 3. Older releases
 
