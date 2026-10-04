@@ -222,6 +222,10 @@ name = "agents_test"
 path = "tests/integration/agents_test.rs"
 
 [[test]]
+name = "e2e_049_plans_use_the_roots_machine"
+path = "tests/e2e/cases/E2E-049-plans-use-the-roots-machine.rs"
+
+[[test]]
 name = "checkout_test"
 path = "tests/integration/checkout_test.rs"
 

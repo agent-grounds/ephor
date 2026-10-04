@@ -634,6 +634,13 @@ are already in that directory under no declared machine, ephor does not install
 one, because a state machine governs every plan in a project and theirs were
 there first.
 
+Fresh plans ephor writes use the machine in the neighboring `states.yaml`;
+they emit no `**States:**` declaration. A new work root receives the shipped
+`ephor-work` machine, and an existing root keeps its machine unchanged. This
+holds at the shared plan writer, including fresh creation through dispatch
+and sync; it does not change machine validation or the refusals above. Plans
+already carrying the old declaration remain readable without migration.
+
 Matching is on what a gate is doing, not on how red it looks. Jobs that failed
 are work for a checkout; a forge that refuses to merge an otherwise green
 change is usually waiting on a person, and dispatching an agent at it spends a
@@ -763,6 +770,12 @@ guarantee at scale: it writes tickets, reports each one, and can be asked what
 it would do without doing it.
 
 ## 8. The ticket carries the item as data, not only as prose
+
+In the shipped binding, newly inserted frontmatter follows the title and a
+blank line. When reading or adding metadata to an older plan, it follows the
+title and its legacy `**States:**` line instead. Both header forms support
+reading and merging the same metadata block, preserving existing fields,
+other tickets and the runtime's bookkeeping.
 
 The dossier is written for a reader — a person or an agent — and a program
 cannot read it. Yet the useful thing to put in front of an agent working a
