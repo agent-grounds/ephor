@@ -1124,11 +1124,12 @@ impl Plan {
         }))
     }
 
-    /// A fresh plan for one item: its title, the machine its tickets run
-    /// under, the dossier, and the first ticket.
-    pub fn create(path: &Path, machine: &str, title: &str, dossier: &str, ticket: &Ticket) -> Plan {
+    /// A fresh plan for one item: its title, the dossier, and the first ticket.
+    /// The neighboring `states.yaml` selects its machine; no declaration is
+    /// emitted (§FS-005-dispatch.6).
+    pub fn create(path: &Path, _machine: &str, title: &str, dossier: &str, ticket: &Ticket) -> Plan {
         let text = format!(
-            "# Rhei: {}\n**States:** {machine}\n\n{DOSSIER_OPEN}\n{}\n{DOSSIER_CLOSE}\n\n\
+            "# Rhei: {}\n\n{DOSSIER_OPEN}\n{}\n{DOSSIER_CLOSE}\n\n\
              {TASKS_HEADING}\n\n{}",
             one_line(title),
             dossier.trim_end(),
@@ -1301,8 +1302,8 @@ impl Plan {
             .collect::<String>();
 
         let Some((open, close)) = self.frontmatter() else {
-            // No block yet: one goes below the heading and its declaration,
-            // which is where the runtime's language puts it.
+            // No block yet: one goes below the title, or below its legacy
+            // declaration where present (§FS-005-dispatch.8).
             let body = format!("---\nmetadata:\n  tasks:\n{entry}---\n");
             let at = self.header_end();
             self.text.insert_str(at, &format!("\n{body}"));
@@ -1337,7 +1338,8 @@ impl Plan {
         Some((open, close))
     }
 
-    /// Just past the title and its `**States:**` declaration.
+    /// Just past the title and any legacy `**States:**` declaration, preserving
+    /// metadata placement in both header forms (§FS-005-dispatch.8).
     fn header_end(&self) -> usize {
         let mut end = 0;
         for line in self.text.lines() {
