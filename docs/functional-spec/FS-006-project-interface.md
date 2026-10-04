@@ -558,9 +558,12 @@ The manifest, the envelope, and the registry schema are published schemas,
 embedded in the binary and printable on demand, so a project can validate
 what it says without ephor present. They evolve by addition: an optional
 field costs nothing, unknown fields are ignored, and any incompatible
-change bumps the schema version, noted by the release that ships it
-([§FS-002-release.1](FS-002-release.md#1-changelog)). The schemas are the interface's stability surface — what
-a release may change is answerable by diffing them.
+change bumps the schema version, noted by the release that ships it. Nobody
+has to remember to write that note: the release diffs the published schemas
+since the previous tag and writes a compatibility notice for every field
+removed or changed, the version marker among them ([§FS-002-release.1.4](FS-002-release.md#14-compatibility-notices-from-the-previous-tag-onwards)). The
+schemas are the interface's stability surface — what a release may change is
+answerable by diffing them, and the release is what diffs them.
 
 That reach includes the selector language a project's own offers and a reader's
 recipes share ([§FS-006-project-interface.9](FS-006-project-interface.md#9-offers-the-projects-actions)): **every field a selector may ask is in the published

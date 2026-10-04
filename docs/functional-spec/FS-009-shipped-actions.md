@@ -24,6 +24,6 @@ block the other two and anyone's own composition stand on.
 
 The steps live in ephor's repository and version with it: a release that
 changes a schema or a verb ships the steps that understand the change, per
-[§FS-002-release](FS-002-release.md#fs-002-release-ephor-releases-from-a-tag-with-a-changelog-written-before-each-release). A repository pins the version it consumes, as it pins any
+[§FS-002-release](FS-002-release.md#fs-002-release-ephor-releases-from-a-tag-and-the-release-writes-its-changelog-from-the-pull-requests-it-ships). A repository pins the version it consumes, as it pins any
 dependency ([§GOAL-005-costless](../goals.md#goal-005-costless-watching-costs-the-watched-nothing)).
 
