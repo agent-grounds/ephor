@@ -3,16 +3,16 @@
 //! - participant: issues the user is otherwise involved in — commented on,
 //!   assigned, or mentioned in (`gh search issues --involves @me`)
 //!
-//! A source may also **follow a label**: `gh search issues --label <name>
-//! --state open` reports the open issues carrying it whoever is in them, which
-//! is the one question the two role searches cannot ask — being nobody in an
-//! issue is exactly what they filter out. Such an issue is reported under the
-//! role its `author.login` says the reader holds.
+//! A source may also follow a label or opt in to every open issue in its named
+//! repositories (§FS-001-forge-interface.1). These questions reach work the
+//! reader has never touched, under the role its `author.login` establishes.
+//! The open answer covers followed labels without redundant searches
+//! (§FS-001-forge-interface.8.1).
 //!
-//! Unlike the pull request providers, the search is not repository-scoped
-//! unless it is asked to be: with no `repos` the whole forge is searched, so an
-//! issue filed against a stranger's project is followed like any other. Closed
-//! issues come back too, with the conversation on them — which is what lets a
+//! Role and label questions can search the whole forge with no `repos`, so an
+//! issue filed against a stranger's project is followed like any other. The
+//! open question requires named repositories (§FS-001-forge-interface.1).
+//! Role questions include closed issues, with their conversations — which lets a
 //! closed issue somebody is still talking on keep its place under Recent, and
 //! lets the one nobody is talking on leave (§FS-003-feed-categories.2). What
 //! bounds the search instead of a repository list is time:
@@ -40,20 +40,26 @@ struct Config {
     #[allow(dead_code)]
     provider: String,
     /// Repositories to search, as `owner/name`. Empty — the default — searches
-    /// the whole forge for the user's issues wherever they are.
+    /// the whole forge for role and label questions. Open coverage requires
+    /// named repositories (§FS-001-forge-interface.1).
     #[serde(default)]
     repos: Vec<String>,
     /// Include issues the user opened. On unless switched off — it is the
-    /// search this source began as; off is for a block that follows labels
-    /// alone (§FS-001-forge-interface.1).
+    /// search this source began as; off is for a block that follows labels or
+    /// open issues alone (§FS-001-forge-interface.1).
     #[serde(default = "crate::feed::providers::enabled")]
     authored: bool,
     /// Include issues the user takes part in but did not open.
     #[serde(default = "crate::feed::providers::enabled")]
     participating: bool,
+    /// Follow every open issue in the named repositories, whoever opened it
+    /// and whatever its labels. Opt-in (§FS-001-forge-interface.1).
+    #[serde(default)]
+    open: bool,
     /// Labels to follow: the open issues carrying any of them are reported
-    /// whoever is in them (§FS-001-forge-interface.1). One search per label;
-    /// like each role search, a full answer fails rather than answering in part.
+    /// whoever is in them (§FS-001-forge-interface.1). One search per label
+    /// unless covered by `open` (§FS-001-forge-interface.8.1); a full answer
+    /// fails rather than answering in part.
     #[serde(default)]
     labels: Vec<String>,
     /// How far back to look. Older issues are not fetched at all, whatever
@@ -99,9 +105,9 @@ reactions(first:50){nodes{content user{login}}}}}}}}";
 /// skip the comment fetch for the many issues that have none — the difference
 /// between one API call and sixty on a forge-wide refresh.
 ///
-/// `author` is what a label search reads the role off: it asked about the
-/// work, not about the reader, so who opened the issue is the only thing that
-/// says whose it is (§FS-001-forge-interface.1).
+/// `author` is what label and open searches read the role off: they asked about
+/// the work, not about the reader, so who opened the issue is the only thing
+/// that says whose it is (§FS-001-forge-interface.1).
 const SEARCH_SELECTION: &str = "... on Issue{\
 number title url updatedAt state repository{nameWithOwner} \
 author{login} assignees(first:20){nodes{login}} labels(first:20){nodes{name}} \
@@ -109,26 +115,29 @@ comments{totalCount} \
 blockedBy(first:50){nodes{number title url state repository{nameWithOwner}}}}";
 
 /// One question a search asks of the forge. The two role questions know the
-/// reader's role by construction; the label question does not.
+/// reader's role by construction; label and open questions read the actual
+/// author (§FS-001-forge-interface.1).
 #[derive(Debug, Clone, Copy, PartialEq)]
 enum Question<'a> {
     /// Issues the user opened.
     Authored,
     /// Issues the user takes part in but did not open.
     Involves,
+    /// Every open issue in the source's repositories (§FS-001-forge-interface.1).
+    Open,
     /// Open issues carrying this label, whoever is in them.
     Labelled(&'a str),
 }
 
 impl Question<'_> {
-    /// The role the reader holds on an issue this question found. A label
-    /// search reads it from who opened the issue, so a followed issue lands
+    /// The role the reader holds on an issue this question found. Label and
+    /// open searches read it from who opened the issue, so a followed issue lands
     /// where its kind lands (§FS-003-feed-categories.1).
     fn role(&self, found: &Value, login: &str) -> Role {
         match self {
             Question::Authored => Role::Author,
             Question::Involves => Role::Reviewer,
-            Question::Labelled(_) => {
+            Question::Open | Question::Labelled(_) => {
                 let author = found.pointer("/author/login").and_then(Value::as_str);
                 if author == Some(login) {
                     Role::Author
@@ -168,6 +177,10 @@ fn search_is_full(question: Question<'_>, found: usize, limit: u32) -> Result<()
             format!("{found} issues matched the participating question"),
             "raise `limit`, narrow `repos`, or shorten `updated_within_days`",
         ),
+        Question::Open => (
+            format!("{found} issues matched the open question"),
+            "raise `limit`, narrow `repos` or `updated_within_days`, or disable `open` and follow narrower `labels`",
+        ),
         Question::Labelled(label) => (
             format!("{found} open issues carry the label `{label}`"),
             "raise `limit`, narrow `repos` or `updated_within_days`, or narrow `labels`",
@@ -185,14 +198,22 @@ fn label_search_is_full(label: &str, found: usize, limit: u32) -> Result<(), Pro
 }
 
 impl GithubIssues {
+    /// Accept enabled issue questions; only opt-in open coverage requires
+    /// named repositories (§FS-001-forge-interface.1).
     pub fn from_config(config: &Value) -> Result<Self, ProviderError> {
         let config: Config = parse_config(config)?;
+        if config.open && config.repos.is_empty() {
+            return Err(ProviderError(
+                "github-issues: `open` requires nonempty `repos` naming the repositories to follow"
+                    .to_string(),
+            ));
+        }
         // A source that asks nothing would answer "nothing" forever, and an
         // empty section has to mean there is nothing waiting
         // (§FS-001-forge-interface.6).
-        if !config.authored && !config.participating && config.labels.is_empty() {
+        if !config.authored && !config.participating && !config.open && config.labels.is_empty() {
             return Err(ProviderError(
-                "github-issues asks nothing: `authored` and `participating` are both off and \
+                "github-issues asks nothing: `authored`, `participating`, and `open` are all off and \
                  `labels` is empty — turn one on, name a label to follow, or drop the block"
                     .to_string(),
             ));
@@ -209,14 +230,11 @@ impl GithubIssues {
         }
     }
 
-    /// The `gh` arguments one question builds. Kept apart from running it so
-    /// a test can read the question off the command line. The label is passed
-    /// as its own argument, so `gh` receives it whatever is in it and no shell
-    /// ever sees it.
     /// What bounds every one of this source's searches: the kind, the
     /// repositories, and the window. Repository qualifiers are OR'd by the
     /// forge, so a source watching several repositories asks about all of them
-    /// in one question rather than one question each.
+    /// in one question rather than one question each. Open coverage shares
+    /// the default 30-day window, with zero unbounded (§FS-001-forge-interface.1).
     fn bounds(&self) -> String {
         let mut bounds = String::from("is:issue");
         for repo in &self.config.repos {
@@ -230,12 +248,14 @@ impl GithubIssues {
         bounds
     }
 
-    /// One question as the forge's own search syntax.
+    /// One question as the forge's own search syntax. Open coverage asks for
+    /// work without any role or label qualifier (§FS-001-forge-interface.1).
     fn query(&self, question: Question<'_>) -> String {
         let bounds = self.bounds();
         match question {
             Question::Authored => format!("{bounds} author:@me"),
             Question::Involves => format!("{bounds} involves:@me"),
+            Question::Open => format!("{bounds} state:open"),
             // Following a label is following work, so only what is open is
             // asked for: the closed would spend the limit on history
             // (§FS-001-forge-interface.1).
@@ -245,8 +265,9 @@ impl GithubIssues {
         }
     }
 
-    /// Every question, asked in one request (§FS-001-forge-interface.8), in the
-    /// order they were asked in.
+    /// Every question, asked in one request (§FS-001-forge-interface.8.1), in
+    /// the order they were asked in. Check raw answer completeness before
+    /// role classification or deduplication (§FS-001-forge-interface.1).
     fn search<'q>(
         &self,
         ctx: &ProviderContext,
@@ -458,21 +479,30 @@ impl Provider for GithubIssues {
         command_exists("gh")
     }
 
+    /// Reuse open coverage for labels, retain closed-inclusive role questions,
+    /// and deduplicate with author precedence (§FS-001-forge-interface.8.1).
     fn fetch(&self, ctx: &ProviderContext) -> ProviderResult {
         let login = github_login(ctx, self.config.host.as_deref())?;
         let mut items: Vec<Item> = Vec::new();
         let mut seen: HashSet<String> = HashSet::new();
 
-        // Author first, so an issue the user opened is theirs even though the
-        // involves search — and a label search — return it too.
+        // Authored and actual-role open answers precede involves, preserving
+        // author precedence even with authored off (§FS-001-forge-interface.8.1).
         let mut questions: Vec<Question> = Vec::new();
         if self.config.authored {
             questions.push(Question::Authored);
         }
+        if self.config.open {
+            questions.push(Question::Open);
+        }
         if self.config.participating {
             questions.push(Question::Involves);
         }
-        questions.extend(self.config.labels.iter().map(|l| Question::Labelled(l)));
+        // Open covers every label under the same bounds without filtering its
+        // other issues or repeating label searches (§FS-001-forge-interface.8.1).
+        if !self.config.open {
+            questions.extend(self.config.labels.iter().map(|l| Question::Labelled(l)));
+        }
         for (question, nodes) in self.search(ctx, &questions)? {
             for found in nodes {
                 let role = question.role(&found, &login);
