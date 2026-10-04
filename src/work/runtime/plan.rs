@@ -1127,7 +1127,13 @@ impl Plan {
     /// A fresh plan for one item: its title, the dossier, and the first ticket.
     /// The neighboring `states.yaml` selects its machine; no declaration is
     /// emitted (§FS-005-dispatch.6).
-    pub fn create(path: &Path, _machine: &str, title: &str, dossier: &str, ticket: &Ticket) -> Plan {
+    pub fn create(
+        path: &Path,
+        _machine: &str,
+        title: &str,
+        dossier: &str,
+        ticket: &Ticket,
+    ) -> Plan {
         let text = format!(
             "# Rhei: {}\n\n{DOSSIER_OPEN}\n{}\n{DOSSIER_CLOSE}\n\n\
              {TASKS_HEADING}\n\n{}",
