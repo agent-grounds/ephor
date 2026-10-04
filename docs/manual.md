@@ -596,6 +596,10 @@ ephor schema answer|registry|forge
 The schemas are the interface's stability surface: what a release may change
 is answerable by diffing them
 ([§FS-006-project-interface.11](functional-spec/FS-006-project-interface.md#11-the-interface-is-versioned)).
+The release does that diff itself: a field a published schema lost or changed
+since the previous tag is listed under `### Compatibility notices` in that
+release's changelog section and its GitHub release notes
+([§FS-002-release.1.4](functional-spec/FS-002-release.md#14-compatibility-notices-from-the-previous-tag-onwards)).
 Each validates offline — nothing in one refers to another by URL.
 
 ### 4.2.2 Territory
@@ -5292,7 +5296,8 @@ ephor schema views                             # what every one of them may prin
 
 The shapes are published: `ephor schema views` prints the schema, and it is
 the stability surface — a field is added freely, and renaming or removing one
-is a release note. It is also checked: the end-to-end suite runs every command
+is a release note, which the release writes itself as a compatibility notice
+([§FS-002-release.1.4](functional-spec/FS-002-release.md#14-compatibility-notices-from-the-previous-tag-onwards)). It is also checked: the end-to-end suite runs every command
 that takes `--json` and validates what it prints against its own entry, so the
 schema describes the answer rather than merely naming it. `ephor feed`,
 `ephor status` and `ephor list` print documents another schema already

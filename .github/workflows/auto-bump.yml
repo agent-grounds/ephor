@@ -1,15 +1,14 @@
 name: Auto bump
 
 # Mondays at 09:00 UTC: if main has shipped non-doc changes since the last
-# vX.Y.Z tag, CI on that tip is green and their release section is written,
-# bump the patch version, commit the bump to main, and dispatch release.yml to
-# publish the crate + binaries. A GITHUB_TOKEN push does not trigger other
-# workflows, so release.yml is invoked explicitly via `gh workflow run` rather
-# than relying on the tag-push trigger.
+# vX.Y.Z tag and CI on that tip is green, bump the patch version, commit the
+# bump to main, and dispatch release.yml to publish the crate + binaries. A
+# GITHUB_TOKEN push does not trigger other workflows, so release.yml is invoked
+# explicitly via `gh workflow run` rather than relying on the tag-push trigger.
 #
-# No change writes the changelog; its section is written before a release
-# (§FS-002-release.1). Until it is, the release is held with a notice and the
-# run stays green (§FS-002-release.2).
+# Nobody writes the changelog: `prepare` lists the pull requests merged since
+# the last tag itself, from the forge (§FS-002-release.1.3), so nothing holds a
+# release on a write-up and it runs whenever its gates pass (§FS-002-release.2).
 #
 # The first release is bootstrapped by hand — this workflow needs a v*.*.* tag
 # to bump from (§FS-002-release.2).
@@ -22,7 +21,7 @@ on:
 permissions:
   contents: write
   actions: write   # gh workflow run needs actions:write to dispatch
-  pull-requests: read   # the stamping step asks which pull request a commit belongs to
+  pull-requests: read   # prepare reads the pull requests merged since the last tag
 
 env:
   CARGO_TERM_COLOR: always
@@ -85,17 +84,12 @@ jobs:
           tag="${{ steps.versions.outputs.current_tag }}"
 
           # A patch release is warranted only if something a user could observe
-          # changed. Pure-docs runs and workflow tweaks do not move the
-          # published binary or the crates.io package, and neither does the
-          # toolchain's own configuration — `.agent-grounds/` and the root
-          # `grund.toml` are where that lives now, `.agents/` the deprecated
-          # name it answers to (§FS-006-project-interface.12), and an edit to
-          # any of them must not cut a release.
-          substantive="$(git diff --name-only "$tag"..HEAD \
-            | grep -Ev '^(docs/|\.github/|\.agents/|\.agent-grounds/|tests/e2e/)' \
-            | grep -Ev '\.md$' \
-            | grep -Ev '^(LICENSE|AGENTS\.md|CLAUDE\.md|grund\.toml)$' \
-            || true)"
+          # changed, over the net diff since the tag. Pure-docs runs, workflow
+          # tweaks and the toolchain's own configuration (§FS-006-project-interface.12)
+          # move neither the binary nor the crate. Which paths those are is the one
+          # predicate the release selects its pull requests with (§FS-002-release.1.3),
+          # so the gate and the notes cannot disagree.
+          substantive="$(git diff --name-only "$tag"..HEAD | python3 scripts/release_paths.py)"
 
           if [ -z "$substantive" ]; then
             echo "::notice::Only docs/CI changes since $tag — skipping."
@@ -130,50 +124,30 @@ jobs:
           fi
           echo "CI on $sha is green."
 
-      # §FS-002-release.2: hold while the release section is not written. Every
-      # later step reads the positive `ok == 'true'`, so a step that did not run
-      # leaves the release held rather than letting it through.
-      - name: Gate — release section written
-        id: gate_pending
-        if: steps.gate_substantive.outputs.ok == 'true'
-        shell: bash
-        run: |
-          set -euo pipefail
-          tag="${{ steps.versions.outputs.current_tag }}"
-          pending="$(python3 scripts/prepare_changelog_release.py pending)"
-          if [ "$pending" -eq 0 ]; then
-            echo "::notice::Changes since $tag wait for their release section: docs/changelog/unreleased/ holds no entry — skipping."
-            echo "ok=false" >> "$GITHUB_OUTPUT"
-          else
-            echo "ok=true" >> "$GITHUB_OUTPUT"
-            echo "$pending changelog entries wait for release."
-          fi
-
       - name: Install Rust toolchain
-        if: steps.gate_substantive.outputs.ok == 'true' && steps.gate_pending.outputs.ok == 'true'
+        if: steps.gate_substantive.outputs.ok == 'true'
         uses: dtolnay/rust-toolchain@stable
 
       - name: Install cargo-edit
-        if: steps.gate_substantive.outputs.ok == 'true' && steps.gate_pending.outputs.ok == 'true'
+        if: steps.gate_substantive.outputs.ok == 'true'
         uses: taiki-e/install-action@v2
         with:
           tool: cargo-edit
 
       - name: Bump version and refresh lockfile
-        if: steps.gate_substantive.outputs.ok == 'true' && steps.gate_pending.outputs.ok == 'true'
+        if: steps.gate_substantive.outputs.ok == 'true'
         shell: bash
         run: |
           set -euo pipefail
           cargo set-version "${{ steps.versions.outputs.next }}"
           cargo update --workspace
-          # Nothing is left to stamp (§FS-002-release.2): `prepare` lists the pull requests
-          # merged since the last tag itself, from the forge (§FS-002-release.1.3).
-          python3 scripts/prepare_changelog_release.py stamp
+          # `prepare` lists the pull requests merged since the last tag itself, from the
+          # forge (§FS-002-release.1.3), with the job's GH_TOKEN and the full history.
           python3 scripts/prepare_changelog_release.py prepare "${{ steps.versions.outputs.next }}"
 
       - name: Commit and push release candidate
         id: candidate
-        if: steps.gate_substantive.outputs.ok == 'true' && steps.gate_pending.outputs.ok == 'true'
+        if: steps.gate_substantive.outputs.ok == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -195,7 +169,7 @@ jobs:
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
 
       - name: Dry-run release workflow
-        if: steps.gate_substantive.outputs.ok == 'true' && steps.gate_pending.outputs.ok == 'true'
+        if: steps.gate_substantive.outputs.ok == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -229,7 +203,7 @@ jobs:
           gh run watch "$run_id" --exit-status --interval 30
 
       - name: Publish release commit and dispatch release
-        if: steps.gate_substantive.outputs.ok == 'true' && steps.gate_pending.outputs.ok == 'true'
+        if: steps.gate_substantive.outputs.ok == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -258,9 +232,9 @@ jobs:
             -f create_github_release=true
           git push origin --delete "$branch" || true
 
-      # §FS-002-release.5: a held release opens no dev version, so this carries the release's own condition.
+      # §FS-002-release.5: a skipped release opens no dev version, so this carries the release's own condition.
       - name: Advance main to the next dev version
-        if: steps.gate_substantive.outputs.ok == 'true' && steps.gate_pending.outputs.ok == 'true'
+        if: steps.gate_substantive.outputs.ok == 'true'
         shell: bash
         run: |
           set -euo pipefail

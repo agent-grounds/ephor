@@ -1,272 +1,184 @@
 #!/usr/bin/env python3
-"""Stamp, collect and read changelog release sections. §FS-002-release.2
+"""Write a release's changelog section from the pull requests it ships, and read it back. §FS-002-release.2
 
-Four commands. `stamp` writes the numbers the entries do not carry onto the
-pending entries (§FS-002-release.2.2, in `changelog_stamp`). `prepare` collects
-the entries under `docs/changelog/unreleased/` into a numbered release inline,
-rotates the previous release out to its archive, and consumes the entries
-(§FS-002-release.2.3). `notes` writes the inline section the GitHub release
-publishes (§FS-002-release.3). `pending` prints how many entries `prepare`
-would read, which the scheduled release holds on while it is `0`
-(§FS-002-release.2).
+Two commands. `prepare` reads the range and the pull requests that landed on it
+from git and the forge (§FS-002-release.1.3, in `release_pulls`), and the
+compatibility notices from the published schemas (§FS-002-release.1.4, in
+`release_notices`), then writes the numbered release inline and rotates the
+previous one out to its archive (§FS-002-release.2.3). `notes` writes the
+inline section the GitHub release publishes (§FS-002-release.3). Nobody writes
+anything first.
 """
 
 from __future__ import annotations
 
 import argparse
 import datetime as _datetime
+import posixpath
 import re
 import sys
 from pathlib import Path
 from typing import NamedTuple, Sequence
 
-# `__file__` is set under `python scripts/...` and under the test harness's
-# load-by-path alike, so this reaches the shared reader from both (§FS-002-release.2).
+# `__file__` is set under `python scripts/...` and under a load by path alike,
+# so this reaches the sibling modules from both (§FS-002-release.2).
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from changelog_history import GitError, HistoryUnavailable, landings, repository_path  # noqa: E402
-from changelog_stamp import stamp_entries  # noqa: E402
-from changelog_unreleased import (  # noqa: E402
-    CATEGORIES,
-    ENTRY_PARTS,
-    ENTRY_README,
-    entry_directory,
-    entry_lines,
-    entry_name,
-    entry_problem,
-    rebase_links,
-    stray_bullets,
+from release_notices import compatibility_notices  # noqa: E402
+from release_pulls import (  # noqa: E402
+    VERSION_RE,
+    Forge,
+    ReleaseRefused,
+    landed_pulls,
+    release_lines,
+    release_range,
+    repository,
+    repository_root,
+    version_key,
 )
 
 
-VERSION_RE = re.compile(r"^[0-9]+\.[0-9]+\.[0-9]+$")
-UNRELEASED_RE = re.compile(r"^## Unreleased\s*$")
+CONVENTIONS_RE = re.compile(r"^## 1\. Conventions\s*$")
 RELEASE_RE = re.compile(
     r"^## (?P<number>[0-9]+)\. \[(?P<version>[0-9]+\.[0-9]+\.[0-9]+)\] — (?P<date>[0-9]{4}-[0-9]{2}-[0-9]{2})\s*$"
 )
-OLDER_RE = re.compile(r"^## (?P<number>[0-9]+)\. Older releases\s*$")
+OLDER_RE = re.compile(r"^## 3\. Older releases\s*$")
+PLACEHOLDER = "_None yet._"
+NOTICES_HEADING = "### Compatibility notices"
+# A relative Markdown link: its destination and its fragment, apart.
+LINK_RE = re.compile(r"(?P<prefix>\]\()(?P<destination>[^)#\s][^)#\s]*)(?P<fragment>#[^)\s]*)?\)")
 # An archive is read in `docs/changelog/`, one directory below the inline release.
 ARCHIVE_PARTS = ("changelog",)
 
 
-class ChangelogError(Exception):
+class ChangelogError(ReleaseRefused):
     pass
 
 
-class Entry(NamedTuple):
-    """A pending entry as the release reads it: its file, its slug and category, and its bullet."""
+class Layout(NamedTuple):
+    """Where `docs/changelog.md` keeps its slot, and the release already in it, if any. §FS-002-release.2.3"""
 
-    path: Path
-    slug: str
-    category: str
-    lines: tuple[str, ...]
+    lines: list[str]
+    slot: int  # the first line of the slot: the inline release's heading, or `## 3. Older releases`
+    older: int
+    inline: re.Match[str] | None
 
 
 def prepare_release(changelog: Path, version: str, release_date: str) -> None:
-    """Collect the entries into a release, rotate the previous one out, consume them. §FS-002-release.2.3
+    """Write `version` from what it ships, rotating the previous release out. §FS-002-release.2.3
 
-    Everything is read and every refusal made before the first write, so a
-    refused release leaves the tree exactly as it found it.
+    Everything — the layout, the range, every pull request and file listing,
+    the schema comparisons — is read and every refusal made before the first
+    write, so a refused release leaves the tree exactly as it found it.
     """
     _validate_version(version)
     _validate_date(release_date)
+    layout = read_layout(changelog)
+    archive_path = None
+    if layout.inline is not None:
+        if version_key(version) <= version_key(layout.inline.group("version")):
+            raise ChangelogError(
+                f"{version} is not past {layout.inline.group('version')}, the release already inline in {changelog}"
+            )
+        archive_path = changelog.parent / "changelog" / f"{layout.inline.group('version')}.md"
+        if archive_path.exists():
+            raise ChangelogError(f"archive already exists: {archive_path}")
 
+    root = repository_root(changelog.resolve().parent)
+    forge = Forge(repository(root))
+    branch = forge.default_branch()
+    span = release_range(root, branch)
+    if span.tag is not None and version_key(version) <= version_key(span.tag[1:]):
+        raise ChangelogError(f"{version} is not past the previous tag, {span.tag}")
+    lines = release_lines(landed_pulls(forge, branch, span))
+    notices = compatibility_notices(root, forge.repo, span)
+
+    body = [f"{text}\n" for text in lines]
+    if notices:
+        body += ["\n", f"{NOTICES_HEADING}\n", "\n", *(f"{text}\n" for text in notices)]
+    section = [f"## 2. [{version}] — {release_date}\n", "\n", *body, "\n"]
+    head = [*_trim_trailing_blank_lines(layout.lines[: layout.slot]), "\n"]
+    older = layout.lines[layout.older :]
+
+    if layout.inline is not None:
+        previous_version, previous_date = layout.inline.group("version"), layout.inline.group("date")
+        previous_body = layout.lines[layout.slot + 1 : layout.older]
+        pointer = f"- [{previous_version}](changelog/{previous_version}.md) — {previous_date}: {_summary(previous_body)}\n"
+        rest = [line for line in _drop_leading_blank_lines(older[1:]) if line.strip() != PLACEHOLDER]
+        older = [older[0], "\n", pointer, *rest]
+        archived = [_rebase_links(line, (), ARCHIVE_PARTS) for line in previous_body]
+        _write_lines(archive_path, [f"# {previous_version} — {previous_date}\n", *archived])
+    _write_lines(changelog, [*head, *section, *older])
+
+
+def read_layout(changelog: Path) -> Layout:
+    """The conventions, an empty slot or one inline release, then the older releases — or a refusal."""
     lines = _read_lines(changelog)
-    sections = _find_top_level_sections(lines)
-    unreleased = _find_section(lines, sections, UNRELEASED_RE, "## Unreleased")
-    latest = _next_section_after(sections, unreleased, "latest release")
-    older = _find_section_after(lines, sections, latest, OLDER_RE, "Older releases")
-
-    latest_match = RELEASE_RE.match(_line_text(lines[latest]))
-    if latest_match is None:
-        raise ChangelogError(f"expected latest release heading after ## Unreleased, got: {_line_text(lines[latest])}")
-
-    if latest_match.group("version") == version:
-        raise ChangelogError(f"docs/changelog.md already has {version} as the inline latest release")
-
-    # §FS-002-release.2.3: a bullet written the old way would be lost if the release went on.
-    stray = stray_bullets(lines)
-    if stray:
+    sections = [index for index, line in enumerate(lines) if line.startswith("## ")]
+    conventions = next((i for i in sections if CONVENTIONS_RE.match(lines[i])), None)
+    if conventions is None:
+        raise ChangelogError(f"{changelog} has no `## 1. Conventions` section to write the release after")
+    older = next((i for i in sections if i > conventions and OLDER_RE.match(lines[i])), None)
+    if older is None:
+        raise ChangelogError(f"{changelog} has no `## 3. Older releases` section after its conventions")
+    between = [i for i in sections if conventions < i < older]
+    if not between:
+        return Layout(lines, older, older, None)
+    inline = RELEASE_RE.match(lines[between[0]])
+    if len(between) > 1 or inline is None:
         raise ChangelogError(
-            f"## Unreleased holds {len(stray)} bullet(s), the first at line {stray[0] + 1}: "
-            f"{_line_text(lines[stray[0]]).strip()}\n"
-            f"  ## Unreleased is a pointer now. Move each bullet into an entry of its own under "
-            f"{entry_directory(changelog).as_posix()}/, or this release would drop it."
+            f"{changelog} holds `{lines[between[-1 if inline else 0]].strip()}` between its conventions and its "
+            f"older releases, where only the latest release belongs"
         )
-    entries = read_entries(changelog)
-
-    previous_version = latest_match.group("version")
-    previous_date = latest_match.group("date")
-    previous_body = lines[latest + 1 : older]
-    archive_path = changelog.parent / "changelog" / f"{previous_version}.md"
-    if archive_path.exists():
-        raise ChangelogError(f"archive already exists: {archive_path}")
-
-    release_body = _release_body(order_entries(entries, entry_directory(changelog)))
-    archived_body = [rebase_links(line, (), ARCHIVE_PARTS) for line in previous_body]
-    summary = _summary_from(previous_body)
-    older_body = _drop_leading_blank_lines(lines[older + 1 :])
-    archive_link = f"- [{previous_version}](changelog/{previous_version}.md) — {previous_date}: {summary}\n"
-
-    new_lines = [
-        # Everything through the `## Unreleased` pointer stays as it is.
-        *_trim_trailing_blank_lines(lines[:latest]),
-        "\n",
-        f"## 2. [{version}] — {release_date}\n",
-        "\n",
-        *release_body,
-        "\n",
-        "## 3. Older releases\n",
-        "\n",
-        archive_link,
-        *older_body,
-    ]
-    _write_lines(archive_path, [f"# {previous_version} — {previous_date}\n", *archived_body])
-    _write_lines(changelog, new_lines)
-    for entry in entries:
-        entry.path.unlink()
-
-
-def entry_paths(changelog: Path) -> list[Path]:
-    """Every path `prepare` reads as an entry, malformed ones included; `README.md` is none. §FS-002-release.2
-
-    `pending` counts this listing and `read_entries` reads it, so the hold and
-    the refusal cannot disagree about what counts.
-    """
-    directory = entry_directory(changelog)
-    if not directory.is_dir():
-        return []
-    return [path for path in sorted(directory.iterdir()) if path.name != ENTRY_README]
-
-
-def read_entries(changelog: Path) -> list[Entry]:
-    """Every pending entry, or a refusal naming each malformed one. §FS-002-release.2.3"""
-    shown = entry_directory(changelog).as_posix()
-    found: list[Entry] = []
-    problems: list[str] = []
-    for path in entry_paths(changelog):
-        if path.is_dir():
-            problems.append(f"{shown}/{path.name}: a directory, where the entries are files")
-            continue
-        try:
-            text: str | None = path.read_bytes().decode("utf-8")
-        except UnicodeDecodeError:
-            text = None
-        except OSError as exc:
-            problems.append(f"{shown}/{path.name}: cannot be read: {exc}")
-            continue
-        problem = entry_problem(path.name, text)
-        if problem is not None:
-            problems.append(f"{shown}/{problem}")
-            continue
-        parsed = entry_name(path.name)
-        found.append(Entry(path, parsed.slug, parsed.category, tuple(entry_lines(text))))
-
-    slugs: dict[str, list[str]] = {}
-    for entry in found:
-        slugs.setdefault(entry.slug, []).append(entry.path.name)
-    problems += [
-        f"{shown}/: the slug `{slug}` is used by {' and '.join(names)}; a slug is unique across every category"
-        for slug, names in slugs.items()
-        if len(names) > 1
-    ]
-    if problems:
-        raise ChangelogError("\n".join(problems))
-    if not found:
-        # §FS-002-release.2.3: before a release, an empty directory means the write-up is not done.
-        raise ChangelogError(
-            f"{shown}/ holds no entry to release; its {ENTRY_README} is not one.\n"
-            f"  Write the release section first: one entry per change merged since the last tag, "
-            f"as part two of {shown}/{ENTRY_README} says."
-        )
-    return found
-
-
-def order_entries(entries: Sequence[Entry], directory: Path) -> list[Entry]:
-    """By category, then oldest-landed first, then by file name; uncommitted ones last. §FS-002-release.2.1"""
-    try:
-        landed = landings(repository_path(directory))
-    except (HistoryUnavailable, GitError) as exc:
-        print(f"warning: ordering the entries by file name alone: {exc}", file=sys.stderr)
-        landed = {}
-
-    def order(entry: Entry) -> tuple[int, bool, int, str]:
-        landing = landed.get(entry.slug)
-        return (
-            CATEGORIES.index(entry.category),
-            landing is None,
-            landing.position if landing else 0,
-            entry.path.name,
-        )
-
-    return sorted(entries, key=order)
-
-
-def _release_body(entries: Sequence[Entry]) -> list[str]:
-    """One section per category in release order, each bullet as published, links rebased for `docs/`."""
-    body: list[str] = []
-    for category in CATEGORIES:
-        members = [entry for entry in entries if entry.category == category]
-        if not members:
-            continue
-        if body:
-            body.append("\n")
-        body += [f"### {category.capitalize()}\n", "\n"]
-        for index, entry in enumerate(members):
-            if index:
-                body.append("\n")
-            body += [rebase_links(line, ENTRY_PARTS, ()) + "\n" for line in entry.lines]
-    return body
+    return Layout(lines, between[0], older, inline)
 
 
 def extract_notes(changelog: Path, version: str, output: Path) -> None:
-    """The inline section of `version`, which is what the GitHub release publishes. §FS-002-release.3"""
+    """The inline section of `version`, notices included, which the GitHub release publishes. §FS-002-release.3"""
     _validate_version(version)
     lines = _read_lines(changelog)
-    sections = _find_top_level_sections(lines)
-
-    for index, section_start in enumerate(sections):
-        match = RELEASE_RE.match(_line_text(lines[section_start]))
+    sections = [index for index, line in enumerate(lines) if line.startswith("## ")]
+    for index, start in enumerate(sections):
+        match = RELEASE_RE.match(lines[start])
         if match is None or match.group("version") != version:
             continue
-        section_end = sections[index + 1] if index + 1 < len(sections) else len(lines)
-        body = _trim_blank_lines(lines[section_start + 1 : section_end])
+        end = sections[index + 1] if index + 1 < len(sections) else len(lines)
+        body = _trim_trailing_blank_lines(_drop_leading_blank_lines(lines[start + 1 : end]))
         if not body:
             raise ChangelogError(f"release {version} has an empty changelog section")
-        _write_lines(output, [*body, "\n"])
+        _write_lines(output, [*body[:-1], body[-1].rstrip("\r\n") + "\n"])
         return
-
     raise ChangelogError(f"release {version} is not the inline changelog release")
 
 
-def _find_top_level_sections(lines: Sequence[str]) -> list[int]:
-    """Every `## ` heading, for `prepare` and `notes`, which want every top-level section rather than one."""
-    return [index for index, line in enumerate(lines) if line.startswith("## ") and not line.startswith("### ")]
+def _summary(body: Sequence[str]) -> str:
+    """The archive pointer's one line: how many pull requests the rotated release shipped."""
+    count = sum(1 for line in body if re.match(r"^- .*\(PR #[0-9]+\)\s*$", line))
+    return f"{count} pull request{'' if count == 1 else 's'}." if count else "release notes."
 
 
-def _find_section(lines: Sequence[str], sections: Sequence[int], pattern: re.Pattern[str], name: str) -> int:
-    for section in sections:
-        if pattern.match(_line_text(lines[section])):
-            return section
-    raise ChangelogError(f"missing {name} section")
+def _rebase_links(line: str, source: Sequence[str], target: Sequence[str]) -> str:
+    """Each relative link written in `source` rewritten to reach the same target from `target`. §FS-002-release.2.3
 
+    Both are directories as components under `docs/`: the inline release is
+    read in `docs/` itself and an archive in `changelog`. An anchor, an absolute
+    path and a URL mean the same thing anywhere; a relative destination is
+    resolved against where it was written and re-expressed from where it lands.
+    """
 
-def _find_section_after(
-    lines: Sequence[str], sections: Sequence[int], after: int, pattern: re.Pattern[str], name: str
-) -> int:
-    for section in sections:
-        if section <= after:
-            continue
-        if pattern.match(_line_text(lines[section])):
-            return section
-    raise ChangelogError(f"missing {name} section")
+    def rewrite(match: re.Match[str]) -> str:
+        destination = match.group("destination")
+        if destination.startswith(("/", "<")) or re.match(r"^[a-zA-Z][a-zA-Z0-9+.-]*:", destination):
+            return match.group(0)
+        # Rooted at placeholders well above `docs/`, so a link that climbs out of it keeps its `..`s.
+        root = "/_/_/_/_/_/_/_/_/docs"
+        resolved = posixpath.normpath(posixpath.join(root, *source, destination))
+        rebased = posixpath.relpath(resolved, posixpath.join(root, *target))
+        if destination.endswith("/") and rebased != ".":
+            rebased += "/"
+        return f"{match.group('prefix')}{rebased}{match.group('fragment') or ''})"
 
-
-def _next_section_after(sections: Sequence[int], after: int, name: str) -> int:
-    for section in sections:
-        if section > after:
-            return section
-    raise ChangelogError(f"missing {name} section")
+    return LINK_RE.sub(rewrite, line)
 
 
 def _read_lines(path: Path) -> list[str]:
@@ -279,17 +191,6 @@ def _read_lines(path: Path) -> list[str]:
 def _write_lines(path: Path, lines: Sequence[str]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text("".join(lines), encoding="utf-8")
-
-
-def _line_text(line: str) -> str:
-    return line.rstrip("\r\n")
-
-
-def _trim_blank_lines(lines: Sequence[str]) -> list[str]:
-    trimmed = _trim_trailing_blank_lines(_drop_leading_blank_lines(lines))
-    if trimmed and not trimmed[-1].endswith(("\n", "\r")):
-        trimmed[-1] += "\n"
-    return trimmed
 
 
 def _trim_trailing_blank_lines(lines: Sequence[str]) -> list[str]:
@@ -306,28 +207,6 @@ def _drop_leading_blank_lines(lines: Sequence[str]) -> list[str]:
     return trimmed
 
 
-def _summary_from(lines: Sequence[str]) -> str:
-    paragraph: list[str] = []
-    for line in lines:
-        stripped = line.strip()
-        if not stripped:
-            if paragraph:
-                break
-            continue
-        if stripped.startswith("#"):
-            continue
-        paragraph.append(stripped)
-
-    if not paragraph:
-        return "release notes."
-
-    text = re.sub(r"\s+", " ", " ".join(paragraph))
-    first_sentence = re.match(r"(.+?[.!?])(?:\s|$)", text)
-    if first_sentence is not None:
-        return first_sentence.group(1)
-    return text
-
-
 def _validate_version(version: str) -> None:
     if VERSION_RE.match(version) is None:
         raise ChangelogError(f"version must look like 0.1.0, got {version!r}")
@@ -341,11 +220,11 @@ def _validate_date(release_date: str) -> None:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Stamp, count, collect or read docs/changelog.md release sections.")
+    parser = argparse.ArgumentParser(description="Write or read the release sections of docs/changelog.md.")
     parser.add_argument("--changelog", type=Path, default=Path("docs/changelog.md"))
     subparsers = parser.add_subparsers(dest="command", required=True)
 
-    prepare = subparsers.add_parser("prepare", help="collect the pending entries into a numbered release")
+    prepare = subparsers.add_parser("prepare", help="write a numbered release from the pull requests it ships")
     prepare.add_argument("version")
     prepare.add_argument("--date", default=_datetime.date.today().isoformat())
 
@@ -353,23 +232,15 @@ def main(argv: Sequence[str] | None = None) -> int:
     notes.add_argument("version")
     notes.add_argument("--output", type=Path, required=True)
 
-    subparsers.add_parser("stamp", help="write PR numbers onto pending entries that end with none")
-    subparsers.add_parser("pending", help="print how many entries prepare would read")
-
     args = parser.parse_args(argv)
     try:
-        if args.command == "pending":
-            # §FS-002-release.2: a bare count, which `Auto bump` holds the release on while it is 0.
-            print(len(entry_paths(args.changelog)))
-        elif args.command == "prepare":
+        if args.command == "prepare":
             prepare_release(args.changelog, args.version, args.date)
-        elif args.command == "stamp":
-            stamp_entries(args.changelog)
         elif args.command == "notes":
             extract_notes(args.changelog, args.version, args.output)
         else:
             raise AssertionError(args.command)
-    except ChangelogError as exc:
+    except ReleaseRefused as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
     return 0
