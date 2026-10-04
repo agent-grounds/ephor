@@ -79,7 +79,8 @@ fn a_red_gate_becomes_a_ticket_that_carries_what_ephor_knew() {
     let plan =
         fs::read_to_string(panta.join("github-prs-acme-widget-42-922ddbdc.rhei.md")).unwrap();
     // The dossier: what the watch knew, not a link to it (§FS-005-dispatch.2).
-    assert!(plan.contains("**States:** ephor-work"), "{plan}");
+    // Fresh syntax relies on the root's machine (§FS-005-dispatch.6).
+    assert!(!plan.contains("**States:**"), "{plan}");
     assert!(plan.contains("## The item"), "{plan}");
     assert!(
         plan.contains("https://github.com/acme/widget/pull/42"),

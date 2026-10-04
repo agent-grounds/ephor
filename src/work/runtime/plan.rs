@@ -2915,10 +2915,11 @@ metadata:
             ],
         );
         let text = plan.text().to_string();
-        // Below the heading and its declaration, which is where the runtime's
-        // language puts frontmatter.
+        // Fresh frontmatter follows the title alone (§FS-005-dispatch.8).
         assert!(
-            text.starts_with("# Rhei: acme/widget#42\n**States:** ephor-work\n\n---\nmetadata:\n  tasks:\n    fix-gate-1:\n"),
+            text.starts_with(
+                "# Rhei: acme/widget#42\n\n---\nmetadata:\n  tasks:\n    fix-gate-1:\n"
+            ),
             "{text}"
         );
         assert!(text.contains(r#"      number: "42""#), "{text}");
@@ -2947,6 +2948,75 @@ metadata:
         );
         assert_eq!(text.matches("metadata:").count(), 1, "{text}");
         assert_eq!(text.matches("  tasks:").count(), 1, "{text}");
+    }
+
+    /// Both supported headers put metadata after the header, read it back,
+    /// and preserve existing data when another ticket is merged (§FS-005-dispatch.8).
+    fn metadata_header_control(header: &str) {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("plan.rhei.md");
+        let tasks = "## Tasks\n\n### Task first: work\n**State:** fix\n\nwork\n";
+        // Insert a first block into a handwritten plan, then read it on disk.
+        fs::write(&path, format!("{header}\n{tasks}")).unwrap();
+        let mut plan = Plan::read(&path).unwrap().unwrap();
+        plan.set_metadata("first", &[("id", "rhei:window.1".to_string())]);
+        plan.save().unwrap();
+        let plan = Plan::read(&path).unwrap().unwrap();
+        assert!(
+            plan.text()
+                .starts_with(&format!("{header}\n---\nmetadata:\n")),
+            "{}",
+            plan.text()
+        );
+        assert_eq!(
+            plan.matter_of("plan", "first").as_deref(),
+            Some("rhei:window.1")
+        );
+        assert_eq!(plan.ticket("first").unwrap().state.as_deref(), Some("fix"));
+
+        // A valid existing block contains user data and runtime bookkeeping.
+        let block = "---\nowner: luna\nmetadata:\n  context: retained\n  tasks:\n    first:\n      id: rhei:window.1\n      context: old-ticket\n      stateVisits:\n        fix: 2\n---\n\n";
+        fs::write(&path, format!("{header}\n{block}{tasks}")).unwrap();
+        let mut plan = Plan::read(&path).unwrap().unwrap();
+        plan.append(&ticket("second", "fix", "more work"));
+        plan.set_metadata("second", &[("id", "rhei:window.2".to_string())]);
+        plan.save().unwrap();
+        let plan = Plan::read(&path).unwrap().unwrap();
+        let yaml: serde_yaml::Value =
+            serde_yaml::from_str(plan.frontmatter_yaml().unwrap()).unwrap();
+        assert_eq!(yaml["owner"].as_str(), Some("luna"));
+        assert_eq!(yaml["metadata"]["context"].as_str(), Some("retained"));
+        let first = &yaml["metadata"]["tasks"]["first"];
+        assert_eq!(first["context"].as_str(), Some("old-ticket"));
+        assert_eq!(first["stateVisits"]["fix"].as_i64(), Some(2));
+        assert_eq!(
+            plan.matter_of("plan", "first").as_deref(),
+            Some("rhei:window.1")
+        );
+        assert_eq!(
+            plan.matter_of("plan", "second").as_deref(),
+            Some("rhei:window.2")
+        );
+        assert_eq!(plan.tickets().len(), 2);
+        assert!(
+            plan.text().starts_with(&format!("{header}\n---\n")),
+            "{}",
+            plan.text()
+        );
+        assert_eq!(plan.text().matches("\n---\n").count(), 2);
+        assert_eq!(plan.text().matches("metadata:").count(), 1);
+    }
+
+    /// Title-only headers retain insertion and merge behavior (§FS-005-dispatch.8).
+    #[test]
+    fn metadata_in_title_only_headers_is_inserted_read_and_merged() {
+        metadata_header_control("# Rhei: p\n");
+    }
+
+    /// Handwritten legacy declarations remain readable (§FS-005-dispatch.8).
+    #[test]
+    fn metadata_in_legacy_headers_is_inserted_read_and_merged() {
+        metadata_header_control("# Rhei: p\n**States:** m\n");
     }
 
     /// A claim is read where the runtime wrote one, and an unclaimed ticket
