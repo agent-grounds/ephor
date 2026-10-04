@@ -1146,11 +1146,12 @@ asked at all.
 { "provider": "github-ci", "repos": ["acme/widget"], "host": null }
 
 { "provider": "github-issues",
-  "repos": [],                  // empty searches the whole forge, not a list
+  "repos": [],                  // empty searches the whole forge; open requires repos
   "authored": true,             // issues you opened
   "participating": true,        // issues you are in but did not open
+  "open": false,                // opt in to every open issue in the named repos
   "labels": [],                 // issues carrying any of these labels, whoever is in
-                                //   them — open only, one search per label
+                                //   them — open only; covered by open when enabled
   "updated_within_days": 30,    // 0 removes the bound
   "limit": 30,                  // per question; reaching it fails the source
   "comments": true,             // fetch comments (one call per issue that has any)
@@ -1174,24 +1175,63 @@ asked at all.
 ```
 
 **Issue question completeness.** The authored search, the participating
-search, and every followed-label search are separate questions. If any one
-returns exactly `limit` issues, `github-issues` fails instead of presenting a
-possibly incomplete answer: matching work may remain beyond that boundary.
+search, the opt-in open search, and every uncovered followed-label search are
+separate questions. All configured repositories are combined in each question;
+`limit` applies to the combined answer, not separately to each repository.
+If any answer reaches `limit` issues, `github-issues` fails instead of presenting
+a possibly incomplete answer: matching work may remain beyond that boundary.
+This check counts raw results across pages before deduplication or role
+classification, even when the forge reports no next page. A complete paged
+answer below `limit` succeeds. On failure, the last good cache is retained and
+shown as stale ([§FS-001-forge-interface.6](functional-spec/FS-001-forge-interface.md#6-a-source-that-did-not-answer-says-so-and-says-which-kind-of-not)).
 Raise `limit` or narrow `repos` or the `updated_within_days` window until every
 enabled question answers below the boundary; a followed-label source may also
-follow fewer or narrower `labels`.
+follow fewer or narrower `labels`. Narrowing labels cannot narrow an enabled
+open question: disable `open` first, then follow narrower `labels` instead
+([§FS-001-forge-interface.1](functional-spec/FS-001-forge-interface.md#1-capabilities)).
 
 **Following a label.** `labels` asks a different question from the two role
 searches: not *which issues am I in* but *which issues carry this word* —
 `priority`, `regression`, whatever a project calls the work it wants followed.
-Each label is one `label:<name> state:open` search, so issues
+With `open` off, each label is one `label:<name> state:open` search, so issues
 nobody has ever touched arrive too, and each lands under the role its author
 gives it: **My Issues** where you opened it, **Participating** otherwise
 ([§FS-001-forge-interface.1](functional-spec/FS-001-forge-interface.md#1-capabilities)). Only open
 issues are asked for — a label search that took the closed too would spend its
-`limit` on history rather than on the queue. A block with `authored` off,
-`participating` off, and no `labels` asks nothing and is refused when it is
-read.
+`limit` on history rather than on the queue. With `open` on, its answer covers
+every followed label under the same repository and time bounds, so no redundant
+label searches are asked. Issues without a followed label still arrive
+([§FS-001-forge-interface.8.1](functional-spec/FS-001-forge-interface.md#81-a-role-is-not-a-request)).
+
+**Following every open issue.** `open: true` follows open issues in the named
+`repos`, whoever opened them and whatever their labels, including none. Each
+lands under **My Issues** where you opened it, **Participating** otherwise
+([§FS-003-feed-categories.1](functional-spec/FS-003-feed-categories.md#1-the-categories)).
+Open mode requires nonempty `repos`; it refuses an empty list before fetching.
+It asks one combined `is:issue state:open` question over all those repositories
+in the same GraphQL batch as any enabled role questions. Those role questions
+remain enabled because they also reach closed issues. Overlapping answers
+become one issue with author precedence
+([§FS-001-forge-interface.8.1](functional-spec/FS-001-forge-interface.md#81-a-role-is-not-a-request)).
+
+Every issue question shares `updated_within_days`: the default 30-day window
+excludes issues with older activity, including open issues. To follow every
+open issue regardless of age, set it to zero:
+
+```jsonc
+{ "provider": "github-issues",
+  "repos": ["acme/widget", "acme/service"],
+  "open": true,
+  "authored": false,
+  "participating": false,
+  "updated_within_days": 0 }    // every open issue, regardless of activity age
+```
+
+`open` defaults to false. Omission or explicit false preserves existing role
+and label questions, including configurations that search the whole forge with
+empty `repos`. A block with `authored`, `participating`, and `open` all off and
+no `labels` asks nothing and is refused when it is read
+([§FS-001-forge-interface.1](functional-spec/FS-001-forge-interface.md#1-capabilities)).
 
 **`custom-status`** runs its command as a summons like everything else ephor
 asks of a project

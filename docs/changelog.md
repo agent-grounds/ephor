@@ -6,6 +6,10 @@ the **latest release is inline** in this file, and **older releases live
 one-per-file under `docs/changelog/`** so a reader — human or agent — only
 loads the history they ask for.
 
+## Unreleased
+
+- `github-issues` can opt in to every open issue in its named repositories with `open: true`, under actual author or participant roles, reusing the answer for followed labels and failing visibly if it reaches `limit`. (PR #185)
+
 ## 1. Conventions
 
 ### 1.1 The release writes its own section
