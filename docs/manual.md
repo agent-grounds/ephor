@@ -2044,7 +2044,6 @@ empty section that reads as silence.
 
 ```markdown
 # Rhei: #17 Humanize durations in the log reader
-**States:** ephor-work
 
 <!-- ephor:dossier -->
 ## The item
@@ -2747,6 +2746,10 @@ plans of its own and declares no machine is refused rather than filled in,
 since a state machine governs every plan in a project; `ephor work states`
 prints ephor's for installing deliberately.
 
+Fresh plans use the machine in the neighboring `states.yaml` and emit no
+`**States:**` declaration. Older plans carrying the declaration remain readable
+without migration ([§FS-005-dispatch.6](functional-spec/FS-005-dispatch.md#6-dispatch-is-offered-where-it-would-work-and-refuses-where-it-would-not)).
+
 The shipped machine is two agent passes:
 
 ```
@@ -2778,7 +2781,6 @@ under the same names a shell action gets in its environment:
 
 ```markdown
 # Rhei: #24407 Fix condition metadata checks
-**States:** ephor-work
 
 ---
 metadata:
