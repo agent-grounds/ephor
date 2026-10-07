@@ -6,6 +6,10 @@ the **latest release is inline** in this file, and **older releases live
 one-per-file under `docs/changelog/`** so a reader — human or agent — only
 loads the history they ask for.
 
+## Unreleased
+
+- Refuse non-string forge command overrides before invocation and explain literal executable strings and wrappers for fixed arguments (PR #187)
+
 ## 1. Conventions
 
 ### 1.1 The release writes its own section

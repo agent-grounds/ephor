@@ -50,19 +50,32 @@ pub const SUBCOMMANDS: [&str; 10] = [
     "reply",
 ];
 
+/// One literal executable binding, with its provenance retained for diagnostics
+/// (§FS-001-forge-interface.2).
 pub struct ExternalForge {
     name: String,
     command: String,
+    explicit_command: bool,
 }
 
 impl ExternalForge {
-    /// `command` overrides the `ephor-forge-<name>` PATH convention.
+    /// `command` names one literal executable; only absence selects the
+    /// `ephor-forge-<name>` PATH convention (§FS-001-forge-interface.2).
     pub fn new(name: impl Into<String>, command: Option<String>) -> Self {
         let name = name.into();
+        let explicit_command = command.is_some();
         let command = command.unwrap_or_else(|| format!("ephor-forge-{name}"));
-        ExternalForge { name, command }
+        ExternalForge {
+            name,
+            command,
+            explicit_command,
+        }
     }
 
+    /// Append the protocol subcommand without splitting or evaluating the
+    /// executable string, including paths containing spaces. Transport failures
+    /// also identify an explicit binding for calls made without an availability
+    /// check (§FS-001-forge-interface.2).
     fn call(
         &self,
         subcommand: &str,
@@ -92,6 +105,23 @@ impl ExternalForge {
             std::time::Duration::from_secs(request.timeout_seconds),
             false,
         )
+        .map_err(|err| {
+            if self.explicit_command {
+                ProviderError(self.explicit_command_failure(&err.0))
+            } else {
+                err
+            }
+        })
+    }
+
+    /// Keep the transport's reason beside the explicit source/field binding
+    /// and the executable-string remedy (§FS-001-forge-interface.2).
+    fn explicit_command_failure(&self, reason: &str) -> String {
+        format!(
+            "source '{}' field 'command': {reason}; 'command' names one literal executable, \
+             inline arguments are unsupported; use a wrapper executable for fixed arguments",
+            self.name
+        )
     }
 
     fn decode<T: serde::de::DeserializeOwned>(
@@ -119,10 +149,18 @@ impl Forge for ExternalForge {
 
     /// An out-of-process forge is missing exactly one thing, and naming it is
     /// the difference between an install command and an afternoon: the
-    /// configuration names a forge, so the executable is inferred rather than
-    /// written down anywhere the reader can check.
+    /// configuration names a forge, so an omitted executable is inferred.
+    /// An explicit binding instead names the source's `command` field and the
+    /// wrapper remedy for fixed arguments (§FS-001-forge-interface.2).
     fn unavailable_reason(&self) -> Option<String> {
-        Some(format!("`{}` is not on PATH", self.command))
+        Some(if self.explicit_command {
+            self.explicit_command_failure(&format!(
+                "executable `{}` could not be found",
+                self.command
+            ))
+        } else {
+            format!("`{}` is not on PATH", self.command)
+        })
     }
 
     /// The probe is a real process launch, so it fails for every reason a

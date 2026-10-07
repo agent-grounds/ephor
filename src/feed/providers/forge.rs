@@ -35,17 +35,26 @@ impl ForgeProvider {
     }
 
     /// Build from a configuration block whose `provider` names no built-in
-    /// provider: it names a forge, reached out of process.
+    /// provider: it names a forge, reached out of process. Only an absent
+    /// `command` permits convention; unsupported explicit bindings fail here,
+    /// before any probe or invocation (§FS-001-forge-interface.2), and remain
+    /// visible source failures (§FS-001-forge-interface.6).
     pub fn external(config: &Value) -> Result<Self, ProviderError> {
         let name = config
             .get("provider")
             .and_then(Value::as_str)
             .ok_or_else(|| ProviderError("provider entry is missing 'provider'".to_string()))?
             .to_string();
-        let command = config
-            .get("command")
-            .and_then(Value::as_str)
-            .map(String::from);
+        let command = match config.get("command") {
+            None => None,
+            Some(Value::String(command)) => Some(command.clone()),
+            Some(_) => {
+                return Err(ProviderError(format!(
+                    "source '{name}' field 'command' must be a string naming one literal \
+                     executable; use a wrapper executable for fixed arguments"
+                )));
+            }
+        };
         Ok(ForgeProvider::new(
             Box::new(ExternalForge::new(name, command)),
             config.clone(),
