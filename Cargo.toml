@@ -238,6 +238,10 @@ name = "e2e_052_a_reply_keeps_its_context"
 path = "tests/e2e/cases/E2E-052-a-reply-keeps-its-context.rs"
 
 [[test]]
+name = "e2e_053_a_conversation_settled_at_its_source"
+path = "tests/e2e/cases/E2E-053-a-conversation-settled-at-its-source.rs"
+
+[[test]]
 name = "checkout_test"
 path = "tests/integration/checkout_test.rs"
 

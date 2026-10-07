@@ -3,6 +3,8 @@
 The optional reconciliation ledger implements §FS-001-forge-interface.1 in
 the fixture only: lookup precedes freshness, and changed payload refuses.
 Every reply records its wire bytes and site records visible before invocation.
+Every settle records its wire bytes too (§FS-001-forge-interface.1), and a
+case that flags `log-calls` gets every subcommand it is run as, in order.
 """
 
 import json
@@ -43,6 +45,10 @@ def append(name, value):
         stream.flush()
         os.fsync(stream.fileno())
 
+
+# Opt-in: a dry run elsewhere must leave this directory as it found it.
+if (mail / "log-calls").exists():
+    append("calls.jsonl", {"command": command, "request": request})
 
 capabilities = read("capabilities.json")
 if command == "capabilities":
@@ -115,6 +121,15 @@ elif command == "reply":
         while (mail / "block").exists() and time.monotonic() < deadline:
             time.sleep(0.01)
     print(json.dumps({"status": "accepted"} if reconciles else {}))
+elif command == "settle":
+    # Recorded whether or not it was declared: a carrier asked for a move it
+    # never offered is what a case has to be able to see. Nothing leaves what
+    # messages reads, so a later message still reaches it, as the row asks.
+    with (mail / "settles.jsonl").open("a") as stream:
+        stream.write(wire + "\n")
+        stream.flush()
+        os.fsync(stream.fileno())
+    print(json.dumps({}))
 else:
     print(f"unsupported: {command}", file=sys.stderr)
     sys.exit(64)

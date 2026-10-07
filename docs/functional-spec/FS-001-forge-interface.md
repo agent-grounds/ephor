@@ -76,6 +76,26 @@ ephor degrades to what is answered rather than failing.
   queue-only carrier cannot make this declaration. This lets ephor recover a
   saved uncertain send ([§FS-005-dispatch.13](FS-005-dispatch.md#13-a-communication-is-work-too-and-its-answer-comes-back-as-a-proposal)); it does not promise exactly-once
   delivery by ephor or introduce an automatic retry loop.
+- **Settle** — put a conversation away at the network it came from, given the
+  conversation's `id` as the implementation reported it under **Messages by
+  reason**. What that means there is the implementation's: a mail thread
+  archived, a chat marked done. It is asked only by the reader's own move on
+  that conversation, never because something was read, marked done or
+  answered. The network's acceptance is the whole answer, and settling one
+  already settled is success. It changes nothing the implementation reports
+  about the messages, and ephor never reads a settled state back as its own
+  done or answered
+  ([§FS-001-forge-interface.3](FS-001-forge-interface.md#3-policy-lives-above-the-interface-never-in-an-implementation)).
+  An implementation declares it only while a later message in a settled
+  conversation still reaches Messages by reason, so that the matter comes
+  back and says why
+  ([§FS-007-matters.5](FS-007-matters.md#5-an-event-moves-state-and-resurfacing-names-its-reason)).
+  Where its venue keeps a settled conversation out of the view it reads, it
+  reads that view too, or it does not declare the capability. Ephor cannot
+  check this from its side, and a message that lands nowhere is the silent drop
+  [§GOAL-003-nothing-lost](../goals.md#goal-003-nothing-lost-the-watch-is-trusted-enough-to-retire-the-sweep)
+  forbids. A name a source declares that this set does not have, such as
+  `archive`, offers nothing.
 - **Gate status** — the job counts (passed, failed, running) for a pull
   request, per repository the gate covers, since one change may gate across
   several repositories at once; and, where the forge reaches a verdict of its
@@ -451,9 +471,9 @@ attribution ([§FS-008-attribution](FS-008-attribution.md#fs-008-attribution-eve
 project a person has, a notification stream or a chat gateway, without being
 told in advance where to look.
 
-Every move back on a matter — a reply, a reaction, a ticked task, the failures
-under its gate, a restart — goes to the source that reported it, wherever that
-source is bound. Where a matter came from and where it was placed are two
+Every move back on a matter — a reply, a reaction, a ticked task, a settled
+conversation, the failures under its gate, a restart — goes to the source that
+reported it, wherever that source is bound. Where a matter came from and where it was placed are two
 facts: a matter a site source reported and attribution placed under a project
 is still that source's to answer, so the source is found among the site's as
 well as the project's own. A matter still in the unattributed bucket is

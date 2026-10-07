@@ -129,6 +129,12 @@ cannot distinguish stale state from live work, and cannot release the issue
 when the prerequisite closes
 ([§FS-001-forge-interface.1](FS-001-forge-interface.md#1-capabilities)).
 
+**Settling a conversation at its source is not an answer**
+([§FS-001-forge-interface.1](FS-001-forge-interface.md#1-capabilities)): whether a thread awaits the user is still read off its
+messages, and once the source accepts, the row is marked done exactly as `m`
+marks it, until the conversation moves again
+([§FS-007-matters.5](FS-007-matters.md#5-an-event-moves-state-and-resurfacing-names-its-reason)).
+
 ## 5. One subject is one row, however many sources reported it
 
 Sources overlap on purpose. A source that searches by role and a source that
