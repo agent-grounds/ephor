@@ -562,6 +562,16 @@ the recorded dispatch and its recipe; spelling does not sever that provenance.
 Existing ledger fields remain readable and machine readings grow only by
 additive placement fields.
 
+Every request about a conversation also retains its own optional
+`reply_binding` and reply path. The binding records the source and configured
+binding identity, project or site context, row, thread position, ordered message
+fingerprints, last-message label, accepted local send generation and opaque
+reply target. Fingerprints cover author, time, text and ownership; reactions
+and task state do not change the conversation being answered. These are
+per-request facts, retained through hand-off commit and rollback alongside the
+placement facts. A reopening captures a new binding; it never rewrites the
+binding of an earlier request. Old ledger entries remain readable.
+
 **The ledger save is the commit point for a hand-off.** Before the first
 work-root mutation, ephor journals the first pre-image — prior bytes or absence
 — of every path it can change: the matter plan, root manifest, state machine and
@@ -1084,6 +1094,92 @@ declares reply ([§FS-007-matters.4](FS-007-matters.md#4-a-channel-says-what-it-
 posting, edited or as it stands, exactly as a reaction is posted today; on
 a channel that does not, the proposal is what the person copies — a stated
 degrade ([§REQ-001-boundary.1](../requirements/REQ-001-boundary.md#1-the-anatomy)), not a failure.
+
+**A proposal answers the conversation captured at hand-off.** The request's
+binding selects the last shown reply-capable thread, or the last shown thread
+for a copy-only proposal. It keeps that thread's baseline and opaque target;
+refresh cannot replace them with the latest target. Each request has its own
+`runtime/ephor/<plan>.<ticket>.reply.md`, supplied through `{reply}` in answer
+recipes, custom asks and workflow briefs. The latest request supersedes earlier
+proposals, even while its output is still absent. Late output from an older
+request cannot replace the newer words. Editing and empty-file withdrawal
+remain available. A legacy draft without a binding remains readable, editable
+and copyable, but cannot be posted.
+
+**An unsent draft is refused when its own thread has advanced.** Before posting,
+compare the saved ordered messages, target and accepted local send generation
+with the recorded conversation. A newer message, including the person's own,
+makes it stale. An accepted local send advances the thread before refresh, as
+well as afterwards. The refusal names the advancing message by author, time
+and excerpt, or the accepted local send by its saved words. Missing, reordered
+or ambiguous thread identity refuses safely; unrelated threads do not make
+this draft stale. Changes to reactions or task state alone do not stale it.
+There is no stale override. To send the old words deliberately in the new
+context, the person types them or requests a new draft. Typed words retain
+trimming and the last-sendable-thread selection against the latest recorded
+conversation. These checks read recorded state and do not fetch new messages.
+
+**A send is saved before the forge is called.** Both drafted and typed replies
+durably save a versioned record at the site's `replies/<row-digest>.json`,
+separate from `work.json`. It contains the original source, configured binding
+identity and scope/context, row, thread baseline, saved target, exact prepared
+payload, status, eligibility for repeat reconciliation and optional draft
+identity. Atomic replacement and file and directory synchronization precede
+the call. A persistence failure prevents the call. Forgetting dispatched work
+does not remove send recovery. The row record retains accepted-send generations
+and confirmed draft identities across retirement failures and later intents.
+
+A row lock serializes capture, sending and resolution. Each move re-reads
+durable state under the lock, holds it through the forge call and durable
+confirmation, and refuses a competing attempt rather than waiting and sending
+another message. A rehearsal writes neither records nor lock files.
+
+**Recovery finishes the saved send before checking draft freshness.** After a
+timeout or interrupted call, a forge that declared repeat reconciliation at
+capture can be called again by `p`, `ephor reply ID`, or the same typed command.
+That move reuses the pending record, original opaque target and exact prepared
+words, across refresh, new inbound messages and process restart. It never
+creates a new intent or substitutes a refreshed target. The original configured
+binding and project/site context must still match, and the forge must still
+declare reconciliation. A change of account, binding, context or declaration
+refuses recovery. Changed typed words refuse; editing a draft cannot change
+the pending payload. A new draft cannot supersede pending recovery. Recovery
+and resolution can address a saved row even when it is absent from the feed.
+
+Repeat reconciliation is the opt-in carrier contract of
+[§FS-001-forge-interface.1](FS-001-forge-interface.md#1-capabilities): returning a known earlier acceptance need not deliver
+another message. There is no automatic retry loop, gateway implementation or
+ephor-only exactly-once promise. A native or nondeclaring carrier's uncertain
+send is held, as is an explicit `unknown` result even from a declaring carrier.
+A held send cannot be retried by another posting command.
+
+**A held outcome is resolved after checking the channel.**
+`ephor reply ID --resolve sent|not-sent` and the matching thread-menu choices
+record the person's decision without sending. Resolution accepts no words.
+It is offered only for held outcomes, rather than replacing saved replay on an
+eligible reconciling carrier.
+`sent` durably confirms and suppresses the associated draft and advances its
+thread's accepted-send generation. `not-sent` releases the hold; any subsequent
+send is a separate move subject to normal binding and freshness checks.
+Resolution does not resolve a gateway's own ledger. For an outcome reported as
+unknown, the person checks and, where necessary, resolves it at the forge first.
+
+**Confirmation is saved before retirement.** A known acceptance is durably
+recorded as sent before the draft is moved aside. A crash before that save
+leaves pending recovery; a crash or retirement failure afterwards cannot offer
+the confirmed draft for posting again. Suppression survives later sends.
+An acknowledged intentional repeat is a new intent using the newest recorded
+descriptor. On a reconciling forge, if that descriptor still equals the
+confirmed one, the repeat refuses and asks for refresh, because replaying it
+would recover the prior operation rather than express a new one.
+
+The bound position and target, stale reason, saved pending words, retry or hold
+and resolution are the same facts in the conversation API, JSON, command line
+and thread screen ([§FS-011-command-line.4](FS-011-command-line.md#4-a-conversation-and-the-moves-inside-it)). Read-only channels remain copyable,
+and every move retains source and scope routing. A dry run performs the same
+send, replay or resolution checks, displays the actual target and prepared
+words, and writes neither state nor lock files and never posts. It cannot
+guarantee a later disk write will succeed.
 
 ### 13.1 An issue nobody holds is owed work, not an answer
 

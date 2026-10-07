@@ -73,6 +73,17 @@ reply given in words, where the channel declares that it can carry one
 ([§FS-007-matters.4](FS-007-matters.md#4-a-channel-says-what-it-can-do)). Each refuses by name where the source cannot carry the
 move, which is the same sentence the key answers with.
 
+The thread reading shows a proposal at its bound message and target, together
+with a stale or unbound refusal reason where it cannot post. An uncertain send
+shows its saved prepared words and target independently of edited draft words:
+the offered move is either “retry saved send” or “check channel and resolve”,
+under [§FS-005-dispatch.13](FS-005-dispatch.md#13-a-communication-is-work-too-and-its-answer-comes-back-as-a-proposal). `p` and the shared reply API perform that same
+move. `ephor reply ID --resolve sent|not-sent` and matching menu choices record
+a checked held outcome, accept no words and do not send. They can address a
+saved row absent from the feed. Dry-run rehearses sending, replay and resolution
+with the same refusals, displays the actual opaque target and prepared words,
+and creates neither state nor lock files and posts nothing.
+
 ## 5. What can be done about a matter, before anything has been
 
 `ephor work offers` prints what could be handed over about one matter and
@@ -91,6 +102,11 @@ restart` takes the same id.
 ## 7. `--json` is the same answer, not a second one
 
 Every command that prints a reading takes `--json` ([§REQ-002-parity.3](../requirements/REQ-002-parity.md#3-every-reading-answers-a-program)).
+
+Conversation readings and reply outcomes add the binding position/target,
+stale reason, pending payload, retry versus hold and resolution facts exposed
+by the human reading. `assets/ephor-views.schema.json` describes these additive
+facts, and parity entries cover the shared API, CLI and thread-menu moves.
 Under it, standard output carries the reading alone: notes, progress and
 provider failures go to the error stream, so what a program parses is never
 interleaved with what a person reads.
