@@ -195,6 +195,93 @@ fn doctor_refuses_site_array_before_capability_probe() {
     array_refusal(Binding::Site, true, &["doctor", "--skip-self"]);
 }
 
+// A site's command refusal is its own failure (§FS-001-forge-interface.2,
+// §FS-001-forge-interface.6), even when every project source answers and the
+// shared source has never placed a row in any project cache.
+fn doctor_with_healthy_project_refuses_new_site_binding(as_json: bool) {
+    let world = fixture(true);
+    let healthy = world.stub(
+        "healthy-forge",
+        r#"#!/bin/sh
+printf '%s\n' "$*" >> "$EPHOR_COMMAND_LOG/healthy.argv"
+/bin/cat >/dev/null
+case "$1" in
+  capabilities) printf '{"messages":true}' ;;
+  *) printf '[]' ;;
+esac
+"#,
+    );
+    world.configure(json!({
+        "projects": { PROJECT: { "providers": [{
+            "provider": "healthy", "command": healthy
+        }] } },
+        "sources": [{
+            "provider": SOURCE,
+            "command": [world.path().join("fakebin/gateway"), "forge"]
+        }],
+    }));
+    let args = if as_json {
+        vec!["doctor", "--skip-self", "--json"]
+    } else {
+        vec!["doctor", "--skip-self"]
+    };
+    let output = run(&world, &args);
+    assert_refused(&world, &output, false);
+    let observed = evidence(&world, &output);
+    assert_eq!(output.status.code(), Some(4), "{observed}");
+    assert_eq!(
+        log(&world, "healthy.argv"),
+        "capabilities\nmessages\n",
+        "{observed}"
+    );
+    if as_json {
+        let report: Value = serde_json::from_slice(&output.stdout).expect("doctor's JSON report");
+        assert_eq!(report["projects"][0]["project"], PROJECT, "{observed}");
+        assert_eq!(report["projects"][0]["health"], "well", "{observed}");
+        assert_eq!(
+            report["projects"][0]["sources"],
+            json!({
+                "configured": 1, "asked": 1, "answering": 1
+            }),
+            "{observed}"
+        );
+        assert_eq!(report["projects"][0]["silent"], json!([]), "{observed}");
+        assert_eq!(report["shared_sources"]["health"], "degraded", "{observed}");
+        let silent = report["shared_sources"]["silent"]
+            .as_array()
+            .expect("shared refusals");
+        assert_eq!(silent.len(), 1, "{observed}");
+        assert_eq!(silent[0]["source"], SOURCE, "{observed}");
+        assert!(
+            silent[0]["why"].as_str().unwrap().contains("command"),
+            "{observed}"
+        );
+        assert_eq!(silent[0]["unreachable"], false, "{observed}");
+    } else {
+        let report = String::from_utf8_lossy(&output.stdout);
+        assert!(report.contains("1/1 source(s) answering"), "{observed}");
+        assert!(
+            report.contains(SOURCE) && report.contains("command"),
+            "{observed}"
+        );
+        assert!(report.contains("degraded —"), "{observed}");
+        assert!(
+            !report.contains("well — everything asked answered"),
+            "{observed}"
+        );
+    }
+}
+
+#[test]
+fn doctor_text_retains_new_site_command_refusal_with_healthy_project() {
+    doctor_with_healthy_project_refuses_new_site_binding(false);
+}
+
+#[test]
+fn doctor_json_retains_new_site_command_refusal_with_healthy_project() {
+    doctor_with_healthy_project_refuses_new_site_binding(true);
+}
+
 fn failures_args() -> [&'static str; 9] {
     [
         "failures",
