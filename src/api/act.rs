@@ -771,7 +771,7 @@ impl Session {
             .filter(|draft| draft.stale_reason.is_none())
         {
             if let Some(binding) = &draft.binding {
-                let sources = self.sources_for(&binding.project);
+                let sources = binding.original_sources(&self.sources_for(&binding.project));
                 draft.stale_reason = binding.routing(&sources, &self.config.defaults).err();
                 if draft.stale_reason.is_none() {
                     if let Some(target) = &draft.target {
@@ -792,7 +792,9 @@ impl Session {
             crate::replies::Store::inspect(&item.id),
         ) {
             if let Some(intent) = &record.intent {
-                let sources = self.sources_for(&intent.binding.project);
+                let sources = intent
+                    .binding
+                    .original_sources(&self.sources_for(&intent.binding.project));
                 // Local held decisions call nothing and record the saved account's
                 // outcome even after configuration changes (§FS-005-dispatch.13).
                 pending.reason = if pending.retry {

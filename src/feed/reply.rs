@@ -59,6 +59,10 @@ enum Carrier {
     },
 }
 
+#[cfg(test)]
+#[path = "reply_tests.rs"]
+mod outcome_tests;
+
 /// Everything a reply does short of sending it (§FS-001-forge-interface.9):
 /// the words are settled, the source that reported the conversation is found
 /// wherever it is bound, and it is asked whether it can carry a reply at all.

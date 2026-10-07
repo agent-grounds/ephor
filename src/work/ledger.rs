@@ -522,7 +522,7 @@ thread_local! {
 /// integration builds do not contain this hook; it lets a unit test force the
 /// real atomic store failure without racing process-global state.
 #[cfg(test)]
-pub(super) fn use_test_path(path: PathBuf) -> TestLedgerPath {
+pub(crate) fn use_test_path(path: PathBuf) -> TestLedgerPath {
     TEST_LEDGER_PATH.with(|slot| {
         assert!(
             slot.borrow().is_none(),
@@ -534,7 +534,7 @@ pub(super) fn use_test_path(path: PathBuf) -> TestLedgerPath {
 }
 
 #[cfg(test)]
-pub(super) struct TestLedgerPath;
+pub(crate) struct TestLedgerPath;
 
 #[cfg(test)]
 impl Drop for TestLedgerPath {

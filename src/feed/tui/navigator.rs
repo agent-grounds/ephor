@@ -23,6 +23,10 @@ use crate::work::{Tone, WorkLine};
 
 use super::{highlight_style, Action, BranchInfo, CheckoutOf, Ctx};
 
+#[cfg(test)]
+#[path = "navigator_reply_tests.rs"]
+mod recovery_tests;
+
 /// One category's filter (§FS-003-feed-categories.1).
 type SectionFilter = fn(&Item) -> bool;
 
@@ -490,6 +494,10 @@ impl NavigatorState {
                 push_row(&mut self.stream_entries, orphan);
             }
         }
+        // Diagnostics remain separate from source reports and selectable rows
+        // (§FS-005-dispatch.13, §FS-011-command-line.4).
+        self.stream_entries
+            .extend(ctx.recovery_diagnostics().into_iter().map(Entry::Org));
         fix_selection(&self.stream_entries, &mut self.stream_state, was);
     }
 
@@ -511,6 +519,8 @@ impl NavigatorState {
                     Entry::Project(project, unplaced)
                 }));
         }
+        self.project_entries
+            .extend(ctx.recovery_diagnostics().into_iter().map(Entry::Org));
         fix_selection(&self.project_entries, &mut self.project_state, was);
     }
 
@@ -540,6 +550,8 @@ impl NavigatorState {
         }
         let sections = self.type_section_entries(ctx, &project);
         self.detail_entries.extend(sections);
+        self.detail_entries
+            .extend(ctx.recovery_diagnostics().into_iter().map(Entry::Org));
         fix_selection(&self.detail_entries, &mut self.detail_state, was);
     }
 

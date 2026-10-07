@@ -459,6 +459,11 @@ pub fn status(args: &StatusArgs, scope: &Projects) -> Result<ExitCode> {
 /// `ephor feed` — the flat stream across the watched projects
 /// (§FS-011-command-line.9 for what `scope` narrows it to).
 pub fn feed(args: &FeedArgs, scope: &Projects) -> Result<ExitCode> {
+    // Passive corruption is named without dropping other recovery rows
+    // (§FS-005-dispatch.13, §FS-011-command-line.4).
+    for diagnostic in crate::replies::Store::recovery().diagnostics {
+        eprintln!("error: {diagnostic}");
+    }
     let config = load_config()?;
     let seen = cache::load_seen()?;
     let style = Style::detect();
@@ -516,6 +521,31 @@ pub fn feed(args: &FeedArgs, scope: &Projects) -> Result<ExitCode> {
                 item.updated_at,
                 render::render_item_line(&item, feed, &seen, &style, true, now),
                 serde_json::to_value(&item).unwrap(),
+            ));
+        }
+    }
+    // Saved sends are addressable even when their source omitted the row;
+    // they are local recovery facts, not synthetic provider reports
+    // (§FS-005-dispatch.13, §FS-011-command-line.4).
+    for row in crate::replies::Store::recovery().rows {
+        let selected = if args.unattributed {
+            row.project.is_empty()
+        } else {
+            !row.project.is_empty()
+                && scope.admit(&row.project).is_ok()
+                && (args.project.is_empty() || args.project.contains(&row.project))
+        };
+        if selected
+            && kind_filter.is_none_or(|kind| kind == row.kind)
+            && !feeds
+                .iter()
+                .flat_map(ProjectFeed::items)
+                .any(|item| item.id == row.id)
+        {
+            lines.push((
+                row.updated_at,
+                format!("{} {} [saved reply]", row.id, row.title),
+                serde_json::to_value(&row).unwrap(),
             ));
         }
     }

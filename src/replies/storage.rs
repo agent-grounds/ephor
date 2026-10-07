@@ -169,11 +169,57 @@ pub struct Store {
     writable: bool,
 }
 
+/// Passive enumeration retains valid rows and names each invalid record
+/// independently (§FS-005-dispatch.13, §FS-011-command-line.4).
+#[derive(Debug, Default)]
+pub struct Recovery {
+    pub rows: Vec<Item>,
+    pub diagnostics: Vec<String>,
+}
+
+#[cfg(test)]
+thread_local! {
+    static OPERATIONS: std::cell::RefCell<Vec<&'static str>> = const { std::cell::RefCell::new(Vec::new()) };
+    static TEST_DIRECTORY: std::cell::RefCell<Option<PathBuf>> = const { std::cell::RefCell::new(None) };
+}
+
+#[cfg(test)]
+pub(crate) fn use_test_directory(path: PathBuf) -> TestDirectory {
+    TEST_DIRECTORY.with(|directory| {
+        assert!(directory.borrow().is_none());
+        *directory.borrow_mut() = Some(path);
+    });
+    TestDirectory
+}
+
+#[cfg(test)]
+pub(crate) struct TestDirectory;
+
+#[cfg(test)]
+impl Drop for TestDirectory {
+    fn drop(&mut self) {
+        TEST_DIRECTORY.with(|directory| *directory.borrow_mut() = None);
+    }
+}
+
+fn reply_dir() -> PathBuf {
+    #[cfg(test)]
+    if let Some(path) = TEST_DIRECTORY.with(|directory| directory.borrow().clone()) {
+        return path;
+    }
+    crate::paths::state_dir().join("replies")
+}
+
+#[cfg(test)]
+pub(crate) fn take_operations() -> Vec<&'static str> {
+    OPERATIONS.with(|operations| std::mem::take(&mut *operations.borrow_mut()))
+}
+
 impl Store {
     /// Atomic replacement permits passive readings without acquiring or creating
     /// a lock; moves re-read under their own lock (§FS-005-dispatch.13).
     pub fn inspect(row: &str) -> Result<Option<Record>> {
-        let dir = crate::paths::state_dir().join("replies");
+        let dir = reply_dir();
         Self {
             path: dir.join(format!("{}.json", digest(row))),
             dir,
@@ -185,7 +231,7 @@ impl Store {
     }
     /// Site-owned location (§FS-005-dispatch.13).
     pub fn site(row: &str, writing: bool) -> Result<Self> {
-        Self::open(&crate::paths::state_dir().join("replies"), row, writing)
+        Self::open(&reply_dir(), row, writing)
     }
 
     /// Read-only rehearsal probes an existing lock but creates no file or directory
@@ -194,6 +240,8 @@ impl Store {
         let name = digest(row);
         let lock_path = dir.join(format!("{name}.lock"));
         let lock = if writing {
+            #[cfg(test)]
+            OPERATIONS.with(|operations| operations.borrow_mut().push("create-directory/lock"));
             fs::create_dir_all(dir).map_err(io_error)?;
             Some(
                 OpenOptions::new()
@@ -283,6 +331,8 @@ impl Store {
         ));
         let save = || -> io::Result<()> {
             before(SavePhase::Write)?;
+            #[cfg(test)]
+            OPERATIONS.with(|operations| operations.borrow_mut().push("create/write-temporary"));
             let mut file = OpenOptions::new()
                 .write(true)
                 .create_new(true)
@@ -309,34 +359,71 @@ impl Store {
     /// Saved unresolved rows are recoverable news even when a refresh drops them;
     /// enumerate only validated records, without creating locks (§FS-005-dispatch.13).
     pub fn pending_rows() -> Result<Vec<Item>> {
-        let dir = crate::paths::state_dir().join("replies");
+        Ok(Self::recovery().rows)
+    }
+
+    /// Invalid collection members are diagnostics, never permission to act
+    /// (§FS-005-dispatch.13). Direct reads retain strict validation.
+    pub fn recovery() -> Recovery {
+        let dir = reply_dir();
+        Self::recovery_in(&dir)
+    }
+
+    fn recovery_in(dir: &Path) -> Recovery {
+        let mut recovery = Recovery::default();
         let entries = match fs::read_dir(&dir) {
             Ok(entries) => entries,
-            Err(err) if err.kind() == io::ErrorKind::NotFound => return Ok(Vec::new()),
-            Err(err) => return Err(io_error(err)),
+            Err(err) if err.kind() == io::ErrorKind::NotFound => return recovery,
+            Err(err) => {
+                recovery.diagnostics.push(io_error(err).to_string());
+                return recovery;
+            }
         };
-        let mut rows = Vec::new();
         for entry in entries {
-            let path = entry.map_err(io_error)?.path();
+            let path = match entry {
+                Ok(entry) => entry.path(),
+                Err(err) => {
+                    recovery.diagnostics.push(io_error(err).to_string());
+                    continue;
+                }
+            };
             if path.extension().and_then(|extension| extension.to_str()) != Some("json") {
                 continue;
             }
-            let bytes = fs::read(&path).map_err(io_error)?;
-            let record: Record = serde_json::from_slice(&bytes)
-                .map_err(|err| error(format!("Invalid saved reply {}: {err}", path.display())))?;
-            if path.file_name().and_then(|name| name.to_str())
-                != Some(format!("{}.json", digest(&record.row.id)).as_str())
-            {
-                return Err(error("Saved reply filename does not match its row"));
-            }
-            let validated = Self::inspect(&record.row.id)?
+            let validate = || -> Result<Record> {
+                let bytes = fs::read(&path).map_err(io_error)?;
+                let record: Record = serde_json::from_slice(&bytes).map_err(|err| {
+                    error(format!("Invalid saved reply {}: {err}", path.display()))
+                })?;
+                if path.file_name().and_then(|name| name.to_str())
+                    != Some(format!("{}.json", digest(&record.row.id)).as_str())
+                {
+                    return Err(error("Saved reply filename does not match its row"));
+                }
+                let validated = Self {
+                    dir: dir.to_path_buf(),
+                    path: path.clone(),
+                    row: record.row.id,
+                    _lock: None,
+                    writable: false,
+                }
+                .read()?
                 .ok_or_else(|| error("Saved reply disappeared while reading"))?;
-            if validated.intent.as_ref().is_some_and(Intent::unresolved) {
-                rows.push(validated.row);
+                Ok(validated)
+            };
+            match validate() {
+                Ok(validated) if validated.intent.as_ref().is_some_and(Intent::unresolved) => {
+                    recovery.rows.push(validated.row);
+                }
+                Ok(_) => {}
+                Err(err) => recovery
+                    .diagnostics
+                    .push(format!("{}: {err}", path.display())),
             }
         }
-        rows.sort_by(|a, b| a.id.cmp(&b.id));
-        Ok(rows)
+        recovery.rows.sort_by(|a, b| a.id.cmp(&b.id));
+        recovery.diagnostics.sort();
+        recovery
     }
 }
 
@@ -355,3 +442,7 @@ pub fn error(message: impl Into<String>) -> EphorError {
 fn io_error(err: io::Error) -> EphorError {
     error(format!("Cannot save/read reply outcome: {err}"))
 }
+
+#[cfg(test)]
+#[path = "tests.rs"]
+pub(crate) mod tests;

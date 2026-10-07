@@ -692,6 +692,9 @@ pub fn thread(args: &ThreadArgs) -> Result<ExitCode> {
     if let Some(error) = &view.reply_error {
         println!("{error}");
     }
+    for diagnostic in &view.reply_diagnostics {
+        println!("{diagnostic}");
+    }
     Ok(ExitCode::SUCCESS)
 }
 

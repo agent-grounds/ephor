@@ -148,6 +148,36 @@ fn violations(value: &Value, name: &str) -> Vec<String> {
         .collect()
 }
 
+/// Typed, wire and default outcomes share the published transport contract
+/// (§FS-001-forge-interface.2).
+#[test]
+fn reply_outcomes_validate_and_legacy_empty_object_decodes_as_acceptance() {
+    use super::ReplyOutcome;
+    for (wire, expected) in [
+        (json!({}), ReplyOutcome::Accepted),
+        (json!({"status":"accepted"}), ReplyOutcome::Accepted),
+        (
+            json!({"status":"unknown","note":"check channel"}),
+            ReplyOutcome::Unknown {
+                note: "check channel".into(),
+            },
+        ),
+    ] {
+        assert!(violations(&wire, "reply_response").is_empty());
+        assert_eq!(ReplyOutcome::from_wire(wire).unwrap(), expected);
+        assert!(violations(&serde_json::to_value(&expected).unwrap(), "reply_response").is_empty());
+    }
+    assert_eq!(ReplyOutcome::default(), ReplyOutcome::Accepted);
+    for wire in [
+        json!({"status":"queued"}),
+        json!({"status":"unknown"}),
+        json!([]),
+    ] {
+        assert!(!violations(&wire, "reply_response").is_empty());
+        assert!(ReplyOutcome::from_wire(wire).is_err());
+    }
+}
+
 /// Hold one fully populated report to its definition: it validates, it
 /// carries nothing undeclared, and nothing declared at its top is left out.
 fn holds(value: &Value, name: &str) -> Vec<String> {

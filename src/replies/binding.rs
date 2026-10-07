@@ -175,6 +175,7 @@ impl Binding {
     /// Recovery must find the original configured binding and scope, including
     /// an original site source now shadowed by a project (§FS-001-forge-interface.9).
     pub fn routing(&self, sources: &Sources, defaults: &Defaults) -> Result<(), String> {
+        let sources = self.original_sources(sources);
         let Some((config, context)) = sources.find(&self.source) else {
             return Err(format!(
                 "Original source binding {} is no longer configured",
@@ -185,6 +186,16 @@ impl Binding {
             return Err("Original source binding/account or project/site context changed; check the channel before resolving".into());
         }
         Ok(())
+    }
+
+    /// A later project declaration must not steal an operation originally
+    /// owned by a site source (§FS-001-forge-interface.9).
+    pub fn original_sources(&self, sources: &Sources) -> Sources {
+        let mut original = sources.clone();
+        if self.context.is_empty() {
+            original.own.clear();
+        }
+        original
     }
 
     /// The saved native or opaque forge descriptor, without interpretation here

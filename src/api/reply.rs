@@ -64,6 +64,12 @@ impl Session {
             .collect())
     }
 
+    /// Passive diagnostics are shared facts, separate from a row's move
+    /// refusal (§FS-005-dispatch.13, §FS-011-command-line.4).
+    pub fn recovery_diagnostics(&self) -> Vec<String> {
+        Store::recovery().diagnostics
+    }
+
     /// Recovery precedes proposal freshness and uses the saved operation;
     /// new sends capture today's words and provenance (§FS-005-dispatch.13).
     fn perform_reply(
@@ -104,7 +110,9 @@ impl Session {
             // eligible currently declaring carrier still requires replay
             // (§FS-005-dispatch.13, §FS-001-forge-interface.9).
             if !intent.held() {
-                let sources = self.sources_for(&intent.binding.project);
+                let sources = intent
+                    .binding
+                    .original_sources(&self.sources_for(&intent.binding.project));
                 intent
                     .binding
                     .routing(&sources, &self.config.defaults)
@@ -164,7 +172,9 @@ impl Session {
             intent
                 .binding
                 .routing(
-                    &self.sources_for(&intent.binding.project),
+                    &intent
+                        .binding
+                        .original_sources(&self.sources_for(&intent.binding.project)),
                     &self.config.defaults,
                 )
                 .map_err(error)?;
@@ -175,7 +185,9 @@ impl Session {
             let mut prepared = crate::feed::reply::prepare(
                 &target,
                 &intent.text,
-                &self.sources_for(&intent.binding.project),
+                &intent
+                    .binding
+                    .original_sources(&self.sources_for(&intent.binding.project)),
                 &self.config.defaults,
             )?;
             if !intent.reconciliation || !prepared.payload().2 {
@@ -227,6 +239,7 @@ impl Session {
                 (binding, proposal.text, Some(proposal.path))
             }
         };
+        let sources = binding.original_sources(&sources);
         binding
             .routing(&sources, &self.config.defaults)
             .map_err(error)?;
@@ -321,3 +334,7 @@ fn target_label(binding: &Binding) -> String {
         .map(ToString::to_string)
         .unwrap_or_else(|| "no target".into())
 }
+
+#[cfg(test)]
+#[path = "reply_tests.rs"]
+pub(crate) mod tests;

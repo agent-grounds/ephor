@@ -875,7 +875,14 @@ fn an_answer_is_dispatched_without_a_checkout_and_its_reply_comes_back() {
     assert!(plan.contains("### Task answer-1:"), "{plan}");
     // The brief names the file the reply goes into, absolutely: the runtime
     // runs from the checkout, not from the work root.
-    let reply = root.join("runtime/ephor/github-prs-acme-widget-42-922ddbdc.reply.md");
+    let ledger: serde_json::Value =
+        serde_json::from_slice(&fs::read(tmp.path().join("state/ephor/work.json")).unwrap())
+            .unwrap();
+    let reply = std::path::PathBuf::from(
+        ledger["entries"]["github-prs:acme/widget#42"]["dispatches"][0]["reply_path"]
+            .as_str()
+            .unwrap(),
+    );
     assert!(
         plan.contains(&reply.to_string_lossy().to_string()),
         "{plan}"
@@ -893,11 +900,15 @@ fn an_answer_is_dispatched_without_a_checkout_and_its_reply_comes_back() {
     // whole — never posting it.
     fs::create_dir_all(reply.parent().unwrap()).unwrap();
     fs::write(&reply, "Yes — the window resets per attempt.\n").unwrap();
-    let proposal =
-        ephor::work::runtime::results::proposal(&root, "github-prs-acme-widget-42-922ddbdc")
-            .expect("the run drafted a reply");
+    let binding = serde_json::from_value(
+        ledger["entries"]["github-prs:acme/widget#42"]["dispatches"][0]["reply_binding"].clone(),
+    )
+    .unwrap();
+    let proposal = ephor::work::runtime::results::proposal_at(reply.clone(), Some(binding))
+        .expect("the run drafted a reply");
     assert_eq!(proposal.text, "Yes — the window resets per attempt.");
     assert_eq!(proposal.path, reply);
+    assert_eq!(proposal.binding.unwrap().path, reply);
 }
 
 /// A multi-repo workspace has no one repository to be found by looking, so

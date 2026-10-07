@@ -675,7 +675,8 @@
           }
         },
         "pending_reply": { "$ref": "#/$defs/pending_reply" },
-        "reply_error": { "type": "string", "description": "Unreadable or invalid saved state refuses safely (FS-005-dispatch.13)." }
+        "reply_error": { "type": "string", "description": "Unreadable or invalid saved state refuses safely (FS-005-dispatch.13)." },
+        "reply_diagnostics": { "type": "array", "items": { "type": "string" }, "description": "Invalid saved records are named without hiding valid recovery rows (FS-005-dispatch.13)." }
       }
     },
     "work": {
