@@ -8,6 +8,7 @@ loads the history they ask for.
 
 ## Unreleased
 
+- Read numeric `owner/name#N` references in conversation titles and messages so mail is placed by repository reference, including when the project and repository names differ (PR #196)
 - Refuse non-string forge command overrides before invocation and explain literal executable strings and wrappers for fixed arguments (PR #187)
 
 ## 1. Conventions

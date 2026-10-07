@@ -433,7 +433,8 @@ pub fn evidence_of(item: &Item) -> Evidence {
     }
 }
 
-/// The `owner/name` repositories a piece of text names. Deliberately plain:
+/// The `owner/name` repositories a piece of text names, including numeric
+/// `owner/name#N` references (§AR-003-attribution.1). Deliberately plain:
 /// two slash-separated words that look like a repository, which is what a url
 /// and a sentence both spell the same way.
 fn repos_in(text: &str) -> Vec<String> {
@@ -454,7 +455,20 @@ fn repos_in(text: &str) -> Vec<String> {
         if parts.len() < 2 || parts[0].is_empty() || parts[1].is_empty() {
             continue;
         }
-        let repo = format!("{}/{}", parts[0], parts[1]);
+        // Only a complete numeric suffix names a short reference (§FS-008-attribution.3).
+        let name = match parts[1].split_once('#') {
+            Some((name, number))
+                if parts.len() == 2
+                    && !name.is_empty()
+                    && !number.is_empty()
+                    && number.bytes().all(|byte| byte.is_ascii_digit()) =>
+            {
+                name
+            }
+            Some(_) => continue,
+            None => parts[1],
+        };
+        let repo = format!("{}/{}", parts[0], name);
         if repo.chars().all(|character| {
             character.is_alphanumeric()
                 || character == '/'
