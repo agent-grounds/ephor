@@ -99,6 +99,18 @@ as anything else: what it references places it, and it lands in the bucket
 only where nothing matches or several projects match equally
 ([§FS-008-attribution.4](FS-008-attribution.md#4-unattributed-is-a-place-not-a-fate)).
 
+In a conversation's title or message text, `owner/name#N`, where `N` is one
+or more ASCII decimal digits, references the repository `owner/name`, just as
+the plain repository name or its issue URL does. Ordinary surrounding sentence
+punctuation does not change that reference. With no claimed room or other
+venue placing it, the conversation belongs to the project claiming that
+repository at Reference, even when the project's name differs from the
+repository's name. This short form does not admit arbitrary suffixes such as
+`owner/name#note` or `owner/name#12extra` as repository references. A
+conversation's own key alone is never a repository reference, even when it
+has the same `owner/name#N` spelling. Text references are extracted from its
+title and messages separately from that key.
+
 ## 4. Unattributed is a place, not a fate
 
 A conversation that matched nothing lands in a visible unattributed bucket,
@@ -106,4 +118,3 @@ in the interactive view and on demand — never dropped. The bucket is the
 attribution seam's degrade rule ([§REQ-001-boundary.1](../requirements/REQ-001-boundary.md#1-the-anatomy)): mapping failures are
 seen where they can be fixed, by adding the signal the identity was
 missing.
-

@@ -34,6 +34,10 @@ name = "e2e_050_forge_command_binding"
 path = "tests/e2e/cases/E2E-050-forge-command-binding.rs"
 
 [[test]]
+name = "e2e_051_a_short_repository_reference_places_mail"
+path = "tests/e2e/cases/E2E-051-a-short-repository-reference-places-mail.rs"
+
+[[test]]
 name = "e2e_002_check_verbs"
 path = "tests/e2e/cases/E2E-002-check-verbs.rs"
 

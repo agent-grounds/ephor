@@ -17,13 +17,21 @@ patterns, pull request URLs, repository names; addresses and participants;
 and the plain words that may hit an alias. Evidence is data on the item,
 inspectable in `EPHOR_RAW`, so a misplacement can be debugged by looking.
 
+Repository references in title and message text include the numeric short
+form `owner/name#N`: it contributes `owner/name`, as a plain repository name
+or issue URL does, including with ordinary surrounding sentence punctuation
+([§FS-008-attribution.3](../functional-spec/FS-008-attribution.md#3-venue-beats-reference-beats-resemblance)). The suffix is one or more ASCII decimal digits;
+arbitrary suffixes such as `#note` or `#12extra` are not this form.
+
 The room is kept apart from the conversation's own key and from what its text
 references, because the three answer different questions: the key is what the
 conversation is, the room is where it happened, and a reference is what it
 mentions. A conversation's key is never read for a repository. A chat id can
 happen to be spelled like `owner/name#number`, and reading a venue out of that
 spelling would let a project's organization-wide territory tie with the room
-that actually claims the conversation. Notices keep the older reading for now.
+that actually claims the conversation. This prohibition applies to the key,
+including a numeric `owner/name#N` key, rather than to references in title or
+message text. Notices keep the older reading for now.
 
 ## 2. Identity
 
