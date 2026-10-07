@@ -234,8 +234,8 @@ name = "e2e_049_plans_use_the_roots_machine"
 path = "tests/e2e/cases/E2E-049-plans-use-the-roots-machine.rs"
 
 [[test]]
-name = "e2e_050_a_reply_keeps_its_context"
-path = "tests/e2e/cases/E2E-050-a-reply-keeps-its-context.rs"
+name = "e2e_052_a_reply_keeps_its_context"
+path = "tests/e2e/cases/E2E-052-a-reply-keeps-its-context.rs"
 
 [[test]]
 name = "checkout_test"

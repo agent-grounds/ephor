@@ -1,4 +1,4 @@
-//! E2E-050: a proposal stays bound, and recovery finishes the saved send
+//! E2E-052: a proposal stays bound, and recovery finishes the saved send
 //! (§FS-005-dispatch.4, §FS-005-dispatch.13). Adapted from ephor.34's mail
 //! reproducer, with stricter stale refusal and an opt-in reconciling fixture
 //! (§FS-001-forge-interface.1, §FS-001-forge-interface.2).
