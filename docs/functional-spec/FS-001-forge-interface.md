@@ -219,6 +219,29 @@ Rust's typing; because Rust has no stable plugin ABI, an in-process
 implementation outside this repository means depending on ephor as a library
 and building a binary that registers it — not a dynamically loaded object.
 
+For the executable transport, a source's `command`, when supplied, is one
+literal executable name or path. It is neither a shell command nor an argv
+array: ephor appends the protocol subcommand as one argument, without splitting
+or evaluating the string. An executable path containing spaces works by the
+same rule. Fixed arguments belong in a wrapper executable that forwards its
+arguments, for example `exec gateway forge "$@"`.
+
+Only an **absent** `command` selects `ephor-forge-<name>` on `PATH`. A present
+array, object, number, boolean or null is refused during source construction,
+before any capability probe or other forge invocation. The diagnostic names
+the source and its `command` field; an unsupported explicit binding must never
+be dropped in favour of convention
+([§REQ-001-boundary.2](../requirements/REQ-001-boundary.md#2-three-homes-one-resolution-order)).
+If an explicit string cannot be reached as the literal executable it names,
+the failure identifies the source's `command` and explains that inline
+arguments are unsupported and a wrapper supplies fixed arguments. A string
+such as `"gateway forge"` does not run `gateway` with guessed arguments, and
+does not select the conventional executable. This is an explicit source
+failure ([§FS-001-forge-interface.6](FS-001-forge-interface.md#6-a-source-that-did-not-answer-says-so-and-says-which-kind-of-not)), not an empty answer. The binding rule applies
+equally to project and site sources and to their fetches, health probes and
+source-directed actions
+([§FS-001-forge-interface.9](FS-001-forge-interface.md#9-a-source-is-bound-to-one-project-or-to-the-site-and-every-move-goes-back-to-the-source)).
+
 ## 3. Policy lives above the interface, never in an implementation
 
 An implementation answers questions about a forge. It does not decide what the
