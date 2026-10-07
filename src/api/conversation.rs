@@ -49,6 +49,7 @@ pub struct Conversation {
     pub draft: Option<Draft>,
     pub pending_reply: Option<views::PendingReply>,
     pub reply_error: Option<String>,
+    pub reply_diagnostics: Vec<String>,
 }
 
 impl Conversation {
@@ -104,6 +105,7 @@ impl Conversation {
             draft,
             pending_reply,
             reply_error,
+            reply_diagnostics: crate::replies::Store::recovery().diagnostics,
         }
     }
 
@@ -148,6 +150,7 @@ impl Conversation {
             }),
             pending_reply: self.pending_reply.clone(),
             reply_error: self.reply_error.clone(),
+            reply_diagnostics: self.reply_diagnostics.clone(),
         }
     }
 }

@@ -102,12 +102,17 @@ impl MailWorld {
         let ledger = read_json(&self.world.path().join("state/ephor/work.json"));
         let plan = ledger["entries"][ITEM]["plan"].as_str().unwrap();
         let text = fs::read_to_string(plan).unwrap();
-        let path = text
-            .split_whitespace()
-            .map(|word| word.trim_matches(['`', '"', '\'', '(', ')', ',', ';']))
-            .filter(|word| word.starts_with('/') && word.ends_with(".reply.md"))
-            .next_back()
-            .expect("brief names {reply}");
+        let path = ledger["entries"][ITEM]["dispatches"]
+            .as_array()
+            .unwrap()
+            .last()
+            .unwrap()["reply_path"]
+            .as_str()
+            .expect("request advertises {reply}");
+        assert!(
+            text.contains(path),
+            "the brief must consume its advertised output: {text}"
+        );
         PathBuf::from(path)
     }
 

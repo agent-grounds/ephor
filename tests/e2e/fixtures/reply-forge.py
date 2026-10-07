@@ -46,6 +46,9 @@ def append(name, value):
 
 capabilities = read("capabilities.json")
 if command == "capabilities":
+    if consume("fail-capabilities"):
+        print("cannot read declaration", file=sys.stderr)
+        sys.exit(1)
     print(json.dumps(capabilities))
 elif command == "messages":
     print(json.dumps([] if (mail / "absent").exists() else [read("conversation.json")]))
@@ -94,6 +97,10 @@ elif command == "reply":
     write("conversation.json", conversation)
     ledger[key] = request["text"]
     write("operations.json", ledger)
+
+    if consume("fail-ack"):
+        print("accepted but acknowledgement lost", file=sys.stderr)
+        sys.exit(1)
 
     # Accepted remotely, then the process dies before ephor can confirm it.
     if consume("crash-caller"):

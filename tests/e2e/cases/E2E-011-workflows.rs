@@ -388,6 +388,13 @@ fn issue_43_failed_save_rolls_back_workflow_and_carried_artifacts() {
     let world = watching();
     lay_by_action(&world);
     let root = work_root(&world);
+    let dispatch = workflow_dispatches(&world)[0].clone();
+    let reply = std::path::PathBuf::from(dispatch["reply_path"].as_str().unwrap());
+    assert_eq!(dispatch["reply_binding"]["path"], dispatch["reply_path"]);
+    assert_eq!(dispatch["reply_binding"]["row"], WORKFLOW_ITEM);
+    std::fs::create_dir_all(reply.parent().unwrap()).unwrap();
+    std::fs::write(&reply, b"Previous workflow reply\nexact bytes\n").unwrap();
+    let prior_output = std::fs::read(&reply).unwrap();
     let before_tree = tree_snapshot(&root);
     let ledger_path = world.path().join("state/ephor/work.json");
     let before_ledger = std::fs::read(&ledger_path).expect("the committed ledger");
@@ -420,6 +427,48 @@ fn issue_43_failed_save_rolls_back_workflow_and_carried_artifacts() {
     assert!(
         std::fs::read(&ledger_path).unwrap() == before_ledger,
         "the failed workflow batch changed the committed ledger"
+    );
+    assert_eq!(
+        workflow_dispatches(&world)[0]["reply_binding"],
+        dispatch["reply_binding"]
+    );
+    assert_eq!(
+        workflow_dispatches(&world)[0]["reply_path"],
+        dispatch["reply_path"]
+    );
+    assert_eq!(std::fs::read(reply).unwrap(), prior_output);
+}
+
+/// The workflow's carried inputs consume its own {reply}, whose identity
+/// remains beside the committed request (§FS-005-dispatch.4, §FS-005-dispatch.13).
+#[test]
+fn workflow_brief_advertises_its_own_bound_request_path() {
+    let world = watching();
+    let entry_path = world.path().join("workflows/changeset-review/.ephor.json");
+    let mut entry = read_json(&entry_path);
+    entry["inputs"]["review_focus"] = json!(["Draft your reply at {reply}"]);
+    write_json(&entry_path, &entry);
+    let plan = lay_by_action(&world);
+    let dispatch = workflow_dispatches(&world)[0].clone();
+    let path = dispatch["reply_path"].as_str().unwrap();
+    assert_eq!(dispatch["reply_binding"]["path"], path);
+    assert_eq!(dispatch["reply_binding"]["row"], WORKFLOW_ITEM);
+    assert!(std::fs::read_to_string(plan.join("values-as-given.json"))
+        .unwrap()
+        .contains(path));
+    std::fs::create_dir_all(std::path::Path::new(path).parent().unwrap()).unwrap();
+    std::fs::write(path, "Workflow reply words").unwrap();
+    let out = world
+        .ephor()
+        .args(["thread", WORKFLOW_ITEM, "--json"])
+        .output()
+        .unwrap();
+    let thread = shaped("thread", &out);
+    assert_eq!(thread["draft"]["path"], path);
+    assert_eq!(thread["draft"]["text"], "Workflow reply words");
+    assert_eq!(
+        thread["draft"]["sendable"], false,
+        "this fixture declares no reply descriptor"
     );
 }
 

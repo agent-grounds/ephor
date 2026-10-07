@@ -399,6 +399,8 @@ pub struct Thread {
     pub pending_reply: Option<PendingReply>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub reply_error: Option<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub reply_diagnostics: Vec<String>,
 }
 
 /// A recipe considered for this matter whose selector or branch template

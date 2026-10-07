@@ -11,6 +11,9 @@ mod reply_world;
 #[path = "../support.rs"]
 mod support;
 
+#[path = "../reply_fix_cases.rs"]
+mod fix_cases;
+
 use std::fs;
 use std::process::Stdio;
 use std::time::{Duration, Instant};
@@ -282,6 +285,7 @@ fn persistence_failure_prevents_any_forge_call() {
 fn drafted_persistence_failure_keeps_words_and_prevents_call() {
     let world = MailWorld::new(false);
     let draft = world.drafted("Thanks");
+    fs::remove_dir_all(world.world.path().join("state/ephor/replies")).unwrap();
     fs::write(
         world.world.path().join("state/ephor/replies"),
         "not a directory",

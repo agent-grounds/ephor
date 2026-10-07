@@ -119,8 +119,10 @@ for ticket in $(grep -oE '^### Task [A-Za-z0-9_-]+:' "$file" | sed 's/^### Task 
   printf '# %s.%s — verdict\n\nVERDICT: answered — the window resets per attempt\n' \
     "$plan" "$ticket" > "$artifacts/$plan.$ticket.verdict.md"
 done
-printf 'Yes — the window resets on every attempt, which is what the test asserts.\n' \
-  > "$artifacts/$plan.reply.md"
+reply="$(python3 -c 'import re,sys; paths=re.findall(r"/[^\s`]+\.reply\.md",open(sys.argv[1]).read()); print(paths[-1] if paths else "")' "$file")"
+if [ -n "$reply" ]; then
+  printf 'Yes — the window resets on every attempt, which is what the test asserts.\n' > "$reply"
+fi
 
 awk '{ if ($0 ~ /^\*\*State:\*\*/) print "**State:** done"; else print }' "$file" > "$file.tmp"
 mv "$file.tmp" "$file"
@@ -720,9 +722,12 @@ fn a_bound_runtime_runs_the_plan_and_its_verdict_and_drafted_reply_come_back() {
         .stdout(predicate::str::contains("1 ticket(s) opened"));
 
     let work_root = world.forest().join("panta");
-    let reply = work_root
-        .join("runtime/ephor")
-        .join(format!("{PLAN}.reply.md"));
+    let ledger = support::read_json(&world.path().join("state/ephor/work.json"));
+    let reply = std::path::PathBuf::from(
+        ledger["entries"]["acmeforge:app/101"]["dispatches"][0]["reply_path"]
+            .as_str()
+            .expect("handoff advertises its output"),
+    );
     let plan = std::fs::read_to_string(plan_path(&world)).expect("the plan is on disk");
     // The brief names that file absolutely: the runtime runs from the
     // checkout, not from the work root, so a brief that asks for a file has to

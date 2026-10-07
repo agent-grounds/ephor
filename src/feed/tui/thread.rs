@@ -41,6 +41,10 @@ use super::Action;
 use crate::api::conversation::{Conversation, Message as Msg};
 use crate::api::views::Reaction;
 
+#[cfg(test)]
+#[path = "thread_reply_tests.rs"]
+mod reply_tests;
+
 /// A reply a run drafted, waiting under the conversation it answers
 /// (§FS-005-dispatch.13). It is a file until a person sends it, which is why
 /// `path` is shown wherever the channel cannot carry it.
@@ -66,6 +70,7 @@ pub(crate) struct ThreadScreen {
     draft: Option<Draft>,
     pending_reply: Option<crate::api::views::PendingReply>,
     reply_error: Option<String>,
+    reply_diagnostics: Vec<String>,
     /// Flat message index of the selected card.
     selected: usize,
     scroll: u16,
@@ -101,6 +106,7 @@ impl ThreadScreen {
             draft,
             pending_reply,
             reply_error,
+            reply_diagnostics,
         } = reading;
         if messages.is_empty()
             && pending_reply.is_none()
@@ -131,6 +137,7 @@ impl ThreadScreen {
             draft,
             pending_reply,
             reply_error,
+            reply_diagnostics,
             selected: 0,
             scroll: 0,
             follow: true,
@@ -146,6 +153,16 @@ impl ThreadScreen {
     /// what would actually be posted.
     #[cfg(test)]
     pub fn reread(&mut self, proposal: Option<Proposal>) {
+        let proposal = proposal.map(|mut proposal| {
+            proposal.binding = crate::replies::Binding::capture(
+                &self.item,
+                &Default::default(),
+                &Default::default(),
+                &crate::replies::Record::new(&self.item),
+                proposal.path.clone(),
+            );
+            proposal
+        });
         self.reread_reading(Conversation::of(&self.item, proposal));
     }
 
@@ -170,6 +187,7 @@ impl ThreadScreen {
         });
         self.pending_reply = reading.pending_reply;
         self.reply_error = reading.reply_error;
+        self.reply_diagnostics = reading.reply_diagnostics;
         self.wrap_width = 0;
     }
 
@@ -762,6 +780,9 @@ impl ThreadScreen {
         if let Some(error) = &self.reply_error {
             self.lines.push(Line::from(error.clone()));
         }
+        for diagnostic in &self.reply_diagnostics {
+            self.lines.push(Line::from(diagnostic.clone()));
+        }
     }
 }
 
@@ -926,7 +947,18 @@ mod tests {
         proposal: Option<Proposal>,
         width: u16,
     ) -> (ThreadScreen, Vec<String>) {
-        let mut screen = ThreadScreen::open(item_with_threads(threads), proposal).unwrap();
+        let item = item_with_threads(threads);
+        let proposal = proposal.map(|mut proposal| {
+            proposal.binding = crate::replies::Binding::capture(
+                &item,
+                &Default::default(),
+                &Default::default(),
+                &crate::replies::Record::new(&item),
+                proposal.path.clone(),
+            );
+            proposal
+        });
+        let mut screen = ThreadScreen::open(item, proposal).unwrap();
         screen.rebuild_lines(width);
         let text = plain_text(&screen.lines);
         (screen, text)
@@ -934,6 +966,7 @@ mod tests {
 
     fn proposal(text: &str) -> Proposal {
         Proposal {
+            binding: None,
             text: text.to_string(),
             path: PathBuf::from("/w/widget/panta/runtime/ephor/widget-77.reply.md"),
         }
@@ -1311,7 +1344,7 @@ mod tests {
             with_proposal(threads, Some(proposal("Because of the retry.")), 80);
         assert!(
             text.iter()
-                .any(|line| line.contains("this channel takes none from here")),
+                .any(|line| line.contains("copy or edit; posting unavailable")),
             "{text:?}"
         );
         assert!(

@@ -91,6 +91,8 @@ fn repeated_workflow_finds_a_unique_recorded_plan_in_its_prior_root() {
             plan: newest_entry_root.join("forge-widget-42.rhei.md"),
             dispatches: vec![
                 ledger::Dispatch {
+                    reply_binding: None,
+                    reply_path: None,
                     ticket: String::new(),
                     recipe: "review".to_string(),
                     at: Utc::now(),
@@ -102,6 +104,8 @@ fn repeated_workflow_finds_a_unique_recorded_plan_in_its_prior_root() {
                     snapshot: Snapshot::of(&item),
                 },
                 ledger::Dispatch {
+                    reply_binding: None,
+                    reply_path: None,
                     ticket: String::new(),
                     recipe: "other-review".to_string(),
                     at: Utc::now(),
@@ -119,6 +123,7 @@ fn repeated_workflow_finds_a_unique_recorded_plan_in_its_prior_root() {
     let ledger: Ledger = serde_json::from_value(serde_json::to_value(ledger).unwrap())
         .expect("a workflow record written before per-dispatch roots still reads");
     let mut dispatcher = Dispatcher {
+        reply_config: Default::default(),
         registry_doc: serde_json::json!({
             "projects": [{
                 "id": "widget",
@@ -216,6 +221,8 @@ fn issue_43_every_recorded_dispatch_root_is_enumerated_after_reload() {
             plan: new_root.join("forge-widget-42.rhei.md"),
             dispatches: vec![
                 ledger::Dispatch {
+                    reply_binding: None,
+                    reply_path: None,
                     ticket: String::new(),
                     recipe: "review".to_string(),
                     at: Utc::now(),
@@ -227,6 +234,8 @@ fn issue_43_every_recorded_dispatch_root_is_enumerated_after_reload() {
                     snapshot: snapshot.clone(),
                 },
                 ledger::Dispatch {
+                    reply_binding: None,
+                    reply_path: None,
                     ticket: String::new(),
                     recipe: "fix".to_string(),
                     at: Utc::now(),
@@ -1144,6 +1153,7 @@ fn issue_43_dispatcher(root: &Path, ledger: Ledger) -> Dispatcher {
     let mut placements = BTreeMap::new();
     placements.insert("widget".to_string(), Some(placement("widget", root, None)));
     Dispatcher {
+        reply_config: Default::default(),
         registry_doc: serde_json::json!({ "projects": [] }),
         global: work_config(),
         projects: BTreeMap::new(),
@@ -1185,6 +1195,8 @@ fn issue_43_recorded_recipe_roots_are_all_enumerated() {
     plant(&root_b, &format!("{plan_id}.rhei.md"), "project work");
     let item = issue_43_item();
     let dispatch = |ticket: &str, root: &Path| ledger::Dispatch {
+        reply_binding: None,
+        reply_path: None,
         ticket: ticket.to_string(),
         recipe: ticket.trim_end_matches("-1").to_string(),
         at: Utc::now(),
@@ -1250,6 +1262,8 @@ fn issue_43_legacy_dispatch_falls_back_to_the_item_root() {
             plan_id: plan_id.to_string(),
             plan: root.join(format!("{plan_id}.rhei.md")),
             dispatches: vec![ledger::Dispatch {
+                reply_binding: None,
+                reply_path: None,
                 ticket: "fix-1".to_string(),
                 recipe: "fix".to_string(),
                 at: Utc::now(),
@@ -1325,6 +1339,8 @@ fn issue_43_multi_root_record() -> (tempfile::TempDir, Dispatcher, crate::feed::
             plan: plan_b,
             dispatches: vec![
                 ledger::Dispatch {
+                    reply_binding: None,
+                    reply_path: None,
                     ticket: "answer-1".to_string(),
                     recipe: "answer".to_string(),
                     at: Utc::now(),
@@ -1336,6 +1352,8 @@ fn issue_43_multi_root_record() -> (tempfile::TempDir, Dispatcher, crate::feed::
                     snapshot: Snapshot::of(&item),
                 },
                 ledger::Dispatch {
+                    reply_binding: None,
+                    reply_path: None,
                     ticket: "sweep-2".to_string(),
                     recipe: "sweep".to_string(),
                     at: Utc::now(),
@@ -1547,13 +1565,42 @@ fn issue_43_failed_save_rolls_back_append_batch_and_memory() {
     let _ledger_path = ledger::use_test_path(ledger_path.clone());
     let project = tmp.path().join("widget");
     fs::create_dir_all(&project).unwrap();
-    let item = issue_43_item();
+    let _reply_directory = crate::replies::storage::use_test_directory(tmp.path().join("replies"));
+    let mut item = issue_43_item();
+    item.raw = crate::replies::storage::tests::item().raw;
     let mut dispatcher = issue_43_dispatcher(&project, empty_ledger());
+    dispatcher.reply_config = serde_json::from_value(serde_json::json!({"projects":{"widget":{"providers":[{"provider":item.source,"user":"me"}]}}})).unwrap();
 
     dispatcher
         .dispatch(&item, &issue_43_recipe("first"), None, false)
         .unwrap();
     dispatcher.save().unwrap();
+    let prior = dispatcher.ledger.entries[&item.id].dispatches[0].clone();
+    let prior_path = prior
+        .reply_path
+        .as_ref()
+        .expect("a request advertises its own output");
+    assert_eq!(prior.reply_binding.as_ref().unwrap().path, *prior_path);
+    fs::create_dir_all(prior_path.parent().unwrap()).unwrap();
+    fs::write(prior_path, b"Previous reply\nwith exact bytes\n").unwrap();
+    let prior_bytes = fs::read(prior_path).unwrap();
+    dispatcher
+        .dispatch(&item, &issue_43_recipe("previous"), None, false)
+        .unwrap();
+    dispatcher.save().unwrap();
+    let prior_outputs: Vec<_> = dispatcher.ledger.entries[&item.id]
+        .dispatches
+        .iter()
+        .map(|dispatch| {
+            let path = dispatch.reply_path.clone().unwrap();
+            let binding = dispatch.reply_binding.clone().unwrap();
+            assert_eq!(binding.path, path);
+            if !path.exists() {
+                fs::write(&path, b"Other prior request bytes\n").unwrap();
+            }
+            (binding, path.clone(), fs::read(path).unwrap())
+        })
+        .collect();
     let committed_ledger = serde_json::to_value(&dispatcher.ledger).unwrap();
     let plan_path = issue_43_plan(&project);
     let committed_plan = fs::read(&plan_path).unwrap();
@@ -1570,6 +1617,18 @@ fn issue_43_failed_save_rolls_back_append_batch_and_memory() {
         .expect_err("the ledger store is forced to fail");
     assert!(error.to_string().contains("Cannot write"));
     assert_eq!(fs::read(&plan_path).unwrap(), committed_plan);
+    assert_eq!(fs::read(prior_path).unwrap(), prior_bytes);
+    let restored = &dispatcher.ledger.entries[&item.id].dispatches[0];
+    assert_eq!(restored.reply_binding, prior.reply_binding);
+    assert_eq!(restored.reply_path, prior.reply_path);
+    for ((binding, path, bytes), dispatch) in prior_outputs
+        .iter()
+        .zip(&dispatcher.ledger.entries[&item.id].dispatches)
+    {
+        assert_eq!(dispatch.reply_binding.as_ref(), Some(binding));
+        assert_eq!(dispatch.reply_path.as_ref(), Some(path));
+        assert_eq!(fs::read(path).unwrap(), *bytes);
+    }
     assert_eq!(
         serde_json::to_value(&dispatcher.ledger).unwrap(),
         committed_ledger,
@@ -3175,6 +3234,8 @@ fn the_ledgers_recipe_answers_for_a_ticket_ephor_dispatched() {
             plan_id: "widget-42".to_string(),
             plan: root.join("widget-42.rhei.md"),
             dispatches: vec![ledger::Dispatch {
+                reply_binding: None,
+                reply_path: None,
                 ticket: "fix-gate-1".to_string(),
                 // Written from a recipe that asks nobody to run it, under
                 // an id another recipe's tickets would carry.
@@ -3236,6 +3297,8 @@ fn a_symlinked_root_keeps_the_ledgers_recorded_recipe() {
             plan_id: "widget-42".to_string(),
             plan: recorded_root.join("widget-42.rhei.md"),
             dispatches: vec![ledger::Dispatch {
+                reply_binding: None,
+                reply_path: None,
                 ticket: "fix-gate-1".to_string(),
                 recipe: "review".to_string(),
                 at: Utc::now(),
@@ -3312,6 +3375,8 @@ fn an_unrecorded_symlinked_root_keeps_the_callers_checkout_spelling() {
             plan_id: "widget-42".to_string(),
             plan: recorded_root.join("widget-42.rhei.md"),
             dispatches: vec![ledger::Dispatch {
+                reply_binding: None,
+                reply_path: None,
                 ticket: "fix-gate-1".to_string(),
                 recipe: "fix-gate".to_string(),
                 at: Utc::now(),
@@ -3412,6 +3477,8 @@ fn laid_ledger(root: &Path, entry: &str) -> Ledger {
             plan_id: "widget-42".to_string(),
             plan: root.join("widget-42.rhei.md"),
             dispatches: vec![ledger::Dispatch {
+                reply_binding: None,
+                reply_path: None,
                 ticket: String::new(),
                 recipe: entry.to_string(),
                 at: Utc::now(),
@@ -4334,6 +4401,8 @@ fn the_recipe_reading_sees_no_workflow_plan_and_falls_back_only_to_the_entrys_ow
     let mut entry = entry_for(&root, &plan_path);
     entry.plan_id = "widget-10".to_string();
     entry.dispatches = vec![ledger::Dispatch {
+        reply_binding: None,
+        reply_path: None,
         ticket: String::new(),
         recipe: "implement".to_string(),
         at: Utc::now(),
@@ -4404,6 +4473,8 @@ fn lay_plan(root: &Path, name: &str, state: &str, machine: Option<&str>, target:
 /// report's site produces: no ticket of its own, and a plan name to resolve.
 fn laying_dispatch(name: &str, root: &Path) -> ledger::Dispatch {
     ledger::Dispatch {
+        reply_binding: None,
+        reply_path: None,
         ticket: String::new(),
         recipe: "implement".to_string(),
         at: Utc::now(),
@@ -4508,6 +4579,8 @@ fn a_workflow_plan_sharing_a_root_with_the_matters_own_yields_both() {
     entry.plan_id = "widget-10".to_string();
     entry.dispatches = vec![
         ledger::Dispatch {
+            reply_binding: None,
+            reply_path: None,
             ticket: "implement-1".to_string(),
             recipe: "implement".to_string(),
             at: Utc::now(),
@@ -4761,6 +4834,8 @@ fn a_reply_left_in_a_workflow_root_is_not_offered_as_the_matters_proposal() {
     entry.plan_id = plan_id.to_string();
     entry.dispatches = vec![
         ledger::Dispatch {
+            reply_binding: None,
+            reply_path: None,
             ticket: "answer-1".to_string(),
             recipe: "answer".to_string(),
             at: Utc::now(),
