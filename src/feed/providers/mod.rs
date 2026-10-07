@@ -42,6 +42,23 @@ pub fn build_provider(config: &Value) -> Result<Box<dyn Provider>, ProviderError
     }
 }
 
+/// The external source constructor's refusal of an unsupported command
+/// binding (§FS-001-forge-interface.2). Construction cannot invoke a forge.
+/// Built-in providers have their own command contracts; this does not judge
+/// those or classify transport failures as binding refusals.
+pub(crate) fn command_refusal(config: &Value) -> Option<ProviderError> {
+    let name = config.get("provider").and_then(Value::as_str)?;
+    if !built_in(name)
+        && config
+            .get("command")
+            .is_some_and(|value| !value.is_string())
+    {
+        forge::ForgeProvider::external(config).err()
+    } else {
+        None
+    }
+}
+
 /// A write one of ephor's own providers performs itself rather than through
 /// the forge interface (§FS-001-forge-interface.1). Which provider it is
 /// belongs down here with the providers; above this module a write is a

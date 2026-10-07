@@ -610,6 +610,7 @@ fn site(args: &DoctorArgs, style: &Style, say: &Narrator) -> Result<(Health, Opt
             Err(err) => format!("could not be asked — {err}"),
         });
     }
+    let mut shared_refusals = Vec::new();
     if args.project.is_none() && !config.sources.is_empty() {
         say.starting(&format!("the shared sources ({})", config.sources.len()));
         let shared = crate::feed::refresh::refresh_shared(&registry_doc, &config);
@@ -620,6 +621,23 @@ fn site(args: &DoctorArgs, style: &Style, say: &Narrator) -> Result<(Health, Opt
             Ok(outcome) => format!("{} source(s) lost", outcome.failures.len()),
             Err(err) => format!("could not be asked — {err}"),
         });
+        // Retain constructor refusals at site scope even without cached matters
+        // (§FS-001-forge-interface.2, §FS-001-forge-interface.6); source counts and
+        // project diagnoses continue to describe only their actual slots.
+        if let Ok(outcome) = shared {
+            shared_refusals = outcome
+                .failures
+                .into_iter()
+                .filter(|failure| {
+                    config.sources.iter().any(|source| {
+                        source.get("provider").and_then(Value::as_str)
+                            == Some(failure.provider.as_str())
+                            && crate::feed::providers::command_refusal(source)
+                                .is_some_and(|error| error.0 == failure.message)
+                    })
+                })
+                .collect();
+        }
     }
     // A work block written over an organization no registry row places a
     // project inside reaches nothing, and is named here in the same words an
@@ -647,20 +665,31 @@ fn site(args: &DoctorArgs, style: &Style, say: &Narrator) -> Result<(Health, Opt
     }
     let roster = crate::work::runtime::roster::roster(&config.work, None);
 
-    let worst = rows
+    let mut worst = rows
         .iter()
         .map(Diagnosis::health)
         .max()
         .unwrap_or(Health::Well);
+    if !shared_refusals.is_empty() {
+        worst = worst.max(Health::Degraded);
+    }
 
     if args.json {
-        return Ok((
-            worst,
-            Some(json!({
-                "projects": rows.iter().map(Diagnosis::to_json).collect::<Vec<_>>(),
-                "roster": roster_json(&roster, &config),
-            })),
-        ));
+        let mut report = json!({
+            "projects": rows.iter().map(Diagnosis::to_json).collect::<Vec<_>>(),
+            "roster": roster_json(&roster, &config),
+        });
+        if !shared_refusals.is_empty() {
+            report["shared_sources"] = json!({
+                "health": Health::Degraded.label(),
+                "silent": shared_refusals.iter().map(|failure| json!({
+                    "source": failure.provider,
+                    "why": failure.message,
+                    "unreachable": failure.unreachable,
+                })).collect::<Vec<_>>(),
+            });
+        }
+        return Ok((worst, Some(report)));
     }
 
     println!("{}", style.bold("The site"));
@@ -672,6 +701,17 @@ fn site(args: &DoctorArgs, style: &Style, say: &Narrator) -> Result<(Health, Opt
     }
     for row in &rows {
         render_project(row, style);
+    }
+    if !shared_refusals.is_empty() {
+        println!("  {}", style.bold("the shared sources"));
+        for failure in &shared_refusals {
+            println!(
+                "      {} {}: failed — {}",
+                style.red("✗"),
+                failure.provider,
+                failure.message
+            );
+        }
     }
     // Who could be asked to work any of it (§FS-005-dispatch.14). An empty
     // roster is a choice, not a fault: it never moves the exit code, exactly
