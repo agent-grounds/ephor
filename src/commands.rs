@@ -596,7 +596,7 @@ fn matter(session: &Session, id: &str) -> Result<Item> {
 pub fn thread(args: &ThreadArgs) -> Result<ExitCode> {
     let config = load_config()?;
     let session = Session::open(&config)?;
-    let item = matter(&session, &args.item)?;
+    let item = reply_matter(&session, &args.item)?;
     let view = session.conversation(&item).view(&item);
     if args.json {
         emit(&view);
@@ -638,8 +638,21 @@ pub fn thread(args: &ThreadArgs) -> Result<ExitCode> {
         for line in draft.text.lines() {
             println!("    {line}");
         }
+        if let Some(target) = &draft.target {
+            println!("\n    Bound thread {} target: {target}", draft.thread);
+        }
+        if let Some(reason) = &draft.stale_reason {
+            println!("\n    {reason}");
+        }
         match draft.sendable {
             true => println!("\n    `ephor reply {}` sends it.", view.item),
+            false
+                if draft.stale_reason.is_some()
+                    || view.pending_reply.is_some()
+                    || view.reply_error.is_some() =>
+            {
+                println!("\n    Copy or edit the words at {}.", draft.path.display())
+            }
             // A stated degrade, not a failure (§REQ-001-boundary.1): the words
             // are still here, and this says where they sit.
             false => println!(
@@ -647,6 +660,37 @@ pub fn thread(args: &ThreadArgs) -> Result<ExitCode> {
                 draft.path.display()
             ),
         }
+    }
+    if let Some(pending) = &view.pending_reply {
+        println!(
+            "\n── saved reply ({}) ──\n    Target: {}\n\n{}",
+            pending.status,
+            pending
+                .target
+                .as_ref()
+                .map(ToString::to_string)
+                .unwrap_or_default(),
+            pending.text
+        );
+        if let Some(note) = &pending.note {
+            println!("{note}");
+        }
+        if let Some(reason) = &pending.reason {
+            println!("{reason}");
+        }
+        if pending.retry {
+            println!("Retry saved send: `ephor reply {}`", view.item);
+        } else if !pending.resolutions.is_empty() {
+            println!(
+                "Check the channel and resolve: `ephor reply {} --resolve sent|not-sent`",
+                view.item
+            );
+        } else {
+            println!("Saved recovery is refused; check the channel and original binding.");
+        }
+    }
+    if let Some(error) = &view.reply_error {
+        println!("{error}");
     }
     Ok(ExitCode::SUCCESS)
 }
@@ -677,7 +721,7 @@ pub fn tick(args: &TickArgs) -> Result<ExitCode> {
 pub fn reply(args: &ReplyArgs) -> Result<ExitCode> {
     let config = load_config()?;
     let session = Session::open(&config)?;
-    let item = matter(&session, &args.item)?;
+    let item = reply_matter(&session, &args.item)?;
     let words = match args.words.is_empty() {
         true => None,
         false => Some(args.words.join(" ")),
@@ -693,10 +737,19 @@ pub fn reply(args: &ReplyArgs) -> Result<ExitCode> {
         true => crate::api::act::Sending::Dry,
         false => crate::api::act::Sending::Now,
     };
-    Ok(report(
-        &session.reply(&item, words.as_deref(), sending),
-        args.json,
-    ))
+    let outcome = match args.resolve {
+        Some(resolution) => session.resolve_reply(&item, words.as_deref(), resolution, sending),
+        None => session.reply(&item, words.as_deref(), sending),
+    };
+    Ok(report(&outcome, args.json))
+}
+
+/// Saved unresolved rows remain addressable through both conversation commands
+/// (§FS-001-forge-interface.9, §FS-011-command-line.4).
+fn reply_matter(session: &Session, id: &str) -> Result<Item> {
+    session
+        .reply_item(id)?
+        .ok_or_else(|| registry_error(format!("'{id}' is not in any cached feed or saved reply")))
 }
 
 /// Kept beside the rest so a surface never reaches past the API for the one

@@ -76,6 +76,33 @@ pub struct Capabilities {
     /// answered where it lives, and a drafted reply is material to copy rather
     /// than something to send (§FS-005-dispatch.13).
     pub replies: bool,
+    /// Durable repeat reconciliation before descriptor freshness checks
+    /// (§FS-001-forge-interface.1). Acceptance means remote delivery, not queue admission.
+    pub reply_reconciliation: bool,
+}
+
+/// Both transports distinguish known acceptance from an explicitly unknown
+/// delivery (§FS-001-forge-interface.2). An omitted status is legacy success.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "status", rename_all = "lowercase")]
+pub enum ReplyOutcome {
+    #[default]
+    Accepted,
+    Unknown {
+        note: String,
+    },
+}
+
+impl ReplyOutcome {
+    /// Legacy `{}` is accepted; other replies must have a recognized outcome
+    /// (§FS-001-forge-interface.2).
+    pub fn from_wire(value: Value) -> Result<Self, ProviderError> {
+        if value == serde_json::json!({}) {
+            return Ok(Self::Accepted);
+        }
+        serde_json::from_value(value)
+            .map_err(|err| ProviderError(format!("Invalid reply outcome: {err}")))
+    }
 }
 
 /// What a restart actually asked for (§FS-001-forge-interface.1).
@@ -625,7 +652,12 @@ pub trait Forge: Send + Sync {
     /// verbatim (§FS-007-matters.4). The one write that carries the reader's
     /// own words, and the last step of an answer a run drafted
     /// (§FS-005-dispatch.13).
-    fn reply(&self, _request: &Request, _target: &Value, _text: &str) -> Result<(), ProviderError> {
+    fn reply(
+        &self,
+        _request: &Request,
+        _target: &Value,
+        _text: &str,
+    ) -> Result<ReplyOutcome, ProviderError> {
         Err(ProviderError(format!(
             "{} does not support posting replies",
             self.name()

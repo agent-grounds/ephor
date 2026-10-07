@@ -621,6 +621,15 @@ impl Session {
             }
             stats.insert(project, (total, unread, respond));
         }
+        // Pending sends remain visible independently of feed disappearance or
+        // recent-item expiry (§FS-005-dispatch.13).
+        for row in self.recovery_rows().unwrap_or_default() {
+            if let Some((total, unread, respond)) = stats.get_mut(&row.project) {
+                *total += 1;
+                *unread += 1;
+                *respond += 1;
+            }
+        }
         self.stats = stats;
     }
 
@@ -1255,6 +1264,7 @@ impl Session {
             .flat_map(|feed| feed.items())
             .filter(|item| self.shows(item, now))
             .collect();
+        items.extend(self.recovery_rows().unwrap_or_default());
         items.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
         items
     }

@@ -38,6 +38,8 @@ pub struct Draft {
     pub path: std::path::PathBuf,
     pub thread: usize,
     pub target: Option<ReplyTarget>,
+    pub binding: Option<crate::replies::Binding>,
+    pub stale_reason: Option<String>,
 }
 
 /// A matter's whole conversation: every message in order, and the draft
@@ -45,6 +47,8 @@ pub struct Draft {
 pub struct Conversation {
     pub messages: Vec<Message>,
     pub draft: Option<Draft>,
+    pub pending_reply: Option<views::PendingReply>,
+    pub reply_error: Option<String>,
 }
 
 impl Conversation {
@@ -68,8 +72,39 @@ impl Conversation {
                 messages.push(parse(index, message, &item.source));
             }
         }
-        let draft = proposal.map(|proposal| draft_of(proposal, &threads, &item.source, &messages));
-        Conversation { messages, draft }
+        let saved = crate::replies::Store::inspect(&item.id);
+        let reply_error = saved.as_ref().err().map(ToString::to_string);
+        let record = saved
+            .ok()
+            .flatten()
+            .unwrap_or_else(|| crate::replies::Record::new(item));
+        let draft = proposal
+            .filter(|proposal| !record.confirmed.contains(&proposal.path))
+            .map(|proposal| draft_of(proposal, &threads, &item.source, &messages, item, &record));
+        let pending_reply = record
+            .intent
+            .as_ref()
+            .filter(|intent| intent.unresolved())
+            .map(|intent| views::PendingReply {
+                thread: intent.binding.thread,
+                target: intent.binding.target.clone(),
+                text: intent.text.clone(),
+                status: if intent.held() { "held" } else { "pending" }.into(),
+                retry: !intent.held(),
+                note: intent.note.clone(),
+                reason: None,
+                resolutions: if intent.held() {
+                    vec!["sent".into(), "not-sent".into()]
+                } else {
+                    vec![]
+                },
+            });
+        Conversation {
+            messages,
+            draft,
+            pending_reply,
+            reply_error,
+        }
     }
 
     /// The reading (§FS-011-command-line.4).
@@ -101,15 +136,33 @@ impl Conversation {
                 text: draft.text.clone(),
                 path: draft.path.clone(),
                 thread: draft.thread,
-                sendable: draft.target.is_some(),
+                sendable: draft.target.is_some()
+                    && draft.stale_reason.is_none()
+                    && self.pending_reply.is_none()
+                    && self.reply_error.is_none(),
+                target: draft
+                    .binding
+                    .as_ref()
+                    .and_then(|binding| binding.target.clone()),
+                stale_reason: draft.stale_reason.clone(),
             }),
+            pending_reply: self.pending_reply.clone(),
+            reply_error: self.reply_error.clone(),
         }
     }
 }
 
-/// The draft belongs under the last conversation that can carry it, and under
-/// the last one there is where none can (§FS-007-matters.4).
-fn draft_of(proposal: Proposal, threads: &[Value], source: &str, messages: &[Message]) -> Draft {
+/// Bound drafts retain the request's position and opaque target; legacy words
+/// remain copyable under the last shown thread (§FS-005-dispatch.13,
+/// §FS-007-matters.4).
+fn draft_of(
+    proposal: Proposal,
+    threads: &[Value],
+    source: &str,
+    messages: &[Message],
+    item: &Item,
+    record: &crate::replies::Record,
+) -> Draft {
     let targets: Vec<Option<ReplyTarget>> = threads
         .iter()
         .map(|thread| reply::parse_target(thread, source))
@@ -122,11 +175,28 @@ fn draft_of(proposal: Proposal, threads: &[Value], source: &str, messages: &[Mes
         .next_back()
         .or_else(|| (0..threads.len()).filter(|index| shown(*index)).next_back())
         .unwrap_or(0);
+    let thread = proposal
+        .binding
+        .as_ref()
+        .map(|binding| binding.thread)
+        .unwrap_or(thread);
+    let stale_reason = match &proposal.binding {
+        Some(binding) => binding.freshness(item, record).err(),
+        None => {
+            Some("This draft is unbound: copy or edit it, type words or request a new draft".into())
+        }
+    };
+    let target = proposal
+        .binding
+        .as_ref()
+        .and_then(|binding| binding.reply_target());
     Draft {
         text: proposal.text,
         path: proposal.path,
-        target: targets.get(thread).cloned().flatten(),
+        target,
         thread,
+        binding: proposal.binding,
+        stale_reason,
     }
 }
 

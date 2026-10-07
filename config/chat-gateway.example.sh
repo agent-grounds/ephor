@@ -8,6 +8,13 @@
 # into ephor would go stale in ephor's release cycle rather than in yours. What
 # ephor fixes is the contract below; the listener is yours.
 #
+# This queue-only example deliberately leaves reply_reconciliation undeclared
+# (§FS-001-forge-interface.1). Queue admission is not known remote acceptance:
+# a declaring gateway must durably look up repeats before descriptor freshness,
+# return prior acceptance without another delivery, and refuse changed payload.
+# Uncertain sends through this example are held for a checked local resolution
+# (§FS-005-dispatch.13).
+#
 # THE SPLIT. A chat network is heard by something that stays connected, and
 # ephor does not stay connected to anything: it asks, on `refresh`, and the
 # answer has to be ready. So an always-on LISTENER, outside ephor, keeps a

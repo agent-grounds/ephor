@@ -336,6 +336,9 @@ impl NavigatorState {
         let branches = ctx.branches(project).to_vec();
 
         let now = Utc::now();
+        // Saved sends survive disappearance from a source's cached feed without
+        // manufacturing source reports (§FS-011-command-line.4).
+        let recovery = ctx.recovery_rows().unwrap_or_default();
         for (header, section_filter) in SECTIONS {
             let mut rows: Vec<Row> = feed
                 .items()
@@ -345,6 +348,12 @@ impl NavigatorState {
                 .filter(|item| ctx.shows(item, now))
                 .filter(|item| section_filter(item))
                 .filter(|item| !ctx.unread_only || cache::is_unread(&ctx.seen, item))
+                .chain(
+                    recovery
+                        .iter()
+                        .filter(|item| item.project == project && section_filter(item))
+                        .cloned(),
+                )
                 .map(|item| Row {
                     stale: feed.is_stale(&item.source),
                     checked_out: ctx.item_checked_out(&item),
@@ -448,6 +457,13 @@ impl NavigatorState {
             .iter()
             .filter(|item| ctx.shows(item, now))
             .filter(|item| !ctx.unread_only || cache::is_unread(&ctx.seen, item))
+            .cloned()
+            .chain(
+                ctx.recovery_rows()
+                    .unwrap_or_default()
+                    .into_iter()
+                    .filter(|item| item.project.is_empty()),
+            )
             .map(|item| Row {
                 stale: false,
                 checked_out: None,
@@ -457,7 +473,7 @@ impl NavigatorState {
                     .job_news
                     .get(&JobSubject::Matter(item.project.clone(), item.id.clone()))
                     .cloned(),
-                item: item.clone(),
+                item,
             })
             .collect();
         if !orphans.is_empty() {

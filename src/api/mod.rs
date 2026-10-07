@@ -13,6 +13,7 @@ pub mod conversation;
 pub mod offers;
 pub mod parity;
 pub mod read;
+pub mod reply;
 pub mod schema;
 pub mod session;
 pub mod views;

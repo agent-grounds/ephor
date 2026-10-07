@@ -1217,6 +1217,12 @@ pub struct ReplyArgs {
     /// and posting is what retires the draft.
     pub words: Vec<String>,
 
+    /// After checking the channel, record a held outcome without sending.
+    /// `sent` confirms; `not-sent` permits a separately checked future send
+    /// (§FS-011-command-line.4).
+    #[arg(long, value_enum)]
+    pub resolve: Option<crate::api::reply::Resolution>,
+
     /// Print what would be sent, and where, without sending it.
     #[arg(long)]
     pub dry_run: bool,

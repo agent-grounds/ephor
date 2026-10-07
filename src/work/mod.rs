@@ -987,6 +987,8 @@ struct Journal {
     ledger: Option<Ledger>,
     paths: Vec<(PathBuf, PathImage)>,
     seen: BTreeSet<PathBuf>,
+    /// Hold the row through hand-off ledger commit/rollback (§FS-005-dispatch.4).
+    reply_locks: BTreeMap<String, crate::replies::Store>,
 }
 
 impl Journal {
@@ -1068,6 +1070,9 @@ impl CarriedOver {
 /// Reads the work configuration, offers recipes, writes tickets, and keeps the
 /// ledger.
 pub struct Dispatcher {
+    /// The configured source identity used at hand-off, including in-process
+    /// callers that never load a status file (§FS-005-dispatch.4).
+    reply_config: StatusConfig,
     registry_doc: Value,
     global: WorkConfig,
     projects: BTreeMap<String, ProjectWorkConfig>,
@@ -1120,6 +1125,7 @@ impl Dispatcher {
     /// (§FS-011-command-line.10, §FS-005-dispatch.26).
     pub fn load(config: &StatusConfig) -> Result<Dispatcher> {
         let dispatcher = Dispatcher {
+            reply_config: config.clone(),
             registry_doc: crate::feed::commands::load_registry_doc()?,
             global: config.work.clone(),
             projects: config
@@ -1727,12 +1733,32 @@ impl Dispatcher {
     /// Where an item's work belongs, refusing where it would not run
     /// (§FS-005-dispatch.6).
     fn site(&mut self, item: &Item, recipe: &Recipe) -> Result<Site> {
-        self.site_for(
+        let mut site = self.site_for(
             item,
             recipe.needs_checkout,
             recipe.branch.as_deref(),
             recipe.root.as_deref(),
-        )
+        )?;
+        // Previewed briefs and committed hand-offs name the same next request's
+        // output; a workflow chooses its own request stem (§FS-005-dispatch.13).
+        let plan_id = plan::plan_id(&item.id);
+        let prior_path = self
+            .recorded_plan_behind(&item.id, &plan_id)
+            .map(|(_, path)| path)
+            .unwrap_or_else(|| plan::plan_path_in(&site.dir, &plan_id));
+        let prior = Plan::read(&prior_path)?;
+        let ticket = next_ticket_id(
+            self.ledger.entries.get(&item.id),
+            prior.as_ref(),
+            &recipe.id,
+        );
+        site.values.insert(
+            std::borrow::Cow::Borrowed("reply"),
+            runtime::results::request_reply_path(&site.dir, &plan_id, &ticket)
+                .to_string_lossy()
+                .into_owned(),
+        );
+        Ok(site)
     }
 
     /// The same, for an entry that is not a recipe: a workflow says what it
@@ -1897,7 +1923,7 @@ impl Dispatcher {
             root: &placement.root,
             organization: placement.organization.as_ref(),
         };
-        let mut values = subject.placeholders();
+        let values = subject.placeholders();
         // Laying the plan uses the placement checkout, except where this
         // entry's branch template mints a workspace. The read-resolution
         // checkout above may be the project's main branch; main is not the
@@ -1920,15 +1946,6 @@ impl Dispatcher {
         // with the organization's segment simply missing
         // (§FS-005-dispatch.6.1).
         let dir = laid.work_root(&template).map_err(EphorError::Command)?;
-        // Where a proposed reply belongs, named absolutely: the runtime runs
-        // from the checkout, not from the work root, so a brief that asks for
-        // a file has to say which one (§FS-005-dispatch.13).
-        values.insert(
-            std::borrow::Cow::Borrowed("reply"),
-            runtime::results::reply_path(&dir, &plan::plan_id(&item.id))
-                .to_string_lossy()
-                .into_owned(),
-        );
         Ok(Site {
             dir,
             dossier: subject.dossier(),
@@ -2116,7 +2133,7 @@ impl Dispatcher {
                 }
             }
         }
-        let site = self.site(item, recipe)?;
+        let mut site = self.site(item, recipe)?;
         // Who does it, before anything is written and before the opening move
         // is made: a refusal leaves nothing behind
         // (§FS-006-project-interface.9).
@@ -2128,6 +2145,19 @@ impl Dispatcher {
         } = self.pin(item, recipe, picked, &site.dir)?;
         let states = self.states_yaml(&item.project)?;
         let plan_id = plan::plan_id(&item.id);
+        // A request owns both its binding and its output, even before that output
+        // exists (§FS-005-dispatch.13).
+        let prior_plan = Plan::read(&plan::plan_path_in(&site.dir, &plan_id))?;
+        let request_ticket = next_ticket_id(
+            self.ledger.entries.get(&item.id),
+            prior_plan.as_ref(),
+            &recipe.id,
+        );
+        let reply_path = runtime::results::request_reply_path(&site.dir, &plan_id, &request_ticket);
+        site.values.insert(
+            std::borrow::Cow::Borrowed("reply"),
+            reply_path.to_string_lossy().into_owned(),
+        );
         // What the ticket will actually ask for, read here: beside the hand
         // and the machine, and on this side of the mint, so a rendered path
         // with no file behind it leaves no workspace, no work root and no plan
@@ -2302,6 +2332,7 @@ impl Dispatcher {
         // and before the work root below is the first thing written
         // (§FS-005-dispatch.25).
         self.begin_handoff();
+        let reply_binding = self.capture_reply(item, reply_path.clone())?;
         self.journal_work_root(&site.dir)?;
         self.mint(item, &site)?;
         let root = WorkRoot::ensure(&site.dir, &states)?;
@@ -2364,7 +2395,7 @@ impl Dispatcher {
 
         let (outcome, ticket_id) = match Plan::read(&path)? {
             None => {
-                let ticket_id = next_ticket_id(self.ledger.entries.get(&item.id), None, &recipe.id);
+                let ticket_id = request_ticket.clone();
                 let ticket = Ticket {
                     id: ticket_id.clone(),
                     title: format!("{} — {}", recipe.description, item.title),
@@ -2388,11 +2419,7 @@ impl Dispatcher {
                 )
             }
             Some(mut existing) => {
-                let ticket_id = next_ticket_id(
-                    self.ledger.entries.get(&item.id),
-                    Some(&existing),
-                    &recipe.id,
-                );
+                let ticket_id = request_ticket.clone();
                 // The last ticket that is about *this* matter, not simply the
                 // last one: a ticket ordered after work about something else
                 // waits that work out (§FS-005-dispatch.5).
@@ -2453,6 +2480,8 @@ impl Dispatcher {
         entry.plan = path;
         entry.pool = pool;
         entry.dispatches.push(Dispatch {
+            reply_binding,
+            reply_path: Some(reply_path),
             ticket: ticket_id,
             recipe: recipe.id.clone(),
             at: Utc::now(),
@@ -2767,6 +2796,14 @@ impl Dispatcher {
         // written before the workflow is (§FS-005-dispatch.19).
         let carried = carried(&site.dir, &plan_id);
         let mut values = site.values.clone();
+        // Workflow answers receive their distinct request output too
+        // (§FS-005-dispatch.13).
+        values.insert(
+            std::borrow::Cow::Borrowed("reply"),
+            runtime::results::request_reply_path(&site.dir, &plan_id, "workflow")
+                .to_string_lossy()
+                .into_owned(),
+        );
         values.insert(
             std::borrow::Cow::Borrowed("dossier"),
             for_shell(&carried.join(DOSSIER)),
@@ -3090,6 +3127,9 @@ impl Dispatcher {
         // entitled to write in it (§FS-005-dispatch.3.1).
         self.carry_over_before_writing(Some(&item.id))?;
         self.begin_handoff();
+        let workflow_reply_path =
+            runtime::results::request_reply_path(&laying.site.dir, &laying.plan_id, "workflow");
+        let workflow_reply_binding = self.capture_reply(item, workflow_reply_path.clone())?;
         self.journal_work_root(&laying.site.dir)?;
         self.mint(item, &laying.site)?;
         let root = WorkRoot::ensure(&laying.site.dir, &states)?;
@@ -3163,6 +3203,8 @@ impl Dispatcher {
         ledger_entry.checkout = laying.site.checkout.workspace.clone();
         ledger_entry.branch = laying.site.checkout.branch.clone();
         ledger_entry.dispatches.push(Dispatch {
+            reply_binding: workflow_reply_binding,
+            reply_path: Some(workflow_reply_path),
             ticket: String::new(),
             recipe: entry_id.clone(),
             at: Utc::now(),
@@ -3316,6 +3358,26 @@ impl Dispatcher {
     /// (§FS-005-dispatch.4).
     pub fn proposal(&self, item: &Item) -> Option<runtime::results::Proposal> {
         let entry = self.ledger.entries.get(&item.id)?;
+        Self::proposal_from(entry)
+    }
+
+    /// Re-read committed request provenance under the reply row lock, so a
+    /// hand-off committed after session loading supersedes the old proposal
+    /// (§FS-005-dispatch.4, §FS-005-dispatch.13).
+    pub fn latest_proposal(item: &Item) -> Result<Option<runtime::results::Proposal>> {
+        Ok(ledger::load()?
+            .entries
+            .get(&item.id)
+            .and_then(Self::proposal_from))
+    }
+
+    /// Latest request wins even when its output is absent or withdrawn;
+    /// legacy requests are readable but unbound (§FS-005-dispatch.13).
+    fn proposal_from(entry: &Entry) -> Option<runtime::results::Proposal> {
+        let latest = entry.dispatches.last()?;
+        if let Some(path) = &latest.reply_path {
+            return runtime::results::proposal_at(path.clone(), latest.reply_binding.clone());
+        }
         recipe_roots(entry)
             .into_iter()
             .rev()
@@ -3325,15 +3387,8 @@ impl Dispatcher {
     /// Record that this matter's proposed reply was posted, so it is offered
     /// once (§FS-005-dispatch.13).
     pub fn proposal_posted(&self, item: &Item) -> Result<()> {
-        let Some(entry) = self.ledger.entries.get(&item.id) else {
-            return Ok(());
-        };
-        if let Some(root) = recipe_roots(entry)
-            .into_iter()
-            .rev()
-            .find(|root| runtime::results::proposal(root, &entry.plan_id).is_some())
-        {
-            return runtime::results::mark_posted(&root, &entry.plan_id);
+        if let Some(proposal) = self.proposal(item) {
+            return runtime::results::mark_path_posted(&proposal.path);
         }
         Ok(())
     }
@@ -5087,6 +5142,44 @@ impl Dispatcher {
 
     fn begin_handoff(&mut self) {
         self.journal.begin(&self.ledger);
+    }
+
+    /// Capture under the row lock and retain it in the hand-off journal through
+    /// commit or rollback (§FS-005-dispatch.4, §FS-005-dispatch.13).
+    fn capture_reply(
+        &mut self,
+        item: &Item,
+        path: PathBuf,
+    ) -> Result<Option<crate::replies::Binding>> {
+        if crate::replies::binding::threads(item).is_empty() {
+            return Ok(None);
+        }
+        if !self.journal.reply_locks.contains_key(&item.id) {
+            self.journal.reply_locks.insert(
+                item.id.clone(),
+                crate::replies::Store::site(&item.id, true)?,
+            );
+        }
+        let record = self.journal.reply_locks[&item.id]
+            .read()?
+            .unwrap_or_else(|| crate::replies::Record::new(item));
+        let config = &self.reply_config;
+        let sources = crate::feed::providers::Sources {
+            project: item.project.clone(),
+            own: config
+                .projects
+                .get(&item.project)
+                .map(|project| project.providers.clone())
+                .unwrap_or_default(),
+            site: config.sources.clone(),
+        };
+        Ok(crate::replies::Binding::capture(
+            item,
+            &sources,
+            &config.defaults,
+            &record,
+            path,
+        ))
     }
 
     /// Remember exactly the bootstrap paths `WorkRoot::ensure` may mutate.

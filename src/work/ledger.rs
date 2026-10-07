@@ -269,6 +269,11 @@ impl Start {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Dispatch {
+    /// Each hand-off owns its provenance and output (§FS-005-dispatch.4).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reply_binding: Option<crate::replies::Binding>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reply_path: Option<PathBuf>,
     /// The ticket id inside the plan. Empty for a dispatch that laid down a
     /// plan of its own instead of a ticket inside one.
     pub ticket: String,

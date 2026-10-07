@@ -54,7 +54,12 @@
         "messages": { "type": "boolean", "description": "Answers messages: the conversations addressed to the user in the other places people talk, each one whole (FS-001-forge-interface.1). An implementation that declares it should not also report the same conversations as notices: one id in both merges into one row, and the notice's verdict on whether it awaits the user would stand beside ephor's own." },
         "tasks": { "type": "boolean" },
         "reactions": { "type": "boolean" },
-        "replies": { "type": "boolean" }
+        "replies": { "type": "boolean" },
+        "reply_reconciliation": {
+          "type": "boolean",
+          "default": false,
+          "description": "Opt-in durable repeat reconciliation (FS-001-forge-interface.1): look up the original operation before freshness checks, return its known remote acceptance without another delivery, and refuse changed payloads on a used descriptor. Queue admission is not acceptance."
+        }
       },
       "description": "The capability set of FS-001-forge-interface.1. ephor degrades to what is declared; a probe that could not run is a failure, not an empty declaration (FS-001-forge-interface.6)."
     },
@@ -230,8 +235,12 @@
       "description": "Empty object on success."
     },
     "reply_response": {
-      "type": "object",
-      "description": "Empty object on success. Posting is one deliberate move a person made (FS-005-dispatch.13); a failure is a non-zero exit, never a silent no-op."
+      "description": "Both transports return known acceptance or explicitly unknown delivery (FS-001-forge-interface.2). Legacy empty-object success remains accepted; unknown is held for a checked resolution (FS-005-dispatch.13).",
+      "oneOf": [
+        { "type": "object", "maxProperties": 0 },
+        { "type": "object", "required": ["status"], "properties": { "status": { "const": "accepted" } } },
+        { "type": "object", "required": ["status", "note"], "properties": { "status": { "const": "unknown" }, "note": { "type": "string" } } }
+      ]
     }
   }
 }
