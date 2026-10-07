@@ -6,6 +6,7 @@ use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
+pub use super::evidence::{EvidencePhase, Receipt};
 use super::Binding;
 use crate::{
     error::{EphorError, Result},
@@ -62,6 +63,10 @@ pub struct Accepted {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Record {
     pub version: u32,
+    /// Version 2 requires this private operation receipt. Version 1 readers
+    /// refuse the row rather than overlook a committed hold (§FS-005-dispatch.13).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) evidence: Option<String>,
     pub row: Item,
     pub intent: Option<Intent>,
     pub accepted: BTreeMap<String, Accepted>,
@@ -73,6 +78,7 @@ impl Record {
     pub fn new(item: &Item) -> Self {
         Self {
             version: 1,
+            evidence: None,
             row: item.clone(),
             intent: None,
             accepted: BTreeMap::new(),
@@ -147,6 +153,14 @@ pub enum SavePhase {
 pub trait ReplyStorage {
     fn read(&self) -> Result<Option<Record>>;
     fn save(&self, record: &Record) -> Result<()>;
+    /// Reserve and synchronize evidence before calling, including migration of
+    /// existing version-1 pending operations (§FS-005-dispatch.13).
+    fn reserve(&self, record: &mut Record) -> Result<Receipt>;
+    /// Commit an observed unknown before the fallible row replacement. Failure
+    /// is still reported; reservation cannot guarantee this write (§FS-005-dispatch.13).
+    fn hold(&self, receipt: &mut Receipt, note: &str) -> Result<()> {
+        receipt.hold_with(note, |_| Ok(()))
+    }
 }
 
 impl ReplyStorage for Store {
@@ -155,6 +169,9 @@ impl ReplyStorage for Store {
     }
     fn save(&self, record: &Record) -> Result<()> {
         Store::save(self, record)
+    }
+    fn reserve(&self, record: &mut Record) -> Result<Receipt> {
+        self.reserve_with(record, |_| Ok(()))
     }
 }
 
@@ -280,9 +297,11 @@ impl Store {
             Err(err) if err.kind() == io::ErrorKind::NotFound => return Ok(None),
             Err(err) => return Err(io_error(err)),
         };
-        let record: Record = serde_json::from_slice(&bytes)
+        let mut record: Record = serde_json::from_slice(&bytes)
             .map_err(|err| error(format!("Invalid saved reply: {err}")))?;
-        if record.version != 1 || record.row.id != self.row {
+        if !matches!((record.version, &record.evidence), (1, None) | (2, Some(_)))
+            || record.row.id != self.row
+        {
             return Err(error("Saved reply version or row identity is invalid"));
         }
         if let Some(intent) = &record.intent {
@@ -302,7 +321,25 @@ impl Store {
                 return Err(error("Saved reply provenance or payload is invalid"));
             }
         }
+        super::evidence::project(&self.dir, &mut record)?;
         Ok(Some(record))
+    }
+
+    /// The same locked storage seam reserves the independently writable inode;
+    /// dry readers never enter here (§FS-005-dispatch.13, §FS-011-command-line.4).
+    pub fn reserve_with(
+        &self,
+        record: &mut Record,
+        before: impl FnMut(EvidencePhase) -> io::Result<()>,
+    ) -> Result<Receipt> {
+        if !self.writable || self._lock.is_none() || record.row.id != self.row {
+            return Err(error(
+                "Read-only or mismatched reply storage cannot reserve evidence",
+            ));
+        }
+        #[cfg(test)]
+        OPERATIONS.with(|operations| operations.borrow_mut().push("reserve-evidence"));
+        super::evidence::reserve(&self.dir, record, before)
     }
 
     /// Atomic replacement with file sync before rename and directory sync before
@@ -428,7 +465,7 @@ impl Store {
 }
 
 /// A stable 64-bit row digest with record identity validation (§FS-005-dispatch.13).
-fn digest(row: &str) -> String {
+pub(super) fn digest(row: &str) -> String {
     let hash = row.bytes().fold(0xcbf29ce484222325u64, |hash, byte| {
         (hash ^ u64::from(byte)).wrapping_mul(0x100000001b3)
     });
@@ -439,7 +476,7 @@ fn digest(row: &str) -> String {
 pub fn error(message: impl Into<String>) -> EphorError {
     EphorError::Command(message.into())
 }
-fn io_error(err: io::Error) -> EphorError {
+pub(super) fn io_error(err: io::Error) -> EphorError {
     error(format!("Cannot save/read reply outcome: {err}"))
 }
 

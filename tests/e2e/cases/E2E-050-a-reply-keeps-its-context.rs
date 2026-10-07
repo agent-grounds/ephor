@@ -14,6 +14,9 @@ mod support;
 #[path = "../reply_fix_cases.rs"]
 mod fix_cases;
 
+#[path = "../reply_evidence_cases.rs"]
+mod evidence_cases;
+
 use std::fs;
 use std::process::Stdio;
 use std::time::{Duration, Instant};

@@ -2,6 +2,7 @@
 //! (§FS-007-matters.4, §FS-011-command-line.4, §FS-011-command-line.7).
 
 use super::*;
+use crate::replies::storage::ReplyStorage;
 use crate::{
     api::{
         act::Sending,
@@ -33,6 +34,92 @@ fn view(world: &World, item: &Item) -> Value {
         "{value}"
     );
     value
+}
+
+#[test]
+fn receipt_only_unknown_is_the_same_hold_on_api_schema_screen_keys_and_moves() {
+    let world = World::new();
+    world.draft("Thanks");
+    let store = Store::site(&world.item.id, true).unwrap();
+    let mut record = world.record(true);
+    let mut receipt = store.reserve(&mut record).unwrap();
+    store.save(&record).unwrap();
+    store
+        .hold(&mut receipt, "Receipt says delivery unknown")
+        .unwrap();
+    // Leave the primary row Pending, as a failed row replacement does.
+    drop(store);
+    crate::replies::storage::take_operations();
+    let api = view(&world, &world.item);
+    assert_eq!(api["pending_reply"]["status"], "held");
+    assert_eq!(api["pending_reply"]["retry"], false);
+    assert_eq!(
+        api["pending_reply"]["note"],
+        "Receipt says delivery unknown"
+    );
+    assert_eq!(
+        api["pending_reply"]["resolutions"],
+        json!(["sent", "not-sent"])
+    );
+    assert!(api["pending_reply"].get("evidence").is_none());
+    assert_eq!(api["draft"]["sendable"], false);
+    let mut screen =
+        ThreadScreen::open_reading(world.item.clone(), world.session.conversation(&world.item))
+            .unwrap();
+    assert!(text(&mut screen).contains("Receipt says delivery unknown"));
+    assert!(
+        screen.footer().contains("S resolve sent")
+            && screen.footer().contains("N resolve not-sent")
+    );
+    assert!(!screen.footer().contains("p retry"));
+    assert!(matches!(
+        screen.handle_key(KeyCode::Char('p')),
+        Action::SetMessage(_)
+    ));
+    assert!(matches!(
+        screen.handle_key(KeyCode::Char('S')),
+        Action::ResolveReply {
+            resolution: Resolution::Sent,
+            ..
+        }
+    ));
+    assert!(matches!(
+        screen.handle_key(KeyCode::Char('N')),
+        Action::ResolveReply {
+            resolution: Resolution::NotSent,
+            ..
+        }
+    ));
+    assert!(
+        world
+            .session
+            .resolve_reply(&world.item, None, Resolution::Sent, Sending::Dry)
+            .ok
+    );
+    assert!(crate::replies::storage::take_operations().is_empty());
+    assert!(world.calls().is_empty());
+    let path = fs::read_dir(world.tmp.path().join("replies"))
+        .unwrap()
+        .map(|entry| entry.unwrap().path())
+        .find(|path| path.extension().is_some_and(|ext| ext == "receipt"))
+        .unwrap();
+    fs::write(path, "truncated").unwrap();
+    let api = view(&world, &world.item);
+    assert!(api["reply_error"].is_string());
+    screen.reread_reading(world.session.conversation(&world.item));
+    assert!(matches!(
+        screen.handle_key(KeyCode::Char('p')),
+        Action::SetMessage(_)
+    ));
+    assert!(matches!(
+        screen.handle_key(KeyCode::Char('S')),
+        Action::SetMessage(_)
+    ));
+    assert!(matches!(
+        screen.handle_key(KeyCode::Char('N')),
+        Action::SetMessage(_)
+    ));
+    assert!(world.calls().is_empty());
 }
 
 #[test]
