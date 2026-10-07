@@ -68,9 +68,11 @@ drafted where one is waiting ([§FS-005-dispatch.13](FS-005-dispatch.md#13-a-com
 
 The moves inside a conversation are commands as well as keys: `ephor react`
 posts a reaction, `ephor tick` resolves a task the source reported
-([§FS-004-quick-actions.5](FS-004-quick-actions.md#5-a-task-is-ticked-where-it-is-read)), and `ephor reply` sends the drafted reply, or a
+([§FS-004-quick-actions.5](FS-004-quick-actions.md#5-a-task-is-ticked-where-it-is-read)), `ephor reply` sends the drafted reply, or a
 reply given in words, where the channel declares that it can carry one
-([§FS-007-matters.4](FS-007-matters.md#4-a-channel-says-what-it-can-do)). Each refuses by name where the source cannot carry the
+([§FS-007-matters.4](FS-007-matters.md#4-a-channel-says-what-it-can-do)), and `ephor settle` puts the conversation away at its
+source where the source declares that it can
+([§FS-001-forge-interface.1](FS-001-forge-interface.md#1-capabilities)). Each refuses by name where the source cannot carry the
 move, which is the same sentence the key answers with.
 
 The thread reading shows a proposal at its bound message and target, together
@@ -83,6 +85,22 @@ a checked held outcome, accept no words and do not send. They can address a
 saved row absent from the feed. Dry-run rehearses sending, replay and resolution
 with the same refusals, displays the actual opaque target and prepared words,
 and creates neither state nor lock files and posts nothing.
+
+`ephor settle <item>` takes `--dry-run` and `--json`, and the key `s` carries
+the same move on a conversation row and in its thread, offered only where it
+would work ([§FS-004-quick-actions.2](FS-004-quick-actions.md#2-offered-only-where-it-would-work)). It acts on a conversation its source
+reported under Messages by reason, and sends that source the conversation's
+own `id`. Where the source did not declare the
+capability — every built-in source among them, and whatever else it declared
+instead — it refuses with `<source> cannot settle a conversation at its
+source`, whatever the row is, and sends nothing; a row of a declaring source
+that is not such a conversation is refused by name as well. A dry run refuses
+wherever the move would ([§FS-001-forge-interface.9](FS-001-forge-interface.md#9-a-source-is-bound-to-one-project-or-to-the-site-and-every-move-goes-back-to-the-source)) and otherwise says
+which source it would ask to settle which conversation. Once the source
+accepts, the row is marked done ([§FS-003-feed-categories.4](FS-003-feed-categories.md#4-a-conversation-is-answered-in-whatever-form-the-forge-recorded-it)); a refusal
+or a dry run changes nothing. Nothing else settles: not reading, marking done
+or `mark-read`, not `reply`, and not dispatch, sync or autorun. A runtime may
+run `ephor settle` deliberately, as a person would.
 
 ## 5. What can be done about a matter, before anything has been
 

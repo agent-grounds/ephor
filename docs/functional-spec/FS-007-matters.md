@@ -47,7 +47,7 @@ matter awaits its reader while any of its discussions does.
 The venue a discussion lives in — review threads, an issue's comments, a
 mail thread, a chat thread — declares its capabilities in the pattern of
 [§FS-001-forge-interface.1](FS-001-forge-interface.md#1-capabilities): whether a reaction can be posted, a task ticked,
-a reply sent. What grouping means is the channel's own policy; what the
+a reply sent, a conversation settled at its source. What grouping means is the channel's own policy; what the
 reader can do about a message is offered only where the channel declared it
 ([§FS-004-quick-actions.2](FS-004-quick-actions.md#2-offered-only-where-it-would-work)) — an undeclared capability narrows the offer by
 the degrade rule of [§REQ-001-boundary.1](../requirements/REQ-001-boundary.md#1-the-anatomy), never silently.

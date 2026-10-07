@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/agent-grounds/ephor/schemas/forge/v1",
   "title": "ephor out-of-process forge protocol",
-  "description": "The protocol of FS-001-forge-interface.2: an executable named 'ephor-forge-<name>', resolved on PATH, invoked as 'ephor-forge-<name> <subcommand>' with a request as JSON on stdin and the answer as JSON on stdout. Diagnostics go to stderr; a non-zero exit is a failure, never an empty answer (FS-001-forge-interface.6). Subcommands: capabilities, pull-requests, issues, notices, messages, failures, restart, resolve-task, react, reply. An implementation answers the subcommands whose capabilities it declared; ephor never calls an undeclared one. This document defines the request shape and one response shape per subcommand; message, gate, and failure shapes are the answer envelope's $defs, referenced here so the two transports cannot drift (FS-001-forge-interface.2).",
+  "description": "The protocol of FS-001-forge-interface.2: an executable named 'ephor-forge-<name>', resolved on PATH, invoked as 'ephor-forge-<name> <subcommand>' with a request as JSON on stdin and the answer as JSON on stdout. Diagnostics go to stderr; a non-zero exit is a failure, never an empty answer (FS-001-forge-interface.6). Subcommands: capabilities, pull-requests, issues, notices, messages, failures, restart, resolve-task, react, reply, settle. An implementation answers the subcommands whose capabilities it declared; ephor never calls an undeclared one. This document defines the request shape and one response shape per subcommand; message, gate, and failure shapes are the answer envelope's $defs, referenced here so the two transports cannot drift (FS-001-forge-interface.2).",
   "$defs": {
     "request": {
       "type": "object",
@@ -30,8 +30,8 @@
           "description": "issues only: the ticket keys to fetch, from registry branch inference."
         },
         "target": {
-          "type": "object",
-          "description": "resolve-task, react, and reply: the descriptor the implementation itself put on the message (task), on the message identity it reported (react), or on the thread (reply), handed back verbatim."
+          "type": ["object", "string"],
+          "description": "resolve-task, react, and reply: the descriptor the implementation itself put on the message (task), on the message identity it reported (react), or on the thread (reply), handed back verbatim; always an object. settle: the conversation's own 'id', exactly as the implementation reported it under messages; always a string, and the only subcommand that sends one (FS-001-forge-interface.1)."
         },
         "text": {
           "type": "string",
@@ -59,6 +59,11 @@
           "type": "boolean",
           "default": false,
           "description": "Opt-in durable repeat reconciliation (FS-001-forge-interface.1): look up the original operation before freshness checks, return its known remote acceptance without another delivery, and refuse changed payloads on a used descriptor. Queue admission is not acceptance."
+        },
+        "settle": {
+          "type": "boolean",
+          "default": false,
+          "description": "Answers settle: put a conversation away at the network it came from, whatever that means there (a mail thread archived, a chat marked done), given its 'id' in request.target (FS-001-forge-interface.1). Asked only by the reader's own move, never because something was read, marked done or answered. Declare it only while a later message in a settled conversation still reaches messages, so that the matter comes back: if settling takes a conversation out of the view messages reads, read that view too, or do not declare it. A name this set does not have, such as 'archive', is not an offer."
         }
       },
       "description": "The capability set of FS-001-forge-interface.1. ephor degrades to what is declared; a probe that could not run is a failure, not an empty declaration (FS-001-forge-interface.6)."
@@ -241,6 +246,10 @@
         { "type": "object", "required": ["status"], "properties": { "status": { "const": "accepted" } } },
         { "type": "object", "required": ["status", "note"], "properties": { "status": { "const": "unknown" }, "note": { "type": "string" } } }
       ]
+    },
+    "settle_response": {
+      "type": "object",
+      "description": "Empty object when the network accepted. A conversation already settled is success: the place asked for is the place it is in, so a settle that timed out is simply asked again. A network that refused is a non-zero exit with its diagnosis on stderr, never an empty answer (FS-001-forge-interface.6)."
     }
   }
 }
