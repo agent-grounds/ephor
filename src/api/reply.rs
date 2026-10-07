@@ -5,7 +5,7 @@ use super::{act::Sending, session::Session, views};
 use crate::error::Result;
 use crate::feed::model::Item;
 use crate::forge::ReplyOutcome;
-use crate::replies::storage::{error, ReplyStorage};
+use crate::replies::storage::{error, Receipt, ReplyStorage};
 use crate::replies::{Binding, Intent, Record, Status, Store};
 
 /// A checked local decision does not change the forge's ledger
@@ -205,7 +205,14 @@ impl Session {
             }
             // Already durably pending: do not create a new operation or rebuild
             // its context when recovering (§FS-005-dispatch.13).
-            return finish(prepared.send(), store, &mut record);
+            let migrating = record.version == 1;
+            let mut receipt = store.reserve(&mut record)?;
+            if migrating {
+                // Older readers must refuse the upgraded pending row before
+                // this invocation can commit evidence (§FS-005-dispatch.13).
+                store.save(&record)?;
+            }
+            return finish(prepared.send(), store, &mut record, &mut receipt);
         }
 
         let sources = self.sources_for(&item.project);
@@ -269,6 +276,9 @@ impl Session {
             ));
         }
         record.row = item.clone();
+        // A later deliberate intent gets its own evidence, even with identical
+        // words and context. Never reuse a resolved operation (§FS-005-dispatch.13).
+        record.evidence = None;
         record.intent = Some(Intent {
             binding,
             text: text.to_string(),
@@ -278,8 +288,9 @@ impl Session {
             status: Status::Pending,
             note: None,
         });
+        let mut receipt = store.reserve(&mut record)?;
         store.save(&record)?;
-        finish(prepared.send(), store, &mut record)
+        finish(prepared.send(), store, &mut record, &mut receipt)
     }
 }
 
@@ -289,6 +300,7 @@ fn finish(
     outcome: Result<ReplyOutcome>,
     store: &dyn ReplyStorage,
     record: &mut Record,
+    receipt: &mut Receipt,
 ) -> Result<String> {
     match outcome? {
         ReplyOutcome::Accepted => {
@@ -297,16 +309,28 @@ fn finish(
             Ok(retire(record, "↩ reply posted"))
         }
         ReplyOutcome::Unknown { note } => {
+            // Commit independent evidence on the pre-opened inode first. The
+            // primary atomic replacement may now fail without restoring replay
+            // (§FS-005-dispatch.13). Evidence failure is not hidden, and the row
+            // writer still gets a chance to retain the hold.
+            let evidence_error = store.hold(receipt, &note).err();
             let intent = record
                 .intent
                 .as_mut()
                 .ok_or_else(|| error("No saved reply for carrier outcome"))?;
             intent.status = Status::Held;
             intent.note = Some(note.clone());
-            store.save(record)?;
-            Err(error(format!(
+            let row_error = store.save(record).err();
+            let mut diagnostic = format!(
                 "Reply outcome unknown: {note}. Check the channel and use --resolve sent|not-sent"
-            )))
+            );
+            if let Some(err) = evidence_error {
+                diagnostic.push_str(&format!(". Cannot commit outcome evidence: {err}"));
+            }
+            if let Some(err) = row_error {
+                diagnostic.push_str(&format!(". Cannot replace saved outcome: {err}"));
+            }
+            Err(error(diagnostic))
         }
     }
 }
@@ -338,3 +362,7 @@ fn target_label(binding: &Binding) -> String {
 #[cfg(test)]
 #[path = "reply_tests.rs"]
 pub(crate) mod tests;
+
+#[cfg(test)]
+#[path = "reply_evidence_tests.rs"]
+mod evidence_tests;

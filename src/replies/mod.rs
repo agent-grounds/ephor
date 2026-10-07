@@ -2,6 +2,7 @@
 //! Descriptors stay opaque: only the carrier interprets a target.
 
 pub mod binding;
+mod evidence;
 pub mod storage;
 
 pub use binding::Binding;

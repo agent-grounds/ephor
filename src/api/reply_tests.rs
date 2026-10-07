@@ -43,6 +43,11 @@ else:
         stream.write(json.dumps(request,sort_keys=True)+'\n')
     records = [json.loads(p.read_text()) for p in (root/'replies').glob('*.json')]
     (root/'before').write_text(json.dumps(records))
+    receipts = {{p.name:p.read_text() for p in (root/'replies').glob('*.receipt')}}
+    (root/'before-receipts').write_text(json.dumps(receipts))
+    if (root/'unknown').exists():
+        print('{{"status":"unknown","note":"Check the channel: delivery unknown"}}')
+        sys.exit(0)
     print('{{"status":"accepted"}}')
 "#,
                 root = tmp.path().to_str().unwrap()
@@ -135,6 +140,9 @@ impl ReplyStorage for Fault<'_> {
             }
         })
     }
+    fn reserve(&self, record: &mut Record) -> crate::error::Result<Receipt> {
+        self.store.reserve(record)
+    }
 }
 
 #[test]
@@ -226,6 +234,9 @@ impl ReplyStorage for AfterConfirmation<'_> {
             "crash after durable confirmation"
         );
         Ok(())
+    }
+    fn reserve(&self, record: &mut Record) -> crate::error::Result<Receipt> {
+        self.0.reserve(record)
     }
 }
 
@@ -498,6 +509,9 @@ impl ReplyStorage for ChangedAtRead<'_> {
     }
     fn save(&self, record: &Record) -> crate::error::Result<()> {
         self.store.save(record)
+    }
+    fn reserve(&self, record: &mut Record) -> crate::error::Result<Receipt> {
+        self.store.reserve(record)
     }
 }
 
