@@ -30,6 +30,10 @@ name = "e2e_001_forge_extension"
 path = "tests/e2e/cases/E2E-001-forge-extension.rs"
 
 [[test]]
+name = "e2e_050_forge_command_binding"
+path = "tests/e2e/cases/E2E-050-forge-command-binding.rs"
+
+[[test]]
 name = "e2e_002_check_verbs"
 path = "tests/e2e/cases/E2E-002-check-verbs.rs"
 
