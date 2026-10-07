@@ -97,8 +97,34 @@ impl Session {
             let intent = record
                 .intent
                 .as_ref()
-                .filter(|intent| intent.held())
+                .filter(|intent| intent.unresolved())
                 .ok_or_else(|| error("Only a held reply outcome can be resolved"))?;
+            // A withdrawn declaration holds recovery on the original binding.
+            // A read failure is not evidence of a withdrawn promise, and an
+            // eligible currently declaring carrier still requires replay
+            // (§FS-005-dispatch.13, §FS-001-forge-interface.9).
+            if !intent.held() {
+                let sources = self.sources_for(&intent.binding.project);
+                intent
+                    .binding
+                    .routing(&sources, &self.config.defaults)
+                    .map_err(error)?;
+                let target = intent
+                    .binding
+                    .reply_target()
+                    .ok_or_else(|| error("Saved target is unusable"))?;
+                if crate::feed::reply::prepare(
+                    &target,
+                    &intent.text,
+                    &sources,
+                    &self.config.defaults,
+                )?
+                .payload()
+                .2
+                {
+                    return Err(error("Only a held outcome can be resolved; retry the saved send on this reconciling carrier"));
+                }
+            }
             if sending == Sending::Dry {
                 return Ok(format!(
                     "would resolve saved send as {} at target {}:\n\n{}",
@@ -110,6 +136,7 @@ impl Session {
                     intent.text
                 ));
             }
+            record.intent.as_mut().unwrap().status = Status::Held;
             match resolution {
                 Resolution::Sent => record.confirm()?,
                 Resolution::NotSent => record.release()?,
@@ -152,7 +179,7 @@ impl Session {
                 &self.config.defaults,
             )?;
             if !intent.reconciliation || !prepared.payload().2 {
-                return Err(error("Saved send cannot be replayed: original and current reconciliation declarations are required; check the channel"));
+                return Err(error("Current carrier does not declare reconciliation: outcome held. Check the channel and use --resolve sent|not-sent"));
             }
             prepared.restore(&intent.text, intent.request.as_ref());
             if sending == Sending::Dry {

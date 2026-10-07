@@ -812,10 +812,16 @@ impl Session {
                             &self.config.defaults,
                         ) {
                             Ok(prepared) if prepared.payload().2 => None,
-                            Ok(_) => Some(
-                                "Current reconciliation declaration is absent; check the channel"
-                                    .into(),
-                            ),
+                            Ok(_) => {
+                                // Hold while the original carrier no longer declares
+                                // reconciliation, retaining original eligibility if it
+                                // declares it again (§FS-005-dispatch.13).
+                                pending.retry = false;
+                                pending.status = "held".into();
+                                pending.note = Some("Current reconciliation declaration is absent; check the channel before resolving".into());
+                                pending.resolutions = vec!["sent".into(), "not-sent".into()];
+                                None
+                            }
                             Err(err) => Some(err.to_string()),
                         },
                         None => Some("Saved target is unusable".into()),
