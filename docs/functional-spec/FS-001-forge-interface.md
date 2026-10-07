@@ -66,6 +66,16 @@ ephor degrades to what is answered rather than failing.
   and a reply is sent only where both hold. Without it, a conversation is read
   here and answered where it lives, and a drafted answer is text to copy
   ([§FS-005-dispatch.13](FS-005-dispatch.md#13-a-communication-is-work-too-and-its-answer-comes-back-as-a-proposal)).
+- **Reply reconciliation** — optional `reply_reconciliation`, default false,
+  alongside the replies capability. Declaring it promises durable lookup of
+  prior operations before checking descriptor freshness. The same descriptor
+  and exact prepared payload recover one operation; known prior acceptance is
+  returned without another delivery, and changed payload on a used descriptor
+  refuses. Only the forge interprets its opaque descriptor. A declaring forge's
+  acceptance means known remote acceptance, rather than merely queueing. A
+  queue-only carrier cannot make this declaration. This lets ephor recover a
+  saved uncertain send ([§FS-005-dispatch.13](FS-005-dispatch.md#13-a-communication-is-work-too-and-its-answer-comes-back-as-a-proposal)); it does not promise exactly-once
+  delivery by ephor or introduce an automatic retry loop.
 - **Gate status** — the job counts (passed, failed, running) for a pull
   request, per repository the gate covers, since one change may gate across
   several repositories at once; and, where the forge reaches a verdict of its
@@ -241,6 +251,19 @@ failure ([§FS-001-forge-interface.6](FS-001-forge-interface.md#6-a-source-that-
 equally to project and site sources and to their fetches, health probes and
 source-directed actions
 ([§FS-001-forge-interface.9](FS-001-forge-interface.md#9-a-source-is-bound-to-one-project-or-to-the-site-and-every-move-goes-back-to-the-source)).
+
+Both transports expose the same default-false `reply_reconciliation`
+declaration and typed reply outcome. Out of process, `{"status":"accepted"}`
+reports known acceptance and `{"status":"unknown","note":"…"}` reports an
+explicitly unresolved outcome; the note is shown to the person. Legacy `{}`
+continues to mean success. Explicit unknown is held even when reconciliation
+is declared; a timeout or interrupted call is eligible for saved replay only
+under the declaration and binding checks of
+[§FS-005-dispatch.13](FS-005-dispatch.md#13-a-communication-is-work-too-and-its-answer-comes-back-as-a-proposal). The in-process outcome expresses these same cases,
+and native carriers receive the same durable-send guard without claiming
+reconciliation. `assets/ephor-forge.schema.json` publishes the capability and
+outcome. The request remains `target` and `text` with existing source context;
+no new operation field is required, and descriptors are handed back verbatim.
 
 ## 3. Policy lives above the interface, never in an implementation
 
@@ -442,3 +465,13 @@ A dry run refuses wherever the move it stands for would. It resolves the same
 source and makes the same checks — the capability as well as the descriptor —
 and stops only short of sending: a rehearsal that promises a move the real one
 then refuses has told the reader something untrue.
+
+A saved reply retains its original configured binding identity and project or
+site context, independently of later feed placement or work retirement. Replay
+requires that same binding/context and a current reconciliation declaration as
+well as eligibility captured before the original call. It refuses changed
+configuration rather than rerouting the saved send to another source or
+account. Saved rows remain addressable for recovery and held resolution when
+absent from the feed. A site-source send, replay or resolution receives no
+project; project bindings continue to precede site bindings for new moves.
+Dry-run checks these same boundaries without writing records or lock files.

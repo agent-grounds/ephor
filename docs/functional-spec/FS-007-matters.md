@@ -52,6 +52,14 @@ reader can do about a message is offered only where the channel declared it
 ([§FS-004-quick-actions.2](FS-004-quick-actions.md#2-offered-only-where-it-would-work)) — an undeclared capability narrows the offer by
 the degrade rule of [§REQ-001-boundary.1](../requirements/REQ-001-boundary.md#1-the-anatomy), never silently.
 
+Reply capability alone does not make a saved proposal sendable. Its bound
+thread must still match, and an uncertain saved send takes precedence over
+proposal freshness ([§FS-005-dispatch.13](FS-005-dispatch.md#13-a-communication-is-work-too-and-its-answer-comes-back-as-a-proposal)). The offer distinguishes posting a
+fresh bound proposal, refusing a stale or unbound one with its reason,
+retrying the exact saved send on a reconciling carrier, and checking the
+channel before resolving a held outcome. These facts accompany the words
+without removing read-only copyability.
+
 ## 5. An event moves state, and resurfacing names its reason
 
 Everything about a matter that is not conversation arrives as **events**:
@@ -62,4 +70,3 @@ moves and resurfaces ([§FS-005-dispatch.5](FS-005-dispatch.md#5-an-item-that-mo
 resurfacing is always accompanied by its reason, because a row that
 reappears without one sends the reader to re-read everything, which is the
 sweep this tool exists to retire ([§GOAL-003-nothing-lost](../goals.md#goal-003-nothing-lost-the-watch-is-trusted-enough-to-retire-the-sweep)).
-
