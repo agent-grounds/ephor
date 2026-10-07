@@ -1514,6 +1514,116 @@ mod tests {
         assert!(evidence.words.contains("Retry window"));
     }
 
+    fn repository_reference_conversation(title: &str, text: &str) -> Item {
+        crate::forge::policy::conversation_item(
+            "mail-like",
+            "",
+            &crate::forge::Conversation {
+                id: "before-friday".to_string(),
+                title: title.to_string(),
+                url: None,
+                updated_at: "2026-10-07T09:02:00Z".parse().unwrap(),
+                room: None,
+                reasons: Vec::new(),
+                threads: vec![crate::forge::Thread {
+                    messages: vec![crate::forge::Message {
+                        author: "dana".to_string(),
+                        text: text.to_string(),
+                        ..Default::default()
+                    }],
+                    ..Default::default()
+                }],
+            },
+        )
+    }
+
+    /// Numeric short references in the title contribute repository evidence,
+    /// including ordinary surrounding punctuation (§AR-003-attribution.1).
+    #[test]
+    fn numeric_repository_reference_in_title_is_evidence() {
+        let conversation = repository_reference_conversation(
+            "Review (agent-grounds/rhei#12), then `agent-grounds/keryx#7`.",
+            "Could you look before Friday?",
+        );
+        let evidence = evidence_of(&conversation);
+        assert_eq!(
+            evidence.repo, None,
+            "the conversation has no repository venue"
+        );
+        assert_eq!(
+            evidence.repos,
+            vec!["agent-grounds/rhei", "agent-grounds/keryx"],
+            "numeric repository references in title text must be extracted"
+        );
+    }
+
+    /// Message text has the same reference spelling as the title
+    /// (§AR-003-attribution.1), without needing a URL control to supply it.
+    #[test]
+    fn numeric_repository_reference_in_message_is_evidence() {
+        let conversation = repository_reference_conversation(
+            "Before Friday",
+            "Could you look at agent-grounds/rhei#12 and [agent-grounds/keryx#7]?",
+        );
+        assert_eq!(
+            evidence_of(&conversation).repos,
+            vec!["agent-grounds/rhei", "agent-grounds/keryx"],
+            "numeric repository references in message text must be extracted"
+        );
+    }
+
+    /// Retain the established plain/URL evidence while adding numeric short
+    /// references (§AR-003-attribution.1). This is a passing control today.
+    #[test]
+    fn numeric_repository_reference_keeps_plain_and_url_controls() {
+        for spelling in [
+            "agent-grounds/keryx",
+            "(agent-grounds/keryx),",
+            "https://github.com/agent-grounds/keryx/issues/7",
+            "https://forge.example/agent-grounds/keryx/pull/7",
+        ] {
+            let conversation = repository_reference_conversation("Before Friday", spelling);
+            assert_eq!(
+                evidence_of(&conversation).repos,
+                vec!["agent-grounds/keryx"],
+                "existing repository reference {spelling:?} must still be extracted"
+            );
+        }
+    }
+
+    /// The numeric short form is not permission to discard arbitrary suffixes
+    /// (§AR-003-attribution.1). These spellings are already rejected today.
+    #[test]
+    fn numeric_repository_reference_rejects_malformed_suffixes() {
+        for spelling in [
+            "agent-grounds/keryx#note",
+            "agent-grounds/keryx#12extra",
+            "agent-grounds/keryx#12#7",
+            "agent-grounds/keryx#12/extra",
+            "agent-grounds/keryx#12@chat",
+            "agent-grounds/keryx#-7",
+            "agent-grounds/keryx#+7",
+            "agent-grounds/keryx#1.2",
+        ] {
+            let conversation = repository_reference_conversation("Before Friday", spelling);
+            assert!(
+                evidence_of(&conversation).repos.is_empty(),
+                "malformed short reference {spelling:?} must not name a repository"
+            );
+        }
+    }
+
+    /// A numeric short-form key alone supplies neither a venue repository nor
+    /// a text reference (§AR-003-attribution.1). This is a passing safeguard.
+    #[test]
+    fn numeric_repository_reference_in_conversation_key_is_not_evidence() {
+        let mut conversation = repository_reference_conversation("Before Friday", "Can you look?");
+        conversation.id = "mail-like:agent-grounds/keryx#7".to_string();
+        let evidence = evidence_of(&conversation);
+        assert_eq!(evidence.repo, None);
+        assert!(evidence.repos.is_empty());
+    }
+
     /// A conversation's key is never read for a repository, however it is
     /// spelled; a notice's still is, for now (§AR-003-attribution.1). Read
     /// as one, a chat id would let gadget's organization-wide territory tie
