@@ -3815,6 +3815,10 @@ words; there is no override. Request a new draft or deliberately type the words
 with `ephor reply ID words` against the newest recorded sendable thread. Other
 threads, reactions and task ticks do not stale it. Old drafts with no binding stay
 readable, editable and copyable, but cannot post.
+Readers and senders sharing a site must use the same version: older binaries
+cannot preserve these binding and recovery guarantees. Workflow hand-offs use
+their distinct laid-plan name and a `workflow` suffix for the reply request;
+the advertised `{reply}` path is authoritative there too.
 
 Every drafted or typed send first saves its exact prepared words, target and
 original source context in the site's `replies/` records. A row lock prevents
