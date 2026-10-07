@@ -186,6 +186,18 @@ pub struct Store {
     writable: bool,
 }
 
+/// The move releases its row when it exits (§FS-005-dispatch.13). A process
+/// forked by another thread shares the lock's descriptor until its exec closes
+/// it, so closing alone could leave the row refusing the next move. Unlocking
+/// releases it for every duplicate.
+impl Drop for Store {
+    fn drop(&mut self) {
+        if let Some(lock) = &self._lock {
+            let _ = lock.unlock();
+        }
+    }
+}
+
 /// Passive enumeration retains valid rows and names each invalid record
 /// independently (§FS-005-dispatch.13, §FS-011-command-line.4).
 #[derive(Debug, Default)]
