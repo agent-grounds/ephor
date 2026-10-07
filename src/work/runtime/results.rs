@@ -65,6 +65,8 @@ pub fn verdict(root: &Path, plan_id: &str, ticket: &str) -> Option<String> {
 /// act (§REQ-001-boundary.1).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Proposal {
+    /// Absent on legacy drafts, which remain copyable (§FS-005-dispatch.13).
+    pub binding: Option<crate::replies::Binding>,
     /// The reply as it would be posted, exactly as the run wrote it.
     pub text: String,
     /// Where it sits — what the reader copies from where nothing can post it,
@@ -78,6 +80,43 @@ pub struct Proposal {
 /// it.
 pub fn reply_path(root: &Path, plan_id: &str) -> PathBuf {
     root.join(ARTIFACTS).join(format!("{plan_id}.reply.md"))
+}
+
+/// Every request writes its own answer; late older output never replaces the
+/// latest request (§FS-005-dispatch.13, §AR-007-runtime.1).
+pub fn request_reply_path(root: &Path, plan_id: &str, ticket: &str) -> PathBuf {
+    root.join(ARTIFACTS)
+        .join(format!("{plan_id}.{ticket}.reply.md"))
+}
+
+/// Read only the chosen request's file, including absent/withdrawn output;
+/// never fall back to an earlier proposal (§FS-005-dispatch.13).
+pub fn proposal_at(path: PathBuf, binding: Option<crate::replies::Binding>) -> Option<Proposal> {
+    let text = fs::read_to_string(&path).ok()?;
+    let text = text.trim();
+    if text.is_empty() {
+        return None;
+    }
+    Some(Proposal {
+        text: text.to_string(),
+        path,
+        binding,
+    })
+}
+
+/// Retirement follows durable confirmation, preserving the established suffix
+/// for each request's output (§FS-005-dispatch.13).
+pub fn mark_path_posted(path: &Path) -> Result<()> {
+    if !path.is_file() {
+        return Ok(());
+    }
+    let name = path.file_name().unwrap_or_default().to_string_lossy();
+    let posted = path.with_file_name(format!(
+        "{}.posted.md",
+        name.strip_suffix(".md").unwrap_or(&name)
+    ));
+    fs::rename(path, posted)
+        .map_err(|err| EphorError::Command(format!("Cannot move {}: {err}", path.display())))
 }
 
 /// Where a posted proposal is moved to. Posting is the one deliberate move
@@ -99,6 +138,7 @@ pub fn proposal(root: &Path, plan_id: &str) -> Option<Proposal> {
         return None;
     }
     Some(Proposal {
+        binding: None,
         text: text.to_string(),
         path,
     })

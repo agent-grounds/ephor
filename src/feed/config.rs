@@ -1005,6 +1005,14 @@ mod tests {
     }
 }
 
+// §FS-001-forge-interface.9: retain the configured identity in saved operations
+// without exposing the legacy key's provider-specific name to reply policy.
+impl Defaults {
+    pub fn reply_user(&self) -> Option<String> {
+        self.github_user.clone()
+    }
+}
+
 pub fn config_path() -> PathBuf {
     std::env::var_os("EPHOR_STATUS_CONFIG")
         .map(PathBuf::from)

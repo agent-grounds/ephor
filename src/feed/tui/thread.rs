@@ -31,6 +31,7 @@ use crate::feed::model::Item;
 use crate::feed::react::PALETTE;
 use crate::feed::render::age;
 use crate::feed::reply::ReplyTarget;
+#[cfg(test)]
 use crate::work::runtime::results::Proposal;
 
 use super::Action;
@@ -53,6 +54,9 @@ struct Draft {
     /// (§FS-007-matters.4).
     target: Option<ReplyTarget>,
     posted: bool,
+    bound_target: Option<serde_json::Value>,
+    stale_reason: Option<String>,
+    can_post: bool,
 }
 
 pub(crate) struct ThreadScreen {
@@ -60,6 +64,8 @@ pub(crate) struct ThreadScreen {
     messages: Vec<Msg>,
     /// The reply a run proposed about this matter, where one is waiting.
     draft: Option<Draft>,
+    pending_reply: Option<crate::api::views::PendingReply>,
+    reply_error: Option<String>,
     /// Flat message index of the selected card.
     selected: usize,
     scroll: u16,
@@ -81,22 +87,50 @@ impl ThreadScreen {
     /// None when the item has no recorded thread messages. `proposal` is the
     /// reply a run drafted about this matter, where one is waiting
     /// (§FS-005-dispatch.13).
+    #[cfg(test)]
     pub fn open(item: Item, proposal: Option<Proposal>) -> Option<Self> {
-        let Conversation { messages, draft } = Conversation::of(&item, proposal);
-        if messages.is_empty() {
+        let reading = Conversation::of(&item, proposal);
+        Self::open_reading(item, reading)
+    }
+
+    /// Production uses the same session reading as the CLI, including routing
+    /// checks and saved recovery offers (§FS-011-command-line.4).
+    pub fn open_reading(item: Item, reading: Conversation) -> Option<Self> {
+        let Conversation {
+            messages,
+            draft,
+            pending_reply,
+            reply_error,
+        } = reading;
+        if messages.is_empty()
+            && pending_reply.is_none()
+            && draft.is_none()
+            && reply_error.is_none()
+        {
             return None;
         }
         let draft = draft.map(|draft| Draft {
+            can_post: draft.target.is_some()
+                && draft.stale_reason.is_none()
+                && pending_reply.is_none()
+                && reply_error.is_none(),
             text: draft.text,
             path: draft.path,
             thread: draft.thread,
             target: draft.target,
             posted: false,
+            bound_target: draft
+                .binding
+                .as_ref()
+                .and_then(|binding| binding.target.clone()),
+            stale_reason: draft.stale_reason,
         });
         Some(ThreadScreen {
             item,
             messages,
             draft,
+            pending_reply,
+            reply_error,
             selected: 0,
             scroll: 0,
             follow: true,
@@ -110,17 +144,32 @@ impl ThreadScreen {
 
     /// Take the proposal again after the reader edited it, so the card shows
     /// what would actually be posted.
+    #[cfg(test)]
     pub fn reread(&mut self, proposal: Option<Proposal>) {
-        match (proposal, &mut self.draft) {
-            (Some(proposal), Some(draft)) => {
-                draft.text = proposal.text;
-                draft.path = proposal.path;
-            }
-            // Edited to nothing, or already posted from elsewhere: a proposal
-            // that is no longer there is no longer offered.
-            (None, _) => self.draft = None,
-            (Some(_), None) => {}
-        }
+        self.reread_reading(Conversation::of(&self.item, proposal));
+    }
+
+    /// Re-read after moves and edits, preserving pending prepared words
+    /// (§FS-005-dispatch.13, §FS-011-command-line.4).
+    pub fn reread_reading(&mut self, reading: Conversation) {
+        self.draft = reading.draft.map(|draft| Draft {
+            can_post: draft.target.is_some()
+                && draft.stale_reason.is_none()
+                && reading.pending_reply.is_none()
+                && reading.reply_error.is_none(),
+            text: draft.text,
+            path: draft.path,
+            thread: draft.thread,
+            target: draft.target,
+            posted: false,
+            bound_target: draft
+                .binding
+                .as_ref()
+                .and_then(|binding| binding.target.clone()),
+            stale_reason: draft.stale_reason,
+        });
+        self.pending_reply = reading.pending_reply;
+        self.reply_error = reading.reply_error;
         self.wrap_width = 0;
     }
 
@@ -138,12 +187,15 @@ impl ThreadScreen {
         if self.picker.is_some() {
             return " ←/→ choose  1-8 pick  enter react  esc cancel".to_string();
         }
-        let selected = &self.messages[self.selected];
+        let selected = self.messages.get(self.selected);
         let mut keys = String::from(" j/k message  f/b page");
-        if selected.react.is_some() {
+        if selected.is_some_and(|selected| selected.react.is_some()) {
             keys.push_str("  + react");
         }
-        if selected.task.as_ref().is_some_and(|task| !task.resolved) {
+        if selected
+            .and_then(|selected| selected.task.as_ref())
+            .is_some_and(|task| !task.resolved)
+        {
             keys.push_str("  t tick");
         }
         // Offered where the channel declared it can carry a reply, and
@@ -152,8 +204,16 @@ impl ThreadScreen {
         // keystroke spent to be refused.
         if let Some(draft) = self.draft.as_ref().filter(|draft| !draft.posted) {
             keys.push_str("  e edit reply");
-            if draft.target.is_some() {
+            if draft.can_post {
                 keys.push_str("  p post reply");
+            }
+        }
+        if let Some(pending) = &self.pending_reply {
+            if pending.retry {
+                keys.push_str("  p retry saved send");
+            }
+            if !pending.resolutions.is_empty() {
+                keys.push_str("  S resolve sent  N resolve not-sent (check channel first)");
             }
         }
         keys.push_str("  x actions  o open  m done  ; ops  esc back");
@@ -195,7 +255,7 @@ impl ThreadScreen {
                 Action::None
             }
             KeyCode::Char('G') | KeyCode::End => {
-                self.selected = self.messages.len() - 1;
+                self.selected = self.messages.len().saturating_sub(1);
                 self.follow = true;
                 Action::None
             }
@@ -218,7 +278,11 @@ impl ThreadScreen {
             },
             KeyCode::Char('x') => Action::OpenActionMenu(self.item.clone()),
             KeyCode::Char('+') => {
-                if self.messages[self.selected].react.is_some() {
+                if self
+                    .messages
+                    .get(self.selected)
+                    .is_some_and(|message| message.react.is_some())
+                {
                     self.picker = Some(0);
                     Action::None
                 } else {
@@ -230,6 +294,8 @@ impl ThreadScreen {
             KeyCode::Char('t') => self.tick(),
             KeyCode::Char('p') => self.post_reply(),
             KeyCode::Char('e') => self.edit_reply(),
+            KeyCode::Char('S') => self.resolve_reply(crate::api::reply::Resolution::Sent),
+            KeyCode::Char('N') => self.resolve_reply(crate::api::reply::Resolution::NotSent),
             _ => Action::None,
         }
     }
@@ -238,10 +304,32 @@ impl ThreadScreen {
     /// deliberate move: nothing here posts on its own, and the refusals name
     /// the channel rather than the key.
     fn post_reply(&mut self) -> Action {
+        // Saved recovery takes precedence over the displayed proposal
+        // (§FS-005-dispatch.13).
+        if let Some(error) = &self.reply_error {
+            return Action::SetMessage(error.clone());
+        }
+        if let Some(pending) = &self.pending_reply {
+            return if pending.retry {
+                Action::PostReply {
+                    item: self.item.clone(),
+                }
+            } else {
+                Action::SetMessage(
+                    pending
+                        .reason
+                        .clone()
+                        .unwrap_or_else(|| "Check the channel and resolve the held outcome".into()),
+                )
+            };
+        }
         match &self.draft {
             None => Action::SetMessage("No reply has been drafted for this".to_string()),
             Some(draft) if draft.posted => {
                 Action::SetMessage("This reply has already been posted".to_string())
+            }
+            Some(draft) if draft.stale_reason.is_some() => {
+                Action::SetMessage(draft.stale_reason.clone().unwrap())
             }
             // The move re-reads the draft as it now stands and sends *that*
             // (§FS-005-dispatch.13), so nothing is carried from here but the
@@ -260,6 +348,24 @@ impl ThreadScreen {
         }
     }
 
+    /// The checked decisions invoke the shared no-send move (§FS-011-command-line.4).
+    fn resolve_reply(&self, resolution: crate::api::reply::Resolution) -> Action {
+        if self
+            .pending_reply
+            .as_ref()
+            .is_some_and(|pending| !pending.resolutions.is_empty())
+        {
+            Action::ResolveReply {
+                item: self.item.clone(),
+                resolution,
+            }
+        } else {
+            Action::SetMessage(
+                "Only a held outcome can be resolved after checking the channel".into(),
+            )
+        }
+    }
+
     /// Open the draft in the reader's editor before it goes anywhere: posted
     /// edited or as it stands is the reader's call (§FS-005-dispatch.13).
     fn edit_reply(&mut self) -> Action {
@@ -275,6 +381,7 @@ impl ThreadScreen {
 
     /// Record a posted reply without waiting for a refresh, the way a posted
     /// reaction is recorded — and stop offering to post it again.
+    #[cfg(test)]
     pub fn reply_posted(&mut self) {
         if let Some(draft) = &mut self.draft {
             draft.posted = true;
@@ -287,7 +394,11 @@ impl ThreadScreen {
     /// `t` on an ordinary comment and a reader who pressed it on a box already
     /// ticked have different questions.
     fn tick(&mut self) -> Action {
-        match &self.messages[self.selected].task {
+        match self
+            .messages
+            .get(self.selected)
+            .and_then(|message| message.task.as_ref())
+        {
             Some(task) if task.resolved => {
                 Action::SetMessage("This task is already ticked".to_string())
             }
@@ -413,7 +524,7 @@ impl ThreadScreen {
         let max_scroll = self.lines.len().saturating_sub(height);
         self.scroll = self.scroll.min(max_scroll as u16);
 
-        let selected_range = self.ranges[self.selected].clone();
+        let selected_range = self.ranges.get(self.selected).cloned().unwrap_or(0..0);
         let body: Vec<Line> = self
             .lines
             .iter()
@@ -481,7 +592,9 @@ impl ThreadScreen {
     /// Scroll so the selected card is fully visible (its top wins when the
     /// card is taller than the viewport).
     fn ensure_visible(&mut self, height: usize) {
-        let range = &self.ranges[self.selected];
+        let Some(range) = self.ranges.get(self.selected) else {
+            return;
+        };
         let mut scroll = self.scroll as usize;
         if range.end > scroll + height {
             scroll = range.end - height;
@@ -608,6 +721,47 @@ impl ThreadScreen {
                 }
             }
         }
+        // Disappearing threads cannot hide saved recovery or copyable words
+        // (§FS-011-command-line.4).
+        if let Some(draft) = self.draft.as_ref().filter(|draft| {
+            !self
+                .messages
+                .iter()
+                .any(|message| message.thread == draft.thread)
+        }) {
+            draft_lines(draft, wrap_width, &mut self.lines);
+        }
+        if let Some(pending) = &self.pending_reply {
+            let target = pending
+                .target
+                .as_ref()
+                .map(ToString::to_string)
+                .unwrap_or_default();
+            let action = if pending.retry {
+                "p retry saved send"
+            } else if !pending.resolutions.is_empty() {
+                "Check channel first · S resolve sent · N resolve not-sent"
+            } else {
+                "Recovery refused; check channel and binding"
+            };
+            for text in [
+                format!(
+                    "Saved reply ({}) · thread {} · target {target}",
+                    pending.status, pending.thread
+                ),
+                pending.text.clone(),
+                pending.note.clone().unwrap_or_default(),
+                pending.reason.clone().unwrap_or_default(),
+                action.into(),
+            ] {
+                for line in wrap_line(&text, wrap_width) {
+                    self.lines.push(Line::from(line));
+                }
+            }
+        }
+        if let Some(error) = &self.reply_error {
+            self.lines.push(Line::from(error.clone()));
+        }
     }
 }
 
@@ -621,12 +775,12 @@ fn draft_lines(draft: &Draft, wrap_width: usize, lines: &mut Vec<Line<'static>>)
         Color::Magenta
     };
     let gutter = || Span::styled("▍ ", Style::default().fg(color));
-    let banner = match (draft.posted, draft.target.is_some()) {
+    let banner = match (draft.posted, draft.can_post) {
         (true, _) => "posted".to_string(),
         (false, true) => "proposed reply — not posted".to_string(),
         // A channel that declared no reply gets the honest half-offer: the
         // words are here, sending them is somewhere else.
-        (false, false) => "proposed reply — this channel takes none from here".to_string(),
+        (false, false) => "proposed reply — copy or edit; posting unavailable".to_string(),
     };
     lines.push(Line::from(vec![
         gutter(),
@@ -640,8 +794,19 @@ fn draft_lines(draft: &Draft, wrap_width: usize, lines: &mut Vec<Line<'static>>)
             lines.push(Line::from(vec![gutter(), Span::raw(wrapped)]));
         }
     }
+    if let Some(target) = &draft.bound_target {
+        lines.push(Line::from(format!(
+            "Bound thread {} target: {target}",
+            draft.thread
+        )));
+    }
+    if let Some(reason) = &draft.stale_reason {
+        for line in wrap_line(reason, wrap_width) {
+            lines.push(Line::from(line));
+        }
+    }
     if !draft.posted {
-        let hint = match draft.target.is_some() {
+        let hint = match draft.can_post {
             true => format!("p posts it · e edits it first · {}", draft.path.display()),
             false => format!("e edits it · copy it from {}", draft.path.display()),
         };

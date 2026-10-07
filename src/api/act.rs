@@ -757,11 +757,77 @@ impl Session {
     /// (§FS-011-command-line.4). One walk for both surfaces, so the index a
     /// reading printed is the index a move takes.
     pub fn conversation(&self, item: &Item) -> super::conversation::Conversation {
-        let proposal = self
-            .dispatcher
-            .as_ref()
-            .and_then(|dispatcher| dispatcher.proposal(item));
-        super::conversation::Conversation::of(item, proposal)
+        let latest = crate::work::Dispatcher::latest_proposal(item);
+        let proposal = latest.as_ref().ok().cloned().flatten();
+        let mut conversation = super::conversation::Conversation::of(item, proposal);
+        if let Err(err) = latest {
+            conversation.reply_error = Some(err.to_string());
+        }
+        // Offers share the move's configured routing and carrier declarations
+        // (§FS-007-matters.4, §FS-001-forge-interface.9).
+        if let Some(draft) = conversation
+            .draft
+            .as_mut()
+            .filter(|draft| draft.stale_reason.is_none())
+        {
+            if let Some(binding) = &draft.binding {
+                let sources = self.sources_for(&binding.project);
+                draft.stale_reason = binding.routing(&sources, &self.config.defaults).err();
+                if draft.stale_reason.is_none() {
+                    if let Some(target) = &draft.target {
+                        draft.stale_reason = crate::feed::reply::prepare(
+                            target,
+                            &draft.text,
+                            &sources,
+                            &self.config.defaults,
+                        )
+                        .err()
+                        .map(|err| err.to_string());
+                    }
+                }
+            }
+        }
+        if let (Some(pending), Ok(Some(record))) = (
+            &mut conversation.pending_reply,
+            crate::replies::Store::inspect(&item.id),
+        ) {
+            if let Some(intent) = &record.intent {
+                let sources = self.sources_for(&intent.binding.project);
+                // Local held decisions call nothing and record the saved account's
+                // outcome even after configuration changes (§FS-005-dispatch.13).
+                pending.reason = if pending.retry {
+                    intent
+                        .binding
+                        .routing(&sources, &self.config.defaults)
+                        .err()
+                } else {
+                    None
+                };
+                if pending.retry && pending.reason.is_none() {
+                    pending.reason = match intent.binding.reply_target() {
+                        Some(target) => match crate::feed::reply::prepare(
+                            &target,
+                            &intent.text,
+                            &sources,
+                            &self.config.defaults,
+                        ) {
+                            Ok(prepared) if prepared.payload().2 => None,
+                            Ok(_) => Some(
+                                "Current reconciliation declaration is absent; check the channel"
+                                    .into(),
+                            ),
+                            Err(err) => Some(err.to_string()),
+                        },
+                        None => Some("Saved target is unusable".into()),
+                    };
+                }
+                if pending.reason.is_some() {
+                    pending.retry = false;
+                    pending.resolutions.clear();
+                }
+            }
+        }
+        conversation
     }
 
     /// Post a reaction on one message (§FS-004-quick-actions). `content` is a
@@ -824,102 +890,19 @@ impl Session {
         }
     }
 
-    /// Send a reply (§FS-005-dispatch.13, §FS-007-matters.4). With no words
-    /// given it is the reply a run drafted, as it now stands on disk — posting
-    /// is also what retires the draft. Where the channel declared no way to
-    /// carry a reply, the refusal says where the words are rather than only
-    /// that it cannot: a stated degrade, not a failure (§REQ-001-boundary.1).
+    /// Recover a saved send before selecting a new reply (§FS-005-dispatch.13,
+    /// §FS-007-matters.4). With no pending operation or typed words, the latest
+    /// bound proposal must still be fresh. Confirmation precedes retirement;
+    /// refused drafts remain copyable (§REQ-001-boundary.1).
     ///
-    /// [`Sending::Dry`] is the same call with the post left out, and that is
-    /// the whole of the difference: every refusal is reached by walking the
-    /// move's own path, so what `--dry-run` reports is what would happen. A
+    /// [`Sending::Dry`] walks the same checks without saving or posting, so
+    /// what `--dry-run` reports is what would happen. A
     /// second implementation that assembled the words and declared success
     /// answered `ok` on a channel the real move refuses, which is precisely
     /// the reading a program checks before letting the move happen.
     pub fn reply(&self, item: &Item, words: Option<&str>, sending: Sending) -> views::Outcome {
-        let conversation = self.conversation(item);
-        let (text, draft) = match words {
-            Some(words) => (words.to_string(), None),
-            None => match &conversation.draft {
-                Some(draft) => (draft.text.clone(), Some(draft)),
-                None => {
-                    return views::Outcome::refused(
-                        "No reply has been drafted here — give the words to send some",
-                    )
-                }
-            },
-        };
-        // The target of the draft's own conversation where there is a draft,
-        // and the last conversation that can carry one otherwise.
-        let target = match draft {
-            Some(draft) => draft.target.clone(),
-            None => sendable_target(item),
-        };
-        let Some(target) = target else {
-            // A stated degrade names *these* words, never some others
-            // (§REQ-001-boundary.1). The draft's path is where the run's words
-            // are — which is the right answer only when the run's words are
-            // what was being sent. A reader who typed their own and was told
-            // "the words are at <the run's draft>" would go and find a
-            // different reply sitting there.
-            return views::Outcome::refused(match (&draft, &conversation.draft) {
-                (Some(draft), _) => format!(
-                    "This channel declared no way to send a reply — the words are at {}",
-                    draft.path.display()
-                ),
-                (None, Some(draft)) => format!(
-                    "This channel declared no way to send a reply. The words you gave were not \
-                     written anywhere; the reply a run drafted is still at {}",
-                    draft.path.display()
-                ),
-                (None, None) => "This channel declared no way to send a reply".to_string(),
-            });
-        };
-        // The source is found wherever it is bound and asked whether it can
-        // carry a reply, on a dry run as on a send (§FS-001-forge-interface.9).
-        let sources = self.sources_for(&item.project);
-        let prepared =
-            match crate::feed::reply::prepare(&target, &text, &sources, &self.config.defaults) {
-                Ok(prepared) => prepared,
-                Err(err) => return views::Outcome::refused(err.to_string()),
-            };
-        // Everything above is what decides whether the reply can go out at all;
-        // only the post itself is skipped. `says` carries the words, because
-        // what a reader checks a dry run for is what would be sent
-        // (§REQ-002-parity.3), and the source it would go through.
-        if sending == Sending::Dry {
-            return views::Outcome::ok(format!(
-                "would send to {} through {}:\n\n{text}",
-                item.title, item.source
-            ));
-        }
-        match prepared.send() {
-            Ok(()) => {
-                // Retiring the draft is the post's own second half: a reply
-                // that went out and is still offered would be sent twice.
-                let retired = match (draft, &self.dispatcher) {
-                    (Some(_), Some(dispatcher)) => dispatcher.proposal_posted(item),
-                    _ => Ok(()),
-                };
-                match retired {
-                    Ok(()) => views::Outcome::ok("↩ reply posted"),
-                    Err(err) => views::Outcome::ok(format!("↩ reply posted ({err})")),
-                }
-            }
-            Err(err) => views::Outcome::refused(err.to_string()),
-        }
+        self.reply_move(item, words, None, sending)
     }
-}
-
-/// The last of a matter's conversations that declared it can carry a reply
-/// (§FS-007-matters.4) — where words typed with no draft behind them go.
-fn sendable_target(item: &Item) -> Option<crate::feed::reply::ReplyTarget> {
-    item.raw
-        .get("threads")
-        .and_then(serde_json::Value::as_array)?
-        .iter()
-        .filter_map(|thread| crate::feed::reply::parse_target(thread, &item.source))
-        .next_back()
 }
 
 impl Session {

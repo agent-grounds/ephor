@@ -10,6 +10,7 @@ use std::path::PathBuf;
 
 use chrono::{DateTime, Utc};
 use serde::Serialize;
+use serde_json::Value;
 
 /// One entry of a subject's menu (§FS-011-command-line.1). What the interface
 /// draws as a row and `ephor actions` prints as a line — one shape, so the
@@ -363,6 +364,23 @@ pub struct Draft {
     /// Whether the channel declared that it can carry a reply
     /// (§FS-007-matters.4).
     pub sendable: bool,
+    /// Bound target and refusal are additive machine facts (§FS-011-command-line.7).
+    pub target: Option<Value>,
+    pub stale_reason: Option<String>,
+}
+
+/// The saved operation, separate from any edited or superseding proposal
+/// (§FS-011-command-line.4, §FS-011-command-line.7).
+#[derive(Debug, Clone, Serialize)]
+pub struct PendingReply {
+    pub thread: usize,
+    pub target: Option<Value>,
+    pub text: String,
+    pub status: String,
+    pub retry: bool,
+    pub note: Option<String>,
+    pub reason: Option<String>,
+    pub resolutions: Vec<String>,
 }
 
 /// A matter's recorded conversation (§FS-011-command-line.4).
@@ -377,6 +395,10 @@ pub struct Thread {
     pub messages: Vec<Message>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub draft: Option<Draft>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pending_reply: Option<PendingReply>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reply_error: Option<String>,
 }
 
 /// A recipe considered for this matter whose selector or branch template

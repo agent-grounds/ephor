@@ -98,6 +98,11 @@ pub(crate) enum Action {
     PostReply {
         item: Item,
     },
+    /// A checked held-send decision, with no carrier call (§FS-011-command-line.4).
+    ResolveReply {
+        item: Item,
+        resolution: crate::api::reply::Resolution,
+    },
     /// Open a drafted reply in the reader's editor before it goes anywhere.
     EditReply {
         path: PathBuf,
@@ -515,8 +520,8 @@ impl App {
             Action::OpenThread { item, or_url } => {
                 // What a run drafted about this matter, read from the work
                 // root every time it is shown (§FS-005-dispatch.13).
-                let proposal = self.proposal(&item);
-                match ThreadScreen::open(item.clone(), proposal) {
+                let reading = self.ctx.conversation(&item);
+                match ThreadScreen::open_reading(item.clone(), reading) {
                     Some(screen) => self.screen = Screen::Thread(screen),
                     None if or_url => self.open_url(terminal, config, item.url)?,
                     None => self.message = "No messages recorded for this item".to_string(),
@@ -611,19 +616,28 @@ impl App {
                 // twice (§FS-005-dispatch.13).
                 let outcome = self.ctx.reply(&item, None, crate::api::act::Sending::Now);
                 self.message = outcome.says;
-                if outcome.ok {
-                    if let Screen::Thread(thread) = &mut self.screen {
-                        thread.reply_posted();
-                    }
+                let reading = self.ctx.conversation(&item);
+                if let Screen::Thread(thread) = &mut self.screen {
+                    thread.reread_reading(reading);
+                }
+            }
+            Action::ResolveReply { item, resolution } => {
+                let outcome =
+                    self.ctx
+                        .resolve_reply(&item, None, resolution, crate::api::act::Sending::Now);
+                self.message = outcome.says;
+                let reading = self.ctx.conversation(&item);
+                if let Screen::Thread(thread) = &mut self.screen {
+                    thread.reread_reading(reading);
                 }
             }
             Action::EditReply { path, item } => {
                 self.edit_file(terminal, &path)?;
                 // The reader may have rewritten it, emptied it, or left it
                 // alone: what is on disk now is what would be posted.
-                let proposal = self.proposal(&item);
+                let reading = self.ctx.conversation(&item);
                 if let Screen::Thread(thread) = &mut self.screen {
-                    thread.reread(proposal);
+                    thread.reread_reading(reading);
                 }
             }
             // One assembly, below the screen (§AR-009-surfaces.1): this is
@@ -1006,15 +1020,6 @@ impl App {
             &editing,
         )?;
         Ok(())
-    }
-
-    /// The reply a run drafted about a matter, where there is a dispatcher to
-    /// ask and a run that drafted one (§FS-005-dispatch.13).
-    fn proposal(&self, item: &Item) -> Option<crate::work::runtime::results::Proposal> {
-        self.ctx
-            .dispatcher
-            .as_ref()
-            .and_then(|dispatcher| dispatcher.proposal(item))
     }
 
     fn open_work(&mut self, item: Item) {

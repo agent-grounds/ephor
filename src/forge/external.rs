@@ -257,8 +257,17 @@ impl Forge for ExternalForge {
         Ok(())
     }
 
-    fn reply(&self, request: &Request, target: &Value, text: &str) -> Result<(), ProviderError> {
-        self.call("reply", request, json!({ "target": target, "text": text }))?;
-        Ok(())
+    // §FS-001-forge-interface.2: typed outcomes, unchanged target/text requests.
+    fn reply(
+        &self,
+        request: &Request,
+        target: &Value,
+        text: &str,
+    ) -> Result<super::ReplyOutcome, ProviderError> {
+        super::ReplyOutcome::from_wire(self.call(
+            "reply",
+            request,
+            json!({ "target": target, "text": text }),
+        )?)
     }
 }

@@ -68,9 +68,20 @@ pub const ABILITIES: &[Ability] = &[
         command: "tick",
     },
     Ability {
-        what: "send the reply a run drafted",
+        what: "send a fresh bound draft or retry its saved send",
         keys: &["p"],
         command: "reply",
+    },
+    // §FS-011-command-line.4: held decisions never post.
+    Ability {
+        what: "resolve a held reply as sent after checking the channel",
+        keys: &["S"],
+        command: "reply --resolve sent",
+    },
+    Ability {
+        what: "resolve a held reply as not-sent after checking the channel",
+        keys: &["N"],
+        command: "reply --resolve not-sent",
     },
     Ability {
         what: "what is being done about a matter, and what could be",

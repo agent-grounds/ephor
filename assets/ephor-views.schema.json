@@ -4,6 +4,21 @@
   "title": "ephor command-line readings",
   "description": "What every command prints under --json (REQ-002-parity.3, AR-009-surfaces.3). One entry per view name; `ephor schema views` prints this document, and it is the stability surface REQ-002-parity.4 promises: a field is added freely, and renaming or removing one is a release note. The views are the same values the interface renders, so a screen and a command cannot describe one fact two ways.",
   "$defs": {
+    "pending_reply": {
+      "type": "object",
+      "description": "Saved prepared words and target take precedence over draft edits (FS-011-command-line.7).",
+      "required": ["thread", "target", "text", "status", "retry", "note", "reason", "resolutions"],
+      "properties": {
+        "thread": { "type": "integer", "minimum": 0 },
+        "target": { "type": ["object", "null"] },
+        "text": { "type": "string" },
+        "status": { "enum": ["pending", "held"] },
+        "retry": { "type": "boolean", "description": "The current binding and original/current declarations permit a saved retry." },
+        "note": { "type": ["string", "null"] },
+        "reason": { "type": ["string", "null"] },
+        "resolutions": { "type": "array", "items": { "enum": ["sent", "not-sent"] } }
+      }
+    },
     "distance": {
       "type": "object",
       "description": "A distance and how fresh the comparison behind it is (FS-004-quick-actions.6). No statement of a distance omits its day: a number with no day on it is a claim about now that nothing measured.",
@@ -654,9 +669,13 @@
             "text": { "type": "string" },
             "path": { "type": "string" },
             "thread": { "type": "integer" },
-            "sendable": { "type": "boolean", "description": "The channel declared a way to send it (FS-007-matters.4)." }
+            "sendable": { "type": "boolean", "description": "The bound proposal is fresh, the configured channel can carry it, and no saved operation blocks it (FS-007-matters.4)." },
+            "target": { "type": ["object", "null"], "description": "The saved opaque target, never the refreshed target (FS-011-command-line.7)." },
+            "stale_reason": { "type": ["string", "null"], "description": "Why posting is refused, naming advancing messages or accepted own words (FS-011-command-line.4)." }
           }
-        }
+        },
+        "pending_reply": { "$ref": "#/$defs/pending_reply" },
+        "reply_error": { "type": "string", "description": "Unreadable or invalid saved state refuses safely (FS-005-dispatch.13)." }
       }
     },
     "work": {

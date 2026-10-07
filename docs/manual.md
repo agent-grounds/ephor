@@ -3787,7 +3787,9 @@ does, so a conversation is answerable on a project whose branch is not on this
 machine ([§FS-005-dispatch.13](functional-spec/FS-005-dispatch.md#13-a-communication-is-work-too-and-its-answer-comes-back-as-a-proposal)).
 
 The reply is asked for as a file of its own — `{reply}` in a brief expands to
-it, `<work root>/runtime/ephor/<plan>.reply.md` — and **nothing posts it**. The
+it, `<work root>/runtime/ephor/<plan>.<ticket>.reply.md` — and **nothing posts it**. Each
+request owns its file and saved conversation binding; a newer request supersedes
+older output even before writing any words. Producers must use `{reply}`. The
 run writes it, ephor reads it back, and the thread screen shows it under the
 conversation it answers:
 
@@ -3803,7 +3805,42 @@ conversation it answers:
 `e` opens it in `$EDITOR` — what you leave there is what goes out, and leaving
 it empty withdraws it. `p` posts it through the same provider a reaction goes
 through, and then the card says `posted` and the key stops being offered: the
-file is moved aside so the same words cannot go out twice.
+file is moved aside after its sent confirmation is saved durably. That confirmation
+suppresses the draft even when moving its file fails.
+
+A draft answers the thread as recorded at hand-off. Refresh never substitutes a
+new target. A newer message or an accepted send on that thread (your own included)
+makes an unsent draft stale. The refusal names the advancing message or accepted
+words; there is no override. Request a new draft or deliberately type the words
+with `ephor reply ID words` against the newest recorded sendable thread. Other
+threads, reactions and task ticks do not stale it. Old drafts with no binding stay
+readable, editable and copyable, but cannot post.
+
+Every drafted or typed send first saves its exact prepared words, target and
+original source context in the site's `replies/` records. A row lock prevents
+overlapping moves. If acknowledgement is lost, a carrier declaring repeat
+reconciliation allows `p` or the same typed command to **retry saved send** with
+the original target and words, even after new mail, refresh or restart. Editing,
+withdrawing or superseding a draft cannot change a pending send. Changed typed
+words refuse. An acknowledged intentional repeat is a new send; an unchanged
+confirmed descriptor on a reconciling carrier requires refresh first.
+
+Native and nondeclaring carriers hold uncertainty. A carrier's explicit `unknown`
+also holds it, even when it declares reconciliation. Check the channel and, if
+necessary, resolve its own ledger first. Then record your decision with
+`ephor reply ID --resolve sent` or `--resolve not-sent`; the thread screen offers
+`S` and `N`. These decisions accept no words and send nothing. `sent` confirms
+and suppresses the associated draft; `not-sent` releases the hold for a separate
+send subject to the ordinary checks. A local decision does not resolve a gateway
+ledger. Saved unresolved rows remain addressable when absent from the cached feed.
+
+`thread`, its JSON and the screen show the saved position/target, stale reason,
+pending prepared words, unknown note and retry versus resolution choices.
+`reply --dry-run` rehearses sending, replay or `--resolve` with the same refusals
+and actual target/words, creating no state or lock files and never calling the
+carrier's reply method. Checks use recorded conversations; refresh is still the
+only way to fetch new messages. Rehearsal cannot promise a future disk write
+([§FS-011-command-line.4](functional-spec/FS-011-command-line.md#4-a-conversation-and-the-moves-inside-it)).
 
 `p` appears only where the channel **said** it can carry a reply
 ([§FS-007-matters.4](functional-spec/FS-007-matters.md#4-a-channel-says-what-it-can-do)) — a
@@ -5158,6 +5195,17 @@ forge declared `"replies": true`; a descriptor alone is refused with *`<name>`
 does not send replies*, and a dry run refuses it the same way
 ([§FS-001-forge-interface.1](functional-spec/FS-001-forge-interface.md#1-capabilities)).
 
+`"reply_reconciliation": true` is optional and defaults false in both transports.
+It promises durable operation lookup **before** checking descriptor freshness:
+the same descriptor and payload return the earlier known remote acceptance
+without delivering again, while changed payload on a used descriptor refuses.
+Replies return `{"status":"accepted"}` or `{"status":"unknown","note":"…"}`;
+legacy `{}` still means success. Queue admission is insufficient for declaring
+reconciliation. The request remains `target`/`text` with the original configured
+context: ephor adds no operation field and promises no exactly-once delivery.
+The queue-only [gateway example](../config/chat-gateway.example.sh) leaves this
+capability undeclared ([§FS-001-forge-interface.2](functional-spec/FS-001-forge-interface.md#2-two-transports-one-interface)).
+
 `notices` is the completeness net (§5.2): one entry per thing the forge itself
 decided to tell the user, declared as `"notices": true`. `messages`, declared
 as `"messages": true`, is how chat and mail reach the feed: the conversations
@@ -5246,6 +5294,7 @@ ephor checkout | branches                                 # the checkout
 ephor check | validate --manifest | schema                # the project interface
 ephor actions [list] | actions run <id> | actions open <id>  # what may be done here
 ephor thread <id> | react | tick | reply                  # a conversation
+ephor reply <id> --resolve sent|not-sent                  # checked held outcome, no send
 ephor work list | offers | dispatch | ask | sync | cancel | lay | run | forget
 ephor work workflows | states                             # what the runtime carries
 ephor operations [attach <run>]                           # the board — alias: ops
@@ -5297,13 +5346,15 @@ A checkout is enough for those three, which is why CI can run them
 | `~/.local/state/ephor/feed/*.json` | one cache per project |
 | `~/.local/state/ephor/seen.json` | unread tracking |
 | `~/.local/state/ephor/work.json` | the work ledger |
+| `~/.local/state/ephor/replies/<row-digest>.json` | saved sends, confirmed draft identities and accepted thread generations (§8.12); forgetting work does not erase these |
+| `~/.local/state/ephor/replies/<row-digest>.lock` | persistent row lock inode; unlocked when the move exits |
 | `~/.local/state/ephor/jobs/<id>/` | one job: `job.json`, `log` (none for a windowed job), `lock`, `outcome.json` (§8.14) |
 | `~/.local/state/ephor/burn/<date>.json` | five-minute token buckets, thirty days kept (§9.3) |
 | `~/.local/state/ephor/burn/cursors.json` | how far each transcript has been read (§9.3) |
 | `~/.claude/projects/**/*.jsonl`, `~/.codex/sessions/**/*.jsonl` | read, never written: what the burn page is built from (§9) |
 | `<forest root>/ephor.json` | the project's own manifest, if it wrote one (§4.2.1) |
 | `<checkout>/panta/` | work roots: plans, state machine, runtime artifacts |
-| `<work root>/runtime/ephor/<plan>.reply.md` | a drafted answer, until you post it (§8.12) |
+| `<work root>/runtime/ephor/<plan>.<ticket>.reply.md` | one request's drafted answer, until you post it (§8.12); `{reply}` is authoritative |
 
 ### 12.4 The machine form
 
@@ -5324,6 +5375,8 @@ usable by the runtime it hands work to.
 | `+` — react | `ephor react ID THUMBS_UP --message 0` |
 | `t` — tick a task | `ephor tick ID --message 1` |
 | `p` — send the drafted reply | `ephor reply ID` (or `ephor reply ID some words`) |
+| `p` — retry saved send | `ephor reply ID` (or the same typed words) |
+| `S` / `N` — resolve held reply after checking channel | `ephor reply ID --resolve sent` / `--resolve not-sent` |
 | `w` — what is being done about it | `ephor work offers --item ID` |
 | `a` / `s` / `c` / `R` — ask, reopen, cancel, run | `ephor work ask` / `sync` / `cancel` / `run` |
 | `z` — the tickets that are over | `ephor work offers --item ID --all` |

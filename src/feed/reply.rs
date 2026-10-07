@@ -47,6 +47,7 @@ pub fn parse_target(thread: &Value, source: &str) -> Option<ReplyTarget> {
 pub struct Prepared {
     text: String,
     carrier: Carrier,
+    reconciliation: bool,
 }
 
 enum Carrier {
@@ -80,15 +81,18 @@ pub fn prepare(
         return Err(EphorError::Command("There is nothing to post".to_string()));
     }
     let command = |err: crate::feed::provider::ProviderError| EphorError::Command(err.to_string());
+    let mut reconciliation = false;
     let carrier = match target {
         ReplyTarget::Native(write) => Carrier::Native(write.clone()),
         ReplyTarget::Forge { source, target } => {
             let (forge, request) = forge_call(sources, source, defaults).map_err(command)?;
-            if !forge.capabilities().map_err(command)?.replies {
+            let capabilities = forge.capabilities().map_err(command)?;
+            if !capabilities.replies {
                 return Err(EphorError::Command(format!(
                     "{source} does not send replies"
                 )));
             }
+            reconciliation = capabilities.reply_reconciliation;
             Carrier::Forge {
                 forge,
                 request,
@@ -99,15 +103,17 @@ pub fn prepare(
     Ok(Prepared {
         text: text.to_string(),
         carrier,
+        reconciliation,
     })
 }
 
 impl Prepared {
     /// Send it. The text is the reader's — edited or as it was drafted — and
     /// it goes out exactly as it stands (§FS-005-dispatch.13).
-    pub fn send(self) -> Result<()> {
+    pub fn send(self) -> Result<crate::forge::ReplyOutcome> {
         match self.carrier {
-            Carrier::Native(write) => providers::post_reply(&write, &self.text),
+            Carrier::Native(write) => providers::post_reply(&write, &self.text)
+                .map(|()| crate::forge::ReplyOutcome::Accepted),
             Carrier::Forge {
                 forge,
                 request,
@@ -115,6 +121,25 @@ impl Prepared {
             } => forge
                 .reply(&request, &target, &self.text)
                 .map_err(|err| EphorError::Command(err.to_string())),
+        }
+    }
+
+    /// Save the prepared payload and original carrier context, before delivery
+    /// (§FS-005-dispatch.13, §FS-001-forge-interface.9).
+    pub fn payload(&self) -> (&str, Option<&Request>, bool) {
+        let request = match &self.carrier {
+            Carrier::Native(_) => None,
+            Carrier::Forge { request, .. } => Some(request),
+        };
+        (&self.text, request, self.reconciliation)
+    }
+
+    /// Replay carries the original request context and bytes; capability checks
+    /// use today's binding without preparing new words (§FS-005-dispatch.13).
+    pub fn restore(&mut self, text: &str, saved: Option<&Request>) {
+        self.text = text.to_string();
+        if let (Carrier::Forge { request, .. }, Some(saved)) = (&mut self.carrier, saved) {
+            *request = saved.clone();
         }
     }
 }
@@ -126,7 +151,10 @@ pub fn post(
     sources: &Sources,
     defaults: &Defaults,
 ) -> Result<()> {
-    prepare(target, text, sources, defaults)?.send()
+    match prepare(target, text, sources, defaults)?.send()? {
+        crate::forge::ReplyOutcome::Accepted => Ok(()),
+        crate::forge::ReplyOutcome::Unknown { note } => Err(EphorError::Command(note)),
+    }
 }
 
 #[cfg(test)]
