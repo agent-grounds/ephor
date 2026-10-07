@@ -5087,6 +5087,27 @@ ephor runs once per capability with a JSON request on stdin and JSON on stdout
 ([§FS-001-forge-interface.2](functional-spec/FS-001-forge-interface.md#2-two-transports-one-interface)).
 A shell script with `jq` is a complete implementation.
 
+An explicit `"command"` must be a string naming **one literal executable**,
+such as `"gateway-wrapper"` or `"/opt/my tools/gateway-wrapper"`. Paths
+containing spaces work. ephor appends the protocol subcommand as one argument;
+it does not split the string or evaluate it as a shell command. Arrays,
+objects, numbers, booleans and null are refused before any capability probe
+or invocation, with a diagnostic naming the source and its `command` field.
+Only an absent `command` selects `ephor-forge-<name>` on `PATH`
+([§FS-001-forge-interface.2](functional-spec/FS-001-forge-interface.md#2-two-transports-one-interface)).
+
+For fixed arguments, point `command` at an executable wrapper, for example:
+
+```sh
+#!/bin/sh
+exec gateway forge "$@"
+```
+
+This runs `gateway forge capabilities`, `gateway forge messages`, and so on.
+The string `"gateway forge"` instead names an executable whose name contains
+a space. If that literal executable cannot be found, ephor identifies the
+source's `command` field and explains the wrapper remedy.
+
 ```text
 ephor-forge-<name> capabilities   <<< '{"config":…,"project":…}'
 ephor-forge-<name> pull-requests  <<< '{"config":…,"tickets":[…],…}'
