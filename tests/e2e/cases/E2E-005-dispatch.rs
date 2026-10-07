@@ -773,8 +773,14 @@ fn a_bound_runtime_runs_the_plan_and_its_verdict_and_drafted_reply_come_back() {
 
     // The reply is read back whole — a reply summarized is a different reply —
     // and it is still a file. Posting is the person's (§FS-005-dispatch.13).
-    let proposal =
-        ephor::work::runtime::results::proposal(&work_root, PLAN).expect("the run drafted a reply");
+    let binding = serde_json::from_value(
+        ledger["entries"]["acmeforge:app/101"]["dispatches"][0]["reply_binding"].clone(),
+    )
+    .expect("handoff saves the request binding");
+    let proposal = ephor::work::runtime::results::proposal_at(reply.clone(), Some(binding))
+        .expect("the run drafted a reply");
+    assert!(proposal.binding.is_some());
+    assert_eq!(proposal.binding.as_ref().unwrap().path, reply);
     assert_eq!(
         proposal.text,
         "Yes — the window resets on every attempt, which is what the test asserts."

@@ -443,6 +443,8 @@ fn io_error(err: io::Error) -> EphorError {
     error(format!("Cannot save/read reply outcome: {err}"))
 }
 
+// Out-of-line fixtures follow the boundary's test-only naming convention
+// (§REQ-001-boundary.5, §AR-001-layers.2).
 #[cfg(test)]
-#[path = "tests.rs"]
+#[path = "storage_tests.rs"]
 pub(crate) mod tests;

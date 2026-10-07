@@ -75,7 +75,18 @@ fn checked_resolution_matrix_saves_without_calls_or_gateway_changes_after_restar
                         fs::remove_file(world.world.path().join("mail/absent")).unwrap();
                         world.incoming();
                         world.refresh();
-                        stale(&world, &["reply", ITEM], NEW_WORDS);
+                        // Legacy fail-ack already accepted our own Thanks;
+                        // it is the first advancing message, before M.
+                        stale(
+                            &world,
+                            &["reply", ITEM],
+                            if unknown { NEW_WORDS } else { "Thanks" },
+                        );
+                        let reason = world.thread()["draft"]["stale_reason"]
+                            .as_str()
+                            .unwrap()
+                            .to_owned();
+                        assert!(reason.contains(if unknown { "dana" } else { "me" }));
                     }
                 }
                 let again = world.run(&["reply", ITEM, "--resolve", choice]);
@@ -343,9 +354,19 @@ fn additive_cli_views_and_outcomes_validate_in_all_reply_states() {
     world.refresh();
     let stale = world.thread();
     let reason = stale["draft"]["stale_reason"].as_str().unwrap();
-    for fact in ["dana", "2026-10-07T11:00:00Z", NEW_WORDS] {
+    for fact in ["dana", NEW_WORDS] {
         assert!(reason.contains(fact));
     }
+    let timestamp = reason
+        .strip_prefix("Draft is stale: dana ")
+        .unwrap()
+        .split_once(": ")
+        .unwrap()
+        .0;
+    assert_eq!(
+        chrono::DateTime::parse_from_rfc3339(timestamp).unwrap(),
+        chrono::DateTime::parse_from_rfc3339("2026-10-07T11:00:00Z").unwrap(),
+    );
     let out = world.run(&["reply", ITEM, "--json"]);
     assert!(!out.status.success());
     shaped("outcome", &out);
@@ -548,7 +569,7 @@ fn finished_work_reopens_with_new_binding_and_its_own_advertised_output() {
     fs::write(plan, done + "\n").unwrap();
     world.incoming();
     world.refresh();
-    world.ok(&["work", "sync", "--item", ITEM]);
+    world.ok(&["work", "sync", "--project", "demo", "--act"]);
     let path = world.requested_reply();
     assert_ne!(path, old);
     let ledger = read_json(&ledger_path);
