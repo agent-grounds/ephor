@@ -172,6 +172,16 @@ impl Binding {
         Ok(())
     }
 
+    /// What moved in the bound thread since hand-off, in the order of the
+    /// conversation: every arrival, the person's own among them and any
+    /// accepted send no refresh has shown, edits with their words before and
+    /// after, and messages no longer shown. Where the messages cannot be lined
+    /// up one to one it lists nothing. It explains a refusal and decides none:
+    /// [`Binding::freshness`] alone does (§FS-005-dispatch.13.2).
+    pub fn review(&self, _item: &Item, _record: &Record) -> Vec<Value> {
+        Vec::new()
+    }
+
     /// Recovery must find the original configured binding and scope, including
     /// an original site source now shadowed by a project (§FS-001-forge-interface.9).
     pub fn routing(&self, sources: &Sources, defaults: &Defaults) -> Result<(), String> {
@@ -211,3 +221,7 @@ impl Binding {
             && request.user == self.user
     }
 }
+
+#[cfg(test)]
+#[path = "binding_tests.rs"]
+mod tests;

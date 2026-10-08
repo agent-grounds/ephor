@@ -653,6 +653,11 @@ past it.
 Reopening is a decision, not a reflex. It is offered where it applies and
 performed when asked for — by a person or by whatever runs the sync — and never
 as a side effect of merely looking at the feed.
+It is also offered at a stale draft ([§FS-005-dispatch.13.2](FS-005-dispatch.md#132-a-stale-draft-is-shown-against-what-moved-since-it-was-drafted)), and for work bound
+to a conversation the reopened ticket says what changed in the review's terms,
+by author and position (`dana edited [0]`), rather than that there is new
+activity, and quotes no contact's words outside the dossier's fences
+([§FS-005-dispatch.3](FS-005-dispatch.md#3-one-rhei-per-item-one-ticket-per-dispatch)).
 
 ## 6. Dispatch is offered where it would work, and refuses where it would not
 
@@ -1159,9 +1164,12 @@ and copyable, but cannot be posted.
 **An unsent draft is refused when its own thread has advanced.** Before posting,
 compare the saved ordered messages, target and accepted local send generation
 with the recorded conversation. A newer message, including the person's own,
-makes it stale. An accepted local send advances the thread before refresh, as
-well as afterwards. The refusal names the advancing message by author, time
-and excerpt, or the accepted local send by its saved words. Missing, reordered
+or a change to a message the draft saw, makes it stale. An accepted local send
+advances the thread before refresh, as well as afterwards. The refusal names
+what moved, whatever kind of movement it was ([§FS-005-dispatch.13.2](FS-005-dispatch.md#132-a-stale-draft-is-shown-against-what-moved-since-it-was-drafted)): an edit
+by its author and position, shown with its words before and after; otherwise
+the advancing message by author, time and excerpt, counting any more that
+arrived after it; or the accepted local send by its saved words. Missing, reordered
 or ambiguous thread identity refuses safely; unrelated threads do not make
 this draft stale. Changes to reactions or task state alone do not stale it.
 There is no stale override. To send the old words deliberately in the new
@@ -1223,7 +1231,8 @@ descriptor. On a reconciling forge, if that descriptor still equals the
 confirmed one, the repeat refuses and asks for refresh, because replaying it
 would recover the prior operation rather than express a new one.
 
-The bound position and target, stale reason, saved pending words, retry or hold
+The bound position and target, stale reason, the review of what moved and the
+ways on from it ([§FS-005-dispatch.13.2](FS-005-dispatch.md#132-a-stale-draft-is-shown-against-what-moved-since-it-was-drafted)), saved pending words, retry or hold
 and resolution are the same facts in the conversation API, JSON, command line
 and thread screen ([§FS-011-command-line.4](FS-011-command-line.md#4-a-conversation-and-the-moves-inside-it)). Read-only channels remain copyable,
 and every move retains source and scope routing. A dry run performs the same
@@ -1269,6 +1278,106 @@ The shipped recipe expresses this with a selector key of its own, `awaits`
 ([§FS-005-dispatch.31.2](FS-005-dispatch.md#312-and-it-can-ask-why-the-matter-waits)), rather than with a rule hidden in ephor, so that a
 configured recipe replacing `answer` ([§FS-005-dispatch.1](FS-005-dispatch.md#1-a-recipe-decides-which-items-deserve-work-and-what-to-ask-for)) can say the same
 thing.
+
+### 13.2 A stale draft is shown against what moved since it was drafted
+
+A refusal that only says a draft is stale leaves the person to work out what
+changed, by rereading the conversation against words they half remember. A
+contact asks whether the fence can be done for €100, a run drafts "I accept
+€100", and before anyone sends it the contact edits the question to €150. The
+one fact worth knowing is that €100 became €150. So **a stale draft is shown
+against what moved in its bound thread since hand-off**, and that showing is
+the draft's **review**. What resurfaces names its reason ([§GOAL-003-nothing-lost](../goals.md#goal-003-nothing-lost-the-watch-is-trusted-enough-to-retire-the-sweep)).
+
+The review compares the baseline the binding already keeps
+([§FS-005-dispatch.13](FS-005-dispatch.md#13-a-communication-is-work-too-and-its-answer-comes-back-as-a-proposal)) with the conversation as last recorded. For each message
+the draft saw, the baseline holds its author, time, ownership and full words,
+so the words before an edit are already on disk. Nothing new is asked of any
+source: the shared message shape ([§FS-001-forge-interface.1](FS-001-forge-interface.md#1-capabilities)) gains no id and no
+revision, and the reply request gains no field. The same rule holds for every
+source that declares replies, whether its reply target moves with the
+conversation or never moves at all ([§FS-001-forge-interface.3](FS-001-forge-interface.md#3-policy-lives-above-the-interface-never-in-an-implementation)). The baseline is
+the conversation at hand-off, not what the run later read: a message that
+arrived while the run worked is listed as new, and a draft that already answers
+it goes out only as the person's own words.
+
+**What the review lists.** It lists four kinds of movement, in the order of the
+conversation. Each entry names its message by the position the thread reading
+prints for it, wherever that message is still shown.
+
+- **New**: every message that arrived after the ones the draft saw, not only
+  the first.
+- **Yours**: an arrival the configured user wrote (`mine`), and a send of the
+  person's that was accepted but that no refresh has shown yet. Once a refresh
+  shows that send, it is listed once, as the message it became.
+- **Edited**: a message the draft saw whose words have changed, shown with its
+  words before and after.
+- **No longer shown**: a message the draft saw that the conversation no longer
+  holds. A bounded window that slid looks exactly like a deletion, and ephor
+  cannot tell the two apart, so it calls the message neither edited nor
+  deleted.
+
+**How the messages are matched.** Ephor guesses nothing.
+
+1. If the thread still begins with every message the draft saw, word for word,
+   everything after them has arrived.
+2. Otherwise ephor lines the messages up by author and time, in order. A message
+   with the same author and time but different words is an edit. A saved
+   message with no partner is no longer shown. Anything after the last message
+   that lines up has arrived.
+3. Where step 2 cannot line the messages up one to one, the review lists
+   nothing. That is the case when a time is missing, when two messages share an
+   author and a time, or when their order has changed. The refusal then keeps
+   the sentence it had: the bound thread is missing, reordered or ambiguous. A
+   thread whose own identity is missing or ambiguous gets no review either.
+
+**The review explains, and freshness decides.** Which drafts are refused stays
+exactly as [§FS-005-dispatch.13](FS-005-dispatch.md#13-a-communication-is-work-too-and-its-answer-comes-back-as-a-proposal) says. A draft whose review lists anything is
+refused, and nothing that posted before is refused now. The stale reason stays
+one line, keeps its `Draft is stale:` prefix, and names the review's most
+telling entry. An edit reads `<author> edited [<n>] after it was drafted`.
+Otherwise the reason names the first arrival by author, time and excerpt, or
+the accepted send by its saved words, as before, and failing both, the first
+message no longer shown. Where the review lists more than that one entry, the
+reason adds `(and N more)`.
+
+**The same facts on every surface.** `ephor thread` and its `--json`, the
+`ephor reply` refusal and its `--dry-run --json` outcome, and the thread
+screen's draft card all show the same review ([§FS-011-command-line.4](FS-011-command-line.md#4-a-conversation-and-the-moves-inside-it),
+[§FS-011-command-line.7](FS-011-command-line.md#7---json-is-the-same-answer-not-a-second-one), [§REQ-002-parity.2](../requirements/REQ-002-parity.md#2-parity-runs-both-ways)). A copy-only channel shows it as
+well, because it is worth reading before copying, though nothing posts there
+and so nothing is refused. A legacy unbound draft has no baseline and so no
+review. A saved or held send is still recovered or resolved first; the review
+is about the draft. Reactions, task state and other threads appear in the
+review no more than they make the draft stale.
+
+**Two ways on, and neither is taken by itself.** A stale draft offers a new
+draft, and the person's own words. Where one is not offered, the draft says why
+in so many words rather than leaving a blank ([§REQ-001-boundary.1](../requirements/REQ-001-boundary.md#1-the-anatomy)).
+
+- **A new draft** is [§FS-005-dispatch.5](FS-005-dispatch.md#5-an-item-that-moved-reopens-its-work)'s reopen, asked for this one matter
+  under the recipe that laid the draft. On the command line it is
+  `ephor work dispatch --item <id> --recipe <recipe> --again`, and on the
+  thread screen it is `n`. It is offered at a stale draft only while that
+  recipe still applies to the matter. Where the recipe no longer applies, the
+  draft says why no new draft is offered. That happens, for example, when the
+  person's own reply means nothing awaits them any more, so `answer` would be
+  refused. It also says so where no recipe laid the draft. Looking at a stale
+  draft lays nothing. Once the new request exists, the stale draft is
+  superseded as any older proposal is.
+- **The person's own words** are a typed reply, `ephor reply <id> '<words>'`.
+  It keeps trimming and goes to the newest recorded sendable thread. On the
+  thread screen, `r` opens the reader's editor on a scratch file of its own.
+  When the editor closes with words in it, the status line asks once, naming
+  the thread and the target, and `y` sends the words through the same move as
+  the command. On a stale draft, `e` does what `r` does, starting from the
+  draft's words, and leaves the draft file as it was. On a fresh draft, `e`
+  and `p` are unchanged, and `p` on a stale draft still refuses with the stale
+  reason.
+
+**There is no override.** No flag and no key posts a stale draft as it stands.
+Words the conversation has moved past go out only when the person types them,
+or keeps them in a reply they are typing.
 
 ## 14. Who does the work is chosen, and defaulted per project
 
