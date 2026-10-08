@@ -6793,6 +6793,35 @@ fn issue_191_a_plain_run_passes_a_private_plan_over() {
     assert!(named[0].private.is_none());
 }
 
+/// A recipe named for a finished matter is refused because the matter is
+/// finished, not for a selector field that would also have refused it
+/// (§FS-005-dispatch.27.1).
+#[test]
+fn a_recipe_named_for_a_finished_matter_says_the_matter_is_finished() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut dispatcher = issue_43_dispatcher(tmp.path(), empty_ledger());
+    dispatcher.global.recipes = vec![serde_json::from_value(serde_json::json!({
+        "id": "issue-work", "description": "work the issue", "brief": "Work {title}.",
+        "needs_checkout": false, "when": { "kinds": ["issue"] }
+    }))
+    .unwrap()];
+    let mut merged = issue_43_item();
+    merged.kind = crate::feed::model::ItemKind::Pr;
+    merged.state = Some("merged".to_string());
+    assert!(merged.is_finished());
+
+    let says = dispatcher.why_not_offered(&merged, "issue-work");
+    assert!(
+        says.contains("issue-work") && says.contains(&merged.id),
+        "{says}"
+    );
+    assert!(says.contains("finished"), "{says}");
+    assert!(
+        !says.contains("selector") && !says.contains("kind"),
+        "a selector field was named for a finished matter: {says}"
+    );
+}
+
 /// A name that is a workflow entry rather than a recipe is pointed at the door
 /// that lays it, not told it is unconfigured (§FS-005-dispatch.27.1).
 #[test]
