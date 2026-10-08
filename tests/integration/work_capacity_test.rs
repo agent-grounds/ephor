@@ -17,8 +17,11 @@ use common::*;
 
 /// A detached runner whose `second` root finishes inside the handshake and
 /// whose other roots hold their runtime lock long enough for the sweep to
-/// account for them. Its child redirects the inherited pipes so the launcher
-/// itself can return immediately, as a real detached launcher does.
+/// account for them. Its child is `RUN_LOCK_HOLDER`, which redirects the
+/// inherited pipes and closes every other descriptor it inherited, so the
+/// launcher itself can return immediately, as a real detached launcher does,
+/// and a pipe end leaked into the sweep does not outlive the launch
+/// (agent-grounds/ephor#203).
 fn capacity_runner(tmp: &Path, log: &Path) {
     fs::create_dir_all(tmp.join("fakebin")).unwrap();
     make_executable(
@@ -36,7 +39,7 @@ fn capacity_runner(tmp: &Path, log: &Path) {
                fi\n\
                mkdir -p \"$root/.rhei\"\n\
                ready=\"$root/.rhei/run-lock-ready\"\n\
-               python -c 'import fcntl,pathlib,sys,time; lock=open(sys.argv[1],\"w\"); fcntl.flock(lock,fcntl.LOCK_EX); pathlib.Path(sys.argv[2]).touch(); time.sleep(20)' \"$root/.rhei/run.lock\" \"$ready\" >/dev/null 2>&1 &\n\
+               {holder}\n\
                for _ in {{1..100}}; do\n\
                  [[ -e \"$ready\" ]] && break\n\
                  sleep 0.01\n\
@@ -47,13 +50,17 @@ fn capacity_runner(tmp: &Path, log: &Path) {
              *) exit 0 ;;\n\
              esac\n",
             log = log.to_string_lossy(),
+            holder = RUN_LOCK_HOLDER,
         ),
     );
 }
 
 /// A detached runner whose help probes rendezvous before either command can
 /// take the autorun reservation. Once released, a launch holds its root long
-/// enough for the other command's authoritative snapshot to see it.
+/// enough for the other command's authoritative snapshot to see it. Its child
+/// is `RUN_LOCK_HOLDER`, which redirects the inherited pipes and closes every
+/// other descriptor it inherited, so a pipe end leaked into the sweep does not
+/// outlive the launch (agent-grounds/ephor#203).
 fn overlapping_capacity_runner(tmp: &Path, log: &Path) {
     let rendezvous = tmp.join("autorun-rendezvous");
     fs::create_dir_all(&rendezvous).unwrap();
@@ -76,7 +83,7 @@ fn overlapping_capacity_runner(tmp: &Path, log: &Path) {
                root=\"$4\"\n\
                mkdir -p \"$root/.rhei\"\n\
                ready=\"$root/.rhei/run-lock-ready\"\n\
-               python -c 'import fcntl,pathlib,sys,time; lock=open(sys.argv[1],\"w\"); fcntl.flock(lock,fcntl.LOCK_EX); pathlib.Path(sys.argv[2]).touch(); time.sleep(20)' \"$root/.rhei/run.lock\" \"$ready\" >/dev/null 2>&1 &\n\
+               {holder}\n\
                for _ in {{1..100}}; do\n\
                  [[ -e \"$ready\" ]] && break\n\
                  sleep 0.01\n\
@@ -88,6 +95,7 @@ fn overlapping_capacity_runner(tmp: &Path, log: &Path) {
              esac\n",
             rendezvous = rendezvous.to_string_lossy(),
             log = log.to_string_lossy(),
+            holder = RUN_LOCK_HOLDER,
         ),
     );
 }
