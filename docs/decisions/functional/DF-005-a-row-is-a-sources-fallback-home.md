@@ -131,6 +131,8 @@ placed.
 
 - A claim over the notices and issues a source reports.
 - A row's own `addresses` read as identity, and every identity list read by its
-  presence.
+  presence. Taken up by [§DF-006-every-hinted-list-is-read-by-presence](DF-006-every-hinted-list-is-read-by-presence.md#df-006-every-hinted-list-is-read-by-presence-a-registry-rows-word-on-every-list-a-checkout-can-hint-is-its-presence-and-the-row-names-its-own-addresses), except
+  forest repositories as identity, which it defers in turn
+  ([§DF-006-every-hinted-list-is-read-by-presence.3](DF-006-every-hinted-list-is-read-by-presence.md#3-deferred)).
 - Keeping a personal source's matters out of an organization's work roots and
   recipes.

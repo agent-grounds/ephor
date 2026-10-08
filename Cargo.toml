@@ -254,6 +254,10 @@ name = "e2e_056_a_private_source_stays_the_persons"
 path = "tests/e2e/cases/E2E-056-a-private-source-stays-the-persons.rs"
 
 [[test]]
+name = "e2e_057_every_hinted_list_is_read_by_presence"
+path = "tests/e2e/cases/E2E-057-every-hinted-list-is-read-by-presence.rs"
+
+[[test]]
 name = "checkout_test"
 path = "tests/integration/checkout_test.rs"
 

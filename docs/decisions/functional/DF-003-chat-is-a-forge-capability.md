@@ -113,10 +113,17 @@ bucket is where what nothing claims goes.
 These are named and not done; none is needed for chat to reach the feed.
 
 - Renaming the forge interface, its declaration title included.
-- `addresses` adopted as a bare hint the row cannot override.
+- `addresses` adopted as a bare hint the row cannot override. Taken up by
+  [§DF-006-every-hinted-list-is-read-by-presence](DF-006-every-hinted-list-is-read-by-presence.md#df-006-every-hinted-list-is-read-by-presence-a-registry-rows-word-on-every-list-a-checkout-can-hint-is-its-presence-and-the-row-names-its-own-addresses): a row names its own
+  addresses, and `[]` refuses the hint.
 - A real mail gateway.
 - The accidental repository match on a notice whose id is shaped like one.
-- `[]` unable to refuse a hint for `repos`, `territory` and `aliases`.
+- `[]` unable to refuse a hint for `repos`, `territory` and `aliases`. Taken up
+  for `territory` and `aliases` by [§DF-006-every-hinted-list-is-read-by-presence](DF-006-every-hinted-list-is-read-by-presence.md#df-006-every-hinted-list-is-read-by-presence-a-registry-rows-word-on-every-list-a-checkout-can-hint-is-its-presence-and-the-row-names-its-own-addresses),
+  which reads every list a checkout can hint by its presence. What is left is
+  `repos`: the type's layout speaks for every row, so no hint is adopted, and a
+  forest repository as identity places nothing, which DF-006 defers
+  ([§DF-006-every-hinted-list-is-read-by-presence.3](DF-006-every-hinted-list-is-read-by-presence.md#3-deferred)).
 - custom-status reading an answer's channels and discussions, which owns the
   envelope's reply descriptor and makes its discussion and the forge's thread
   one definition.
