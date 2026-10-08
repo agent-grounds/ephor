@@ -242,6 +242,10 @@ name = "e2e_053_a_conversation_settled_at_its_source"
 path = "tests/e2e/cases/E2E-053-a-conversation-settled-at-its-source.rs"
 
 [[test]]
+name = "e2e_054_a_file_on_a_message_is_named"
+path = "tests/e2e/cases/E2E-054-a-file-on-a-message-is-named.rs"
+
+[[test]]
 name = "checkout_test"
 path = "tests/integration/checkout_test.rs"
 

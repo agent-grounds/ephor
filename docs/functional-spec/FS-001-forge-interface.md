@@ -51,6 +51,28 @@ ephor degrades to what is answered rather than failing.
   each with its reactions, and enough identity for a reaction to be posted back
   to it. A message the forge tracks as a task carries that too: its state, and
   enough identity to transition it.
+
+  A message also carries the **files on it**, where the implementation reports
+  them, as metadata and never as contents: `attachments`, one entry per file,
+  each with its `name` and, where the forge knows them, its `media_type`, its
+  `size` in bytes, and an `id` of the implementation's own. ephor never reads
+  the id. If a later move ever asks for that file, ephor hands the id back
+  verbatim, as it does the identity a reaction is posted with. A name is
+  required, and the rest are optional: a mail part or a chat upload does not
+  always say its type or size, and a source that could never hand a file back
+  has no id to give. Keys an entry carries beyond these are ignored, as they are
+  everywhere in an answer, and an entry with no name or with a size that is not
+  a count of bytes is a malformed answer, refused like any other malformed field
+  ([§FS-001-forge-interface.6](FS-001-forge-interface.md#6-a-source-that-did-not-answer-says-so-and-says-which-kind-of-not)).
+  A message with no list is a message the implementation did not report files
+  on. That is different from `[]`, which says it looked and found none: this is
+  the rule an issue's dependency list follows below, and a source that knows
+  nothing of files omits the list and reads exactly as it did before files were
+  reported ([§REQ-001-boundary.1](../requirements/REQ-001-boundary.md#1-the-anatomy)).
+  ephor fetches no file. A refresh asks for none
+  ([§FS-001-forge-interface.8](FS-001-forge-interface.md#8-a-refresh-is-asked-in-the-cheapest-form-the-forge-offers)), and no file's contents reach a reading
+  or a dossier
+  ([§FS-005-dispatch.2](FS-005-dispatch.md#2-the-ticket-carries-what-ephor-knows-not-a-link-to-it)).
 - **Reactions** — post a reaction on a message, where the implementation
   supports writing; read-only implementations say so and their messages are
   display-only.
@@ -228,7 +250,10 @@ ephor degrades to what is answered rather than failing.
   out, never the implementation's to say
   ([§FS-001-forge-interface.3](FS-001-forge-interface.md#3-policy-lives-above-the-interface-never-in-an-implementation)) — what it says about each message is who wrote
   it and whether that was the user, since only it knows how its venue names
-  people. The id is stable across refreshes, because it is the row's key and
+  people. Which files are on a message is its call too, for the same reason: a
+  logo drawn into a mail's signature is part of how the mail looks rather than
+  something sent, and only the implementation can tell the two apart. The id is
+  stable across refreshes, because it is the row's key and
   the key the reader's unread state is kept under.
 
 ## 2. Two transports, one interface
