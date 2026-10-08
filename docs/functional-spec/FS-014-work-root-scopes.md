@@ -48,7 +48,7 @@ project's checkouts, so it goes in the project's root. A release that moves
 several projects' gates at once sees the organization, so it goes in the
 organization's.
 
-**Nothing else decides it.** Not who filed the matter, not how long the work
+**Nothing else decides the scope.** Not who filed the matter, not how long the work
 will take, not who or what will do it, not which directory the reader was
 standing in when they asked. Each of those is a true fact about a piece of work
 and none of them says what that work may reach, so each one, used as the
@@ -62,6 +62,15 @@ smallest scope buys is that the placement is itself a claim a reader can check:
 a plan in a checkout root says this work is confined to this tree, and a root
 that held everything would say nothing. The rule is only worth having in its
 strict form.
+
+**One fact decides something else: whose roots the work goes in.** A matter that
+arrived through a source the person declares private is theirs, not the
+organization's, so its work goes under the person's private root, which repeats
+the organization and project in its own path. Reach still picks the scope there.
+Ownership never picks a scope and reach never picks whose roots, so the strict
+form holds on each side.
+
+Which sources are private, and what else follows from it, is [§FS-018-private-sources](FS-018-private-sources.md#fs-018-private-sources-a-source-the-person-declares-private-keeps-its-work-theirs).
 
 The person expresses that intended scope by configuring the recipe or workflow
 entry's `root` ([§FS-005-dispatch.6.1](FS-005-dispatch.md#61-the-work-root-is-a-template-and-it-may-reach-above-the-project)). Ephor applies the configured placement; it does not infer what the work

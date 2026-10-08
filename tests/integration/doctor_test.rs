@@ -440,6 +440,46 @@ fn issue_119_a_block_that_writes_only_recipes_is_named_for_reaching_nobody() {
     assert!(out.status.success(), "{narration}");
 }
 
+/// A private source no source binds makes nothing private, so the site is told
+/// which name matches nothing — and only that one: `demo` is bound by a project
+/// and is not named (§FS-018-private-sources.1). It is said, not failed: the
+/// feed is whole either way.
+#[test]
+fn issue_191_a_private_source_nothing_binds_is_named() {
+    let tmp = tempdir();
+    fixture_with_work(
+        tmp.path(),
+        json!([{ "provider": "demo" }]),
+        json!({ "private": {
+            "sources": ["demo", "mailgw"],
+            "root": tmp.path().join("private/{project}").to_string_lossy()
+        } }),
+    );
+
+    let out = ephor(tmp.path())
+        .args(["doctor", "--skip-self", "--project", "widget"])
+        .output()
+        .unwrap();
+    let said = format!(
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let named: Vec<&str> = said
+        .lines()
+        .filter(|line| line.contains("work.private"))
+        .collect();
+    assert!(
+        named.iter().any(|line| line.contains("mailgw")),
+        "the unbound private source is named: {said}"
+    );
+    assert!(
+        !named.iter().any(|line| line.contains("demo")),
+        "a bound private source is not: {said}"
+    );
+    assert!(out.status.success(), "{said}");
+}
+
 /// The self pass narrates by being incremental rather than by describing
 /// itself twice: each check is its own line as it finishes, so the progress
 /// and the report are one thing (§FS-010-doctor.3).

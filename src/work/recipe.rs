@@ -2654,4 +2654,42 @@ mod tests {
             json!({ "every": "6h", "limit": 3 })
         );
     }
+
+    /// Whose an account is does not vary by project, so `work.private` is read
+    /// at the site and nowhere else: the site block takes it, with or without
+    /// its root — a missing root is refused where work would be written, not
+    /// here — and an organization's or a project's block refuses it by name
+    /// (§FS-018-private-sources.1, §FS-018-private-sources.2).
+    #[test]
+    fn issue_191_work_private_is_read_at_the_site_only() {
+        let site = serde_json::from_value::<WorkConfig>(json!({
+            "private": { "sources": ["chatgw"], "root": "~/me/private/{org}/{project}" }
+        }));
+        assert!(
+            site.is_ok(),
+            "the site block refused its private sources: {:?}",
+            site.err()
+        );
+        let rootless = serde_json::from_value::<WorkConfig>(json!({
+            "private": { "sources": ["chatgw"] }
+        }));
+        assert!(
+            rootless.is_ok(),
+            "a private source with no root still loads: {:?}",
+            rootless.err()
+        );
+        let private = json!({ "private": { "sources": ["chatgw"], "root": "~/me/private" } });
+        let project = serde_json::from_value::<ProjectWorkConfig>(private.clone())
+            .expect_err("a project's block takes no private sources");
+        assert!(
+            project.to_string().contains("`private`"),
+            "the refusal names the key: {project}"
+        );
+        let organization = serde_json::from_value::<OrganizationWorkConfig>(private)
+            .expect_err("an organization's block takes no private sources");
+        assert!(
+            organization.to_string().contains("`private`"),
+            "the refusal names the key: {organization}"
+        );
+    }
 }

@@ -3,9 +3,12 @@
 Conversations arrive from places that know nothing of the registry: a
 mailbox serves every project a person has, a discussion sits on an adjacent
 repository, a notice names a subject nobody configured. Attribution is
-ephor's own move — deciding whose business a conversation is — and it is
-data matching, never code: evidence the conversation carries against
-identity the registry declares ([§GOAL-003-nothing-lost](../goals.md#goal-003-nothing-lost-the-watch-is-trusted-enough-to-retire-the-sweep)).
+ephor's own move — taking a conversation and deciding which project it is
+about — and it is data matching, never code: evidence the conversation carries
+against identity the registry declares ([§GOAL-003-nothing-lost](../goals.md#goal-003-nothing-lost-the-watch-is-trusted-enough-to-retire-the-sweep)). Whose the
+conversation is, the person's or the organization's, is a different question,
+and the site answers it about the source the conversation came through
+([§FS-018-private-sources](FS-018-private-sources.md#fs-018-private-sources-a-source-the-person-declares-private-keeps-its-work-theirs)).
 
 ## 1. Identity is declared, and the row has the last word
 
