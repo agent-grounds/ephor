@@ -1139,8 +1139,9 @@ lists the matter's source as private ([§FS-018-private-sources](FS-018-private-
 results, logs and proposal are written under the private root even where a
 branch workspace exists ([§FS-005-dispatch.6.1](FS-005-dispatch.md#61-the-work-root-is-a-template-and-it-may-reach-above-the-project)). Its run still starts from the
 checkout the matter resolves to, as every run does, so the answer still reads
-the change. Ephor writes nothing into that checkout and makes no workspace for
-the matter ([§FS-018-private-sources.2](FS-018-private-sources.md#2-the-private-root-answers-first-and-alone)), and the one-run-per-checkout
+the change. Ephor writes none of the answer's plan, results, logs or proposal
+into that checkout, and makes no workspace for the matter
+([§FS-018-private-sources.2](FS-018-private-sources.md#2-the-private-root-answers-first-and-alone)), and the one-run-per-checkout
 guard counts the run, because it is an agent in that tree
 ([§FS-005-dispatch.24](FS-005-dispatch.md#24-work-nobody-has-to-start-starts-itself)).
 
