@@ -338,6 +338,34 @@ pub fn detaching_runner(tmp: &Path, log: &Path) {
         ),
     );
 }
+/// The lock holder a fake detached runner leaves behind, so a sweep reads its
+/// root as live (§FS-005-dispatch.24): a backgrounded `python` that takes
+/// `$root/.rhei/run.lock`, touches `$ready` and keeps the lock for 20s. The
+/// runner's script sets both variables and waits for `$ready` before it
+/// returns.
+///
+/// Its stdout and stderr go to `/dev/null`, and before it takes the lock it
+/// closes every other descriptor it inherited, so a pipe end leaked into the
+/// sweep does not outlive the launch (agent-grounds/ephor#203). On macOS std
+/// makes a pipe and only then marks it close-on-exec, so a sweep spawned while
+/// another thread spawns can carry a pipe the test reads to its end; a holder
+/// that kept it would keep `output()` waiting until the holder exits, and the
+/// lock reads as released by then. `/dev/fd` lists exactly what is open on
+/// Linux and macOS alike, which is where CPython's own `subprocess` looks on
+/// macOS; a fixed range would cost one `close` per number there, as macOS has
+/// no `close_range`. The list names the descriptor `listdir` read it through,
+/// already closed, and `closerange` is the close that ignores that one.
+pub const RUN_LOCK_HOLDER: &str = r#"python -c '
+import fcntl, os, pathlib, sys, time
+for fd in map(int, os.listdir("/dev/fd")):
+    if fd > 2:
+        os.closerange(fd, fd + 1)
+lock = open(sys.argv[1], "w")
+fcntl.flock(lock, fcntl.LOCK_EX)
+pathlib.Path(sys.argv[2]).touch()
+time.sleep(20)
+' "$root/.rhei/run.lock" "$ready" >/dev/null 2>&1 &"#;
+
 /// How many runs the fake launcher was asked to start.
 pub fn starts(log: &Path) -> usize {
     fs::read_to_string(log)

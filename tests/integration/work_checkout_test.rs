@@ -17,8 +17,10 @@ use common::*;
 
 /// A detached runner that holds every root it is given long enough for the
 /// rest of the sweep to see the run, and logs what it was asked to start. Its
-/// child redirects the inherited pipes so the launcher itself returns at once,
-/// as a real detached launcher does.
+/// child is `RUN_LOCK_HOLDER`, which redirects the inherited pipes and closes
+/// every other descriptor it inherited, so the launcher itself returns at once,
+/// as a real detached launcher does, and a pipe end leaked into the sweep does
+/// not outlive the launch (agent-grounds/ephor#203).
 fn holding_runner(tmp: &Path, log: &Path) {
     fs::create_dir_all(tmp.join("fakebin")).unwrap();
     make_executable(
@@ -33,7 +35,7 @@ fn holding_runner(tmp: &Path, log: &Path) {
                mkdir -p \"$root/.rhei\" \"$root/runtime\"\n\
                printf '{{\"id\":\"live-run\"}}\\n' > \"$root/runtime/run.json\"\n\
                ready=\"$root/.rhei/run-lock-ready\"\n\
-               python -c 'import fcntl,pathlib,sys,time; lock=open(sys.argv[1],\"w\"); fcntl.flock(lock,fcntl.LOCK_EX); pathlib.Path(sys.argv[2]).touch(); time.sleep(20)' \"$root/.rhei/run.lock\" \"$ready\" >/dev/null 2>&1 &\n\
+               {holder}\n\
                for _ in {{1..200}}; do\n\
                  [[ -e \"$ready\" ]] && break\n\
                  sleep 0.01\n\
@@ -44,6 +46,7 @@ fn holding_runner(tmp: &Path, log: &Path) {
              *) exit 0 ;;\n\
              esac\n",
             log = log.to_string_lossy(),
+            holder = RUN_LOCK_HOLDER,
         ),
     );
 }
