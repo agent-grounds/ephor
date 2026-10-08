@@ -31,20 +31,58 @@ A room is to a conversation what a repository is to a pull request: the venue
 it happens in, a group or a channel. It is matched only as the source spells
 it — no prefix, and no claim on everything under one organization — because
 chat ids share no grammar ephor could read without naming the networks that
-issue them ([§REQ-001-boundary.5](../requirements/REQ-001-boundary.md#5-no-product-literal-outside-its-adapter)). For rooms the row's word is its presence: a
-row that lists rooms, even none, has said which are the project's, and only a
-row silent on them adopts a manifest's hint. A row that cannot say *none*
-cannot refuse a checkout's claim.
+issue them ([§REQ-001-boundary.5](../requirements/REQ-001-boundary.md#5-no-product-literal-outside-its-adapter)). The row says which rooms are the
+project's by writing the list, even an empty one, as it does for every list a
+checkout can hint ([§FS-008-attribution.1.1](FS-008-attribution.md#11-the-rows-word-on-a-hinted-list-is-its-presence)).
 
 A fallback source is the one signal no checkout can offer. A source's name
 exists only in the site's configuration, so neither a manifest nor a project
 type can hint one, and the claim lives on the row alone
-([§REQ-001-boundary.2](../requirements/REQ-001-boundary.md#2-three-homes-one-resolution-order)). With no hint to refuse, the presence rule rooms follow has
-nothing to do here: `fallback_sources: []` claims nothing, exactly as a row
-without the field does. Only a row whose project the site watches claims, as
+([§REQ-001-boundary.2](../requirements/REQ-001-boundary.md#2-three-homes-one-resolution-order)). With no hint to refuse, the presence rule has nothing to do
+here ([§FS-008-attribution.1.1](FS-008-attribution.md#11-the-rows-word-on-a-hinted-list-is-its-presence)): `fallback_sources: []` claims nothing,
+exactly as a row without the field does. Only a row whose project the site watches claims, as
 for every other signal. What a claim places, and what still beats it, is
 [§FS-008-attribution.3](FS-008-attribution.md#3-venue-beats-reference-beats-fallback-beats-resemblance); a claim that can place nothing is said
 ([§FS-008-attribution.4](FS-008-attribution.md#4-unattributed-is-a-place-not-a-fate)).
+
+### 1.1 The row's word on a hinted list is its presence
+
+Of what a manifest's `identity` offers, four lists are adopted as hints: the
+project's aliases, its territory, its addresses and its rooms. For each of
+them the row's word is whether it writes the list, never whether the list is
+empty. A list the row writes is final, `[]` included: what it names is the
+project's, and nothing the checkout hints for that list is added to it, so
+`"addresses": []` refuses every address the checkout claims. Only a row
+without the key adopts the manifest's hint. A row that could say *none* only
+by leaving the key out could not refuse a checkout's claim, and the row is
+authoritative over the manifest because attribution keys must not be
+forgeable by a checkout ([§FS-006-project-interface.2](FS-006-project-interface.md#2-the-manifest-is-offered-never-required), [§REQ-001-boundary.2](../requirements/REQ-001-boundary.md#2-three-homes-one-resolution-order)).
+Whoever can push to a repository can edit its manifest, and a claimed
+address or organization places a person's own mail and chat; a site that
+cannot refuse that claim is back to sweeping by hand
+([§GOAL-003-nothing-lost](../goals.md#goal-003-nothing-lost-the-watch-is-trusted-enough-to-retire-the-sweep)).
+
+The rule holds one list at a time. A row that refuses one hint keeps the rest
+of what the manifest offers — its other hints, its checks, its gate, its
+actions. How far the row trusts the manifest decides only whether there is a
+hint at all, so a list present on the row wins at every trust level.
+
+A row's own addresses are matched as written and place at the strength of a
+reference, exactly as hinted ones do
+([§FS-008-attribution.3](FS-008-attribution.md#3-venue-beats-reference-beats-fallback-beats-resemblance)). A row whose `addresses` is anything but a list of
+non-empty strings is refused by name, as one with such `rooms` is: read as
+silent, it would let the checkout's hint stand in for what the row tried to
+say.
+
+**Fallback sources are the one list where `[]` is the same as no key.** The
+rule exists so that a row can refuse a hint, and no checkout can hint a
+source's name, so an empty list has nothing to refuse and claims nothing.
+
+**The forest's repositories are never adopted from a manifest.** They come
+from the project type's layout, which every row has, so the row always
+speaks for them and a manifest's `identity.repos` is not read as identity. A
+repository a row wants to claim beyond its forest goes in its territory,
+which places it as a forest repository would.
 
 ## 2. Two stages, one engine
 
