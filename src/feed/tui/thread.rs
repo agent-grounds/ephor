@@ -51,6 +51,10 @@ use crate::api::views::Reaction;
 #[path = "thread_reply_tests.rs"]
 mod reply_tests;
 
+#[cfg(test)]
+#[path = "thread_review_tests.rs"]
+mod review_tests;
+
 /// A reply a run drafted, waiting under the conversation it answers
 /// (§FS-005-dispatch.13). It is a file until a person sends it, which is why
 /// `path` is shown wherever the channel cannot carry it.

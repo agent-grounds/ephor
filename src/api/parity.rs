@@ -314,6 +314,27 @@ mod tests {
         }
     }
 
+    /// A stale draft's two ways on are keys as well as commands: `r` types a
+    /// reply as `ephor reply ID WORDS` does, and `n` asks for a new draft as
+    /// `ephor work dispatch --again` does (§FS-005-dispatch.13.2,
+    /// §REQ-002-parity.2).
+    #[test]
+    fn a_stale_drafts_ways_on_have_keys() {
+        let keys = |command: &str| -> Vec<&str> {
+            ABILITIES
+                .iter()
+                .filter(|ability| ability.command == command)
+                .flat_map(|ability| ability.keys.iter().copied())
+                .collect()
+        };
+        assert!(keys("reply").contains(&"r"), "{:?}", keys("reply"));
+        assert!(
+            keys("work dispatch --again").contains(&"n"),
+            "{:?}",
+            keys("work dispatch --again")
+        );
+    }
+
     /// No key is both an ability and presentation. A key in both lists is the
     /// exemption quietly swallowing a command that was owed.
     #[test]

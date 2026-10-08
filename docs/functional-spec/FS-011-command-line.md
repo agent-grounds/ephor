@@ -108,6 +108,19 @@ saved row absent from the feed. Dry-run rehearses sending, replay and resolution
 with the same refusals, displays the actual opaque target and prepared words,
 and creates neither state nor lock files and posts nothing.
 
+A stale draft is shown against what moved since it was drafted
+([§FS-005-dispatch.13.2](FS-005-dispatch.md#132-a-stale-draft-is-shown-against-what-moved-since-it-was-drafted)). Under `Since the draft:` the reading prints one line per change,
+in order. An edit reads `<author> edited [<n>]`, with its words before and after
+on the two lines beneath it, marked `-` and `+`. An arrival is named by its
+author and position, and the person's own as theirs. A message no longer shown
+is called no longer shown, never edited or deleted. Beneath the review stand
+both ways on: the command that drafts it again, or why no new draft is offered,
+and `ephor reply <id> '<words>'`, with the path where the old words stay. The
+`ephor reply` refusal prints the same lines under its stale reason. On the
+thread screen the draft card carries them: `n` drafts it again where that is
+offered, `r` starts a typed reply from nothing, `e` on a stale draft starts one
+from the draft's words, and `p` still refuses.
+
 `ephor settle <item>` takes `--dry-run` and `--json`, and the key `s` carries
 the same move on a conversation row and in its thread, offered only where it
 would work ([§FS-004-quick-actions.2](FS-004-quick-actions.md#2-offered-only-where-it-would-work)). It acts on a conversation its source
@@ -147,6 +160,16 @@ Conversation readings and reply outcomes add the binding position/target,
 stale reason, pending payload, retry versus hold and resolution facts exposed
 by the human reading. `assets/ephor-views.schema.json` describes these additive
 facts, and parity entries cover the shared API, CLI and thread-menu moves.
+A stale draft's review ([§FS-005-dispatch.13.2](FS-005-dispatch.md#132-a-stale-draft-is-shown-against-what-moved-since-it-was-drafted)) is `since`, on the draft and on
+the reply outcome that refuses it. It has one entry per change, in order. Each
+entry carries its `change` (`new`, `yours`, `edited` or `no-longer-shown`), the
+`message` position the reading prints wherever the message is still shown, its
+`author` and `at` where they are known, and its `text`. An edit also carries
+the `before` it replaced. Where a new draft is offered, the draft adds
+`redraft`, with the `recipe` and the `command` that drafts it again. Where the
+draft is stale and none is offered, the draft adds `redraft_refused`, which is
+the reason. `stale_reason` stays, and it is still the one line. Every one of
+these fields is additive ([§REQ-002-parity.4](../requirements/REQ-002-parity.md#4-the-machine-form-is-a-contract-not-a-dump)).
 Under it, standard output carries the reading alone: notes, progress and
 provider failures go to the error stream, so what a program parses is never
 interleaved with what a person reads.
