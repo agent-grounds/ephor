@@ -1273,7 +1273,7 @@ identically over every provider
 ([§FS-001-forge-interface.3](functional-spec/FS-001-forge-interface.md#3-policy-lives-above-the-interface-never-in-an-implementation)),
 which is why reacting or ticking from the inbox is often enough to clear an
 item. Task state outranks the last word in both directions: an open box awaits
-you however the conversation ended, and a ticked one settles it even where
+you however the conversation ended, and a ticked one answers it even where
 every message in the thread belongs to a robot.
 
 ### 5.2 The completeness net
@@ -1461,6 +1461,7 @@ does not report one simply never shows it.
 | `x` | the action menu (§7) — commands and work alike, on an item and on a branch row |
 | `C` | check out the branch this row is about (§7.1) — offered where the row says `∅ not checked out` |
 | `m` `d` `Space` | mark done |
+| `s` | settle the conversation at its source — offered where its source can (below) |
 | `a` | mark everything visible done |
 | `u` | unread-only ↔ everything |
 | `;` | the operations board (§8.13) — from any screen |
@@ -1479,7 +1480,7 @@ cursor is on rather than against the screen:
 | `c` | take *that* ticket back (§8.7) — not offered on a row whose work is over |
 | `a` | attach to the run holding it (§8.16); says so where nothing is running |
 | `e` | read the plan the row is a line of |
-| `Enter` `o` `w` `x` `m` | the matter above it, as on its own row |
+| `Enter` `o` `w` `x` `m` `s` | the matter above it, as on its own row |
 
 `r` does not take the terminal. The fetch runs on a thread of its own, so
 every other key still answers while it is in flight — read, act, mark done,
@@ -1504,6 +1505,7 @@ its author, age, text and reactions:
 | `+` | react (`←`/`→` or `1`-`8` choose, `Enter` posts) |
 | `t` | tick the selected task |
 | `e` `p` | edit / post a drafted reply (§8.12) |
+| `s` | settle the conversation at its source — offered where its source can (below) |
 | `x` | actions · `o` open · `m` done · `;` ops · `Esc` back |
 
 `+` and `t` are offered on the selected message rather than on the screen, so
@@ -1518,10 +1520,26 @@ ticks it in place. That is the whole of a bot checklist: read the sentence,
 agree with it, move on, without a browser.
 
 A box also answers the thread. An unresolved task keeps its conversation
-awaiting you however it ended, and a resolved one settles it even though a
+awaiting you however it ended, and a resolved one answers it even though a
 robot had the last word — which is what keeps a pull request whose boxes are
 all ticked from sitting in the inbox forever
 ([§FS-003-feed-categories.4](functional-spec/FS-003-feed-categories.md#4-a-conversation-is-answered-in-whatever-form-the-forge-recorded-it)).
+
+**Settling.** Marking a row done is ephor's own: the mail you answered from
+the feed is still in the inbox it came from. Where a source declares that it
+can settle a conversation, `s` — on the conversation's row, or anywhere in its
+thread — asks that source to put it away the way that place does: a mail
+thread archived, a chat marked done. The key appears only where the source
+declared it, and `ephor settle ID` is the same move from the command line;
+`--dry-run` says which source it would ask about which conversation, and asks
+nothing that writes. Once the source accepts, the row is marked done exactly
+as `m` marks it, and the conversation's next message brings it back with
+`⟳ the conversation moved`. Settled is not answered: whether a thread awaits
+you is still read off its messages. Nothing else settles — not reading, not
+`m`, not `mark-read`, not a reply, not a dispatch — and a source that cannot
+settle is named in the refusal, `mail-me cannot settle a conversation at its
+source`, whichever row `s` was pressed on
+([§FS-011-command-line.4](functional-spec/FS-011-command-line.md#4-a-conversation-and-the-moves-inside-it)).
 
 **Gate screen** (`c`) — the per-repository counts spelled out and the forge's
 own reasons for refusing, verbatim: `j`/`k` scroll, `x` actions, `o` open,
@@ -5160,6 +5178,7 @@ ephor-forge-<name> restart        <<< '{"config":…,"repo":…,"number":…,"sc
 ephor-forge-<name> react          <<< '{"config":…,"target":…,"emoji":…}'
 ephor-forge-<name> resolve-task   <<< '{"config":…,"target":…}'
 ephor-forge-<name> reply          <<< '{"config":…,"target":…,"text":…}'
+ephor-forge-<name> settle         <<< '{"config":…,"target":"<id>"}'
 ```
 
 The whole provider block is passed through as `config`, so an extension takes
@@ -5244,6 +5263,22 @@ age of the newest message: a quiet room and a deaf listener leave the same
 record. How the extension shows current observation is its own configuration
 — the example takes `max_age_seconds` — and ephor reads none of it.
 
+`settle`, declared as `"settle": true`, puts one of those conversations away at
+the network it came from, whatever that means there — a mail thread archived,
+a chat marked done ([§FS-001-forge-interface.1](functional-spec/FS-001-forge-interface.md#1-capabilities)). It is sent the conversation's own `id`,
+exactly as `messages` reported it, as `target` — a string, where every other
+write hands back an object — and answers `{}` once the network accepted; a
+refusal is a non-zero exit with the network's reason on stderr. Settling a
+conversation already settled is success, so a settle that timed out is simply
+asked again. It is asked only when the reader presses `s` or runs `ephor
+settle`, never because something was read, marked done or answered, and ephor
+never reads a settled state back. Declare it only while a later message in a
+settled conversation still reaches `messages`: where your venue keeps settled
+conversations out of the view you read, read that view too, or leave the
+capability out — the next message must bring the conversation back, saying why
+([§FS-007-matters.5](functional-spec/FS-007-matters.md#5-an-event-moves-state-and-resurfacing-names-its-reason)), and one that lands nowhere is a
+silent drop. A name ephor does not know, such as `archive`, declares nothing.
+
 Policy is never an extension's business: what counts as answered, what needs a
 response, how threads and gates roll up, how items match branches, what is
 unread — all of that is ephor's, applied identically over every implementation.
@@ -5297,7 +5332,7 @@ ephor clean [--org O | --workspace W | --tag T] [--act]   # each idle checkout's
 ephor checkout | branches                                 # the checkout
 ephor check | validate --manifest | schema                # the project interface
 ephor actions [list] | actions run <id> | actions open <id>  # what may be done here
-ephor thread <id> | react | tick | reply                  # a conversation
+ephor thread <id> | react | tick | reply | settle         # a conversation
 ephor reply <id> --resolve sent|not-sent                  # checked held outcome, no send
 ephor work list | offers | dispatch | ask | sync | cancel | lay | run | forget
 ephor work workflows | states                             # what the runtime carries
@@ -5381,6 +5416,7 @@ usable by the runtime it hands work to.
 | `p` — send the drafted reply | `ephor reply ID` (or `ephor reply ID some words`) |
 | `p` — retry saved send | `ephor reply ID` (or the same typed words) |
 | `S` / `N` — resolve held reply after checking channel | `ephor reply ID --resolve sent` / `--resolve not-sent` |
+| `s` — settle a conversation at its source | `ephor settle ID` (`--dry-run` says what it would ask) |
 | `w` — what is being done about it | `ephor work offers --item ID` |
 | `a` / `s` / `c` / `R` — ask, reopen, cancel, run | `ephor work ask` / `sync` / `cancel` / `run` |
 | `z` — the tickets that are over | `ephor work offers --item ID --all` |

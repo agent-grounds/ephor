@@ -192,6 +192,7 @@ ever recorded one.
 | `x` | summon the configured actions for the item (see below) |
 | `C` | check out the branch the row is about, where it says `∅ not checked out` |
 | `m`/`d`/Space | mark done (resurfaces if the item changes again) |
+| `s` | settle a conversation at its source — archive the mail, mark the chat done — where the source declares it can; the row is then done as `m` leaves it |
 | `a` | mark everything visible done |
 | `[` / `]` | previous / next project (detail view) |
 | `Esc`/`h` | back to the project list (detail view) |
@@ -208,9 +209,10 @@ reading is instant and works offline.
 
 Keys: `j`/`k` select the previous/next message (the view follows), `f`/`b`
 page, `g`/`G` first/last, `+` react to the selected message, `t` tick the
-selected task, `Enter`/`o` opens the item in the browser, `m` marks it
-done, `Esc`/`q` goes back. `+` and `t` are offered on what is selected, so
-the footer only shows a key where it would do something.
+selected task, `s` settle the conversation at its source, `Enter`/`o` opens
+the item in the browser, `m` marks it done, `Esc`/`q` goes back. `+` and `t`
+are offered on what is selected and `s` where the source declared it, so the
+footer only shows a key where it would do something.
 
 **Reactions**: `+` opens a picker with GitHub's palette (👍 👎 😄 🎉 😕 ❤️
 🚀 👀) — `←`/`→` or `1`-`8` choose, `Enter` posts via the provider
@@ -223,7 +225,7 @@ refresh.
 comment, a review task — the message carrying one renders with its box, ☐
 or ☑, and `t` ticks it in place. A box also answers its thread: an open one
 keeps the conversation awaiting you however it ended, and a ticked one
-settles it even where every message belongs to a robot, which is what stops
+answers it even where every message belongs to a robot, which is what stops
 a bot checklist from sitting in the inbox forever.
 
 ### Item actions
