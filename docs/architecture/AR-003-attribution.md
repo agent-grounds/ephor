@@ -55,21 +55,24 @@ aliases, addresses, rooms, and the fallback sources the row claims. Compiled
 identities form one table the engine matches against — attribution is a
 function of (evidence, identity table), no IO.
 
-Rooms are compiled differently from the lists before them in two ways. They
-match by exact equality with the id the source states, never by prefix and
-never organization-wide. And the row's say over them is its presence rather
-than its emptiness: a row that states `rooms`, even `[]`, is the project's
-rooms, and only a row with no `rooms` field adopts the manifest's
-`identity.rooms`. The emptiness rule the other lists use cannot tell `[]` from
-an absent field, and a bare hint cannot be refused at all; either would let a
-checkout claim a room its row refused
-([§FS-008-attribution.1](../functional-spec/FS-008-attribution.md#1-identity-is-declared-and-the-row-has-the-last-word)).
+Every list a manifest hints — aliases, territory, addresses and rooms — is
+compiled from the row's presence rather than its emptiness: a list the row
+states, even `[]`, is the project's, and only a row with no field of that name
+adopts the manifest's. One rule, one list at a time, so the four cannot drift
+apart. An emptiness rule cannot tell `[]` from an absent field, and a bare
+hint cannot be refused at all; either would let a checkout claim what its row
+refused ([§FS-008-attribution.1.1](../functional-spec/FS-008-attribution.md#11-the-rows-word-on-a-hinted-list-is-its-presence)). The forest's repositories are the project type's layout,
+which every row that loads has, and never the manifest's `identity.repos`.
+
+Rooms differ from the lists before them only in how they match: by exact
+equality with the id the source states, never by prefix and never
+organization-wide ([§FS-008-attribution.1](../functional-spec/FS-008-attribution.md#1-identity-is-declared-and-the-row-has-the-last-word)).
 
 Fallback sources are compiled from the row alone. They match the evidence's
 reporting source by exact equality, as rooms match the stated room, but no
 manifest field is read for them: a source's name lives only in the site
 configuration, so nothing a checkout says can name one, and an absent field
-and `[]` both compile to no claim ([§FS-008-attribution.1](../functional-spec/FS-008-attribution.md#1-identity-is-declared-and-the-row-has-the-last-word)).
+and `[]` both compile to no claim ([§FS-008-attribution.1.1](../functional-spec/FS-008-attribution.md#11-the-rows-word-on-a-hinted-list-is-its-presence)).
 Whether a claim can place anything is a question about the site rather than
 the row, so registry validation, which reads the registry alone, cannot ask
 it. One function beside the one that names an organization work block over

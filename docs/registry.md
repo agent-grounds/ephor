@@ -77,21 +77,25 @@ that is what places a conversation nobody addressed to a repository
 ([§FS-008-attribution.1](functional-spec/FS-008-attribution.md#1-identity-is-declared-and-the-row-has-the-last-word)).
 
 - `aliases[]` — other names the project answers to. A polyrepo whose
-  repositories have their own names lists them here.
+  repositories have their own names lists them here. `[]` says *none* and
+  refuses a manifest's `identity.aliases`.
 - `branches[].ticket`, and the key inferred from a branch name — the ticket
   patterns the project's matters carry.
 - The repositories of its forest, which come from the type's `repos[]` and any
-  `repo_overrides`.
+  `repo_overrides`, never from a manifest's `identity.repos`.
 - `territory[]` — repositories and organizations that are the project's
   business **without being in its forest**: `"acme/plugin"` for one repository,
   `"acme"` for a whole organization. It is what places the general case — a
   mention of you on some repository of the project's ecosystem, an issue filed
-  there, a discussion opened there, none of it in any checkout.
+  there, a discussion opened there, none of it in any checkout. `[]` says
+  *none* and refuses a manifest's `identity.territory`.
+- `addresses[]` — the mail addresses and lists whose conversations are the
+  project's, matched as written, `"widget-dev@acme.example"`. An address
+  places a mail as firmly as a reference to the project does. `[]` says *none*
+  and refuses a manifest's `identity.addresses`.
 - `rooms[]` — the venues on a chat source that are the project's, each the
   exact id the source states, `"whatsapp/acme#120363@g.us"`. Matched only when
-  equal. Its presence is the row's word: `[]` says *none* and refuses a
-  manifest's `identity.rooms`, where a row without the key adopts it
-  ([manual §4.2.2](manual.md#422-territory)).
+  equal. `[]` says *none* and refuses a manifest's `identity.rooms`.
 - `fallback_sources[]` — the conversation sources the project is the home for
   when nothing else places a conversation, each named exactly as `status.json`
   names it, `"mail-me"`. A conversation such a source reports goes to this
@@ -100,6 +104,14 @@ that is what places a conversation nobody addressed to a repository
   same as leaving the key out. A claim that can place nothing — a name no
   source has, a source bound only under projects, a built-in source — is said
   by `ephor refresh` and `ephor doctor` ([manual §4.2.2](manual.md#422-territory)).
+
+For each of the four lists a manifest can hint — `aliases`, `territory`,
+`addresses` and `rooms` — the row's word is its presence: a list the row
+writes is final, `[]` included, and only a row without the key adopts the
+hint, one list at a time
+([§FS-008-attribution.1.1](functional-spec/FS-008-attribution.md#11-the-rows-word-on-a-hinted-list-is-its-presence),
+[manual §4.2.2](manual.md#422-territory)). Anything but a list of non-empty
+strings is refused when the registry is validated.
 
 Attribution weighs these against what a conversation carries: an explicit venue
 wins outright, a reference places next, a row's fallback claim on the
@@ -115,9 +127,9 @@ A project may describe itself in an `ephor.json` at its forest root
 ([§FS-006-project-interface.2](functional-spec/FS-006-project-interface.md#2-the-manifest-is-offered-never-required)),
 and the row decides what that is worth:
 
-- Identity fields in a manifest are **hints**. The row adopts one where it says
-  nothing of its own and overrides it where it does — a checkout must not be
-  able to claim another project's conversations.
+- Identity fields in a manifest are **hints**. The row adopts one where it has
+  no key of its own and overrides it where it writes one, `[]` included — a
+  checkout must not be able to claim another project's conversations.
 - `manifest_trust` says how much of the rest to believe: `full` (the default —
   its commands run with the trust you extend to running the project's own
   build), `descriptions` (read what it says about itself, run none of it), or
