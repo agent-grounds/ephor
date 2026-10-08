@@ -3497,6 +3497,68 @@ it has, or that its source reported none at all. The distinction is the one
 this section exists for — a store nobody has annotated yet and a recipe that
 asks the wrong key read identically from an empty list.
 
+### 27.1 A recipe asked for by name and not offered says why
+
+`ephor work dispatch --item <id> --recipe <r>` asks one question about one
+matter: hand this matter to that recipe. Where the recipe is among the matter's
+offers, the answer is the dispatch. Where it is not, the answer is a refusal,
+and **a refusal of a named recipe is said in both forms, with its reason**.
+Under `--json` the sweep's reading carries a row for the matter — its `item`,
+its `title`, the `recipe` that was asked for, `outcome` `refused`, and a
+`says` — and `refused` counts it. In prose the same sentence is printed as a
+`note:`, and the closing tally counts the matter among the items that could not
+be. The exit code is the one a matter asked about and not handed over has
+always given, `1`. Dropping the matter with no row and no sentence left a
+script holding an empty `items`, `refused: 0` and a non-zero exit — a failure
+nobody explained — and a person holding `0 ticket(s) opened`, with the cause
+to be dug out of the recipe's selector in the configuration. That is the
+refusal with an empty answer
+[§FS-011-command-line.7](FS-011-command-line.md#7---json-is-the-same-answer-not-a-second-one)
+forbids, and the prose and the reading were silent alike, so neither form carried the fact
+([§REQ-002-parity.3](../requirements/REQ-002-parity.md#3-every-reading-answers-a-program)).
+
+The sentence names the recipe, the matter, and what kept the one from the
+other, whichever it was:
+
+- **Its selector refused.** Every field that refused, with what the matter
+  carried against what the selector asked for, in the words
+  [§FS-005-dispatch.27](FS-005-dispatch.md#27-an-offer-that-a-selector-refused-says-why)
+  already gives them — and here that includes `kinds`, and `behind` or
+  `behind_upstream` refusing alone. The offers reading leaves those out
+  because nobody asked about that recipe, and a `pr` recipe has nothing to say
+  about a task. Once a person names the recipe, the field that refused is the
+  answer to the question they asked, however plain it would have been had they
+  not asked it. The offers reading does not change: this is the dispatch's
+  answer about one named recipe, not the offers list.
+- **Its `branch` or `root` template needs a field this matter has not got.**
+  The template and the field, as the offers reading names them
+  ([§FS-005-dispatch.25](FS-005-dispatch.md#25-work-about-a-matter-with-no-branch-can-mint-the-branch-it-needs)).
+- **It is reserved.** The sentence its reservation already gives: the rebase
+  sweep's recipe has a checkout for its subject, never a matter
+  ([§FS-004-quick-actions.6.1](FS-004-quick-actions.md#61-the-same-replay-over-every-checkout-nobody-is-holding)).
+- **The matter is finished.** No recipe applies to finished work
+  ([§FS-005-dispatch.6](FS-005-dispatch.md#6-dispatch-is-offered-where-it-would-work-and-refuses-where-it-would-not)),
+  and the sentence says that this is why, rather than naming a selector field
+  that held.
+
+**A name no recipe of the project carries is a different fact, and gets its
+own sentence.** "Does not apply" would claim that a recipe exists and was
+weighed. A name nobody configured — a typo, or a recipe kept in another
+project's scope — was weighed against nothing. So the row is the same refused
+row with the same exit, and its `says` names the recipe as not configured for
+the matter's project and names the recipes that are: the shipped ones and the
+three scopes of configuration, the same resolved set every offer is drawn from
+([§FS-005-dispatch.1](FS-005-dispatch.md#1-a-recipe-decides-which-items-deserve-work-and-what-to-ask-for)).
+The correction is then one read away. Asking for work no recipe describes is
+`ephor work ask`'s door
+([§FS-005-dispatch.10](FS-005-dispatch.md#10-what-ephor-offers-is-not-a-limit-on-what-can-be-asked)),
+and the sentence may point there; it is no reason for `dispatch` to answer nothing.
+
+This is about the one matter `--item` names. A sweep with `--recipe` and no
+`--item` passes over each matter the recipe does not apply to without a row,
+as it always has: it asked for that recipe wherever it applies, and a row for
+every matter it does not would bury the ones it reached.
+
 ## 28. A workflow entry can ask for the same thing a recipe can
 
 [§FS-005-dispatch.24](FS-005-dispatch.md#24-work-nobody-has-to-start-starts-itself) removed the key from the
