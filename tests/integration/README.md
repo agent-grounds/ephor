@@ -48,6 +48,10 @@ line CI and the pre-commit hook run.
   notes: the range, the pull requests that qualify, complete listings, order
   and rendering, rotation, and every refusal leaving the tree untouched
   ([§FS-002-release.1.3](../../docs/functional-spec/FS-002-release.md#13-the-release-lists-the-pull-requests-merged-since-the-previous-tag-and-every-one-of-them), [§FS-002-release.2.3](../../docs/functional-spec/FS-002-release.md#23-preparing-a-release-reads-everything-before-it-writes-and-refuses-rather-than-guess)).
+- `test_release_forge.py` — the release harness's own `git`, below: one
+  `unable to create temporary file` is outlasted, the retry says so on stderr,
+  and every other failure is raised after one call. A `git` stand-in on the
+  fixture's `PATH` fails the calls a case arms (#202).
 - `test_release_notices.py` — the compatibility notices a later release writes
   for a schema that lost or changed a field ([§FS-002-release.1.4](../../docs/functional-spec/FS-002-release.md#14-compatibility-notices-from-the-previous-tag-onwards)).
 - `test_release_workflows.py` — the release workflows: nothing stamped, counted
@@ -57,7 +61,12 @@ line CI and the pre-commit hook run.
 - `release_forge.py` — not a test, and not collected as one: the throwaway git
   repository, with a `gh` stand-in on `PATH` that answers as GitHub's REST API
   does, those three share. The release reads first-parent history and the pull
-  requests that landed on it, so it cannot be shown with loose files.
+  requests that landed on it, so it cannot be shown with loose files. The
+  fixture's own `git` call is retried when git fails with its transient
+  `unable to create temporary file`, and on nothing else: on the hosted macOS
+  runner, about one run in twelve, one loose-object write was refused with
+  `Invalid argument` and killed the heaviest `CompletenessTests` before the
+  release ever ran (#202).
 
 Unit tests stay beside the code under `code`'s rule; there is no third kind
 for them.
