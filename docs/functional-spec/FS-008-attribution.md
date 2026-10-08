@@ -125,9 +125,9 @@ says which project a conversation belongs to and never which subject: like
 resemblance, it may start a row and may never amend one. It never breaks a tie
 above it, so a conversation that references two projects equally goes to the
 bucket with those two, whoever claims its source. It covers conversations
-only. A notice or an issue is placed as it was, because a notice always
-carries a repository, and the bucket's prompt for it, a territory to add, is a
-signal somebody can add.
+only. A notice or an issue is placed as it was: what either usually names is a
+repository or a ticket key, and the bucket's prompt for it, a territory or a
+ticket pattern to add, is a signal somebody can add.
 
 In a conversation's title or message text, `owner/name#N`, where `N` is one
 or more ASCII decimal digits, references the repository `owner/name`, just as
