@@ -2749,16 +2749,26 @@ any recipe naming one would put your conversation back in the project's tree.
 The template takes `work.root`'s vocabulary and refusals, and repeating
 `{org}/{project}` in it gives you a forest that mirrors the organization's.
 The run still starts from the checkout the matter resolves to, so an answer
-still reads the change; ephor writes nothing into that checkout. Two things are
-refused by name before anything is written, at `dispatch --item`, `ask`, `lay`
-and the key alike, and `work offers` shows the same refusal on the entry
+still reads the change; ephor writes nothing into that checkout and makes no
+workspace for the matter. Three things are refused by name before anything is
+written, at `dispatch --item`, `ask`, `lay` and the key alike, and `work offers`
+shows the same refusal on the entry, with no workspace and no root
 ([§FS-018-private-sources.2](functional-spec/FS-018-private-sources.md#2-the-private-root-answers-first-and-alone)):
 
 - a listed source with no `root` declared — the refusal names the source and
   `work.private.root`, and the feed is untouched;
 - a `root` that renders inside the project's registry root, which holds its
   checkouts and its `panta` — the refusal names `work.private.root`, the path it
-  rendered, and the project root.
+  rendered, and the project root. A `..` in it is taken where it lands, made or
+  not, so `~/me/../rhei/private` is inside `~/rhei`;
+- a `branch` template on the recipe or entry that would make a workspace for the
+  matter (§8.15) — a new checkout among the project's, named from the matter
+  (`answer/{title}` is the correspondent's name), and made by the project's own
+  checkout command, if it binds one, with the whole message in hand. The refusal
+  names the source, the recipe or entry with its template, and the workspace;
+  neither git nor the command is run. A workspace already on disk is used as it
+  is, and so is a branch the matter has of its own. Answer a private matter
+  through an entry with no `branch`.
 
 Neither falls back to the ladder above, because the ladder is the leak. The
 board finds your plans there as it finds any other (§8.13), and the record
@@ -3424,8 +3434,9 @@ ephor work states
   `--item` on `dispatch`, `ask` and `lay`, `run --item` without `--due`, or a
   key on the matter's row. Everything else is a sweep, whoever typed it —
   `dispatch` without `--item`, `sync` whether it would open work or reopen it,
-  `run --due` with or without `--item`, and the sweep `dispatch --item` runs
-  after it writes. The difference matters for a source you listed as private
+  `run --due` with or without `--item`, a plain `run` with or without
+  `--project` and `--act`, and the sweep `dispatch --item` runs after it
+  writes. The difference matters for a source you listed as private
   (§4.2): **no sweep writes or starts work on its matters**. `sync` and a bare
   `dispatch` report such a matter as `passed-over`, with `hold:
   {"kind": "private", "source": "chatgw"}` beside a sentence naming the source,
@@ -3433,7 +3444,9 @@ ephor work states
   `run --due` passes a root over with the same hold where every ticket that
   would have made it due is about a private matter, naming each one; a root that
   also holds other due work runs that work alone, and the run is never pointed
-  at a plan holding a private ticket. Whose a ticket is, is read off the ticket
+  at a plan holding a private ticket. A plain `run` does the same, its
+  `passed-over` row carrying `hold` and `reason` as the sweep's do, and keeps
+  everything else it is: blind to `autorun`, and held by no ceiling. Whose a ticket is, is read off the ticket
   itself, so a ticket laid in a project's root before you listed its source stops
   autorunning too. Your named moves are untouched: `dispatch --item` writes
   under your private root (§8.4), and `run --item` or the run key starts it
@@ -3596,7 +3609,9 @@ ephor work states
   matter, `--except`, a root waiting on a person and the no-advance holds, so
   its rows carry only `private`, `excluded`, `person`, `rested` or `stopped`,
   and its `would-run` rows carry no `hold` at all. `private` comes first because
-  nothing a sweep could wait for lifts it: only your named run does.
+  nothing a sweep could wait for lifts it: only your named run does. A plain
+  `run`, which names no matter, asks `private` and nothing else, so it is the
+  one hold its rows carry.
 - **`workflows`** and **`lay`** are the runtime's own workflows, offered as
   actions (§8.15). `lay` writes a plan of its own beside the matter's and runs
   nothing; `--dry-run` shows what would answer every input first. Where the
@@ -4356,9 +4371,9 @@ started by you.
 **A private matter waits for your key, whatever the entry says.** Where the
 source that reported a matter is one you listed as private (§4.2), neither half
 of the sweep runs on it: `work dispatch` without `--item` reports the matter as
-`passed-over` with the `private` hold and lays nothing, and `run --due` never
-starts a plan laid about it — it finds whose the plan is in the item ephor
-carried beside it (§8.4). The same is true of an autorun recipe. Laying it is
+`passed-over` with the `private` hold and lays nothing, and neither `run --due`
+nor a plain `run` starts a plan laid about it — each finds whose the plan is in
+the item ephor carried beside it (§8.4). The same is true of an autorun recipe. Laying it is
 `work lay <entry> --item <id>`, which writes under your private root, and
 starting it is `work run --item <id>` or the run key
 ([§FS-018-private-sources.3](functional-spec/FS-018-private-sources.md#3-only-a-named-move-writes-or-starts-work-on-a-private-matter)).
