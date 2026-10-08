@@ -1326,8 +1326,8 @@ mod tests {
         assert_eq!(text.matches("Attached").count(), 2, "{text}");
     }
 
-    /// The line names five files and counts the rest, and a long name is cut,
-    /// so a message carrying a hundred files is still one bounded line
+    /// The line names five files and counts the rest, and a long name or type
+    /// is cut, so a message carrying a hundred files is still one bounded line
     /// (§FS-005-dispatch.2).
     #[test]
     fn the_files_line_is_bounded() {
@@ -1335,10 +1335,14 @@ mod tests {
             .map(|index| json!({ "name": format!("f{index}.png") }))
             .collect();
         let long = "n".repeat(130);
+        let long_type = format!("x/{}", "y".repeat(20_000));
         let text = dossier(json!({ "threads": [{ "messages": [
             { "author": "dana", "text": "all of them", "attachments": files },
             { "author": "dana", "text": "and this", "attachments": [
                 { "name": long }, { "name": "g.png" }
+            ] },
+            { "author": "dana", "text": "and that", "attachments": [
+                { "name": "h.bin", "media_type": long_type }
             ] },
         ] }] }));
         assert!(
@@ -1354,6 +1358,15 @@ mod tests {
             "n".repeat(120)
         );
         assert!(text.contains(&cut), "{text}");
+        // A type is the source's word too, and is cut the same way.
+        let cut = format!(
+            "Attached, contents not included: h.bin (x/{}…)\n",
+            "y".repeat(118)
+        );
+        assert!(text.contains(&cut), "{text}");
+        for line in text.lines().filter(|line| line.starts_with("Attached")) {
+            assert!(line.chars().count() < 400, "{line}");
+        }
     }
 
     /// The files on the messages left out are counted with them
