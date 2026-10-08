@@ -1406,6 +1406,16 @@ nothing is open there is one row for what the last ticket decided — `✓ fix-g
 under its work adds a `⟳` row saying what changed. The cursor reaches them, and
 the keys there are the work's ([§6.3](#63-keys)).
 
+**A row waiting on you about a file says so with one mark, `📎N`.** N counts
+the files on the **newest turn** of each conversation that waits on you — its
+last message together with what its author sent just before it, so a photo
+followed by "is this the one?" is one turn — summed, and written as one token
+whatever the number: `📎1`, `📎12`. The row never names a file. It shows no
+mark once nothing waits on you, nor where the waiting turns carry no file, so a
+logo on a mail you already answered is not news. The conversation names every
+file ([§6.3](#63-keys)), and `ephor feed` prints the same mark
+([§FS-007-matters.3](functional-spec/FS-007-matters.md#3-a-discussion-is-messages-grouped-in-a-channel)).
+
 Branch rows say whether they are checked out, how far they trail the main
 branch — summed across every repository in the workspace — and **as of when**:
 `· 13 behind as of Jul 28`. Nothing in the inbox fetches, so the distance is
@@ -1495,7 +1505,7 @@ forges exactly what it did before. Pressing `r` again during a run says
 `Already refreshing` rather than starting a second one.
 
 **Thread screen** — the recorded conversation in full, each message a card with
-its author, age, text and reactions:
+its author, age, text, the files on it and its reactions:
 
 | Key | Does |
 |---|---|
@@ -1513,6 +1523,16 @@ the footer changes as you move: a message its forge will not take a reaction
 for never advertises `+`, and `t` appears only on a task still open. The
 palette is GitHub's eight: 👍 👎 😄 🎉 😕 ❤️ 🚀 👀. A forge that does not
 declare the `reactions` capability is display-only.
+
+**Files.** Each file its source named on a message is a line of its own under
+the message's words, `attached: IMG_2041.jpg (image/jpeg, 1.8 MB)`, with
+whatever the source did not report left out — `attached: Photo` is a file
+whose source gave only its name. A name is the sender's and is shown on one
+line, whitespace collapsed and control characters dropped. Nothing is fetched:
+the line is what the source said about the file, and to see the file itself you
+open the conversation where it lives. `ephor thread` prints the same lines, and
+its `--json` carries each message's `attachments` without the source's own id
+([§FS-011-command-line.4](functional-spec/FS-011-command-line.md#4-a-conversation-and-the-moves-inside-it)).
 
 **Tasks.** Where a forge tracks tasks — a checklist item, a blocker comment, a
 review task — the message carrying one renders with its box, ☐ or ☑, and `t`
@@ -2103,6 +2123,17 @@ bot posting the review policy twice cannot crowd out the human question under
 it. Where anything was dropped, the ticket says so and links to the whole. An
 item whose conversation was never recorded says *that*, rather than showing an
 empty section that reads as silence.
+
+A file on a quoted message is **named, and its contents are not**: under the
+message, outside its fence, one line in ephor's words says
+`Attached, contents not included: IMG_2041.jpg (image/jpeg, 1.8 MB)`, so a run
+asked to answer "is this the one?" knows that "this" is a photo. The line names
+at most five files and ends `and N more files` past them, cuts a name at 120
+characters, and holds every name to one line, so no name can close a fence or
+stand as a heading. The source's id for a file is never written, and the line
+that counts the messages not quoted counts their files too — `30 earlier
+messages not quoted, with 4 files on them`
+([§FS-005-dispatch.2](functional-spec/FS-005-dispatch.md#2-the-ticket-carries-what-ephor-knows-not-a-link-to-it)).
 
 ```markdown
 # Rhei: #17 Humanize durations in the log reader
@@ -5242,6 +5273,19 @@ between refreshes: it is the row's key and what your read state is kept under.
 What the extension says about a message is who wrote it and whether it was you
 (`mine`); whether the conversation waits on you is ephor's to read off the
 messages. `ephor schema forge` prints every shape.
+
+A message may also name the **files on it**, as metadata: `attachments`, one
+entry per file, each with a `name` and, where the venue knows them, a
+`media_type`, a `size` in bytes and an `id` of the extension's own. The id is
+handed back verbatim if a later move ever asks for that file, as `react` is,
+and ephor reads nothing out of it; no reading and no dossier shows it. Leave
+the list out where your venue does not report files, and send `[]` where it
+looked and found none — the two read differently. An entry with no name, or a
+size that is not a count of bytes, is a malformed answer; a key beyond these
+is ignored. Which files count is the extension's call: a logo drawn into a
+mail's signature is part of how the mail looks rather than something sent.
+ephor fetches no file, ever — a refresh asks for none, and none reaches a run
+([§FS-001-forge-interface.1](functional-spec/FS-001-forge-interface.md#1-capabilities)).
 
 A `messages` source is usually a **gateway** over a record something else
 keeps: an always-on listener writes what it hears to a spool, and the

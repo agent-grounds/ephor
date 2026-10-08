@@ -87,6 +87,18 @@
 #                    is absent for a direct conversation. Whether a
 #                    conversation waits on you is ephor's to decide from the
 #                    messages, never this script's to say.
+#                    A message may name the files sent with it, and this
+#                    script passes the list on as the listener wrote it:
+#                      "attachments": [ { "name": "IMG_2041.jpg",
+#                                         "media_type": "image/jpeg",
+#                                         "size": 1843211,
+#                                         "id": "att:dana:2041" } ]
+#                    `name` is required; the rest only where the network
+#                    says. Leave the list out where the listener does not
+#                    record files, and write `[]` where it saw none. ephor
+#                    names the files and never fetches one; `id` is the
+#                    listener's own, kept to be handed back
+#                    (§FS-001-forge-interface.1).
 #     reply          queue `.text` for the thread whose `reply` descriptor is
 #                    `.target`, handed back exactly as `messages` gave it.
 #
