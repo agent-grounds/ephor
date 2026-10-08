@@ -1231,10 +1231,22 @@ impl Dispatcher {
     /// recipe there; here somebody did. A name no recipe of the project carries
     /// was weighed against nothing, so it is told it is not configured rather
     /// than that it does not apply, beside the recipes that are, and pointed to
-    /// `ephor work ask` (§FS-005-dispatch.10).
+    /// `ephor work ask` (§FS-005-dispatch.10) — unless it is one of the
+    /// project's workflow entries, which is pointed to `ephor work lay`.
     pub fn why_not_offered(&mut self, item: &Item, wanted: &str) -> String {
         let recipes = self.recipes(&item.project);
         let Some(recipe) = recipes.iter().find(|recipe| recipe.id == wanted) else {
+            // Configured, but as a workflow entry: `work lay` is its door, not `work ask`.
+            let entry = self
+                .workflow_actions(&item.project)
+                .is_ok_and(|entries| entries.iter().any(|entry| entry.id == wanted));
+            if entry {
+                return format!(
+                    "'{wanted}' is a workflow entry of project '{}', not a recipe, so `work \
+                     dispatch` cannot hand {} to it; `ephor work lay --item {} {wanted}` lays it",
+                    item.project, item.id, item.id
+                );
+            }
             let configured: Vec<&str> = recipes.iter().map(|recipe| recipe.id.as_str()).collect();
             return format!(
                 "no recipe '{wanted}' is configured for project '{}', so {} cannot be handed to \

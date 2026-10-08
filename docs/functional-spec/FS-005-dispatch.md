@@ -3553,6 +3553,11 @@ The correction is then one read away. Asking for work no recipe describes is
 `ephor work ask`'s door
 ([§FS-005-dispatch.10](FS-005-dispatch.md#10-what-ephor-offers-is-not-a-limit-on-what-can-be-asked)),
 and the sentence may point there; it is no reason for `dispatch` to answer nothing.
+A name that is no recipe but one of the project's workflow entries was
+configured, only behind another door: the sentence says it is a workflow entry
+and points at `ephor work lay --item <id> <entry>`, which lays it
+([§FS-005-dispatch.19](FS-005-dispatch.md#19-a-workflow-the-runtime-offers-is-an-action-and-its-inputs-are-answered-here)),
+rather than calling it unconfigured beside an offers reading that lists it.
 
 This is about the one matter `--item` names. A sweep with `--recipe` and no
 `--item` passes over each matter the recipe does not apply to without a row,
