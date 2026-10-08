@@ -484,9 +484,10 @@ source's: one matching engine weighs what the conversation carries against
 what each project's registry row declares — its repositories, the
 **territory** it claims beyond them, its ticket prefixes, the names it answers
 to ([§FS-008-attribution](functional-spec/FS-008-attribution.md#fs-008-attribution-every-conversation-finds-its-project-or-says-that-it-could-not)).
-An explicit venue wins outright, a reference places next, and resemblance only
-argues; two projects claiming the same thing equally is **not** settled by
-order — it goes to the unattributed bucket carrying both, because a guess that
+An explicit venue wins outright, a reference places next, a row that claims
+the source a conversation came from takes what references nothing (§4.2.2),
+and resemblance only argues; two projects claiming the same thing equally is
+**not** settled by order — it goes to the unattributed bucket carrying both, because a guess that
 lands wrong amends someone else's row silently.
 
 ```bash
@@ -634,14 +635,74 @@ A room matches only when it is equal: no prefix, no case folding, and no claim
 on everything under one organization, because chat ids share no grammar ephor
 could read without naming the networks that issue them. A conversation no
 claimed room places — a direct one, which has no room, or one in a room nobody
-claimed — is placed like anything else: by what it refers to, and into the
-unattributed bucket where nothing matches.
+claimed — is placed like anything else: by what it refers to, then under a row
+that claims its source, and into the unattributed bucket where nothing matches.
 
 For rooms the row's word is its **presence**. A row that lists rooms has said
 which are the project's, and a manifest's `identity.rooms` is then ignored.
 `"rooms": []` is a refusal, not an omission: it says *none*, and is the only
 way a row can turn down a checkout's claim on a room. Only a row with no
 `rooms` key adopts the hint.
+
+**Fallback sources** give a conversation source a home for what names no
+project. Keep a personal mailbox as a site-level source, so that a mail naming
+a project reaches that project, and everything else it reports would land in
+the unattributed bucket beside real mapping failures, or on a project whose
+name one of its words happens to match. `fallback_sources` on a registry row
+names the sources the project is that home for, each spelled exactly as
+`status.json` names it:
+
+```jsonc
+// status.json
+{ "sources": [ { "provider": "mail-me" } ], "projects": { "me": …, "rhei": …, "grund": … } }
+
+// the registry row; rhei and grund claim agent-grounds/rhei and agent-grounds/grund
+{ "id": "me", "root": "~/me", "fallback_sources": ["mail-me"], … }
+```
+
+Three mails arrive from `mail-me`:
+
+| Mail | What it says | Where it lands |
+|---|---|---|
+| *Before Friday* | "Could you look at https://github.com/agent-grounds/rhei/issues/12 before Friday?" | `rhei`, by reference |
+| *Sunday* | "Mum asks if you can bring the cake." | `me`, by fallback |
+| *Absage* | "Aus welchem Grund kommst du am Samstag nicht?" | `me`, by fallback |
+
+Without the claim, *Sunday* would wait in the unattributed bucket and *Absage*
+would be `grund`'s, because its German *Grund* is that project's name. Bound
+under `projects.me.providers` instead, all three would be `me`'s, and the mail
+about `rhei`'s issue would never show under `rhei`.
+
+The claim ranks below every venue and reference and above resemblance
+([§FS-008-attribution.3](functional-spec/FS-008-attribution.md#3-venue-beats-reference-beats-fallback-beats-resemblance)). A claimed room, a repository of a forest or a
+territory, a ticket key, a repository named in the text and an address all
+still place a mail elsewhere; a project's name or alias never does. Two rows
+claiming one source are not settled by order: what only their claims reach
+goes to the unattributed bucket with both as candidates. Nor does a claim break
+a tie above it — a mail naming two projects equally goes to the bucket with
+those two. The claim says which project a conversation belongs to and never
+which subject, so it starts a row and never folds onto one a source stated.
+
+That is a trade, made on purpose. A mail from a claimed source that is really
+about a project but names none of its signals lands under the claimer, and the
+bucket no longer prompts you to add the signal it lacked. What moves it is a
+reference in the mail
+([§FS-008-attribution.4](functional-spec/FS-008-attribution.md#4-unattributed-is-a-place-not-a-fate)).
+
+Fallback sources cover conversations only. A notice or an issue from the same
+source is placed as before, because it always carries a repository, and the
+bucket's prompt for it — a territory to add — is one you can act on.
+
+Only the row can name a source: no manifest or project type knows the site's
+source names, so `"fallback_sources": []` claims nothing, exactly as a row
+without the key does, and only a row whose project the site watches claims at
+all. A claim that can place nothing is said rather than ignored: a name no
+source in `status.json` has, a source bound only under projects, whose reports
+are that project's and are never weighed, or one of ephor's built-in sources,
+none of which reports conversations. `ephor refresh` prints each as a `note:`
+and under `notes` in `--json`, and `ephor doctor` prints the same sentence in
+its report and under `notes` in its JSON. It is news rather than a fault, so it
+moves neither a project's health nor the exit code.
 
 ### 4.2.3 Check verbs — how a project says whether it is well
 
