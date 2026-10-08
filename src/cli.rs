@@ -305,7 +305,8 @@ pub struct WorkDispatchArgs {
     #[arg(long)]
     pub item: Option<String>,
 
-    /// Use this recipe instead of the first one that matches.
+    /// Use this recipe instead of the first one that matches. With `--item`, a
+    /// recipe the item does not offer is refused, with the reason.
     #[arg(long)]
     pub recipe: Option<String>,
 

@@ -617,6 +617,26 @@ fn dispatch_work(
         };
         let has_work = dispatcher.ledger.entries.contains_key(&item.id);
         let Some(recipe) = recipe else {
+            // A recipe named for the one matter asked about and not among its
+            // offers is refused out loud: a row in the reading and the same
+            // sentence in prose, naming what kept them apart
+            // (§FS-005-dispatch.27.1, §FS-011-command-line.7). A sweep naming a
+            // recipe passes over each matter it does not apply to, as it always has.
+            if let Some(wanted) = args.recipe.as_deref().filter(|_| asked_for_one) {
+                let says = dispatcher.why_not_offered(item, wanted);
+                refused += 1;
+                landed.push(serde_json::json!({
+                    "item": item.id,
+                    "title": item.title,
+                    "recipe": wanted,
+                    "outcome": "refused",
+                    "says": says,
+                }));
+                if !args.json {
+                    eprintln!("note: {says}");
+                }
+                continue;
+            }
             // No recipe covers this matter. A workflow entry that asked to
             // run itself lays its plan down instead — and only where nothing
             // is under way about the matter already, because a second plan

@@ -1220,6 +1220,58 @@ impl Dispatcher {
         offers
     }
 
+    /// Why the recipe named `wanted` is not among this matter's
+    /// [`offers`](Self::offers): the sentence `work dispatch --item <id>
+    /// --recipe <r>` refuses with (§FS-005-dispatch.27.1), naming the recipe,
+    /// the matter, and what kept them apart. It is asked of the recipes and the
+    /// facts `offers` decided on, so the reason given is the one that decided.
+    ///
+    /// Every field that refused is named, `kinds` and `behind` included.
+    /// The offers reading leaves those out because nobody asked about that
+    /// recipe there; here somebody did. A name no recipe of the project carries
+    /// was weighed against nothing, so it is told it is not configured rather
+    /// than that it does not apply, beside the recipes that are, and pointed to
+    /// `ephor work ask` (§FS-005-dispatch.10).
+    pub fn why_not_offered(&mut self, item: &Item, wanted: &str) -> String {
+        let recipes = self.recipes(&item.project);
+        let Some(recipe) = recipes.iter().find(|recipe| recipe.id == wanted) else {
+            let configured: Vec<&str> = recipes.iter().map(|recipe| recipe.id.as_str()).collect();
+            return format!(
+                "no recipe '{wanted}' is configured for project '{}', so {} cannot be handed to \
+                 it (it has: {}); `ephor work ask --item {}` asks for work no recipe describes",
+                item.project,
+                item.id,
+                configured.join(", "),
+                item.id
+            );
+        };
+        // In the order `offers` and `Recipe::matches` refuse in.
+        let why = if let Some(reason) = item.blocking_reason() {
+            Some(format!("it is {reason}"))
+        } else if let Some(reason) = recipe.reserved() {
+            Some(reason)
+        } else if item.is_finished() {
+            Some("the matter is finished, and no recipe applies to finished work".to_string())
+        } else {
+            let facts = self.facts(item);
+            let placement = self.placement(&item.project);
+            let reasons: Vec<String> = recipe
+                .withheld(item, &facts, placement)
+                .into_iter()
+                .map(|refusal| refusal.reason)
+                .collect();
+            (!reasons.is_empty()).then(|| reasons.join("; "))
+        };
+        match why {
+            Some(why) => format!("recipe '{wanted}' does not apply to {}: {why}", item.id),
+            // Not reached: `offers` withholds a recipe for exactly the reasons
+            // above, read off the same recipes and the same facts, so a recipe
+            // none of them refused would have been offered. Still a sentence
+            // naming both, never an empty one.
+            None => format!("recipe '{wanted}' is not among the offers for {}", item.id),
+        }
+    }
+
     /// What a selector needs to know about the checkout
     /// (§FS-004-quick-actions.6). Measured once per branch and remembered for
     /// the sweep: a dispatch over a whole feed asks about the same handful of

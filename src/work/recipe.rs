@@ -1340,6 +1340,40 @@ impl Recipe {
         })
     }
 
+    /// What withholds this recipe from one matter, past its reservation and
+    /// the matter being finished: every field its selector refused
+    /// (§FS-005-dispatch.27), then a `branch` or `root` template naming a field
+    /// this matter has not got, under the name of the template field
+    /// (§FS-005-dispatch.25). Empty exactly where the selector holds and both
+    /// templates render, which is what `Dispatcher::offers` keeps; the
+    /// templates are asked only of a placed project, as `offers` asks them.
+    ///
+    /// Every refusal is kept. Which ones a reading shows is the reading's
+    /// call: the offers reading drops `kinds`, `behind` and `behind_upstream`,
+    /// and a recipe named for the matter names them all (§FS-005-dispatch.27.1).
+    pub fn withheld(
+        &self,
+        item: &Item,
+        facts: &Facts,
+        placement: Option<&crate::branches::Placement>,
+    ) -> Vec<Refusal> {
+        let mut refusals = self.when.explain(item, facts);
+        let Some(placement) = placement else {
+            return refusals;
+        };
+        let branch = self
+            .branch
+            .as_deref()
+            .and_then(|template| crate::branches::why_not_served(placement, item, template));
+        let root = self
+            .root
+            .as_deref()
+            .and_then(|template| crate::branches::why_root_not_served(placement, item, template));
+        refusals.extend(branch.map(|reason| Refusal::new("branch", reason)));
+        refusals.extend(root.map(|reason| Refusal::new("root", reason)));
+        refusals
+    }
+
     /// Why this recipe asks for nothing at all (§FS-005-dispatch.34.1). A
     /// recipe is a selector and a brief, and the brief may arrive by either
     /// door — but one of the doors has to be open, and a ticket carrying no

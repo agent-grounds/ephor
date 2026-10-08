@@ -390,40 +390,25 @@ impl Session {
                         reason,
                     });
                 }
-                let refused = recipe.when.explain(item, &facts);
+                // The selector's refusals, then a `branch` or a `root` naming a
+                // field this matter has not got, which withholds the entry just
+                // as a selector does, so the reading says which field it needed
+                // rather than letting the entry disappear (§FS-005-dispatch.25, §27).
+                let refused = recipe.withheld(item, &facts, placement);
                 if refused.iter().any(|refusal| refusal.field == "kinds") {
                     return None;
                 }
                 let worth_reading: Vec<_> = refused
                     .into_iter()
                     .filter(|refusal| !matches!(refusal.field, "behind" | "behind_upstream"))
+                    .map(|refusal| refusal.reason)
                     .collect();
-                let branch = recipe.branch.as_deref().and_then(|template| {
-                    placement.and_then(|placement| {
-                        crate::branches::why_not_served(placement, item, template)
-                    })
-                });
-                // And where the work would land: a `root` naming a field this
-                // matter has not got withholds the entry exactly as a `branch`
-                // does, so the reading says which field it needed rather than
-                // letting the entry disappear (§FS-005-dispatch.25, §27).
-                let root = recipe.root.as_deref().and_then(|template| {
-                    placement.and_then(|placement| {
-                        crate::branches::why_root_not_served(placement, item, template)
-                    })
-                });
-                if worth_reading.is_empty() && branch.is_none() && root.is_none() {
+                if worth_reading.is_empty() {
                     return None;
                 }
                 Some(super::views::Exclusion {
                     recipe: recipe.id.clone(),
-                    reason: worth_reading
-                        .into_iter()
-                        .map(|refusal| refusal.reason)
-                        .chain(branch)
-                        .chain(root)
-                        .collect::<Vec<_>>()
-                        .join("; "),
+                    reason: worth_reading.join("; "),
                 })
             })
             .collect()
