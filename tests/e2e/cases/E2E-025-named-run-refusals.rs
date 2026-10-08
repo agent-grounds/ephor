@@ -452,14 +452,16 @@ fn issue_90_cli_and_work_screen_render_the_same_root_refusal() {
 
 /// A stand-in for the work screen, as `screen`'s driver sees it leave: it
 /// takes keys in raw mode and echoes each one, and after the second `q` it
-/// closes its terminal and lingers before exiting 0. Run with anything other
-/// than `tui`, as `settle` runs it, it exits at once.
+/// closes its terminal and lingers before exiting 0. It enters raw mode
+/// without flushing its input, as the work screen does, so a key typed before
+/// it got there is kept. Run with anything other than `tui`, as `settle` runs
+/// it, it exits at once.
 #[cfg(unix)]
 const LINGERING_TUI: &str = r#"#!/usr/bin/env python3
-import os, sys, time, tty
+import os, sys, termios, time, tty
 if sys.argv[1:] != ["tui"]:
     sys.exit(2)
-tty.setraw(0)
+tty.setraw(0, termios.TCSANOW)
 os.write(1, b"stand-in ready")
 quits = 0
 while quits < 2:
