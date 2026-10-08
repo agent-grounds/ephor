@@ -92,9 +92,19 @@ that is what places a conversation nobody addressed to a repository
   equal. Its presence is the row's word: `[]` says *none* and refuses a
   manifest's `identity.rooms`, where a row without the key adopts it
   ([manual §4.2.2](manual.md#422-territory)).
+- `fallback_sources[]` — the conversation sources the project is the home for
+  when nothing else places a conversation, each named exactly as `status.json`
+  names it, `"mail-me"`. A conversation such a source reports goes to this
+  project unless a venue or a reference places it elsewhere. Only the row can
+  name one, because no checkout knows the site's source names, so `[]` is the
+  same as leaving the key out. A claim that can place nothing — a name no
+  source has, a source bound only under projects, a built-in source — is said
+  by `ephor refresh` and `ephor doctor` ([manual §4.2.2](manual.md#422-territory)).
 
 Attribution weighs these against what a conversation carries: an explicit venue
-wins outright, a reference places next, and resemblance only argues. Two
+wins outright, a reference places next, a row's fallback claim on the
+conversation's source places what references nothing, and resemblance only
+argues. Two
 projects claiming the same thing equally is not settled by order — it goes to
 the unattributed bucket carrying both, because a guess that lands wrong amends
 someone else's row silently.
