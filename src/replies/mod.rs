@@ -3,7 +3,9 @@
 
 pub mod binding;
 mod evidence;
+pub mod review;
 pub mod storage;
 
 pub use binding::Binding;
+pub use review::{Change, Since};
 pub use storage::{Intent, Record, Status, Store};
