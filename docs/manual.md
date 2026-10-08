@@ -4078,9 +4078,10 @@ draft takes neither:
   sendable thread. On the thread screen `r` opens `$EDITOR` on a scratch file
   of its own; when it closes with words in it the status line asks once,
   naming the thread and the target, and `y` sends them through the same move —
-  any other key keeps them unsent. On a stale draft `e` does what `r` does,
-  starting from the draft's words, and the draft file stays as it was. `p` on a
-  stale draft still refuses with the stale reason.
+  any other key keeps them unsent, and the next `r` reopens them as they are.
+  On a stale draft `e` does what `r` does, starting from the draft's words
+  where none are kept, and the draft file stays as it was. `p` on a stale draft
+  still refuses with the stale reason.
 
 The `ephor reply` refusal prints the same review and ways on under its reason.
 `thread --json` carries the review as the draft's `since`, beside `redraft`

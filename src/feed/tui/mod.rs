@@ -109,8 +109,8 @@ pub(crate) enum Action {
         item: Item,
     },
     /// Type the person's own reply in their editor, on a scratch file of its
-    /// own that starts from `start`, and ask once before it goes anywhere
-    /// (§FS-005-dispatch.13.2).
+    /// own that starts from `start` unless it still holds words not sent, and
+    /// ask once before it goes anywhere (§FS-005-dispatch.13.2).
     TypeReply {
         item: Item,
         start: String,
@@ -676,14 +676,11 @@ impl App {
                 }
             }
             // A scratch file of its own, never the draft's: the draft stays as
-            // it was whatever is typed here (§FS-005-dispatch.13.2).
+            // it was whatever is typed here, and words kept unsent there are
+            // reopened rather than replaced (§FS-005-dispatch.13.2).
             Action::TypeReply { item, start } => {
                 let path = crate::replies::Store::scratch(&item.id);
-                let written = path
-                    .parent()
-                    .map_or(Ok(()), std::fs::create_dir_all)
-                    .and_then(|()| std::fs::write(&path, &start));
-                match written {
+                match ThreadScreen::scratch(&path, &start) {
                     Err(err) => self.message = format!("Could not open {}: {err}", path.display()),
                     Ok(()) => {
                         self.edit_file(terminal, &path)?;

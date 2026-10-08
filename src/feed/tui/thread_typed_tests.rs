@@ -131,6 +131,44 @@ fn any_other_answer_keeps_the_words_unsent_and_nothing_typed_asks_nothing() {
     assert!(world.calls().is_empty());
 }
 
+/// What `App::apply` does with a `TypeReply` before it opens the editor.
+fn opened(screen: &mut ThreadScreen, key: char, path: &std::path::Path) -> String {
+    match screen.handle_key(KeyCode::Char(key)) {
+        Action::TypeReply { start, .. } => ThreadScreen::scratch(path, &start).unwrap(),
+        _ => panic!("{key} types a reply"),
+    }
+    fs::read_to_string(path).unwrap()
+}
+
+#[test]
+fn words_kept_unsent_are_reopened_by_the_next_r_or_e_never_replaced() {
+    let world = World::new();
+    world.draft("€100 accepted");
+    let now = edited(&world);
+    let mut screen = screen(&world, &now);
+    let path = world.tmp.path().join("replies/typed.md");
+    assert_eq!(opened(&mut screen, 'r', &path), "", "r starts from nothing");
+    fs::write(&path, WORDS).unwrap();
+    screen.typed(WORDS.into(), path.clone());
+    match screen.handle_key(KeyCode::Char('n')) {
+        Action::SetMessage(says) => assert!(says.contains("typed.md"), "{says}"),
+        _ => panic!("any other key keeps the words where they were typed"),
+    }
+    for key in ['r', 'e'] {
+        assert_eq!(
+            opened(&mut screen, key, &path),
+            WORDS,
+            "{key} reopens the words the status line said were kept"
+        );
+    }
+    fs::write(&path, " \n").unwrap();
+    assert_eq!(
+        opened(&mut screen, 'e', &path),
+        "€100 accepted",
+        "only an empty file starts from the draft's words"
+    );
+}
+
 #[test]
 fn e_on_a_stale_draft_starts_from_its_words_and_leaves_the_file() {
     let world = World::new();
