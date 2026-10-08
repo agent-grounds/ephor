@@ -450,6 +450,75 @@ fn issue_90_cli_and_work_screen_render_the_same_root_refusal() {
     );
 }
 
+/// A stand-in for the work screen, as `screen`'s driver sees it leave: it
+/// takes keys in raw mode and echoes each one, and after the second `q` it
+/// closes its terminal and lingers before exiting 0. Run with anything other
+/// than `tui`, as `settle` runs it, it exits at once.
+#[cfg(unix)]
+const LINGERING_TUI: &str = r#"#!/usr/bin/env python3
+import os, sys, time, tty
+if sys.argv[1:] != ["tui"]:
+    sys.exit(2)
+tty.setraw(0)
+os.write(1, b"stand-in ready")
+quits = 0
+while quits < 2:
+    key = os.read(0, 1)
+    if not key:
+        os._exit(3)
+    os.write(1, b"\r\nkey " + key)
+    if key == b"q":
+        quits += 1
+for fd in (0, 1, 2):
+    os.close(fd)
+time.sleep(0.3)
+os._exit(0)
+"#;
+
+/// The pty driver reports the work screen's own exit, however the screen
+/// leaves its terminal (agent-grounds/ephor#210). A process that exits has its
+/// descriptors closed before it can be reaped, so the pty master can read
+/// end-of-file while the child still polls as running. On a loaded macOS
+/// runner the work screen's clean exit fell into that window and
+/// `issue_90_cli_and_work_screen_render_the_same_root_refusal` read it as 124,
+/// the deadline's status, four seconds into a fifteen-second deadline. The
+/// stand-in closes its terminal and lingers 0.3 s before exiting 0, which puts
+/// every platform in that window on purpose.
+#[cfg(unix)]
+#[test]
+fn issue_210_the_pty_driver_keeps_a_clean_exit_that_closes_its_terminal_first() {
+    let world = World::new();
+    let tui = world.stub("lingering-tui", LINGERING_TUI);
+    settle(&tui);
+
+    let started = std::time::Instant::now();
+    let driven = Command::new("python3")
+        .arg("-c")
+        .arg(PTY_DRIVER)
+        .arg(&tui)
+        .output()
+        .expect("drive the stand-in through a pseudo-terminal");
+    let took = started.elapsed();
+    let transcript = String::from_utf8_lossy(&driven.stdout);
+
+    assert_eq!(
+        transcript.matches("key ").count(),
+        5,
+        "the stand-in did not take all of `jwRqq`, so its exit says nothing about the driver:\n\
+         {transcript}\n{}",
+        stderr(&driven)
+    );
+    assert_eq!(
+        driven.status.code(),
+        Some(0),
+        "the driver reported {:?} after {:.1}s for a program that exited 0 once it had closed \
+         its terminal; 124 is the 15 s deadline's status alone:\n{transcript}\n{}",
+        driven.status.code(),
+        took.as_secs_f64(),
+        stderr(&driven)
+    );
+}
+
 /// Run `jwRqq` through a real pseudo-terminal: down to the project, open its
 /// work, press the run key, then leave both screens. Each key waits out a
 /// fixed settle window first, so a slower renderer (seen under load on the
@@ -480,8 +549,21 @@ fn screen(world: &World) -> Output {
     command
         .env("NO_COLOR", "1")
         .arg("-c")
-        .arg(
-            r#"import fcntl, os, pty, select, struct, subprocess, sys, termios, time
+        .arg(PTY_DRIVER)
+        .arg(ephor.get_program())
+        .output()
+        .expect("drive the work screen through a pseudo-terminal")
+}
+
+/// The pseudo-terminal driver `screen` runs, kept apart so that the driver
+/// itself can be pinned against a stand-in for the work screen (see
+/// `issue_210_the_pty_driver_keeps_a_clean_exit_that_closes_its_terminal_first`).
+/// `python3 -c PTY_DRIVER <program>` runs `<program> tui` on the pty, types
+/// `jwRqq` into it, writes everything the terminal received to its own stdout,
+/// and exits with the program's own status; 124 means its 15 s deadline came
+/// first.
+#[cfg(unix)]
+const PTY_DRIVER: &str = r#"import fcntl, os, pty, select, struct, subprocess, sys, termios, time
 master, slave = pty.openpty()
 fcntl.ioctl(master, termios.TIOCSWINSZ, struct.pack("HHHH", 24, 400, 0, 0))
 child = subprocess.Popen([sys.argv[1], "tui"], stdin=slave, stdout=slave, stderr=slave)
@@ -531,12 +613,7 @@ else:
 os.close(master)
 sys.stdout.buffer.write(b"".join(chunks))
 sys.exit(status)
-"#,
-        )
-        .arg(ephor.get_program())
-        .output()
-        .expect("drive the work screen through a pseudo-terminal")
-}
+"#;
 
 /// Replay the raw stream onto a fixed grid the size of the pty (the
 /// TIOCSWINSZ above) and read back the cells, rather than concatenating
