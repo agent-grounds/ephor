@@ -656,6 +656,19 @@ fn site(args: &DoctorArgs, style: &Style, say: &Narrator) -> Result<(Health, Opt
              (no registry row places a project in it)."
         ));
     }
+    // A source the site lists as private that no shared source and no
+    // project's providers name keeps nothing private, because no matter
+    // arrives through it — most likely a name spelled unlike the provider's,
+    // which leaves the source the person meant as theirs climbing the
+    // organization's ladder. Said in the same breath as a block over nobody,
+    // and like it the exit code is untouched (§FS-018-private-sources.1).
+    for source in unbound_private_sources(&config) {
+        say.starting(&format!("work.private.sources: {source}"));
+        say.done(
+            "binds nothing — no shared source and no project's providers name it, so no \
+             matter arrives through it to be kept private.",
+        );
+    }
     // A row's fallback claim that can place nothing, in the sentence `refresh`
     // prints. News rather than a fault: it moves neither a project's health
     // nor the exit code (§FS-008-attribution.4).
@@ -731,6 +744,33 @@ fn site(args: &DoctorArgs, style: &Style, say: &Narrator) -> Result<(Health, Opt
 
 /// One project's line, and the detail only a reader with a problem wants: a
 /// project that is entirely well says so in one line (§FS-010-doctor.3).
+/// Each source `work.private.sources` lists that nothing binds: no shared
+/// source and no project's providers name it (§FS-018-private-sources.1).
+/// The names are provider names, which is what a matter id is keyed by, so a
+/// binding is a `provider` that spells it.
+fn unbound_private_sources(config: &StatusConfig) -> Vec<&str> {
+    let Some(private) = &config.work.private else {
+        return Vec::new();
+    };
+    let bound: std::collections::BTreeSet<&str> = config
+        .sources
+        .iter()
+        .chain(
+            config
+                .projects
+                .values()
+                .flat_map(|project| &project.providers),
+        )
+        .filter_map(|source| source.get("provider").and_then(Value::as_str))
+        .collect();
+    private
+        .sources
+        .iter()
+        .map(String::as_str)
+        .filter(|source| !bound.contains(source))
+        .collect()
+}
+
 fn render_project(row: &Diagnosis, style: &Style) {
     let health = row.health();
     let mark = match health {
