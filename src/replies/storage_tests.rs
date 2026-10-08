@@ -75,6 +75,10 @@ fn fingerprints_compare_author_time_words_and_ownership_only() {
     let mut changed = thread.clone();
     changed["messages"][0]["reactions"] = json!([{"emoji":"👍","users":["me"]}]);
     changed["messages"][0]["task"] = json!({"resolved":true});
+    // A file is no part of what a draft was bound to, and neither is whether
+    // the discussion waits (§FS-005-dispatch.13, §FS-001-forge-interface.1).
+    changed["messages"][0]["attachments"] = json!([{"name":"IMG_2041.jpg","id":"att:1"}]);
+    changed["awaits_reader"] = json!(true);
     assert_eq!(fingerprints(&changed), baseline);
     let mut changed_row = row.clone();
     changed_row.state = Some("done".into());

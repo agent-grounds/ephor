@@ -501,6 +501,42 @@ mod tests {
         assert_eq!(resurfacing(&older, &moved), None);
     }
 
+    /// Files on a message joined the model without a new one
+    /// (§AR-006-matters.4): a store written before them is still in this
+    /// model, loads whole, and reads as a source that did not report files,
+    /// while one written since keeps "none" apart from "not reported"
+    /// (§AR-006-matters.1).
+    #[test]
+    fn a_store_from_before_files_reads_as_not_reported_and_a_new_one_round_trips() {
+        let reported = |attachments: Option<serde_json::Value>| {
+            let mut message = serde_json::json!({ "author": "dana", "text": "Is this the one?" });
+            if let Some(attachments) = attachments {
+                message["attachments"] = attachments;
+            }
+            let item = Item {
+                raw: serde_json::json!({ "threads": [{ "messages": [message] }] }),
+                ..matter("chatgw:chat/home#garden").as_item()
+            };
+            let mut feed: serde_json::Value = serde_json::from_str(&feed_with(MODEL)).unwrap();
+            feed["providers"]["github-prs"]["matters"] =
+                serde_json::json!([Matter::of_item(&item)]);
+            let feed: ProjectFeed =
+                serde_json::from_str(&serde_json::to_string(&feed).unwrap()).unwrap();
+            assert_eq!(feed.model, MODEL);
+            feed.matters()[0].discussions[0].messages[0]
+                .attachments
+                .clone()
+        };
+        assert_eq!(reported(None), None);
+        assert_eq!(reported(Some(serde_json::json!([]))), Some(Vec::new()));
+        let files = reported(Some(
+            serde_json::json!([{ "name": "IMG_2041.jpg", "id": "att:1" }]),
+        ))
+        .expect("a reported file survives the store");
+        assert_eq!(files[0].name, "IMG_2041.jpg");
+        assert_eq!(files[0].id, serde_json::json!("att:1"));
+    }
+
     /// A store always says which model it is in, so the next release can tell.
     #[test]
     fn the_store_stamps_the_model_it_wrote() {

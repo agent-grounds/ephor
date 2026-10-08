@@ -1,9 +1,11 @@
 //! The thread screen: full-text visualization of one item's conversation.
 //!
 //! Messages render as cards — a colored author gutter, wrapped body text,
-//! and a reactions line (👍 2 (alice, bob)). A message the forge tracks as a
-//! task wears its box, ☐ or ☑ (§FS-004-quick-actions.5). j/k select whole
-//! messages, not lines; the viewport follows the selection.
+//! a line per file its source named on it (attached: IMG_2041.jpg …,
+//! §FS-011-command-line.4), and a reactions line (👍 2 (alice, bob)). A
+//! message the forge tracks as a task wears its box, ☐ or ☑
+//! (§FS-004-quick-actions.5). j/k select whole messages, not lines; the
+//! viewport follows the selection.
 //!
 //! The write keys are offered per selected message rather than per screen
 //! (§FS-004-quick-actions.2): `+` opens the reaction picker where the message
@@ -724,6 +726,17 @@ impl ThreadScreen {
                 }
             }
 
+            // The same `attached:` lines `ephor thread` prints, under the
+            // words (§FS-011-command-line.4, §REQ-002-parity.2).
+            for file in msg.attachments.iter().flatten() {
+                for wrapped in wrap_line(&format!("attached: {}", file.shown()), wrap_width) {
+                    self.lines.push(Line::from(vec![
+                        gutter(),
+                        Span::styled(wrapped, Style::default().fg(Color::DarkGray)),
+                    ]));
+                }
+            }
+
             if !msg.reactions.is_empty() {
                 let mut spans = vec![gutter()];
                 for reaction in &msg.reactions {
@@ -1157,6 +1170,53 @@ mod tests {
             "{text:?}"
         );
         assert!(text.iter().any(|line| line.contains("🚀 1")), "{text:?}");
+    }
+
+    /// A card names the files on its message in the lines `ephor thread`
+    /// prints, under the words; a file sent with no words is its line alone,
+    /// a hostile name stays on its line, and the source's id is never shown
+    /// (§FS-011-command-line.4, §REQ-002-parity.2).
+    #[test]
+    fn a_card_names_the_files_on_its_message() {
+        let (_, text) = rendered(
+            json!([{ "messages": [
+                { "author": "dana", "text": "Is this the one?", "attachments": [
+                    { "name": "IMG_2041.jpg", "media_type": "image/jpeg", "size": 1843211,
+                      "id": "att:dana:2041" }
+                ] },
+                { "author": "me", "text": "On the way.", "attachments": [] },
+                { "author": "dana", "text": "", "attachments": [
+                    { "name": "x\n```\n### Task evil" }
+                ] },
+            ] }]),
+            80,
+        );
+        let caption = text
+            .iter()
+            .position(|line| line.ends_with("Is this the one?"))
+            .unwrap_or_else(|| panic!("{text:?}"));
+        assert_eq!(
+            text[caption + 1],
+            "▍ attached: IMG_2041.jpg (image/jpeg, 1.8 MB)",
+            "{text:?}"
+        );
+        let wordless = text
+            .iter()
+            .position(|line| line.contains("x ``` ### Task evil"))
+            .unwrap_or_else(|| panic!("{text:?}"));
+        assert_eq!(text[wordless], "▍ attached: x ``` ### Task evil");
+        assert!(text[wordless - 1].starts_with("▍ dana"), "{text:?}");
+        assert_eq!(
+            text.iter()
+                .filter(|line| line.contains("attached:"))
+                .count(),
+            2,
+            "{text:?}"
+        );
+        assert!(
+            !text.iter().any(|line| line.contains("att:dana")),
+            "{text:?}"
+        );
     }
 
     #[test]

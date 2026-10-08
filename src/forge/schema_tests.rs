@@ -25,8 +25,8 @@ use chrono::{TimeZone, Utc};
 use serde_json::{json, Value};
 
 use super::{
-    Capabilities, Conversation, Issue, IssueDependency, Message, Notice, PullRequest, Reaction,
-    Reason, Review, Role, SubjectKind, Thread,
+    Attachment, Capabilities, Conversation, Issue, IssueDependency, Message, Notice, PullRequest,
+    Reaction, Reason, Review, Role, SubjectKind, Thread,
 };
 use crate::feed::gate::{Gate, RepoGate};
 
@@ -214,6 +214,12 @@ fn message() -> Message {
         react: json!({ "subject": "c1" }),
         task: json!({ "id": "t1", "state": "open" }),
         mine: false,
+        attachments: Some(vec![Attachment {
+            name: "IMG_2041.jpg".into(),
+            media_type: Some("image/jpeg".into()),
+            size: Some(1843211),
+            id: json!("att:dana:2041"),
+        }]),
     }
 }
 
@@ -376,6 +382,43 @@ fn a_key_the_schema_does_not_declare_is_caught() {
     object.remove("surprise");
     object.remove("threads");
     assert!(undeclared(&value, &schema).is_empty());
+}
+
+/// A file on a message the schema refuses is one the decode refuses, so a
+/// gateway author who validates against the schema is never refused for less
+/// at the interface; and a key neither knows is ignored by both, so the entry
+/// can grow (§FS-001-forge-interface.1).
+#[test]
+fn the_schema_and_the_type_refuse_the_same_files() {
+    let conversation = |file: &Value| {
+        json!({
+            "id": "c", "title": "t", "updated_at": "2026-10-01T09:12:00Z",
+            "threads": [{ "messages": [{ "author": "dana", "text": "", "attachments": [file] }] }]
+        })
+    };
+    for file in [
+        json!({}),
+        json!({ "size": 3 }),
+        json!({ "name": 7 }),
+        json!({ "name": "a", "size": -1 }),
+        json!({ "name": "a", "size": 1.5 }),
+        json!({ "name": "a", "media_type": 7 }),
+    ] {
+        let wire = conversation(&file);
+        assert!(
+            !violations(&wire, "conversation").is_empty(),
+            "the schema takes {file}"
+        );
+        assert!(
+            serde_json::from_value::<Conversation>(wire).is_err(),
+            "the type takes {file}"
+        );
+    }
+    let grown = conversation(&json!({ "name": "a", "thumbnail": "x" }));
+    assert!(violations(&grown, "conversation").is_empty());
+    let read: Conversation = serde_json::from_value(grown).expect("an unknown key is ignored");
+    let files = read.threads[0].messages[0].attachments.as_ref().unwrap();
+    assert_eq!(files[0].name, "a");
 }
 
 /// What the out-of-process transport actually sends and runs, recorded by an

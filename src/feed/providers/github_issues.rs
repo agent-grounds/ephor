@@ -467,6 +467,10 @@ fn message(node: &Value, login: &str, host: Option<&str>) -> Message {
         // GitHub tracks no task on an issue comment; a checklist there is
         // prose in the body, not something the forge holds a state for.
         task: Value::Null,
+        // GitHub puts an upload in the body as a link, which the text already
+        // carries, so it reports no list: not reported, rather than none
+        // (§FS-001-forge-interface.1).
+        attachments: None,
     }
 }
 

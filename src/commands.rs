@@ -623,6 +623,11 @@ pub fn thread(args: &ThreadArgs) -> Result<ExitCode> {
         for line in message.text.lines() {
             println!("    {line}");
         }
+        // Every file, each on its own line under the words; a file sent with
+        // no words is its line alone (§FS-011-command-line.4).
+        for file in message.attachments.iter().flatten() {
+            println!("    attached: {}", file.shown());
+        }
         for reaction in &message.reactions {
             println!(
                 "    {} {} ({})",

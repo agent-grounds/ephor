@@ -30,6 +30,10 @@ pub struct Message {
     pub reactions: Vec<views::Reaction>,
     pub react: Option<ReactTarget>,
     pub task: Option<Task>,
+    /// The files its source named on it, without the source's id: no move
+    /// hands a file back yet, so nothing here needs it
+    /// (§FS-011-command-line.4).
+    pub attachments: Option<Vec<views::Attachment>>,
 }
 
 /// The reply a run drafted, and where it would go (§FS-005-dispatch.13).
@@ -138,6 +142,7 @@ impl Conversation {
                         resolved: task.resolved,
                         source: task.source.clone(),
                     }),
+                    attachments: message.attachments.clone(),
                 })
                 .collect(),
             draft: self.draft.as_ref().map(|draft| views::Draft {
@@ -252,5 +257,7 @@ fn parse(thread: usize, value: &Value, source: &str) -> Message {
         reactions,
         react: react::parse_target(value, source),
         task: task::parse(value, source),
+        attachments: crate::matter::attachments_of(value)
+            .map(|files| files.iter().map(views::Attachment::from).collect()),
     }
 }

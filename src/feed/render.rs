@@ -182,6 +182,11 @@ pub fn render_item_line(
             title = format!("{title}  {}", style.dim(&format!("({breakdown})")));
         }
     }
+    // One token for the files the reader is waited on about, never their
+    // names: the conversation names them (§FS-007-matters.3).
+    if let Some(mark) = item.files_mark() {
+        title = format!("{title}  {mark}");
+    }
     if feed.is_stale(&item.source) {
         title = style.dim(&format!("{title} (stale)"));
     } else if item.needs_response {

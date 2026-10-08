@@ -69,6 +69,13 @@ pub const UNANSWERED: &str = "unanswered";
 /// and records no reason waits on its conversation.
 pub const AWAITS: &str = "awaits";
 
+/// The reserved key on one of `raw`'s threads that says that discussion awaits
+/// the reader, by the calculus of §FS-003-feed-categories.4. Written by the
+/// forge policy, which alone sees whose each message is, and read by the
+/// row's file mark, which counts only the discussions that wait
+/// (§FS-007-matters.3). Absent is a discussion that does not wait.
+pub const THREAD_AWAITS: &str = "awaits_reader";
+
 /// One reason a matter waits on the reader (§FS-005-dispatch.31.2): its
 /// conversation, or that it is an issue nobody holds.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
@@ -107,6 +114,21 @@ pub(crate) fn awaiting(needs_response: bool, raw: &Value) -> Vec<Awaiting> {
         reasons.push(Awaiting::Conversation);
     }
     reasons
+}
+
+/// A discussion's newest turn (§FS-007-matters.3): its last message together
+/// with the messages its author sent just before it, as a photo is followed
+/// by "is this the one?".
+pub fn newest_turn(messages: &[Value]) -> &[Value] {
+    let Some(last) = messages.last() else {
+        return messages;
+    };
+    let author = last.get("author");
+    let start = messages
+        .iter()
+        .rposition(|message| message.get("author") != author)
+        .map_or(0, |earlier| earlier + 1);
+    &messages[start..]
 }
 
 /// The original metadata overlay remains readable but is not evidence of
@@ -424,6 +446,34 @@ impl Item {
         awaiting(self.needs_response, &self.raw)
     }
 
+    /// The one mark a row shows of the files on its conversation, `📎N`
+    /// (§FS-007-matters.3): N is the number of files on the newest turn of
+    /// each discussion that awaits the reader, summed. Nothing while the row
+    /// does not wait, and nothing where those turns carry no file — a logo
+    /// on a mail already answered is nothing to do (§GOAL-002-glance).
+    pub fn files_mark(&self) -> Option<String> {
+        if !self.needs_response {
+            return None;
+        }
+        let files: usize = self
+            .raw
+            .get("threads")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+            .filter(|thread| thread.get(THREAD_AWAITS).and_then(Value::as_bool) == Some(true))
+            .filter_map(|thread| thread.get("messages").and_then(Value::as_array))
+            .flat_map(|messages| newest_turn(messages))
+            .map(|message| {
+                message
+                    .get("attachments")
+                    .and_then(Value::as_array)
+                    .map_or(0, Vec::len)
+            })
+            .sum();
+        (files > 0).then(|| format!("📎{files}"))
+    }
+
     /// The pull request or issue number, best effort: the digits after the
     /// last `#` (`github-prs:acme/widget#42`) or the last `/`
     /// (`forge-prs:repo/123`) of the id.
@@ -640,5 +690,70 @@ mod tests {
             serde_json::to_value(ItemKind::Task).unwrap(),
             serde_json::json!("task")
         );
+    }
+
+    /// The row's file mark counts the newest turn of each discussion that
+    /// awaits the reader, as one token whatever the number, and says nothing
+    /// once the row waits on nobody (§FS-007-matters.3).
+    #[test]
+    fn the_row_marks_the_files_on_the_newest_turn_of_each_waiting_discussion() {
+        use serde_json::json;
+        let files = |count: usize| {
+            json!((0..count)
+                .map(|n| json!({ "name": format!("f{n}") }))
+                .collect::<Vec<_>>())
+        };
+        let mut row = item(Some("open"), Utc::now());
+        row.needs_response = true;
+        row.raw = json!({ "threads": [
+            // Waiting: the newest turn is Dana's photo and her caption after
+            // it; her earlier file, before the reader's word, is not in it.
+            { THREAD_AWAITS: true, "messages": [
+                { "author": "dana", "text": "first", "attachments": files(5) },
+                { "author": "me", "text": "ok", "attachments": [] },
+                { "author": "dana", "text": "", "attachments": files(10) },
+                { "author": "dana", "text": "Is this the one?", "attachments": files(1) },
+                { "author": "dana", "text": "or this?" }
+            ] },
+            // Waiting, with a file on its one-message turn.
+            { THREAD_AWAITS: true, "messages": [
+                { "author": "eli", "text": "see attached", "attachments": files(1) }
+            ] },
+            // Not waiting: the reader's own file on their own last word.
+            { "messages": [
+                { "author": "fay", "text": "?" },
+                { "author": "me", "text": "here", "attachments": files(3) }
+            ] }
+        ] });
+        assert_eq!(row.files_mark().as_deref(), Some("📎12"));
+
+        let mut answered = row.clone();
+        answered.needs_response = false;
+        assert_eq!(answered.files_mark(), None);
+
+        let mut wordy = row.clone();
+        wordy.raw["threads"][0]["messages"][3]["attachments"] = json!([]);
+        wordy.raw["threads"][0]["messages"][2]
+            .as_object_mut()
+            .unwrap()
+            .remove("attachments");
+        wordy.raw["threads"][1]["messages"][0]
+            .as_object_mut()
+            .unwrap()
+            .remove("attachments");
+        assert_eq!(wordy.files_mark(), None, "no file on a waiting turn");
+    }
+
+    #[test]
+    fn a_turn_is_the_last_message_and_what_its_author_sent_just_before() {
+        use serde_json::json;
+        let said = |author: &str| json!({ "author": author, "text": "…" });
+        assert!(newest_turn(&[]).is_empty());
+        let one = [said("dana")];
+        assert_eq!(newest_turn(&one).len(), 1);
+        let messages = [said("dana"), said("me"), said("dana"), said("dana")];
+        assert_eq!(newest_turn(&messages), &messages[2..]);
+        let all = [said("dana"), said("dana")];
+        assert_eq!(newest_turn(&all).len(), 2);
     }
 }
