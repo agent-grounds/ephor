@@ -408,6 +408,24 @@ pub struct Draft {
     /// Bound target and refusal are additive machine facts (§FS-011-command-line.7).
     pub target: Option<Value>,
     pub stale_reason: Option<String>,
+    /// What moved in the bound thread since hand-off, where its binding
+    /// refuses the draft: the review, in the order of the conversation
+    /// (§FS-005-dispatch.13.2, §FS-011-command-line.7).
+    pub since: Vec<crate::replies::Since>,
+    /// The new draft a stale one offers, where its recipe still applies
+    /// (§FS-005-dispatch.13.2).
+    pub redraft: Option<Redraft>,
+    /// Why a stale draft offers no new draft, in so many words
+    /// (§FS-005-dispatch.13.2, §REQ-001-boundary.1).
+    pub redraft_refused: Option<String>,
+}
+
+/// §FS-005-dispatch.5's reopen under the recipe that laid a stale draft, as
+/// the command that asks for it (§FS-005-dispatch.13.2). Offered, never taken.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct Redraft {
+    pub recipe: String,
+    pub command: String,
 }
 
 /// The saved operation, separate from any edited or superseding proposal
@@ -577,6 +595,10 @@ pub struct Outcome {
     /// The tickets it opened, where it opened any.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub tickets: Vec<String>,
+    /// What moved under the draft it refused as stale: the draft's own review
+    /// (§FS-005-dispatch.13.2, §FS-011-command-line.7).
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub since: Vec<crate::replies::Since>,
 }
 
 impl Outcome {
@@ -588,6 +610,7 @@ impl Outcome {
             job: None,
             plan: None,
             tickets: Vec::new(),
+            since: Vec::new(),
         }
     }
 

@@ -54,6 +54,20 @@ pub fn threads(item: &Item) -> &[Value] {
         .unwrap_or(&[])
 }
 
+/// The last shown thread that can carry a reply: where typed words go
+/// (§FS-005-dispatch.13), and what the thread screen names before it sends
+/// them (§FS-005-dispatch.13.2).
+pub fn typed_thread(item: &Item) -> Option<(usize, &Value)> {
+    threads(item)
+        .iter()
+        .enumerate()
+        .filter(|(_, thread)| {
+            !fingerprints(thread).is_empty()
+                && crate::feed::reply::parse_target(thread, &item.source).is_some()
+        })
+        .next_back()
+}
+
 impl Binding {
     /// Last shown sendable thread, or last shown thread for copy-only work
     /// (§FS-005-dispatch.13). Typed sends subsequently require a descriptor.
@@ -65,20 +79,13 @@ impl Binding {
         path: PathBuf,
     ) -> Option<Self> {
         let shown = |thread: &&Value| !fingerprints(thread).is_empty();
-        let (index, thread) = threads(item)
-            .iter()
-            .enumerate()
-            .filter(|(_, thread)| {
-                shown(thread) && crate::feed::reply::parse_target(thread, &item.source).is_some()
-            })
-            .next_back()
-            .or_else(|| {
-                threads(item)
-                    .iter()
-                    .enumerate()
-                    .filter(|(_, thread)| shown(thread))
-                    .next_back()
-            })?;
+        let (index, thread) = typed_thread(item).or_else(|| {
+            threads(item)
+                .iter()
+                .enumerate()
+                .filter(|(_, thread)| shown(thread))
+                .next_back()
+        })?;
         let (config, context) = sources
             .find(&item.source)
             .map(|(config, context)| (config.clone(), context.to_string()))

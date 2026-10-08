@@ -44,6 +44,16 @@ pub struct Draft {
     pub target: Option<ReplyTarget>,
     pub binding: Option<crate::replies::Binding>,
     pub stale_reason: Option<String>,
+    /// Bound, and refused by its binding's freshness: the draft a review is
+    /// shown for and the two ways on are offered at (§FS-005-dispatch.13.2).
+    pub stale: bool,
+    /// What moved in the bound thread since hand-off (§FS-005-dispatch.13.2).
+    pub since: Vec<crate::replies::Since>,
+    /// The new draft a stale one offers, or why none is. Set by
+    /// [`Session::conversation`](super::Session::conversation), which holds
+    /// the recipes (§FS-005-dispatch.13.2).
+    pub redraft: Option<views::Redraft>,
+    pub redraft_refused: Option<String>,
 }
 
 /// A matter's whole conversation: every message in order, and the draft
@@ -54,6 +64,10 @@ pub struct Conversation {
     pub pending_reply: Option<views::PendingReply>,
     pub reply_error: Option<String>,
     pub reply_diagnostics: Vec<String>,
+    /// The thread a typed reply would go to and its target, where one can
+    /// carry it: what the screen names before it sends the person's own words
+    /// (§FS-005-dispatch.13.2).
+    pub reply_to: Option<(usize, Value)>,
     /// Its source declared it can settle the conversation at its source, so
     /// `s` is offered on it (§FS-004-quick-actions.2). Set by
     /// [`Session::conversation`](super::Session::conversation), which holds
@@ -115,6 +129,8 @@ impl Conversation {
             pending_reply,
             reply_error,
             reply_diagnostics: crate::replies::Store::recovery().diagnostics,
+            reply_to: crate::replies::binding::typed_thread(item)
+                .map(|(index, thread)| (index, thread["reply"].clone())),
             settles: false,
         }
     }
@@ -158,6 +174,9 @@ impl Conversation {
                     .as_ref()
                     .and_then(|binding| binding.target.clone()),
                 stale_reason: draft.stale_reason.clone(),
+                since: draft.since.clone(),
+                redraft: draft.redraft.clone(),
+                redraft_refused: draft.redraft_refused.clone(),
             }),
             pending_reply: self.pending_reply.clone(),
             reply_error: self.reply_error.clone(),
@@ -194,12 +213,21 @@ fn draft_of(
         .as_ref()
         .map(|binding| binding.thread)
         .unwrap_or(thread);
-    let stale_reason = match &proposal.binding {
-        Some(binding) => binding.freshness(item, record).err(),
-        None => {
-            Some("This draft is unbound: copy or edit it, type words or request a new draft".into())
-        }
+    // The review explains what freshness refused, and only that
+    // (§FS-005-dispatch.13.2).
+    let (stale_reason, since) = match &proposal.binding {
+        Some(binding) => match binding.freshness(item, record) {
+            Ok(()) => (None, Vec::new()),
+            Err(reason) => (Some(reason), binding.review(item, record)),
+        },
+        None => (
+            Some(
+                "This draft is unbound: copy or edit it, type words or request a new draft".into(),
+            ),
+            Vec::new(),
+        ),
     };
+    let stale = proposal.binding.is_some() && stale_reason.is_some();
     let target = proposal
         .binding
         .as_ref()
@@ -211,6 +239,10 @@ fn draft_of(
         thread,
         binding: proposal.binding,
         stale_reason,
+        stale,
+        since,
+        redraft: None,
+        redraft_refused: None,
     }
 }
 
