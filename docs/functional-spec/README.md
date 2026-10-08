@@ -23,6 +23,7 @@ Behavior and requirements, one declaration per file. Each H1 declares an
 | [FS-015-spend-ceiling](FS-015-spend-ceiling.md) | what unattended work may spend is the person's number, and the sweep stops at it |
 | [FS-016-browser-opening](FS-016-browser-opening.md) | a browser action reaches the reader or leaves the address with them |
 | [FS-017-clean](FS-017-clean.md) | an idle checkout gives back what its builds took, through the project's own verb |
+| [FS-018-private-sources](FS-018-private-sources.md) | a source the person declares private keeps its work theirs |
 | [§FS-001-forge-interface](FS-001-forge-interface.md#fs-001-forge-interface-ephor-reaches-every-forge-and-issue-tracker-through-one-provider-interface) | ephor reaches every forge and issue tracker through one provider interface |
 | [§FS-002-release](FS-002-release.md#fs-002-release-ephor-releases-from-a-tag-and-the-release-writes-its-changelog-from-the-pull-requests-it-ships) | ephor releases from a tag, and the release writes its changelog from the pull requests it ships |
 | [§FS-003-feed-categories](FS-003-feed-categories.md#fs-003-feed-categories-the-feed-sorts-itself-into-categories-and-finished-work-lands-in-recent) | the feed sorts itself into categories, and finished work lands in Recent |
@@ -40,6 +41,7 @@ Behavior and requirements, one declaration per file. Each H1 declares an
 | [§FS-015-spend-ceiling](FS-015-spend-ceiling.md#fs-015-spend-ceiling-what-unattended-work-may-spend-is-the-persons-number-and-the-sweep-stops-at-it) | what unattended work may spend is the person's number, and the sweep stops at it |
 | [§FS-016-browser-opening](FS-016-browser-opening.md#fs-016-browser-opening-a-browser-action-reaches-the-reader-or-leaves-the-address-with-them) | a browser action reaches the reader or leaves the address with them |
 | [§FS-017-clean](FS-017-clean.md#fs-017-clean-an-idle-checkout-gives-back-what-its-builds-took-through-the-projects-own-verb) | an idle checkout gives back what its builds took, through the project's own verb |
+| [§FS-018-private-sources](FS-018-private-sources.md#fs-018-private-sources-a-source-the-person-declares-private-keeps-its-work-theirs) | a source the person declares private keeps its work theirs |
 
 This index is navigational — citations should target the declaration's ID
 directly, never this file.

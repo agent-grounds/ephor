@@ -250,6 +250,10 @@ name = "e2e_055_a_row_is_a_sources_fallback_home"
 path = "tests/e2e/cases/E2E-055-a-row-is-a-sources-fallback-home.rs"
 
 [[test]]
+name = "e2e_056_a_private_source_stays_the_persons"
+path = "tests/e2e/cases/E2E-056-a-private-source-stays-the-persons.rs"
+
+[[test]]
 name = "checkout_test"
 path = "tests/integration/checkout_test.rs"
 

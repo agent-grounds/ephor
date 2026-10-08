@@ -699,6 +699,18 @@ because a path is one answer and a half-overridden one is nobody's. Ad-hoc
 `work ask` has no entry or recipe override and continues through the three
 configuration tiers.
 
+**A private matter climbs no ladder.** Where the site lists the source that
+reported the matter in `work.private.sources` ([§FS-018-private-sources.1](FS-018-private-sources.md#1-the-site-lists-private-sources)),
+`work.private.root` is the first rung and answers alone: no entry, recipe,
+project, organization or site root is consulted, and `work ask`, which has no
+override of its own, reaches it exactly as a recipe's dispatch does. It is
+rendered from the same vocabulary and refused on the same names as any other
+root. Two refusals are its own, each said by name before anything is written:
+a listed source with no `work.private.root` declared, and a root that renders
+inside the project's registry root, which holds the project's checkouts and its
+own work root ([§FS-018-private-sources.2](FS-018-private-sources.md#2-the-private-root-answers-first-and-alone)). Every other matter climbs the ladder
+above, unchanged.
+
 **Narrowest-wins is the root's own reading and does not carry across the block
 it is written in.** `organizations.<org-id>.work.recipes` sits beside
 `organizations.<org-id>.work.root` and is read in the opposite direction: a
@@ -1120,6 +1132,15 @@ declares reply ([§FS-007-matters.4](FS-007-matters.md#4-a-channel-says-what-it-
 posting, edited or as it stands, exactly as a reaction is posted today; on
 a channel that does not, the proposal is what the person copies — a stated
 degrade ([§REQ-001-boundary.1](../requirements/REQ-001-boundary.md#1-the-anatomy)), not a failure.
+
+**A private matter's answer is written in the person's root.** Where the site
+lists the matter's source as private ([§FS-018-private-sources](FS-018-private-sources.md#fs-018-private-sources-a-source-the-person-declares-private-keeps-its-work-theirs)), its plan,
+results, logs and proposal are written under the private root even where a
+branch workspace exists ([§FS-005-dispatch.6.1](FS-005-dispatch.md#61-the-work-root-is-a-template-and-it-may-reach-above-the-project)). Its run still starts from the
+checkout the matter resolves to, as every run does, so the answer still reads
+the change. Ephor writes nothing into that checkout, and the one-run-per-checkout
+guard counts the run, because it is an agent in that tree
+([§FS-005-dispatch.24](FS-005-dispatch.md#24-work-nobody-has-to-start-starts-itself)).
 
 **A proposal answers the conversation captured at hand-off.** The request's
 binding selects the last shown reply-capable thread, or the last shown thread
@@ -2417,6 +2438,19 @@ over — a recipe, or an entry that lays a workflow down
 nowhere else, because the reader who trusts one kind of work to start itself
 has said nothing about the rest.
 
+**Nothing about a private matter autoruns at all.** Where the site lists the
+source that reported a matter as private, no sweep writes work on it or starts
+work about it, whatever its recipe or entry asked and whoever typed the sweep
+([§FS-018-private-sources.3](FS-018-private-sources.md#3-only-a-named-move-writes-or-starts-work-on-a-private-matter)). `work sync` and a `work dispatch` without `--item`
+pass the matter over, and so does the sweep a `work dispatch --item` runs after
+it has written. A root whose every would-be-due ticket is about a private
+matter is passed over with the hold `private`
+([§FS-005-dispatch.24.2](FS-005-dispatch.md#242-a-passed-over-row-names-its-hold-as-data)). Whose a ticket is,
+is read off the ticket — the source it records about its matter
+([§FS-005-dispatch.8](FS-005-dispatch.md#8-the-ticket-carries-the-item-as-data-not-only-as-prose)) — so a ticket
+laid before its source was listed is held too. The person's key is untouched:
+`work run --item` and the run key start that work as they start any other.
+
 **Starting is a sweep, and the sweep reads the world.** What starts a run is
 not a memory of having dispatched something — that would be the ledger
 deciding what exists, which is the one thing it never does
@@ -2836,7 +2870,8 @@ or excluded root is never a candidate, so it consumes no slot, frees none, and
 counts toward no ceiling; an excluded root whose own run is **live** still counts
 live, because capacity is live work and not attempts. And a root two of these
 would refuse is refused once, by the first: a live run of its own is silent as
-ever, then the reader's `--except`, then a root waiting on a person
+ever, then a root whose due work is all private, which no sweep can lift
+([§FS-018-private-sources.3](FS-018-private-sources.md#3-only-a-named-move-writes-or-starts-work-on-a-private-matter)), then the reader's `--except`, then a root waiting on a person
 ([§FS-005-dispatch.24.3](FS-005-dispatch.md#243-a-root-waiting-on-a-person-is-passed-over-not-started)), then the no-advance rest, then a tree another
 root's run holds, then the pools, then the ceilings — one row, one reason, first
 match.
@@ -2872,7 +2907,8 @@ the line that says so and by nothing else. The marker appears once per root
 that started, and on no root that did not.
 
 **Both non-starts are bound, not only the ceiling's.** A root passed over is
-announced as passed over — whether a full ceiling refused it, the reader's own
+announced as passed over — whether a full ceiling refused it, its due work is
+all about private matters ([§FS-018-private-sources.3](FS-018-private-sources.md#3-only-a-named-move-writes-or-starts-work-on-a-private-matter)), the reader's own
 `--except` named it, it waits on a person
 ([§FS-005-dispatch.24.3](FS-005-dispatch.md#243-a-root-waiting-on-a-person-is-passed-over-not-started)),
 the last run there having advanced nothing rested it,
@@ -2922,6 +2958,14 @@ carries no `hold`.
 The kinds, in the order the sweep asks them ([§FS-005-dispatch.24](FS-005-dispatch.md#24-work-nobody-has-to-start-starts-itself)), and what
 each one carries beside its `kind`:
 
+- `private` — every ticket that would have made the root due is about a matter
+  whose source the site lists as private, and no sweep starts work on one
+  ([§FS-018-private-sources.3](FS-018-private-sources.md#3-only-a-named-move-writes-or-starts-work-on-a-private-matter)). `source` is that source, as the site lists it,
+  and `tickets` each ticket the hold keeps, with the state it sits in, in the
+  shape `person` gives them, so the key reads one way whatever the kind. It is
+  asked first because nothing a sweep could wait for lifts it. The same kind, with `source` and without `tickets`, is the hold
+  on a `passed-over` row of `work sync` and of a `work dispatch` without
+  `--item`, about the one matter that row would have written work on.
 - `excluded` — the reader's `--except` named the root. `except` is the value
   the reader gave, as they gave it.
 - `person` — the root waits on a person: every ticket that would have made it
@@ -2961,7 +3005,7 @@ come to depend on each of them.
 
 **The vocabulary is open.** The kinds above are the ones there are today, and
 a kind may be added without that being a breaking change — `person` was the
-first one added after the field shipped. So a caller reads a
+first one added after the field shipped, and `private` the second. So a caller reads a
 `kind` it does not recognise as *not startable*, never as *startable*: the safe
 reading of a hold one does not understand is that it holds.
 
@@ -2979,11 +3023,12 @@ here.
 
 **The gated report holds less.** A sweep at a width that is gated reports
 rather than acts ([§FS-011-command-line.10](FS-011-command-line.md#10-a-mutating-verb-above-one-project-reports-and-acts-under---act)), and what it asks before it
-reports is the reader's `--except`, a root waiting on a person, and the
-no-advance rest — the holds that need no capacity read. Its `passed-over` rows
-carry `hold` exactly as an acting sweep's do, and can only carry `excluded`,
-`person`, `rested` or `stopped`. A gated `would-run` therefore does not say that
-nothing holds the root; it says that none of those four does.
+reports is whether the due work is all private, the reader's `--except`, a root
+waiting on a person, and the no-advance rest — the holds that need no capacity
+read. Its `passed-over` rows carry `hold` exactly as an acting sweep's do, and
+can only carry `private`, `excluded`, `person`, `rested` or `stopped`. A gated
+`would-run` therefore does not say that nothing holds the root; it says that
+none of those five does.
 
 The published `work-run` shape declares `hold` in the same change, with its
 kinds named in its description rather than closed in an enumeration, so the
