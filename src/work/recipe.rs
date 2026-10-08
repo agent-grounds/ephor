@@ -1980,6 +1980,7 @@ mod tests {
             react: Value::Null,
             task: Value::Null,
             mine,
+            attachments: None,
         }
     }
 

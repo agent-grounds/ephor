@@ -338,6 +338,47 @@ pub struct Message {
     /// (§FS-004-quick-actions.5).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub task: Option<MessageTask>,
+    /// The files its source named on it (§FS-011-command-line.4). No key is a
+    /// source that did not report files, `[]` one that reported none.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub attachments: Option<Vec<Attachment>>,
+}
+
+/// A file on a message as a reading carries it (§FS-011-command-line.4):
+/// everything the source said about it but its id, which is the source's to
+/// be handed back, just as a reading carries `can_react` rather than the
+/// descriptor a reaction is posted with. The name is as the source wrote it;
+/// [`Attachment::shown`] is the one line a person reads.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct Attachment {
+    pub name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub media_type: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub size: Option<u64>,
+}
+
+impl Attachment {
+    /// `IMG_2041.jpg (image/jpeg, 1.8 MB)`, on one line whatever the name
+    /// holds (§FS-011-command-line.4).
+    pub fn shown(&self) -> String {
+        crate::matter::shown_file(
+            &self.name,
+            self.media_type.as_deref(),
+            self.size,
+            usize::MAX,
+        )
+    }
+}
+
+impl From<&crate::matter::Attachment> for Attachment {
+    fn from(file: &crate::matter::Attachment) -> Self {
+        Attachment {
+            name: file.name.clone(),
+            media_type: file.media_type.clone(),
+            size: file.size,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize)]

@@ -214,6 +214,141 @@ pub fn task_resolved(task: &Value) -> bool {
         .is_some_and(|state| state.eq_ignore_ascii_case("resolved"))
 }
 
+/// A file a source named on a message, as metadata and never as contents
+/// (§FS-001-forge-interface.1). The one type every layer carries it in — the
+/// forge's answer, the matter, the cache and the project envelope — so that
+/// what a source may say about a file is decided once (§AR-006-matters.1).
+///
+/// The name is required and the rest are optional: a mail part or a chat
+/// upload does not always say its type or size. Decoding refuses an entry
+/// with no name or a size that is not a count of bytes, and ignores any key
+/// beyond these four.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Attachment {
+    pub name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub media_type: Option<String>,
+    /// In bytes.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub size: Option<u64>,
+    /// The source's own descriptor for the file, which ephor never reads and
+    /// would hand back verbatim, as it does `react`. It rides in what the
+    /// source reported and in no reading (§FS-011-command-line.4) and no
+    /// dossier (§FS-005-dispatch.2).
+    #[serde(default, skip_serializing_if = "Value::is_null")]
+    pub id: Value,
+}
+
+impl Attachment {
+    /// The file as a person reads it, `IMG_2041.jpg (image/jpeg, 1.8 MB)`
+    /// (§FS-011-command-line.4).
+    pub fn shown(&self) -> String {
+        shown_file(
+            &self.name,
+            self.media_type.as_deref(),
+            self.size,
+            usize::MAX,
+        )
+    }
+
+    /// The same, with a name longer than `limit` characters cut to its first
+    /// `limit` and `…`, as the dossier bounds it (§FS-005-dispatch.2).
+    pub fn shown_within(&self, limit: usize) -> String {
+        shown_file(&self.name, self.media_type.as_deref(), self.size, limit)
+    }
+}
+
+/// The files a reported message carries, read off the source's report
+/// (§AR-006-matters.1). `None` where the message carries no list, which is a
+/// source that did not report files, and never collapsed into `Some(vec![])`,
+/// which is one that reported none (§FS-001-forge-interface.1). The report was
+/// written from a decoded answer, so an entry that does not read is one no
+/// source sent and is skipped rather than guessed at.
+pub fn attachments_of(message: &Value) -> Option<Vec<Attachment>> {
+    let list = message.get("attachments")?.as_array()?;
+    Some(
+        list.iter()
+            .filter_map(|entry| serde_json::from_value(entry.clone()).ok())
+            .collect(),
+    )
+}
+
+/// One file on one line, the way every surface a person reads writes it
+/// (§FS-011-command-line.4): the name, then the type and the size where the
+/// source gave them. The name is cut to `limit` characters and `…`
+/// (§FS-005-dispatch.2); `usize::MAX` cuts nothing.
+pub fn shown_file(name: &str, media_type: Option<&str>, size: Option<u64>, limit: usize) -> String {
+    let mut name = shown_file_name(name);
+    if name.chars().count() > limit {
+        name = name.chars().take(limit).collect::<String>() + "…";
+    }
+    // The type is the source's word as much as the name is, so it is held to
+    // the same one line (§FS-005-dispatch.3.2).
+    let details: Vec<String> = media_type
+        .map(one_line_of)
+        .filter(|media_type| !media_type.is_empty())
+        .into_iter()
+        .chain(size.map(shown_file_size))
+        .collect();
+    if details.is_empty() {
+        name
+    } else {
+        format!("{name} ({})", details.join(", "))
+    }
+}
+
+/// A file's name as a person is shown it (§FS-011-command-line.4). The name is
+/// the source's and is not trusted: every run of whitespace, newlines
+/// included, becomes one space and control characters are dropped, so it
+/// stays on its line and cannot close a fence or stand as a heading
+/// (§FS-005-dispatch.3.2). An empty name reads `unnamed file`.
+pub fn shown_file_name(name: &str) -> String {
+    let name = one_line_of(name);
+    if name.is_empty() {
+        "unnamed file".to_string()
+    } else {
+        name
+    }
+}
+
+fn one_line_of(text: &str) -> String {
+    text.chars()
+        .map(|character| {
+            if character.is_whitespace() {
+                ' '
+            } else {
+                character
+            }
+        })
+        .filter(|character| !character.is_control())
+        .collect::<String>()
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+/// A size in decimal units, with one decimal place below ten: `512 B`,
+/// `15 kB`, `1.8 MB` (§FS-011-command-line.4). A value that rounds up to the
+/// next unit is written in it, so `999 600` bytes reads `1.0 MB` rather than
+/// `1000 kB`.
+pub fn shown_file_size(bytes: u64) -> String {
+    const UNITS: [&str; 6] = ["kB", "MB", "GB", "TB", "PB", "EB"];
+    if bytes < 1000 {
+        return format!("{bytes} B");
+    }
+    let mut value = bytes as f64;
+    for (index, unit) in UNITS.iter().enumerate() {
+        value /= 1000.0;
+        if (value * 10.0).round() < 100.0 {
+            return format!("{value:.1} {unit}");
+        }
+        if value.round() < 1000.0 || index == UNITS.len() - 1 {
+            return format!("{value:.0} {unit}");
+        }
+    }
+    unreachable!("the last unit always answers")
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Message {
     pub author: String,
@@ -230,6 +365,13 @@ pub struct Message {
     /// target, a resolve descriptor. Opaque above the source that wrote it.
     #[serde(default, skip_serializing_if = "Value::is_null")]
     pub react: Value,
+    /// The files the source named on it (§AR-006-matters.1). Absent stays
+    /// distinct from empty here and in the cache: `None` is a source that did
+    /// not report files, `Some(vec![])` one that reported none, and a cache
+    /// written before the field existed reads as `None` until the next refresh
+    /// (§AR-006-matters.4).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub attachments: Option<Vec<Attachment>>,
 }
 
 /// Ordered messages within one channel (§FS-007-matters.3). Whether a
@@ -1117,6 +1259,7 @@ fn message_of(message: &Value) -> Message {
                 target: task.clone(),
             }),
         react: message.get("react").cloned().unwrap_or(Value::Null),
+        attachments: attachments_of(message),
     }
 }
 
@@ -1146,6 +1289,10 @@ fn digest(text: &str) -> String {
     }
     format!("{hash:016x}")
 }
+
+#[cfg(test)]
+#[path = "matter_attachments_tests.rs"]
+mod attachments_tests;
 
 #[cfg(test)]
 mod tests {

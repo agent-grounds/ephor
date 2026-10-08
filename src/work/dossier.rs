@@ -17,6 +17,7 @@ use crate::branches::{Checkout, Organization, WorkspaceState};
 use crate::feed::gate::Gate;
 use crate::feed::model::{Awaiting, Item};
 use crate::fence::fence_for;
+use crate::matter::{attachments_of, Attachment};
 use crate::work::recipe::Recipe;
 
 /// How much conversation a ticket quotes (§FS-005-dispatch.2). A transcript is
@@ -27,6 +28,10 @@ const MESSAGE_CHARS: usize = 1600;
 /// What every thread keeps before any thread gets a second helping, so no
 /// thread is dropped whole for having been last.
 const RESERVED_PER_THREAD: usize = 2;
+/// How many files one quoted message names, and how much of each name: the
+/// files are bounded with the messages they are on (§FS-005-dispatch.2).
+const FILES_NAMED: usize = 5;
+const FILE_NAME_CHARS: usize = 120;
 
 /// One item, with where its work belongs — everything both the dossier and a
 /// recipe's brief are rendered from.
@@ -794,16 +799,21 @@ fn render_gate(gate: &Gate) -> String {
     out
 }
 
-/// A message as a provider recorded it.
+/// A message as a provider recorded it, with the files its source named on
+/// it (§FS-005-dispatch.2).
 struct Message {
     author: String,
     when: String,
     text: String,
+    files: Vec<Attachment>,
 }
 
 struct Thread {
     messages: Vec<Message>,
     total: usize,
+    /// The files on the messages not quoted, which the line that counts those
+    /// messages counts too (§FS-005-dispatch.2).
+    dropped_files: usize,
 }
 
 fn threads_of(item: &Item) -> Vec<Thread> {
@@ -857,17 +867,21 @@ fn threads_of(item: &Item) -> Vec<Thread> {
             let messages = thread.get("messages").and_then(Value::as_array)?;
             // The end of a thread is what is being answered, so a thread that
             // does not fit keeps its last messages rather than its first.
-            let kept = messages[messages.len() - keep..]
+            let (dropped, kept) = messages.split_at(messages.len() - keep);
+            let files = |message: &Value| attachments_of(message).unwrap_or_default();
+            let kept = kept
                 .iter()
                 .map(|message| Message {
                     author: string_at(message, "author"),
                     when: string_at(message, "when"),
                     text: string_at(message, "text"),
+                    files: files(message),
                 })
                 .collect();
             Some(Thread {
                 messages: kept,
                 total: messages.len(),
+                dropped_files: dropped.iter().map(|message| files(message).len()).sum(),
             })
         })
         .collect()
@@ -896,6 +910,7 @@ fn render_threads(threads: &[Thread], url: Option<&str>) -> String {
         .iter()
         .map(|thread| thread.total - thread.messages.len())
         .sum();
+    let dropped_files: usize = threads.iter().map(|thread| thread.dropped_files).sum();
     let shown = threads.iter().filter(|thread| !thread.messages.is_empty());
     let labelled = shown.clone().count() > 1;
     for (index, thread) in shown.enumerate() {
@@ -917,14 +932,26 @@ fn render_threads(threads: &[Thread], url: Option<&str>) -> String {
                     format!(" · {when}")
                 }
             ));
-            out.push_str(&fenced(&clamp(&message.text, MESSAGE_CHARS)));
-            out.push('\n');
+            // A file sent with no words is quoted as its line alone: an
+            // empty fence above it would say nothing (§FS-005-dispatch.2).
+            if !message.text.trim().is_empty() || message.files.is_empty() {
+                out.push_str(&fenced(&clamp(&message.text, MESSAGE_CHARS)));
+                out.push('\n');
+            }
+            if let Some(line) = files_line(&message.files) {
+                out.push_str(&format!("{line}\n\n"));
+            }
         }
     }
     if dropped > 0 {
         out.push_str(&format!(
-            "_{dropped} earlier message{} not quoted{}._\n",
+            "_{dropped} earlier message{} not quoted{}{}._\n",
             if dropped == 1 { "" } else { "s" },
+            match dropped_files {
+                0 => String::new(),
+                1 => ", with 1 file on them".to_string(),
+                files => format!(", with {files} files on them"),
+            },
             match url {
                 Some(url) => format!("; the whole conversation is at {url}"),
                 None => String::new(),
@@ -932,6 +959,31 @@ fn render_threads(threads: &[Thread], url: Option<&str>) -> String {
         ));
     }
     out
+}
+
+/// The files on a quoted message, named on one line in ephor's own words and
+/// outside the message's fence (§FS-005-dispatch.2). Each is written as
+/// `ephor thread` writes it, so no name can open a fence or stand as a heading
+/// (§FS-005-dispatch.3.2); the source's id for a file is never written, since
+/// it may be a link a run could follow. No line where no file was reported.
+fn files_line(files: &[Attachment]) -> Option<String> {
+    if files.is_empty() {
+        return None;
+    }
+    let named: Vec<String> = files
+        .iter()
+        .take(FILES_NAMED)
+        .map(|file| file.shown_within(FILE_NAME_CHARS))
+        .collect();
+    let more = match files.len().saturating_sub(FILES_NAMED) {
+        0 => String::new(),
+        1 => " and 1 more file".to_string(),
+        more => format!(" and {more} more files"),
+    };
+    Some(format!(
+        "Attached, contents not included: {}{more}",
+        named.join(", ")
+    ))
 }
 
 /// A message body, fenced so that nothing inside it can be read as structure.
@@ -1243,6 +1295,95 @@ mod tests {
         let fences: Vec<&str> = text.lines().filter(|line| line.starts_with('`')).collect();
         assert_eq!(fences.first(), Some(&"````"), "{text}");
         assert_eq!(fences.last(), Some(&"````"), "{text}");
+    }
+
+    /// A file is named under its message, outside the fence, in ephor's words;
+    /// the source's id never reaches the dossier, and a message that is only
+    /// a file is quoted as that line alone (§FS-005-dispatch.2).
+    #[test]
+    fn a_file_is_named_under_its_message_and_its_id_is_left_out() {
+        let text = dossier(json!({ "threads": [{ "messages": [
+            { "author": "dana", "text": "is this the one?", "attachments": [
+                { "name": "IMG_2041.jpg", "media_type": "image/jpeg", "size": 1_843_211,
+                  "id": "https://files.example/att/2041" }
+            ] },
+            { "author": "dana", "text": " ", "attachments": [{ "name": "scan.pdf" }] },
+            { "author": "dana", "text": "and?", "attachments": [] },
+        ] }] }));
+        assert!(
+            text.contains(
+                "is this the one?\n```\n\nAttached, contents not included: \
+                 IMG_2041.jpg (image/jpeg, 1.8 MB)\n\n"
+            ),
+            "{text}"
+        );
+        assert!(!text.contains("files.example"), "{text}");
+        // The file with no words stands alone under its header.
+        assert!(
+            text.contains("**dana**\n\nAttached, contents not included: scan.pdf\n"),
+            "{text}"
+        );
+        assert_eq!(text.matches("Attached").count(), 2, "{text}");
+    }
+
+    /// The line names five files and counts the rest, and a long name is cut,
+    /// so a message carrying a hundred files is still one bounded line
+    /// (§FS-005-dispatch.2).
+    #[test]
+    fn the_files_line_is_bounded() {
+        let files: Vec<Value> = (1..=8)
+            .map(|index| json!({ "name": format!("f{index}.png") }))
+            .collect();
+        let long = "n".repeat(130);
+        let text = dossier(json!({ "threads": [{ "messages": [
+            { "author": "dana", "text": "all of them", "attachments": files },
+            { "author": "dana", "text": "and this", "attachments": [
+                { "name": long }, { "name": "g.png" }
+            ] },
+        ] }] }));
+        assert!(
+            text.contains(
+                "Attached, contents not included: \
+                 f1.png, f2.png, f3.png, f4.png, f5.png and 3 more files\n"
+            ),
+            "{text}"
+        );
+        assert!(!text.contains("f6.png"), "{text}");
+        let cut = format!(
+            "Attached, contents not included: {}…, g.png\n",
+            "n".repeat(120)
+        );
+        assert!(text.contains(&cut), "{text}");
+    }
+
+    /// The files on the messages left out are counted with them
+    /// (§FS-005-dispatch.2).
+    #[test]
+    fn the_files_on_the_messages_not_quoted_are_counted() {
+        let message = |index: usize| {
+            let files = if index % 10 == 0 {
+                json!([{ "name": "a" }, { "name": "b" }])
+            } else {
+                json!([])
+            };
+            json!({ "author": "bot", "text": format!("message {index}"), "attachments": files })
+        };
+        let text = dossier(json!({
+            "threads": [{ "messages": (0..30).map(message).collect::<Vec<_>>() }]
+        }));
+        assert!(
+            text.contains("_22 earlier messages not quoted, with 6 files on them; the whole"),
+            "{text}"
+        );
+        let text = dossier(json!({
+            "threads": [{ "messages": (1..31).map(|index| json!({
+                "author": "bot", "text": format!("message {index}")
+            })).collect::<Vec<_>>() }]
+        }));
+        assert!(
+            text.contains("_22 earlier messages not quoted; the whole"),
+            "{text}"
+        );
     }
 
     fn organization(id: &str, root: Option<&str>) -> Organization {

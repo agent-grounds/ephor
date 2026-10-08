@@ -186,6 +186,19 @@
             "resolved": { "type": "boolean" },
             "source": { "type": "string" }
           }
+        },
+        "attachments": {
+          "type": "array",
+          "description": "The files its source named on it, as metadata; no file is fetched (FS-011-command-line.4). Absent: the source did not report files. An empty list: it reported none. The source's own id for a file is not carried here — it is the source's to be handed back, and rides only in what the source reported.",
+          "items": {
+            "type": "object",
+            "required": ["name"],
+            "properties": {
+              "name": { "type": "string", "description": "As the source wrote it. The text reading puts it on one line." },
+              "media_type": { "type": "string" },
+              "size": { "type": "integer", "minimum": 0, "description": "In bytes." }
+            }
+          }
         }
       }
     },

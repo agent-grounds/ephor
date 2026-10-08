@@ -142,8 +142,26 @@
         },
         "react": {
           "description": "Present where the venue can take a reaction on this message: the source's own descriptor for it, handed back verbatim when the person reacts (FS-001-forge-interface.1). Absent: the message is display-only."
+        },
+        "attachments": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/attachment" },
+          "description": "The files on this message, as metadata: ephor fetches none of them (FS-001-forge-interface.1). Absent: the source does not report files. An empty list: it reported none. Which files count is the source's call — a logo drawn into a mail's signature is not a file sent."
         }
       }
+    },
+    "attachment": {
+      "type": "object",
+      "required": ["name"],
+      "properties": {
+        "name": { "type": "string", "description": "The file's name as the source has it. Shown on one line wherever a person reads it." },
+        "media_type": { "type": "string", "description": "Its media type, where the source knows it, e.g. image/jpeg." },
+        "size": { "type": "integer", "minimum": 0, "description": "Its size in bytes, where the source knows it." },
+        "id": {
+          "description": "The source's own descriptor for the file, where it could hand the file back: ephor never reads it and would hand it back verbatim, as it does `react`. It is kept in the source's report and is in no reading and no dossier."
+        }
+      },
+      "description": "One file on a message (FS-001-forge-interface.1). Keys beyond these are ignored, so the entry can grow."
     },
     "task": {
       "type": "object",

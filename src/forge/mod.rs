@@ -23,6 +23,10 @@ use crate::feed::gate::{Failure, Gate, Scope};
 use crate::feed::model::ItemRole;
 use crate::feed::provider::{ProviderContext, ProviderError};
 
+/// A file on a message is one type from the wire to the cache
+/// (§AR-006-matters.1).
+pub use crate::matter::Attachment;
+
 /// What an implementation answers. Anything it does not declare is simply
 /// absent from the feed rather than an error, so a forge that has no gate or
 /// no issue tracker is a first-class implementation.
@@ -239,6 +243,13 @@ pub struct Message {
     /// and policy stays identity-agnostic (§FS-001-forge-interface.3).
     #[serde(default)]
     pub mine: bool,
+    /// The files on it, as metadata (§FS-001-forge-interface.1). `None` is an
+    /// implementation that did not report files and `Some(vec![])` one that
+    /// reported none; an entry with no name or a negative size fails the
+    /// decode like any other malformed field (§FS-001-forge-interface.6).
+    /// Which files count is the implementation's call, as `mine` is.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub attachments: Option<Vec<Attachment>>,
 }
 
 impl Message {
@@ -751,6 +762,114 @@ mod tests {
                 .unwrap();
         assert!(some.pull_requests && some.gate && some.review);
         assert!(!some.issues && !some.reactions);
+    }
+
+    /// A message may carry the files on it (§FS-001-forge-interface.1): no
+    /// list is "not reported", `[]` is "none", and an entry needs a name and
+    /// nothing else. A key the entry carries beyond its four is ignored, so
+    /// the entry can grow.
+    #[test]
+    fn the_files_on_a_message_decode_and_keep_not_reported_apart_from_none() {
+        let thread: Thread = serde_json::from_value(json!({ "messages": [
+            { "author": "dana", "text": "Did the hinges come?" },
+            { "author": "me", "text": "On the way.", "attachments": [] },
+            { "author": "dana", "text": "Is this the one?", "attachments": [
+                { "name": "IMG_2041.jpg", "media_type": "image/jpeg", "size": 1843211,
+                  "id": "att:dana:2041", "thumbnail": "later" },
+                { "name": "notes.txt" }
+            ] }
+        ] }))
+        .expect("a list of files decodes");
+        assert_eq!(thread.messages[0].attachments, None);
+        assert_eq!(thread.messages[1].attachments, Some(Vec::new()));
+        let files = thread.messages[2].attachments.as_ref().unwrap();
+        assert_eq!(
+            files[0],
+            Attachment {
+                name: "IMG_2041.jpg".into(),
+                media_type: Some("image/jpeg".into()),
+                size: Some(1843211),
+                id: json!("att:dana:2041"),
+            }
+        );
+        assert_eq!(
+            files[1],
+            Attachment {
+                name: "notes.txt".into(),
+                media_type: None,
+                size: None,
+                id: Value::Null,
+            }
+        );
+        // What is written back is what was read, less the key ephor has no
+        // word for; "none" and "not reported" stay apart on the way out too.
+        let written = serde_json::to_value(&thread).unwrap();
+        assert!(written["messages"][0].get("attachments").is_none());
+        assert_eq!(written["messages"][1]["attachments"], json!([]));
+        assert!(written["messages"][2]["attachments"][0]
+            .get("thumbnail")
+            .is_none());
+    }
+
+    /// An entry with no name, or a size that is not a count of bytes, is a
+    /// malformed answer: the source's refresh fails on the interface's own
+    /// error rather than ephor guessing at the file
+    /// (§FS-001-forge-interface.6).
+    #[test]
+    fn a_file_with_no_name_or_a_negative_size_is_a_malformed_answer() {
+        for entry in [
+            json!({ "media_type": "image/jpeg" }),
+            json!({ "name": "IMG_2041.jpg", "size": -1 }),
+            json!({ "name": "IMG_2041.jpg", "size": "1.8 MB" }),
+        ] {
+            let message = json!({ "author": "dana", "text": "", "attachments": [entry] });
+            assert!(
+                serde_json::from_value::<Message>(message.clone()).is_err(),
+                "{message}"
+            );
+        }
+        assert!(serde_json::from_value::<Message>(
+            json!({ "author": "dana", "text": "", "attachments": { "name": "x" } })
+        )
+        .is_err());
+    }
+
+    /// The same refusal, through the out-of-process transport a gateway
+    /// speaks: the refresh of that source fails, naming the interface and
+    /// the field.
+    #[cfg(unix)]
+    #[test]
+    fn an_external_source_that_sends_a_nameless_file_fails_on_the_interface_error() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().expect("a scratch directory");
+        let gateway = dir.path().join("gateway");
+        std::fs::write(
+            &gateway,
+            r#"#!/bin/sh
+cat > /dev/null
+printf '%s' '[{"id":"dm-dana","title":"Dana","updated_at":"2026-10-07T09:02:00Z","threads":[{"messages":[{"author":"dana","text":"Is this the one?","attachments":[{"size":1}]}]}]}]'
+"#,
+        )
+        .expect("write the gateway");
+        std::fs::set_permissions(&gateway, std::fs::Permissions::from_mode(0o755))
+            .expect("make the gateway runnable");
+        let forge = external::ExternalForge::new("gateway", Some(gateway.to_string_lossy().into()));
+        let request = Request {
+            config: json!({}),
+            project: "demo".into(),
+            tickets: Vec::new(),
+            user: None,
+            timeout_seconds: 10,
+        };
+        let err = forge
+            .messages(&request)
+            .expect_err("a file with no name is refused");
+        assert!(
+            err.0.contains("output does not match the forge interface"),
+            "{}",
+            err.0
+        );
+        assert!(err.0.contains("name"), "{}", err.0);
     }
 
     /// `settle` is declared or absent, never guessed from a nearby name: a

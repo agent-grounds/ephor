@@ -1210,6 +1210,11 @@ fn item_line(row: &Row, seen: &Seen, now: chrono::DateTime<Utc>) -> Line<'static
     if let Some(gate) = Gate::of(item) {
         spans.extend(gate_spans(&gate));
     }
+    // The same one token `ephor feed` prints (§FS-007-matters.3,
+    // §REQ-002-parity.2).
+    if let Some(mark) = item.files_mark() {
+        spans.push(Span::raw(format!("  {mark}")));
+    }
     if stale {
         spans.push(Span::styled(
             "  (stale)",
@@ -2188,5 +2193,27 @@ mod tests {
         let after = worked("pr:1", vec![going("fix-gate-1", "fix-gate · review")]);
         fix_selection(&after, &mut state, was);
         assert_eq!(state.selected(), Some(1));
+    }
+
+    /// The screen's row carries the one token `ephor feed` prints for the
+    /// files on a waiting turn, and nothing once nothing waits
+    /// (§FS-007-matters.3, §REQ-002-parity.2).
+    #[test]
+    fn a_waiting_row_marks_its_files_as_the_feed_does() {
+        let Entry::Item(mut matter) = row("chatgw:garden") else {
+            unreachable!("the fixture is a row")
+        };
+        matter.item.raw = json!({ "threads": [{ "awaits_reader": true, "messages": [
+            { "author": "dana", "text": "", "attachments": [{ "name": "IMG_2041.jpg" }] }
+        ] }] });
+        matter.item.needs_response = true;
+        let line = text_of(&item_line(&matter, &Seen::new(), Utc::now()));
+        assert!(
+            line.split_whitespace().any(|token| token == "📎1"),
+            "{line:?}"
+        );
+        matter.item.needs_response = false;
+        let line = text_of(&item_line(&matter, &Seen::new(), Utc::now()));
+        assert!(!line.contains('📎'), "{line:?}");
     }
 }

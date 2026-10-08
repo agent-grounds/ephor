@@ -10,7 +10,7 @@ use serde_json::{json, Value};
 use super::{
     Conversation, Issue, Message, Notice, PullRequest, Reason, Review, Role, SubjectKind, Thread,
 };
-use crate::feed::model::{Awaiting, Item, ItemKind, ItemRole, AWAITS};
+use crate::feed::model::{Awaiting, Item, ItemKind, ItemRole, AWAITS, THREAD_AWAITS};
 
 /// Review states that mean the author has work to do. Matched as substrings
 /// because forges spell them differently (`CHANGES_REQUESTED`, `NEEDS_WORK`).
@@ -196,6 +196,12 @@ fn message_json(message: &Message) -> Value {
     if !message.task.is_null() {
         value["task"] = message.task.clone();
     }
+    // The files exactly as the source reported them, its id included, beside
+    // the `react` it hands back the same way. No list stays no list, and `[]`
+    // stays `[]` (§FS-001-forge-interface.1).
+    if let Some(attachments) = &message.attachments {
+        value["attachments"] = json!(attachments);
+    }
     value
 }
 
@@ -212,6 +218,12 @@ fn threads_json(threads: &[Thread]) -> Value {
                 // (§FS-007-matters.4).
                 if !thread.reply.is_null() {
                     value["reply"] = thread.reply.clone();
+                }
+                // Whether this discussion waits is only decidable here, where
+                // whose each message is is known; the row's file mark counts
+                // the discussions that do (§FS-007-matters.3).
+                if thread_pending(thread) {
+                    value[THREAD_AWAITS] = json!(true);
                 }
                 value
             })
@@ -566,6 +578,7 @@ mod tests {
             react: Value::Null,
             task: Value::Null,
             mine,
+            attachments: None,
         }
     }
 
@@ -1644,5 +1657,81 @@ mod conversation_tests {
         };
         assert!(!conversation_item("chatgw", "", &wire(true, true)).needs_response);
         assert!(conversation_item("chatgw", "", &wire(false, false)).needs_response);
+    }
+
+    fn photo() -> crate::forge::Attachment {
+        crate::forge::Attachment {
+            name: "IMG_2041.jpg".to_string(),
+            media_type: Some("image/jpeg".to_string()),
+            size: Some(1_843_211),
+            id: json!("att:dana:2041"),
+        }
+    }
+
+    /// The files reach the row as the source reported them: no list stays no
+    /// list, `[]` stays `[]`, and an entry keeps the id the source will want
+    /// back (§FS-001-forge-interface.1).
+    #[test]
+    fn the_files_on_a_message_land_in_the_row_as_reported() {
+        let row = |attachments: Option<Vec<crate::forge::Attachment>>| {
+            let message = Message {
+                attachments,
+                ..said("dana", false)
+            };
+            conversation_item(
+                "chatgw",
+                "",
+                &conversation(vec![], vec![thread(vec![message])]),
+            )
+        };
+        let message = |item: &Item| item.raw["threads"][0]["messages"][0].clone();
+        assert!(message(&row(None)).get("attachments").is_none());
+        assert_eq!(message(&row(Some(vec![])))["attachments"], json!([]));
+        assert_eq!(
+            message(&row(Some(vec![photo()])))["attachments"],
+            json!([{
+                "name": "IMG_2041.jpg", "media_type": "image/jpeg",
+                "size": 1_843_211, "id": "att:dana:2041"
+            }])
+        );
+    }
+
+    /// Whether a discussion waits is read off whose the last word is, never
+    /// off what was attached to it: a photo with no words from somebody else
+    /// waits, and the reader's own file is an answer (§FS-003-feed-categories.4).
+    #[test]
+    fn whether_a_conversation_waits_never_reads_its_files() {
+        let photo_only = Message {
+            text: String::new(),
+            attachments: Some(vec![photo()]),
+            ..said("dana", false)
+        };
+        assert!(awaits(vec![Reason::InThread], vec![photo_only]));
+        let mine = Message {
+            attachments: Some(vec![photo()]),
+            ..said("you", true)
+        };
+        assert!(!awaits(
+            vec![Reason::InThread],
+            vec![said("dana", false), mine]
+        ));
+    }
+
+    /// Each discussion that waits on the reader says so in the row, and only
+    /// those, which is what the row's file mark counts by
+    /// (§FS-007-matters.3).
+    #[test]
+    fn only_a_discussion_that_waits_is_marked_as_waiting() {
+        let answered = Thread {
+            messages: vec![said("eli", false), said("you", true)],
+            reply: json!({ "chat": "120363@g.us", "thread": "t2" }),
+        };
+        let item = conversation_item(
+            "chatgw",
+            "",
+            &conversation(vec![], vec![thread(vec![said("dana", false)]), answered]),
+        );
+        assert_eq!(item.raw["threads"][0][THREAD_AWAITS], json!(true));
+        assert!(item.raw["threads"][1].get(THREAD_AWAITS).is_none());
     }
 }

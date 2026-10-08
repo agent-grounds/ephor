@@ -110,6 +110,11 @@ pub struct Message {
     pub task: Option<Task>,
     #[serde(default)]
     pub reactions: Vec<Reaction>,
+    /// The files on it, as named metadata the source reported: absent is not
+    /// reported, `[]` is reported none, and none is fetched
+    /// (§FS-001-forge-interface.1).
+    #[serde(default)]
+    pub attachments: Option<Vec<crate::matter::Attachment>>,
 }
 
 /// A task the venue tracks on a message (§FS-003-feed-categories.4). Everything
@@ -487,6 +492,27 @@ mod tests {
         // The source's own resolve descriptor comes back verbatim.
         assert_eq!(task.descriptor.get("id").unwrap(), "t1");
         assert_eq!(answer.channels[0].can, vec!["reply", "react"]);
+    }
+
+    /// A file on a message is read as named, with not reported kept apart
+    /// from reported none (§FS-001-forge-interface.1).
+    #[test]
+    fn the_files_on_a_message_survive_the_read() {
+        let answer = read(
+            r#"{"v":1,"discussions":[{"messages":[
+                 {"author":"dana","text":""},
+                 {"author":"dana","text":"","attachments":[]},
+                 {"author":"dana","text":"","attachments":[
+                   {"name":"IMG_2041.jpg","media_type":"image/jpeg","size":1843211,"id":{"k":7}}]}]}]}"#,
+        )
+        .unwrap();
+        let messages = &answer.discussions[0].messages;
+        assert_eq!(messages[0].attachments, None);
+        assert_eq!(messages[1].attachments, Some(vec![]));
+        let files = messages[2].attachments.as_ref().unwrap();
+        assert_eq!(files[0].name, "IMG_2041.jpg");
+        assert_eq!(files[0].size, Some(1_843_211));
+        assert_eq!(files[0].id, serde_json::json!({ "k": 7 }));
     }
 
     #[test]
