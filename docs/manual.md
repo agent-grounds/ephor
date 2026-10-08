@@ -1608,7 +1608,9 @@ its author, age, text, the files on it and its reactions:
 | `g` `G` | first / last |
 | `+` | react (`←`/`→` or `1`-`8` choose, `Enter` posts) |
 | `t` | tick the selected task |
-| `e` `p` | edit / post a drafted reply (§8.12) |
+| `e` `p` | edit / post a drafted reply; on a stale draft `e` types your own reply from its words (§8.12) |
+| `r` | type your own reply in `$EDITOR`; the status line asks once, and `y` sends it (§8.12) |
+| `n` | ask for a new draft of a stale one, where its recipe still applies (§8.12) |
 | `s` | settle the conversation at its source — offered where its source can (below) |
 | `x` | actions · `o` open · `m` done · `;` ops · `Esc` back |
 
@@ -4019,12 +4021,71 @@ file is moved aside after its sent confirmation is saved durably. That confirmat
 suppresses the draft even when moving its file fails.
 
 A draft answers the thread as recorded at hand-off. Refresh never substitutes a
-new target. A newer message or an accepted send on that thread (your own included)
-makes an unsent draft stale. The refusal names the advancing message or accepted
-words; there is no override. Request a new draft or deliberately type the words
-with `ephor reply ID words` against the newest recorded sendable thread. Other
-threads, reactions and task ticks do not stale it. Old drafts with no binding stay
-readable, editable and copyable, but cannot post.
+new target. A newer message, a change to a message the draft saw, or an
+accepted send on that thread (your own included) makes an unsent draft stale.
+Other threads, reactions and task ticks do not stale it. Old drafts with no
+binding stay readable, editable and copyable, but cannot post.
+
+**A stale draft is shown against what moved since it was drafted**
+([§FS-005-dispatch.13.2](functional-spec/FS-005-dispatch.md#132-a-stale-draft-is-shown-against-what-moved-since-it-was-drafted)).
+Dana asked whether the fence can be done for €100, a run drafted "I accept
+€100", and before anyone sent it Dana edited the question to €150. `ephor
+thread` says so, and says what you can do about it:
+
+```
+── a run drafted this reply, unsent ──
+    I accept €100 and can start on Monday.
+
+    Bound thread 0 target: {"issue":7}
+
+    Draft is stale: dana edited [0] after it was drafted
+
+    Since the draft:
+      dana edited [0]
+        - Can you do the fence for €100?
+        + Can you do the fence for €150? (edited: the posts went up)
+
+    Draft it again: `ephor work dispatch --item mail-me:k-B --recipe answer --again`
+    Or type your own: `ephor reply mail-me:k-B '<words>'` — the old words stay at …/answer-1.reply.md
+```
+
+That review lists every message that arrived after the ones the draft saw, not
+only the first; your own among them, as `you wrote [2]`, and a send accepted
+here that no refresh has shown yet; every message the draft saw whose words
+changed, with its words before and after; and every message it saw that is no
+longer shown. A window that slid looks exactly like a deletion, so ephor calls
+such a message neither edited nor deleted. While the thread still begins with
+what the draft saw, word for word, everything after it has arrived; otherwise
+messages are lined up by author and time, in order. Where they cannot be lined
+up one to one — a missing time, two messages with one author and time, a
+changed order — the review lists nothing and the refusal keeps its sentence:
+the bound thread is missing, reordered or ambiguous. The stale reason stays one
+line and names the review's most telling entry, adding `(and N more)` where the
+review lists more.
+
+There is no override, and the two ways on are yours to take; looking at a stale
+draft takes neither:
+
+- **A new draft** is the reopen of a moved matter
+  ([§FS-005-dispatch.5](functional-spec/FS-005-dispatch.md#5-an-item-that-moved-reopens-its-work)) under the recipe that laid the draft:
+  `ephor work dispatch --item ID --recipe RECIPE --again`, or `n` on the thread
+  screen. It is offered while that recipe still applies. Where it does not —
+  your own reply means nothing awaits you any more, say — the draft says why no
+  new draft is offered instead. The reopened ticket names what moved by author
+  and position (`dana edited [0]`) and quotes nobody's words outside the
+  dossier, and once it exists the stale draft is superseded.
+- **Your own words** are `ephor reply ID 'words'`, against the newest recorded
+  sendable thread. On the thread screen `r` opens `$EDITOR` on a scratch file
+  of its own; when it closes with words in it the status line asks once,
+  naming the thread and the target, and `y` sends them through the same move —
+  any other key keeps them unsent. On a stale draft `e` does what `r` does,
+  starting from the draft's words, and the draft file stays as it was. `p` on a
+  stale draft still refuses with the stale reason.
+
+The `ephor reply` refusal prints the same review and ways on under its reason.
+`thread --json` carries the review as the draft's `since`, beside `redraft`
+(its `recipe` and `command`) or `redraft_refused`, and a refused
+`reply --json` outcome carries the same `since`.
 Readers and senders sharing a site must use the same version: older binaries
 cannot preserve these binding and recovery guarantees. Workflow hand-offs use
 their distinct laid-plan name and a `workflow` suffix for the reply request;
@@ -4048,8 +4109,8 @@ and suppresses the associated draft; `not-sent` releases the hold for a separate
 send subject to the ordinary checks. A local decision does not resolve a gateway
 ledger. Saved unresolved rows remain addressable when absent from the cached feed.
 
-`thread`, its JSON and the screen show the saved position/target, stale reason,
-pending prepared words, unknown note and retry versus resolution choices.
+`thread`, its JSON and the screen show the saved position/target, stale reason
+and review, pending prepared words, unknown note and retry versus resolution choices.
 `reply --dry-run` rehearses sending, replay or `--resolve` with the same refusals
 and actual target/words, creating no state or lock files and never calling the
 carrier's reply method. Checks use recorded conversations; refresh is still the
@@ -5629,6 +5690,8 @@ usable by the runtime it hands work to.
 | `+` — react | `ephor react ID THUMBS_UP --message 0` |
 | `t` — tick a task | `ephor tick ID --message 1` |
 | `p` — send the drafted reply | `ephor reply ID` (or `ephor reply ID some words`) |
+| `r`, or `e` on a stale draft, then `y` — send your own words | `ephor reply ID 'some words'` |
+| `n` on a stale draft — a new draft | `ephor work dispatch --item ID --recipe RECIPE --again` |
 | `p` — retry saved send | `ephor reply ID` (or the same typed words) |
 | `S` / `N` — resolve held reply after checking channel | `ephor reply ID --resolve sent` / `--resolve not-sent` |
 | `s` — settle a conversation at its source | `ephor settle ID` (`--dry-run` says what it would ask) |
