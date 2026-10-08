@@ -12,6 +12,7 @@ pub mod dossier;
 pub mod headroom;
 pub mod hold;
 pub mod ledger;
+pub mod private;
 mod ranking;
 pub mod recipe;
 pub mod runtime;
@@ -74,6 +75,11 @@ pub enum Outcome {
         workflow: String,
         entry: String,
     },
+    /// A sweep reached work about a matter a source the site lists as
+    /// private reported, and wrote nothing (§FS-018-private-sources.3).
+    /// `hold` is always [`Hold::Private`]. Only a sweep is told this: a
+    /// person's named move writes as it always did.
+    PassedOver { recipe: String, hold: Hold },
 }
 
 impl Outcome {
@@ -119,6 +125,7 @@ impl Outcome {
                 entry,
                 ..
             } => format!("{entry} ({workflow}) → {}", plan.display()),
+            Outcome::PassedOver { hold, .. } => hold.says(),
         }
     }
 }
@@ -1407,8 +1414,13 @@ impl Dispatcher {
         };
         // A template the dispatch would refuse on has no preview to give: the
         // surface asking "who would get this" is told nothing rather than a
-        // path with a gap in it (§FS-005-dispatch.6.1).
-        subject.work_root(&template).ok()
+        // path with a gap in it (§FS-005-dispatch.6.1). The private rung first
+        // and alone, as the dispatch asks it (§FS-018-private-sources.2).
+        private::root(&self.global, &item.source, &placement.root, |private| {
+            subject.work_root(private)
+        })
+        .unwrap_or_else(|| subject.work_root(&template))
+        .ok()
     }
 
     /// Every organization work block written over an organization no registry
@@ -1941,11 +1953,18 @@ impl Dispatcher {
             root: &placement.root,
             organization: placement.organization.as_ref(),
         };
+        // A matter a source the site lists as private reported goes under the
+        // person's own root, and no other rung is asked — not the entry's or
+        // the recipe's, not a branch workspace's (§FS-018-private-sources.2).
         // Refusing here is what keeps a work root that reaches above the
         // project from becoming a directory called `{org_root}`, or a path
         // with the organization's segment simply missing
         // (§FS-005-dispatch.6.1).
-        let dir = laid.work_root(&template).map_err(EphorError::Command)?;
+        let dir = private::root(&self.global, &item.source, &placement.root, |private| {
+            laid.work_root(private)
+        })
+        .unwrap_or_else(|| laid.work_root(&template))
+        .map_err(EphorError::Command)?;
         Ok(Site {
             dir,
             dossier: subject.dossier(),
@@ -3289,6 +3308,31 @@ impl Dispatcher {
     /// Reopen an item's work when the item has moved under it
     /// (§FS-005-dispatch.5). Work whose item is unchanged is left alone.
     pub fn sync(&mut self, item: &Item, dry_run: bool) -> Result<Outcome> {
+        self.synced(item, dry_run, false)
+    }
+
+    /// [`Dispatcher::sync`] as a sweep — `work sync`, whoever typed it: the
+    /// same reading, except that where it would reopen work about a private
+    /// matter it writes nothing and says so (§FS-018-private-sources.3). The
+    /// key on the matter's own row is the person's and keeps
+    /// [`Dispatcher::sync`].
+    pub fn sync_swept(&mut self, item: &Item, dry_run: bool) -> Result<Outcome> {
+        self.synced(item, dry_run, true)
+    }
+
+    /// Why no sweep may write work about this matter, where the site lists
+    /// the source that reported it as private: the `private` hold, naming the
+    /// source and no tickets, since the row is about a matter no ticket was
+    /// written on (§FS-018-private-sources.3, §FS-005-dispatch.24.2). Never
+    /// asked by a person's named move.
+    pub fn swept_past(&self, item: &Item) -> Option<Hold> {
+        private::listed(&self.global, &item.source).map(|source| Hold::Private {
+            source: source.to_string(),
+            tickets: Vec::new(),
+        })
+    }
+
+    fn synced(&mut self, item: &Item, dry_run: bool, sweep: bool) -> Result<Outcome> {
         let Some(entry) = self.ledger.entries.get(&item.id) else {
             return Ok(Outcome::Current);
         };
@@ -3315,6 +3359,14 @@ impl Dispatcher {
         else {
             return Ok(Outcome::Dormant { changes });
         };
+        // Asked only where there is something to reopen, so a private
+        // matter that did not move is as quiet as any other.
+        if let Some(hold) = self.swept_past(item).filter(|_| sweep) {
+            return Ok(Outcome::PassedOver {
+                recipe: recipe.id,
+                hold,
+            });
+        }
         self.dispatch(item, &recipe, None, dry_run)
     }
 
@@ -3739,6 +3791,9 @@ pub fn due_among(
         // this waits on a person, and its row names the gates rather than the
         // work they hold (§FS-005-dispatch.24.3.2).
         let mut waiting = Waiting::default();
+        // And what no sweep may start, because it is about a matter a source
+        // the site lists as private reported (§FS-018-private-sources.3).
+        let mut kept = Kept::default();
         for plan_ref in &group.plans {
             // Which entry laid this plan down, where a workflow did — and so
             // which set of "asked to run itself" answers for what is inside
@@ -3799,6 +3854,12 @@ pub fn due_among(
                 continue;
             };
             let plan_tickets = plan.tickets();
+            // This plan's would-be-due tickets, held here until the plan is
+            // known to be about no private matter: a run is narrowed to whole
+            // plans, so a plan holding one is never handed to a sweep's run,
+            // whatever else is in it (§FS-005-dispatch.24).
+            let mut ready: Vec<(String, String)> = Vec::new();
+            let mut whose: Option<&str> = None;
             // Every open ticket in a gating state here, by the machine in
             // force for this plan and nothing else — not the last run's
             // stream, not its report, not a file's time. Each holds its own
@@ -3849,6 +3910,17 @@ pub fn due_among(
                     if !asked_for.is_some_and(|what| asked.contains(what)) {
                         continue;
                     }
+                    // Would be due, but it is about a private matter, and that
+                    // is asked first: no sweep could wait for anything that
+                    // lifts it. Whose the ticket is, is what the ticket
+                    // records (§FS-018-private-sources.3, §FS-005-dispatch.8).
+                    if let Some(source) =
+                        private::of_ticket(global, plan_ref, laid.is_some(), &plan, &ticket.id)
+                    {
+                        whose = whose.or(Some(source));
+                        ready.push((ticket.id.clone(), state.unwrap_or_default().to_string()));
+                        continue;
+                    }
                 }
                 // Would be due, but a gate in its own tree holds it: the run
                 // would halt at that gate having done nothing
@@ -3862,6 +3934,16 @@ pub fn due_among(
                     waiting.hold(plan_ref, &holding);
                     continue;
                 }
+                ready.push((ticket.id.clone(), state.unwrap_or_default().to_string()));
+            }
+            // A plan about a private matter keeps every ticket it would have
+            // started; the rest of the root is due without it
+            // (§FS-018-private-sources.3, §FS-005-dispatch.24).
+            if let Some(source) = whose {
+                kept.keep(plan_ref, source, ready);
+                continue;
+            }
+            for (ticket, _) in ready {
                 if !plans.contains(&plan_ref.plan_id) {
                     plans.push(plan_ref.plan_id.clone());
                 }
@@ -3871,10 +3953,10 @@ pub fn due_among(
                         items.push(item.clone());
                     }
                 }
-                tickets.push(format!("{}.{}", plan_ref.plan_id, ticket.id));
+                tickets.push(format!("{}.{ticket}", plan_ref.plan_id));
             }
         }
-        if tickets.is_empty() && waiting.tickets.is_empty() {
+        if tickets.is_empty() && waiting.tickets.is_empty() && kept.tickets.is_empty() {
             continue;
         }
         // Where the run is made from, and whether it may be made there at
@@ -3922,25 +4004,43 @@ pub fn due_among(
         // judge, and finding it so drops what was remembered against it and
         // marks the run there as read (§FS-005-dispatch.24.3.3). A mixed root is due for its ready work
         // alone and judged as ever (§FS-005-dispatch.24.3.2).
-        let person = tickets.is_empty().then(|| Hold::Person {
+        //
+        // A root left with nothing but private work is held first, and no run
+        // was started on it for a verdict to judge (§FS-005-dispatch.24.2).
+        let private = match (tickets.is_empty(), kept.source.clone()) {
+            (true, Some(source)) => Some(Hold::Private {
+                source,
+                tickets: kept.tickets.clone(),
+            }),
+            _ => None,
+        };
+        let person = (tickets.is_empty() && private.is_none()).then(|| Hold::Person {
             tickets: waiting.tickets.clone(),
         });
-        let (verdict, rested) = match (key, &person) {
-            (_, Some(_)) => (Some(Verdict::Waiting), None),
-            (true, None) => (None, None),
-            (false, None) => judge(ledger, &group.root, now),
+        let (verdict, rested) = match (key, &private, &person) {
+            (_, Some(_), _) => (None, None),
+            (_, None, Some(_)) => (Some(Verdict::Waiting), None),
+            (true, None, None) => (None, None),
+            (false, None, None) => judge(ledger, &group.root, now),
         };
-        // The row of a root waiting on a person names the gates, and is
-        // attributed to the plans that hold them (§FS-005-dispatch.24.3.2).
-        if person.is_some() {
-            plans = waiting.plans;
-            tickets = waiting
-                .tickets
-                .into_iter()
-                .map(|(ticket, _)| ticket)
-                .collect();
-            items = waiting.items;
-            projects = waiting.projects;
+        // The row of a root held names what holds it, and is attributed to
+        // the plans that hold it (§FS-005-dispatch.24.3.2,
+        // §FS-005-dispatch.24.2).
+        let held = match (&private, &person) {
+            (Some(_), _) => Some((kept.plans, kept.tickets, kept.items, kept.projects)),
+            (None, Some(_)) => Some((
+                waiting.plans,
+                waiting.tickets,
+                waiting.items,
+                waiting.projects,
+            )),
+            (None, None) => None,
+        };
+        if let Some((held_plans, held_tickets, held_items, held_projects)) = held {
+            plans = held_plans;
+            tickets = held_tickets.into_iter().map(|(ticket, _)| ticket).collect();
+            items = held_items;
+            projects = held_projects;
         }
         due.push(Due {
             project: group
@@ -3978,6 +4078,7 @@ pub fn due_among(
             // Read last, and only for a root that is actually due: the
             // witness is one file per root, and a root with nothing to run is
             // not a root a verdict is owed about (§FS-005-dispatch.24).
+            private,
             excluded: None,
             person,
             rested,
@@ -3985,6 +4086,47 @@ pub fn due_among(
         });
     }
     due
+}
+
+/// What the private sources keep out of one root's due reading, gathered so
+/// the root can be passed over naming them where nothing else there is due
+/// (§FS-018-private-sources.3, §FS-005-dispatch.24.2).
+#[derive(Default)]
+struct Kept {
+    /// The first listed source a kept ticket is about, as the site lists it.
+    source: Option<String>,
+    /// Each ticket a sweep would have started, plan-qualified, with the state
+    /// it sits in.
+    tickets: Vec<(String, String)>,
+    plans: Vec<String>,
+    items: Vec<String>,
+    projects: BTreeSet<String>,
+}
+
+impl Kept {
+    /// One plan about a private matter `source` reported, with the tickets it
+    /// would have made due.
+    fn keep(
+        &mut self,
+        plan_ref: &runtime::watch::PlanRef,
+        source: &str,
+        ready: Vec<(String, String)>,
+    ) {
+        self.source.get_or_insert_with(|| source.to_string());
+        for (ticket, state) in ready {
+            self.tickets
+                .push((format!("{}.{ticket}", plan_ref.plan_id), state));
+        }
+        if !self.plans.contains(&plan_ref.plan_id) {
+            self.plans.push(plan_ref.plan_id.clone());
+        }
+        if let Some(item) = &plan_ref.item {
+            if !self.items.contains(item) {
+                self.items.push(item.clone());
+            }
+        }
+        self.projects.insert(plan_ref.project.clone());
+    }
 }
 
 /// What the gates in one root hold out of the due reading, gathered so the
@@ -4078,6 +4220,7 @@ fn refused_root(ledger: &Ledger, group: &runtime::watch::RootPlans, says: String
         // resting or the reader excluded: this row exists to carry the
         // refusal and nothing else (§FS-005-dispatch.24,
         // §FS-005-dispatch.30).
+        private: None,
         excluded: None,
         person: None,
         rested: None,
@@ -5240,6 +5383,12 @@ pub struct Due {
     /// rather than the matter coming back as finished. Never set for the
     /// sweep, which drops both.
     pub refusal: Option<String>,
+    /// Why no sweep starts this root, where every ticket that would have made
+    /// it due is about a matter a source the site lists as private reported
+    /// (§FS-018-private-sources.3). Always [`Hold::Private`], and asked first:
+    /// nothing a sweep could wait for lifts it (§FS-005-dispatch.24.2). Never
+    /// set for the key, which is the person's own move.
+    pub private: Option<Hold>,
     /// Why the reader's own `--except` leaves this root out, where it does
     /// (§FS-005-dispatch.24). Set after the reading, because an exclusion is
     /// the reader's instruction rather than anything ephor worked out. Always
@@ -5262,10 +5411,11 @@ pub struct Due {
 }
 
 impl Due {
-    /// The one reason this root gets no run, where something says so: the
-    /// reader's own instruction first, because naming it back is what tells
-    /// them the flag took effect, and then the rest ephor decided on. One
-    /// row, one reason, first match (§FS-005-dispatch.24).
+    /// The one reason this root gets no run, where something says so: a
+    /// private matter first, because no sweep can lift it, then the reader's
+    /// own instruction, because naming it back is what tells them the flag
+    /// took effect, and then the rest ephor decided on. One row, one reason,
+    /// first match (§FS-005-dispatch.24, §FS-005-dispatch.24.2).
     pub fn passed_over(&self) -> Option<String> {
         self.hold().map(Hold::says)
     }
@@ -5273,8 +5423,9 @@ impl Due {
     /// The same first match as data, for the row a program reads
     /// (§FS-005-dispatch.24.2).
     pub fn hold(&self) -> Option<&Hold> {
-        self.excluded
+        self.private
             .as_ref()
+            .or(self.excluded.as_ref())
             .or(self.person.as_ref())
             .or(self.rested.as_ref())
     }
@@ -6686,80 +6837,90 @@ pub fn enumerate_roots(
             organization.and_then(|org| organizations.get(&org.id)),
             projects.get(&placement.project),
         );
-        let mut places = vec![placement.root.clone()];
-        for branch in &placement.branches {
-            places.extend(placement.workspace_for(&branch.branch));
-        }
-        // An organization's root is a place of its own: a work root reaching
-        // above the project sits inside no checkout, so every place the
-        // project offers can be absent while the root the template names is
-        // there (§FS-005-dispatch.6.1). Seeded only where the template
-        // actually reaches for it, so a site naming no organization
-        // placeholder enumerates exactly the roots it enumerated before
-        // (§FS-005-dispatch.15.1).
-        if dossier::named(&template)
-            .iter()
-            .any(|name| dossier::ORGANIZATION_PLACEHOLDERS.contains(&name.as_str()))
-        {
-            places.extend(organization.and_then(|org| org.root.clone()));
-        }
-        places.sort();
-        places.dedup();
+        // And the person's own root, where the site declares one: work about a
+        // private matter is written there whatever the project's ladder says,
+        // and the board finds it by looking as it finds any other
+        // (§FS-018-private-sources.2, §FS-005-dispatch.15).
+        let private = global
+            .private
+            .as_ref()
+            .and_then(|private| private.root.clone());
         // A template that ignores the workspace renders every place to one
         // root; listing it once is enough.
         let mut listed: std::collections::BTreeSet<PathBuf> = std::collections::BTreeSet::new();
-        for place in places {
-            if !place.is_dir() {
-                continue;
+        for template in std::iter::once(template).chain(private) {
+            let mut places = vec![placement.root.clone()];
+            for branch in &placement.branches {
+                places.extend(placement.workspace_for(&branch.branch));
             }
-            let mut values = dossier::fixed([
-                ("workspace", place.to_string_lossy().into_owned()),
-                ("root", placement.root.to_string_lossy().into_owned()),
-                ("project", placement.project.clone()),
-            ]);
-            // Only what the registry answers goes in. An organization
-            // placeholder nothing answers is left standing and skipped by the
-            // guard below, exactly as a field only an item can fill is: a
-            // template dispatch would have refused wrote nothing to find
+            // An organization's root is a place of its own: a work root reaching
+            // above the project sits inside no checkout, so every place the
+            // project offers can be absent while the root the template names is
+            // there (§FS-005-dispatch.6.1). Seeded only where the template
+            // actually reaches for it, so a site naming no organization
+            // placeholder enumerates exactly the roots it enumerated before
             // (§FS-005-dispatch.15.1).
-            if let Some(organization) = organization {
-                values.insert(std::borrow::Cow::Borrowed("org"), organization.id.clone());
-                if let Some(root) = &organization.root {
-                    values.insert(
-                        std::borrow::Cow::Borrowed("org_root"),
-                        root.to_string_lossy().into_owned(),
-                    );
-                }
+            if dossier::named(&template)
+                .iter()
+                .any(|name| dossier::ORGANIZATION_PLACEHOLDERS.contains(&name.as_str()))
+            {
+                places.extend(organization.and_then(|org| org.root.clone()));
             }
-            let rendered = dossier::render(&template, &values);
-            if rendered.contains('{') {
-                continue;
-            }
-            let root = canon(&crate::paths::resolve_path(&rendered));
-            if !listed.insert(root.clone()) {
-                continue;
-            }
-            for found in plan::plans_in(&root) {
-                let group = groups.entry(root.clone()).or_insert_with(|| RootPlans {
-                    root: root.clone(),
-                    plans: Vec::new(),
-                });
-                // The ledger may spell the same plan through a different
-                // alias; a plan is the file, not the spelling.
-                if group
-                    .plans
-                    .iter()
-                    .any(|plan| canon(&plan.path) == found.path)
-                {
+            places.sort();
+            places.dedup();
+            for place in places {
+                if !place.is_dir() {
                     continue;
                 }
-                group.plans.push(PlanRef {
-                    project: placement.project.clone(),
-                    plan_id: found.plan_id,
-                    path: found.path,
-                    item: None,
-                    title: String::new(),
-                });
+                let mut values = dossier::fixed([
+                    ("workspace", place.to_string_lossy().into_owned()),
+                    ("root", placement.root.to_string_lossy().into_owned()),
+                    ("project", placement.project.clone()),
+                ]);
+                // Only what the registry answers goes in. An organization
+                // placeholder nothing answers is left standing and skipped by the
+                // guard below, exactly as a field only an item can fill is: a
+                // template dispatch would have refused wrote nothing to find
+                // (§FS-005-dispatch.15.1).
+                if let Some(organization) = organization {
+                    values.insert(std::borrow::Cow::Borrowed("org"), organization.id.clone());
+                    if let Some(root) = &organization.root {
+                        values.insert(
+                            std::borrow::Cow::Borrowed("org_root"),
+                            root.to_string_lossy().into_owned(),
+                        );
+                    }
+                }
+                let rendered = dossier::render(&template, &values);
+                if rendered.contains('{') {
+                    continue;
+                }
+                let root = canon(&crate::paths::resolve_path(&rendered));
+                if !listed.insert(root.clone()) {
+                    continue;
+                }
+                for found in plan::plans_in(&root) {
+                    let group = groups.entry(root.clone()).or_insert_with(|| RootPlans {
+                        root: root.clone(),
+                        plans: Vec::new(),
+                    });
+                    // The ledger may spell the same plan through a different
+                    // alias; a plan is the file, not the spelling.
+                    if group
+                        .plans
+                        .iter()
+                        .any(|plan| canon(&plan.path) == found.path)
+                    {
+                        continue;
+                    }
+                    group.plans.push(PlanRef {
+                        project: placement.project.clone(),
+                        plan_id: found.plan_id,
+                        path: found.path,
+                        item: None,
+                        title: String::new(),
+                    });
+                }
             }
         }
     }

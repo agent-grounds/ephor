@@ -1263,14 +1263,37 @@ impl Plan {
     /// subtracts every name ephor writes there; this reads one of those names
     /// and nothing else, which is why the two do not share a body.
     pub fn matter_of(&self, plan_id: &str, task_id: &str) -> Option<String> {
+        self.said_of(plan_id, task_id, "id")
+    }
+
+    /// The source that reported one ticket's matter, as the ticket itself
+    /// records it (§FS-005-dispatch.8): the `source` ephor wrote into this
+    /// plan's metadata block, else the provider its matter id is keyed by. A
+    /// step under a ticket is about its ticket's matter, so it answers with
+    /// the top-level ticket's record where it has none of its own. What the
+    /// sweep asks to know whose the work is (§FS-018-private-sources.3).
+    pub fn source_of(&self, plan_id: &str, task_id: &str) -> Option<String> {
+        let top = task_id.split('.').next().unwrap_or(task_id);
+        [task_id, top].into_iter().find_map(|task| {
+            self.said_of(plan_id, task, "source").or_else(|| {
+                let matter = self.said_of(plan_id, task, "id")?;
+                let (source, _) = matter.split_once(':')?;
+                (!source.is_empty()).then(|| source.to_string())
+            })
+        })
+    }
+
+    /// One name ephor wrote about one ticket in this plan's metadata block,
+    /// where it wrote a non-empty string (§FS-005-dispatch.8).
+    fn said_of(&self, plan_id: &str, task_id: &str, key: &str) -> Option<String> {
         let doc = serde_yaml::from_str::<serde_yaml::Value>(self.frontmatter_yaml()?).ok()?;
         let tasks = doc.get("metadata").and_then(|node| node.get("tasks"))?;
         // The bare id is canonical; the plan-qualified spelling is accepted for
         // the same reason it is there (§FS-006-project-interface.7).
         let said =
             entry(tasks, task_id).or_else(|| entry(tasks, &format!("{plan_id}.{task_id}")))?;
-        match entry(said, "id")? {
-            serde_yaml::Value::String(id) if !id.is_empty() => Some(id.clone()),
+        match entry(said, key)? {
+            serde_yaml::Value::String(value) if !value.is_empty() => Some(value.clone()),
             _ => None,
         }
     }
@@ -3299,5 +3322,47 @@ metadata:
             plan_id("2fa:acme/vault#3"),
             "item-2fa-acme-vault-3-b0ad6965"
         );
+    }
+
+    /// Whose a ticket is, as the ticket records it (§FS-018-private-sources.3):
+    /// the `source` written about it, else the provider its matter id is keyed
+    /// by; a step answers with its ticket's record; a ticket recording neither
+    /// answers nothing (§FS-005-dispatch.8).
+    #[test]
+    fn issue_191_a_tickets_source_is_read_off_the_ticket() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("plan.rhei.md");
+        let tasks = concat!(
+            "## Tasks\n\n",
+            "### Task answer-1: reply\n**State:** fix\n\nwork\n\n",
+            "#### Task answer-1.review: look\n**State:** fix\n\nwork\n\n",
+            "### Task answer-2: reply\n**State:** fix\n\nwork\n\n",
+            "### Task answer-3: reply\n**State:** fix\n\nwork\n",
+        );
+        fs::write(&path, format!("# Rhei: t\n**States:** m\n\n{tasks}")).unwrap();
+        let mut plan = Plan::read(&path).unwrap().unwrap();
+        plan.set_metadata(
+            "answer-1",
+            &[
+                ("source", "chatgw".to_string()),
+                ("id", "elsewhere:signal/you#1".to_string()),
+            ],
+        );
+        plan.set_metadata("answer-2", &[("id", "mailgw:inbox/42".to_string())]);
+        plan.save().unwrap();
+        let plan = Plan::read(&path).unwrap().unwrap();
+        assert_eq!(
+            plan.source_of("plan", "answer-1").as_deref(),
+            Some("chatgw")
+        );
+        assert_eq!(
+            plan.source_of("plan", "answer-1.review").as_deref(),
+            Some("chatgw")
+        );
+        assert_eq!(
+            plan.source_of("plan", "answer-2").as_deref(),
+            Some("mailgw")
+        );
+        assert_eq!(plan.source_of("plan", "answer-3"), None);
     }
 }

@@ -687,6 +687,19 @@ fn dispatch_work(
         if recipe.dispatch.is_some() {
             swept.insert(crate::work::sweeps::key(&item.project, &recipe.id));
         }
+        // A dispatch that names no item is a sweep whoever typed it, and no
+        // sweep writes work about a private matter: naming it is the person's
+        // move (§FS-018-private-sources.3).
+        if let Some(hold) = dispatcher.swept_past(item).filter(|_| args.item.is_none()) {
+            landed.push(passed_over(
+                item,
+                ("recipe", &recipe.id),
+                &hold,
+                args.json,
+                &style,
+            ));
+            continue;
+        }
         match dispatcher.dispatch(item, &recipe, picked.as_ref(), dry_run) {
             // A deterministic opening move that finished is not a ticket
             // (§FS-005-dispatch.12) — it is reported as what it was, and
@@ -890,6 +903,18 @@ fn lay_autorun(
     else {
         return Ok(());
     };
+    // The same pass-over a recipe gets, for the same sweep
+    // (§FS-018-private-sources.3).
+    if let Some(hold) = dispatcher.swept_past(item).filter(|_| args.item.is_none()) {
+        landed.push(passed_over(
+            item,
+            ("entry", &entry.id),
+            &hold,
+            args.json,
+            style,
+        ));
+        return Ok(());
+    }
     match laying_for(dispatcher, item, &entry, picked, dry_run) {
         Ok(landing) => {
             *laid += 1;
@@ -1531,8 +1556,20 @@ fn sync_work(
             );
             continue;
         }
-        match dispatcher.sync(item, dry_run) {
+        match dispatcher.sync_swept(item, dry_run) {
             Ok(Outcome::Current) => {}
+            // The item moved, and its work is about a private matter: `sync`
+            // is a sweep, so it reopens nothing and says why
+            // (§FS-018-private-sources.3).
+            Ok(Outcome::PassedOver { recipe, hold }) => {
+                landed.push(passed_over(
+                    item,
+                    ("recipe", &recipe),
+                    &hold,
+                    args.json,
+                    &style,
+                ));
+            }
             // Reported, not counted: nothing was written, and the reader
             // still wants to know what became of the work their item moved
             // under.
@@ -1724,6 +1761,33 @@ fn sync_work(
     Ok(ExitCode::SUCCESS)
 }
 
+/// The row a sweep leaves about a matter it wrote nothing on, because the
+/// site lists the source that reported it as private
+/// (§FS-018-private-sources.3): `passed-over`, its hold as data beside the
+/// sentence rendered from it (§FS-005-dispatch.24.2), and the same said in
+/// prose. `what` is the recipe or the entry that would have written.
+fn passed_over(
+    item: &Item,
+    what: (&str, &str),
+    hold: &crate::work::hold::Hold,
+    json: bool,
+    style: &Style,
+) -> serde_json::Value {
+    let says = hold.says();
+    if !json {
+        println!("passed over {}\n  {}", title(&item.title), style.dim(&says));
+    }
+    let mut row = serde_json::json!({
+        "item": item.id,
+        "title": item.title,
+        "outcome": "passed-over",
+        "hold": hold.data(),
+        "says": says,
+    });
+    row[what.0] = serde_json::json!(what.1);
+    row
+}
+
 /// Open a matter ephor has no work about, where a recipe asked for its own
 /// sweep and its interval has elapsed (§FS-005-dispatch.32).
 ///
@@ -1779,6 +1843,18 @@ fn opening(
     // what is stepped over, which is the reading `--limit` already has.
     let mine = opened_by.entry(key).or_insert(0);
     if sweep.limit.is_some_and(|limit| *mine >= limit) {
+        return;
+    }
+    // Nobody named this matter, so work about a private one is not opened,
+    // and costs the bound nothing (§FS-018-private-sources.3).
+    if let Some(hold) = dispatcher.swept_past(item) {
+        landed.push(passed_over(
+            item,
+            ("recipe", &recipe.id),
+            &hold,
+            json,
+            style,
+        ));
         return;
     }
     match dispatcher.dispatch(item, &recipe, None, dry_run) {

@@ -96,6 +96,32 @@ pub struct WorkConfig {
     /// site may write both, and the first of them to be full is what refuses.
     #[serde(default)]
     pub max_tokens: Option<crate::work::spend::TokenBudget>,
+    /// The sources that are the person's own, and the root their work goes
+    /// in (§FS-018-private-sources.1). Read here and nowhere else: whose an
+    /// account is does not vary by project, so neither
+    /// [`OrganizationWorkConfig`] nor [`ProjectWorkConfig`] takes it, and each
+    /// refuses it by name the way it refuses any key it does not take.
+    #[serde(default)]
+    pub private: Option<PrivateSources>,
+}
+
+/// The site's word on which sources are the person's own
+/// (§FS-018-private-sources.1). A classification rather than a selector: it is
+/// read wherever work on a matter is written or started, whatever selected the
+/// matter.
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PrivateSources {
+    /// Provider names — the names `when.sources` selects on, `{source}`
+    /// renders, and every matter id begins with.
+    #[serde(default)]
+    pub sources: Vec<String>,
+    /// The work root template for a private matter, with `work.root`'s
+    /// vocabulary and refusals. Optional when the file loads: a listed source
+    /// with no root is refused where work would be written, not here, so the
+    /// feed is unaffected (§FS-018-private-sources.2).
+    #[serde(default)]
+    pub root: Option<String>,
 }
 
 impl Default for WorkConfig {
@@ -113,6 +139,7 @@ impl Default for WorkConfig {
             max_active: None,
             max_spend: None,
             max_tokens: None,
+            private: None,
         }
     }
 }

@@ -20,6 +20,16 @@ use super::spend::Scope;
 /// (§FS-005-dispatch.24.2).
 #[derive(Debug, Clone, PartialEq)]
 pub enum Hold {
+    /// Every ticket that would have made the root due is about a matter whose
+    /// source the site lists as private, and no sweep starts work on one
+    /// (§FS-018-private-sources.3). `source` is the first such source, as the
+    /// site lists it; `tickets` is each ticket held, plan-qualified, with the
+    /// state it sits in — empty on a `work sync` or bulk `work dispatch` row,
+    /// which is about one matter and no ticket yet.
+    Private {
+        source: String,
+        tickets: Vec<(String, String)>,
+    },
     /// The reader's `--except` named the root; `except` is the value as given.
     Excluded { except: String },
     /// Every ticket that would have made the root due sits in a top-level
@@ -109,6 +119,7 @@ impl Hold {
     /// The kind a program selects on (§FS-005-dispatch.24.2).
     pub fn kind(&self) -> &'static str {
         match self {
+            Hold::Private { .. } => "private",
             Hold::Excluded { .. } => "excluded",
             Hold::Person { .. } => "person",
             Hold::Rested { .. } => "rested",
@@ -124,6 +135,10 @@ impl Hold {
     /// before it was data (§FS-005-dispatch.24, §FS-005-dispatch.24.2).
     pub fn says(&self) -> String {
         match self {
+            Hold::Private { source, .. } => format!(
+                "{source} is private — no sweep writes or starts its work; name the matter \
+                 (--item, or the run key) to hand it over"
+            ),
             Hold::Excluded { except } => {
                 format!("--except {except} — left out of this sweep at your asking")
             }
@@ -181,15 +196,17 @@ impl Hold {
         let mut object = Map::new();
         object.insert("kind".into(), json!(self.kind()));
         match self {
+            Hold::Private { source, tickets } => {
+                object.insert("source".into(), json!(source));
+                if !tickets.is_empty() {
+                    object.insert("tickets".into(), held(tickets));
+                }
+            }
             Hold::Excluded { except } => {
                 object.insert("except".into(), json!(except));
             }
             Hold::Person { tickets } => {
-                let tickets: Vec<Value> = tickets
-                    .iter()
-                    .map(|(ticket, state)| json!({ "ticket": ticket, "state": state }))
-                    .collect();
-                object.insert("tickets".into(), Value::Array(tickets));
+                object.insert("tickets".into(), held(tickets));
             }
             Hold::Rested {
                 run, count, until, ..
@@ -260,6 +277,17 @@ impl Hold {
         }
         Value::Object(object)
     }
+}
+
+/// Each held ticket as `{ticket, state}`, the one shape `person` and `private`
+/// both give them (§FS-005-dispatch.24.2).
+fn held(tickets: &[(String, String)]) -> Value {
+    Value::Array(
+        tickets
+            .iter()
+            .map(|(ticket, state)| json!({ "ticket": ticket, "state": state }))
+            .collect(),
+    )
 }
 
 /// `scope` as `site`, `organization` or `project`, and `id` beside the two

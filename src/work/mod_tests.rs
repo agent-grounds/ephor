@@ -1730,6 +1730,7 @@ fn candidate(id: &str, project: &str) -> Due {
         items: vec![id.to_string()],
         held_by: None,
         refusal: None,
+        private: None,
         excluded: None,
         person: None,
         rested: None,
@@ -6318,4 +6319,303 @@ fn the_readers_exclusion_is_held_as_the_value_given() {
         hold.says(),
         "--except github:acme/widget#7 — left out of this sweep at your asking"
     );
+}
+
+/// A site that lists `chatgw` as the person's own, with `root` as the root
+/// their work goes in (§FS-018-private-sources.1).
+fn issue_191_site(root: Option<&Path>) -> WorkConfig {
+    WorkConfig {
+        private: Some(recipe::PrivateSources {
+            sources: vec!["chatgw".to_string()],
+            root: root.map(|root| root.to_string_lossy().into_owned()),
+        }),
+        ..work_config()
+    }
+}
+
+/// A message `chatgw` heard, about widget.
+fn issue_191_item() -> crate::feed::model::Item {
+    crate::feed::model::Item {
+        id: "chatgw:signal/you#1".to_string(),
+        source: "chatgw".to_string(),
+        ..issue_43_item()
+    }
+}
+
+/// The private rung answers first and alone: a recipe's own `root` loses to
+/// it at the write and at the preview alike, and a source the site does not
+/// list climbs the ladder it always did (§FS-018-private-sources.2,
+/// §FS-005-dispatch.6.1).
+#[test]
+fn issue_191_the_private_root_outranks_a_recipes_own() {
+    let tmp = tempfile::tempdir().unwrap();
+    let project = tmp.path().join("widget");
+    fs::create_dir_all(&project).unwrap();
+    let mine = tmp.path().join("me/private/widget");
+    let mut dispatcher = issue_43_dispatcher(&project, empty_ledger());
+    dispatcher.global = issue_191_site(Some(&tmp.path().join("me/private/{project}")));
+    let item = issue_191_item();
+
+    let site = dispatcher
+        .site_for(&item, false, None, Some("{root}/answers"))
+        .expect("a private root is a root");
+    assert_eq!(site.dir, mine);
+    assert_eq!(
+        dispatcher.work_root_for(&item, None, Some("{root}/answers")),
+        Some(mine)
+    );
+
+    let unlisted = issue_43_item();
+    let site = dispatcher
+        .site_for(&unlisted, false, None, Some("{root}/answers"))
+        .unwrap();
+    assert_eq!(site.dir, project.join("answers"));
+}
+
+/// Neither refusal falls back to the ladder, because the ladder is the leak:
+/// no root declared is refused naming the key and the source, and a root
+/// inside the project's own is refused naming the key, what it rendered and
+/// the root that holds it — at the write, and as nothing at the preview
+/// (§FS-018-private-sources.2).
+#[test]
+fn issue_191_the_private_rung_refuses_by_name_and_never_falls_back() {
+    let tmp = tempfile::tempdir().unwrap();
+    let project = tmp.path().join("widget");
+    fs::create_dir_all(&project).unwrap();
+    let mut dispatcher = issue_43_dispatcher(&project, empty_ledger());
+    let item = issue_191_item();
+
+    dispatcher.global = issue_191_site(None);
+    let why = dispatcher
+        .site_for(&item, false, None, None)
+        .err()
+        .expect("refused")
+        .to_string();
+    assert!(
+        why.contains("work.private.root") && why.contains("chatgw"),
+        "{why}"
+    );
+    assert_eq!(dispatcher.work_root_for(&item, None, None), None);
+
+    dispatcher.global = issue_191_site(Some(Path::new("{root}/private")));
+    let why = dispatcher
+        .site_for(&item, false, None, None)
+        .err()
+        .expect("refused")
+        .to_string();
+    for word in [
+        "work.private.root",
+        &*project.join("private").to_string_lossy(),
+        &*project.to_string_lossy(),
+    ] {
+        assert!(why.contains(word), "names {word}: {why}");
+    }
+    assert_eq!(dispatcher.work_root_for(&item, None, None), None);
+}
+
+/// A plan in `root` holding `tickets`, its `fix-gate-1` recorded as about a
+/// matter `source` reported where one is given (§FS-005-dispatch.8).
+fn issue_191_plan(
+    root: &Path,
+    plan_id: &str,
+    tickets: &str,
+    source: Option<&str>,
+) -> runtime::watch::PlanRef {
+    let path = root.join(format!("{plan_id}.rhei.md"));
+    fs::write(
+        &path,
+        format!("# Rhei: t\n**States:** m\n\n## Tasks\n\n{tickets}"),
+    )
+    .unwrap();
+    if let Some(source) = source {
+        let mut plan = Plan::read(&path).unwrap().unwrap();
+        plan.set_metadata(
+            "fix-gate-1",
+            &[
+                ("source", source.to_string()),
+                ("id", format!("{source}:{plan_id}")),
+            ],
+        );
+        plan.save().unwrap();
+    }
+    runtime::watch::PlanRef {
+        project: "widget".to_string(),
+        plan_id: plan_id.to_string(),
+        path,
+        item: Some(format!("{}:{plan_id}", source.unwrap_or("forge"))),
+        title: String::new(),
+    }
+}
+
+/// The mixed root: a plan about a private matter is never handed to a
+/// sweep's run, whatever else it holds, and the root is due for its other
+/// plans alone — so the runner is pointed at those and at nothing it would
+/// carry the private message into. Left with nothing but the private plan,
+/// the root is passed over with the `private` hold, naming each ticket it
+/// keeps as `person` does, and no verdict is read of a run nobody started
+/// (§FS-018-private-sources.3, §FS-005-dispatch.24, §FS-005-dispatch.24.2).
+#[test]
+fn issue_191_a_mixed_root_runs_its_other_plans_and_never_the_private_one() {
+    let tmp = tempfile::tempdir().unwrap();
+    let root = tmp.path().join("panta");
+    let mut group = due_root(&root, &ticket_at("fix-gate-1", "fix"));
+    group.plans.push(issue_191_plan(
+        &root,
+        "chatgw-dm",
+        &format!(
+            "{}{}",
+            ticket_at("fix-gate-1", "fix"),
+            ticket_at("fix-gate-2", "collect")
+        ),
+        Some("chatgw"),
+    ));
+    let site = issue_191_site(Some(&tmp.path().join("me")));
+    let read = |group: &runtime::watch::RootPlans| {
+        due_among(
+            &site,
+            std::slice::from_ref(group),
+            &asking(&["fix-gate"]),
+            &laying(&[]),
+            &empty_ledger(),
+            Utc::now(),
+            Reach::Sweep,
+        )
+    };
+
+    let due = read(&group);
+    assert_eq!(due.len(), 1);
+    assert_eq!(due[0].plans, vec!["widget-42".to_string()]);
+    assert_eq!(due[0].tickets, vec!["widget-42.fix-gate-1".to_string()]);
+    assert!(due[0].hold().is_none(), "{:?}", due[0].hold());
+    let invocation = runtime::invocation(&due[0].root, &due[0].plans, &[]);
+    assert!(
+        invocation.contains("--rhei 'widget-42'") && !invocation.contains("chatgw-dm"),
+        "{invocation}"
+    );
+
+    group.plans.retain(|plan| plan.plan_id == "chatgw-dm");
+    let due = read(&group);
+    assert_eq!(due.len(), 1);
+    assert_eq!(due[0].plans, vec!["chatgw-dm".to_string()]);
+    assert!(due[0].verdict.is_none());
+    let hold = due[0].hold().expect("held");
+    assert_eq!(
+        hold.data(),
+        serde_json::json!({
+            "kind": "private",
+            "source": "chatgw",
+            "tickets": [
+                { "ticket": "chatgw-dm.fix-gate-1", "state": "fix" },
+                { "ticket": "chatgw-dm.fix-gate-2", "state": "collect" }
+            ]
+        })
+    );
+    let says = hold.says();
+    assert!(
+        says.contains("chatgw") && says.contains("private"),
+        "{says}"
+    );
+}
+
+/// The hold is asked first: nothing a sweep could wait for lifts it, so it
+/// outranks the reader's own `--except` and a gate in its tree. The key is
+/// the person's and is never held by it (§FS-005-dispatch.24.2,
+/// §FS-005-dispatch.30).
+#[test]
+fn issue_191_the_private_hold_is_asked_first_and_never_of_the_key() {
+    let tmp = tempfile::tempdir().unwrap();
+    let root = tmp.path().join("panta");
+    let mut group = due_root(&root, "");
+    group.plans = vec![issue_191_plan(
+        &root,
+        "chatgw-dm",
+        &format!(
+            "{}{}",
+            ticket_at("fix-gate-1", "fix"),
+            subtask_at("fix-gate-1.triage", "needs-human")
+        ),
+        Some("chatgw"),
+    )];
+    let site = issue_191_site(Some(&tmp.path().join("me")));
+    let read = |reach| {
+        due_among(
+            &site,
+            std::slice::from_ref(&group),
+            &asking(&["fix-gate"]),
+            &laying(&[]),
+            &empty_ledger(),
+            Utc::now(),
+            reach,
+        )
+    };
+    let due = Excluded::of(vec![(root.clone(), "panta".to_string())]).mark(read(Reach::Sweep));
+    assert_eq!(due[0].hold().map(Hold::kind), Some("private"));
+
+    let named = read(Reach::Key(Some("chatgw:chatgw-dm")));
+    assert_eq!(named.len(), 1);
+    assert!(named[0].private.is_none());
+    assert_eq!(named[0].plans, vec!["chatgw-dm".to_string()]);
+
+    // A site that lists nothing starts it as it always did.
+    let due = due_among(
+        &work_config(),
+        std::slice::from_ref(&group),
+        &asking(&["fix-gate"]),
+        &laying(&[]),
+        &empty_ledger(),
+        Utc::now(),
+        Reach::Sweep,
+    );
+    assert_eq!(due[0].hold().map(Hold::kind), Some("person"));
+}
+
+/// The board finds a private plan by looking, as it finds one under any
+/// other root: the private root joins the roots each placement enumerates
+/// (§FS-005-dispatch.15, §FS-018-private-sources.2).
+#[test]
+fn issue_191_the_private_root_is_enumerated() {
+    let tmp = tempfile::tempdir().unwrap();
+    let project = tmp.path().join("widget");
+    fs::create_dir_all(&project).unwrap();
+    let mine = tmp.path().join("me/private/widget");
+    plant(&mine, "chatgw-dm.rhei.md", "private work");
+    let groups = enumerate_roots(
+        &issue_191_site(Some(&tmp.path().join("me/private/{project}"))),
+        &BTreeMap::new(),
+        &BTreeMap::new(),
+        &[placement("widget", &project, None)],
+        &empty_ledger(),
+    );
+    let found: Vec<&Path> = groups
+        .iter()
+        .flat_map(|group| group.plans.iter().map(|plan| plan.path.as_path()))
+        .collect();
+    assert_eq!(
+        found,
+        vec![fs::canonicalize(&mine).unwrap().join("chatgw-dm.rhei.md")]
+    );
+}
+
+/// What a sweep that would have written work says about a private matter:
+/// the `private` hold with its source and no tickets, since none was written;
+/// a source the site does not list is no business of the hold's
+/// (§FS-018-private-sources.3, §FS-005-dispatch.24.2).
+#[test]
+fn issue_191_a_sweep_passes_a_private_matter_over_naming_its_source() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut dispatcher = issue_43_dispatcher(tmp.path(), empty_ledger());
+    dispatcher.global = issue_191_site(Some(tmp.path()));
+    let hold = dispatcher
+        .swept_past(&issue_191_item())
+        .expect("a private matter");
+    assert_eq!(
+        hold.data(),
+        serde_json::json!({ "kind": "private", "source": "chatgw" })
+    );
+    assert!(dispatcher.swept_past(&issue_43_item()).is_none());
+    let outcome = Outcome::PassedOver {
+        recipe: "answer".to_string(),
+        hold: hold.clone(),
+    };
+    assert_eq!(outcome.describe(), hold.says());
 }

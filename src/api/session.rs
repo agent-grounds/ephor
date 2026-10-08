@@ -1249,8 +1249,13 @@ impl Session {
         };
         // Nothing where the dispatch would refuse: this reading is a preview
         // of that write, and a preview that guessed past a refusal would name
-        // a directory nothing will ever be in (§FS-005-dispatch.6.1).
-        subject.work_root(&template)
+        // a directory nothing will ever be in (§FS-005-dispatch.6.1). A private
+        // matter's root is the person's, asked first and alone, and its
+        // refusals are the dispatch's own (§FS-018-private-sources.2).
+        crate::work::private::root(&self.work_config, &item.source, &root, |private| {
+            subject.work_root(private)
+        })
+        .unwrap_or_else(|| subject.work_root(&template))
     }
 
     /// Fill each agent entry's picker roster at the same branch and root used
@@ -1673,5 +1678,52 @@ mod tests {
         ] {
             assert_eq!(subject.project(), "widget");
         }
+    }
+
+    /// The interface previews a private matter's root as the dispatch writes
+    /// it: the person's own, ahead of an entry's `root`, and refused in the
+    /// dispatch's words where the site declares none, so the offer carries
+    /// the reason rather than a path (§FS-018-private-sources.2,
+    /// §FS-005-dispatch.27).
+    #[test]
+    fn issue_191_the_preview_asks_the_private_rung_first() {
+        let tmp = tempfile::tempdir().unwrap();
+        let project = tmp.path().join("widget");
+        std::fs::create_dir_all(&project).unwrap();
+        let registry = serde_json::json!({ "projects": [
+            { "id": "widget", "root": project.to_string_lossy() }
+        ] });
+        let mut session = Session::default();
+        session.placements.insert(
+            "widget".to_string(),
+            crate::branches::Placement::load(&registry, "widget").expect("placed"),
+        );
+        session.work_config.private = Some(crate::work::recipe::PrivateSources {
+            sources: vec!["chatgw".to_string()],
+            root: Some(
+                tmp.path()
+                    .join("me/{project}")
+                    .to_string_lossy()
+                    .into_owned(),
+            ),
+        });
+        let item = Item {
+            id: "chatgw:signal/you#1".to_string(),
+            source: "chatgw".to_string(),
+            project: "widget".to_string(),
+            ..merged(Utc::now())
+        };
+        assert_eq!(
+            session.work_root_for_result(&item, None, Some("{root}/answers")),
+            Ok(tmp.path().join("me/widget"))
+        );
+        session.work_config.private.as_mut().unwrap().root.take();
+        let why = session
+            .work_root_for_result(&item, None, Some("{root}/answers"))
+            .unwrap_err();
+        assert!(
+            why.contains("work.private.root") && why.contains("chatgw"),
+            "{why}"
+        );
     }
 }
