@@ -92,10 +92,43 @@ fn overlapping_capacity_runner(tmp: &Path, log: &Path) {
     );
 }
 
+/// `sweep`, started through `sh` so that it holds a write end of its own
+/// stdout at fd 9, as a descriptor leaked into it would be: the same program,
+/// arguments and environment, with only that descriptor added.
+fn holding_its_stdout(sweep: &assert_cmd::Command) -> assert_cmd::Command {
+    let mut held = assert_cmd::Command::new("/bin/sh");
+    held.args(["-c", "exec 9>&1; exec \"$0\" \"$@\""])
+        .arg(sweep.get_program())
+        .args(sweep.get_args());
+    for (key, value) in sweep.get_envs() {
+        match value {
+            Some(value) => held.env(key, value),
+            None => held.env_remove(key),
+        };
+    }
+    held
+}
+
 /// §FS-005-dispatch.24: filtered sweeps in separate processes reserve the
 /// shared aggregate slot before either starts a root.
 #[test]
 fn review_repro_concurrent_sweeps_share_the_global_ceiling() {
+    concurrent_sweeps_share_the_global_ceiling(false);
+}
+
+/// §FS-005-dispatch.24, read while each sweep holds a write end of its own
+/// stdout at fd 9 (agent-grounds/ephor#203). On macOS std makes a pipe with
+/// `pipe()` and only then marks it close-on-exec, so a sweep spawned while
+/// another thread spawns can inherit a pipe the test reads to its end. This
+/// hands every sweep that descriptor on purpose, on every platform. The runner
+/// a sweep launches must not keep it, or `output()` returns only once the lock
+/// holder has exited, and the started root's lock reads as released.
+#[test]
+fn concurrent_sweeps_share_the_global_ceiling_while_holding_a_leaked_pipe() {
+    concurrent_sweeps_share_the_global_ceiling(true);
+}
+
+fn concurrent_sweeps_share_the_global_ceiling(leak: bool) {
     let tmp = tempdir();
     fixture(
         tmp.path(),
@@ -135,11 +168,18 @@ fn review_repro_concurrent_sweeps_share_the_global_ceiling() {
     fs::write(&ledger_path, serde_json::to_string_pretty(&ledger).unwrap()).unwrap();
     overlapping_capacity_runner(tmp.path(), &log);
 
-    let mut demo = ephor(tmp.path());
-    demo.args(["work", "run", "--due", "--project", "demo", "--json"]);
+    let sweep = |project: &str| {
+        let mut sweep = ephor(tmp.path());
+        sweep.args(["work", "run", "--due", "--project", project, "--json"]);
+        if leak {
+            holding_its_stdout(&sweep)
+        } else {
+            sweep
+        }
+    };
+    let mut demo = sweep("demo");
     let demo = std::thread::spawn(move || demo.output().unwrap());
-    let mut other = ephor(tmp.path());
-    other.args(["work", "run", "--due", "--project", "other", "--json"]);
+    let mut other = sweep("other");
     let other = std::thread::spawn(move || other.output().unwrap());
     let demo = demo.join().unwrap();
     let other = other.join().unwrap();
