@@ -29,7 +29,7 @@
 //! source declared it can (§FS-011-command-line.4).
 
 use std::ops::Range;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use chrono::Utc;
 use ratatui::crossterm::event::KeyCode;
@@ -489,7 +489,7 @@ impl ThreadScreen {
 
     /// The person's own words, typed in their editor on a scratch file of its
     /// own and sent by the move `ephor reply ID WORDS` makes, once asked
-    /// (§FS-005-dispatch.13.2). `start` is what the file starts from.
+    /// (§FS-005-dispatch.13.2). `start` is what an empty file starts from.
     fn type_reply(&self, start: String) -> Action {
         match &self.reply_to {
             Some(_) => Action::TypeReply {
@@ -500,6 +500,22 @@ impl ThreadScreen {
                 Action::SetMessage("This conversation cannot be replied to from here".to_string())
             }
         }
+    }
+
+    /// Ready the scratch file at `path` for the editor. Words left there by a
+    /// reply that was not sent are reopened as they are; only an absent or
+    /// empty file starts from `start` (§FS-005-dispatch.13.2).
+    pub fn scratch(path: &Path, start: &str) -> std::io::Result<()> {
+        match std::fs::read(path) {
+            Ok(kept) if !kept.trim_ascii().is_empty() => return Ok(()),
+            Ok(_) => {}
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => {}
+            Err(err) => return Err(err),
+        }
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        std::fs::write(path, start)
     }
 
     /// The editor closed on `words`: ask once, naming the thread and the
