@@ -584,6 +584,11 @@ for a checked decision. See [reply recovery](docs/manual.md#812-an-answer-comes-
 first, and where the channel cannot carry a reply the card still names the file
 you copy from
 ([§FS-005-dispatch.13](docs/functional-spec/FS-005-dispatch.md#13-a-communication-is-work-too-and-its-answer-comes-back-as-a-proposal)).
+A stale draft is shown against what moved since it was drafted — an edit with
+its words before and after, every arrival, your own replies — and offers a new
+draft (`n`, or `ephor work dispatch --again`) or your own words (`r`, or
+`ephor reply ID 'words'`), never a post of the old ones
+([§FS-005-dispatch.13.2](docs/functional-spec/FS-005-dispatch.md#132-a-stale-draft-is-shown-against-what-moved-since-it-was-drafted)).
 It needs no checkout, so a conversation is answerable on a project whose branch
 is not on this machine.
 
