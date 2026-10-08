@@ -1048,7 +1048,7 @@ mod tests {
         );
     }
 
-    /// A row's `rooms` is a list of room ids (§FS-008-attribution.1), and a
+    /// A row's `rooms` is a list of room ids (§FS-008-attribution.1.1), and a
     /// row that wrote something else there is refused rather than read as
     /// silent, which would let a checkout's hint stand in for it.
     #[test]
@@ -1066,6 +1066,31 @@ mod tests {
         assert!(refused(serde_json::json!("whatsapp/acme#120363@g.us")));
         assert!(refused(serde_json::json!([""])));
         assert!(!refused(serde_json::json!(["whatsapp/acme#120363@g.us"])));
+        assert!(!refused(serde_json::json!([])));
+    }
+
+    /// A row's `addresses` is a list of non-empty addresses
+    /// (§FS-008-attribution.1.1), refused by name otherwise, as `rooms` is:
+    /// read as silent, it would let the checkout's hint stand in for what the
+    /// row tried to say. `[]` is the row refusing every hinted address.
+    #[test]
+    fn addresses_on_a_row_is_a_list_of_addresses() {
+        let schema: Value = serde_json::from_str(EMBEDDED_SCHEMA).unwrap();
+        let validator = jsonschema::validator_for(&schema).unwrap();
+        let refused = |addresses: Value| {
+            let registry =
+                serde_json::json!({ "projects": [{ "id": "widget", "addresses": addresses }] });
+            let at: Vec<String> = validator
+                .iter_errors(&registry)
+                .map(|error| error.instance_path.to_string())
+                .collect();
+            at.iter()
+                .any(|path| path.starts_with("/projects/0/addresses"))
+        };
+        assert!(refused(serde_json::json!("alice@example.org")));
+        assert!(refused(serde_json::json!([""])));
+        assert!(refused(serde_json::json!([7])));
+        assert!(!refused(serde_json::json!(["bob@example.org"])));
         assert!(!refused(serde_json::json!([])));
     }
 

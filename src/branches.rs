@@ -176,6 +176,14 @@ fn strings(entry: &Value, field: &str) -> Vec<String> {
         .unwrap_or_default()
 }
 
+/// A row's list-of-strings field where it writes one, `[]` included, and
+/// `None` where it has no such key. For a list a checkout can hint, that
+/// difference is the row's word: an empty list is still an answer
+/// (§FS-008-attribution.1.1).
+fn listed(entry: &Value, field: &str) -> Option<Vec<String>> {
+    entry.get(field).map(|_| strings(entry, field))
+}
+
 /// Where an item's branch workspace stands, for gating work on it.
 #[derive(Clone, Debug)]
 pub enum WorkspaceState {
@@ -214,15 +222,20 @@ pub struct Placement {
     /// on disk instead (§AR-004-forest.2).
     pub repos: Vec<Declaration>,
     /// Names the project answers to (§FS-008-attribution.1).
-    pub aliases: Vec<String>,
+    ///
+    /// This list and the three after it are `None` where the row says nothing,
+    /// kept apart from `Some([])`: a row that writes a list, even an empty one,
+    /// has refused whatever a checkout hints for it (§FS-008-attribution.1.1).
+    pub aliases: Option<Vec<String>>,
     /// Repositories and organizations that are its business without being in
     /// its forest — what places a mention or an issue filed in its ecosystem
     /// (§FS-008-attribution.1).
-    pub territory: Vec<String>,
+    pub territory: Option<Vec<String>>,
+    /// The mail addresses and lists whose conversations are its, matched as
+    /// written (§FS-008-attribution.1.1).
+    pub addresses: Option<Vec<String>>,
     /// The rooms on a conversation source it claims, named exactly as the
-    /// source states them (§FS-008-attribution.1). `None` where the row says
-    /// nothing, kept apart from `Some([])`: a row that lists none has refused
-    /// every room a checkout might claim for it.
+    /// source states them (§FS-008-attribution.1).
     pub rooms: Option<Vec<String>>,
     /// The conversation sources it is the fallback home for, named exactly as
     /// the site configuration names them (§FS-008-attribution.1). Empty where
@@ -697,10 +710,10 @@ impl Placement {
             branches,
             main_branch: registry::str_field(entry, "main_branch").map(String::from),
             repos: declarations(registry_doc, entry),
-            aliases: strings(entry, "aliases"),
-            territory: strings(entry, "territory"),
-            // Presence is the row's word: an empty list is still an answer.
-            rooms: entry.get("rooms").map(|_| strings(entry, "rooms")),
+            aliases: listed(entry, "aliases"),
+            territory: listed(entry, "territory"),
+            addresses: listed(entry, "addresses"),
+            rooms: listed(entry, "rooms"),
             fallback_sources: registry::fallback_sources(entry),
             trust: registry::str_field(entry, "manifest_trust")
                 .map(crate::manifest::Trust::parse)
@@ -793,10 +806,6 @@ impl Placement {
             .unwrap_or_default()
     }
 
-    /// The signals by which this project's matters are recognized
-    /// (§FS-008-attribution.1), compiled from the row. The row has the last
-    /// word: a checkout must not be able to claim another project's
-    /// conversations.
     /// What the project says about itself, where it says anything and the row
     /// lets it be read (§FS-006-project-interface.2). Errors are not fatal
     /// here: a manifest ephor cannot read must not stop the project being
@@ -807,19 +816,25 @@ impl Placement {
             .flatten()
     }
 
+    /// The signals by which this project's matters are recognized
+    /// (§FS-008-attribution.1), compiled from the row. The row has the last
+    /// word: a checkout must not be able to claim another project's
+    /// conversations.
     pub fn identity(&self) -> crate::attribution::Identity {
         let manifest = self.manifest();
-        let hint = |pick: fn(&crate::manifest::Identity) -> &Vec<String>| -> Vec<String> {
-            manifest
-                .as_ref()
-                .map(|manifest| pick(&manifest.identity).clone())
-                .unwrap_or_default()
+        // The row's word on a hinted list is whether it writes it: a list it
+        // writes is final, `[]` included, and only one it leaves out takes the
+        // checkout's hint (§FS-008-attribution.1.1).
+        let adopt = |own: &Option<Vec<String>>,
+                     pick: fn(&crate::manifest::Identity) -> &Vec<String>|
+         -> Vec<String> {
+            own.clone().unwrap_or_else(|| {
+                manifest
+                    .as_ref()
+                    .map(|manifest| pick(&manifest.identity).clone())
+                    .unwrap_or_default()
+            })
         };
-        // The row adopts a hint where it says nothing of its own, and
-        // overrides it where it does: a checkout must not be able to claim
-        // another project's conversations (§FS-008-attribution.1).
-        let adopt =
-            |own: Vec<String>, hinted: Vec<String>| if own.is_empty() { hinted } else { own };
         crate::attribution::Identity {
             project: self.project.clone(),
             // The prefixes its branches' ticket keys carry — what the row
@@ -839,20 +854,14 @@ impl Placement {
                     }
                     prefixes
                 }),
-            repos: adopt(
-                self.repos.iter().map(|repo| repo.path.clone()).collect(),
-                hint(|identity| &identity.repos),
-            ),
-            territory: adopt(self.territory.clone(), hint(|identity| &identity.territory)),
-            aliases: adopt(self.aliases.clone(), hint(|identity| &identity.aliases)),
-            addresses: hint(|identity| &identity.addresses),
-            // Not `adopt`: it cannot tell a row that listed no rooms from one
-            // silent on them, and only the second may take a checkout's word
-            // for which rooms are this project's (§FS-008-attribution.1).
-            rooms: self
-                .rooms
-                .clone()
-                .unwrap_or_else(|| hint(|identity| &identity.rooms)),
+            // The type's layout, which every row has, and never the manifest's
+            // `identity.repos`: the row always speaks for its forest
+            // (§FS-008-attribution.1.1).
+            repos: self.repos.iter().map(|repo| repo.path.clone()).collect(),
+            territory: adopt(&self.territory, |identity| &identity.territory),
+            aliases: adopt(&self.aliases, |identity| &identity.aliases),
+            addresses: adopt(&self.addresses, |identity| &identity.addresses),
+            rooms: adopt(&self.rooms, |identity| &identity.rooms),
             // The row's alone, never a hint: a source's name lives only in the
             // site configuration, so nothing a checkout says can name one
             // (§AR-003-attribution.2).
@@ -1294,8 +1303,9 @@ mod tests {
             }],
             main_branch: Some("main".to_string()),
             repos: Vec::new(),
-            aliases: Vec::new(),
-            territory: Vec::new(),
+            aliases: None,
+            territory: None,
+            addresses: None,
             rooms: None,
             fallback_sources: Vec::new(),
             trust: crate::manifest::Trust::Full,
@@ -1417,7 +1427,7 @@ mod tests {
 
     /// A row's rooms are read for whether it named them at all, not only for
     /// what it named: an empty list is the row refusing every room, and
-    /// silence leaves the manifest's hint to stand (§FS-008-attribution.1).
+    /// silence leaves the manifest's hint to stand (§FS-008-attribution.1.1).
     #[test]
     fn a_row_that_lists_no_rooms_is_told_apart_from_one_silent_on_them() {
         let doc = json!({
@@ -1434,6 +1444,116 @@ mod tests {
         );
         assert_eq!(rooms("gadget"), Some(Vec::new()));
         assert_eq!(rooms("sprocket"), None);
+    }
+
+    /// Aliases, territory and addresses are read as rooms are: for whether the
+    /// row wrote the list at all, so `[]` is kept apart from no key
+    /// (§FS-008-attribution.1.1).
+    #[test]
+    fn a_row_that_writes_an_empty_list_is_told_apart_from_one_silent_on_it() {
+        for (field, value) in [
+            ("aliases", "gizmo"),
+            ("territory", "acme/plugin"),
+            ("addresses", "bob@example.org"),
+        ] {
+            let doc = json!({
+                "projects": [
+                    { "id": "widget", "root": "/w/widget", field: [value] },
+                    { "id": "gadget", "root": "/w/gadget", field: [] },
+                    { "id": "sprocket", "root": "/w/sprocket" }
+                ]
+            });
+            let listed = |project: &str| {
+                let placement = Placement::load(&doc, project).expect("a row");
+                match field {
+                    "aliases" => placement.aliases,
+                    "territory" => placement.territory,
+                    _ => placement.addresses,
+                }
+            };
+            assert_eq!(listed("widget"), Some(vec![value.to_string()]), "{field}");
+            assert_eq!(listed("gadget"), Some(Vec::new()), "{field}");
+            assert_eq!(listed("sprocket"), None, "{field}");
+        }
+    }
+
+    /// The issue's three rows over one checkout that hints every list: the row
+    /// silent on all of them adopts every hint, the one that writes `[]`
+    /// refuses every hint, and the one that writes its own lists gets exactly
+    /// those, its own address included (§FS-008-attribution.1.1).
+    #[test]
+    fn a_row_has_the_last_word_on_every_hinted_list_by_writing_it() {
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::write(
+            tmp.path().join(crate::manifest::FILE),
+            r#"{"identity": {"aliases": ["the widget"], "territory": ["acme"],
+                             "addresses": ["alice@example.org"],
+                             "rooms": ["whatsapp/acme#1@g.us"]}}"#,
+        )
+        .unwrap();
+        let root = tmp.path().to_string_lossy().to_string();
+        let doc = json!({
+            "projects": [
+                { "id": "silent", "root": root },
+                { "id": "says-none", "root": root,
+                  "aliases": [], "territory": [], "addresses": [], "rooms": [] },
+                { "id": "says-its-own", "root": root,
+                  "aliases": ["gizmo"], "territory": ["acme/plugin"],
+                  "addresses": ["bob@example.org"], "rooms": ["whatsapp/acme#2@g.us"] }
+            ]
+        });
+        let compiled = |project: &str| {
+            let identity = Placement::load(&doc, project).expect("a row").identity();
+            [
+                identity.aliases,
+                identity.territory,
+                identity.addresses,
+                identity.rooms,
+            ]
+        };
+        assert_eq!(
+            compiled("silent"),
+            [
+                vec!["the widget".to_string()],
+                vec!["acme".to_string()],
+                vec!["alice@example.org".to_string()],
+                vec!["whatsapp/acme#1@g.us".to_string()],
+            ]
+        );
+        assert_eq!(compiled("says-none"), <[Vec<String>; 4]>::default());
+        assert_eq!(
+            compiled("says-its-own"),
+            [
+                vec!["gizmo".to_string()],
+                vec!["acme/plugin".to_string()],
+                vec!["bob@example.org".to_string()],
+                vec!["whatsapp/acme#2@g.us".to_string()],
+            ]
+        );
+    }
+
+    /// The forest's repositories come from the project type's layout, which a
+    /// row that loads always has, so a manifest's `identity.repos` is never
+    /// read as identity (§FS-008-attribution.1.1).
+    #[test]
+    fn a_typed_row_ignores_the_manifests_repositories() {
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::write(
+            tmp.path().join(crate::manifest::FILE),
+            r#"{"identity": {"repos": ["acme/elsewhere"]}}"#,
+        )
+        .unwrap();
+        let doc = json!({
+            "project_types": [{
+                "id": "mono",
+                "repos": [{ "id": "main", "path": ".", "update_mode": "branch" }]
+            }],
+            "projects": [
+                { "id": "widget", "type": "mono", "root": tmp.path().to_string_lossy() }
+            ]
+        });
+        let identity = Placement::load(&doc, "widget").expect("a row").identity();
+        assert_eq!(identity.repos, vec!["."]);
     }
 
     /// A row's fallback sources reach its identity as the row wrote them, and
