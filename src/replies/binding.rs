@@ -26,8 +26,9 @@ pub struct Binding {
     pub path: PathBuf,
 }
 
-/// Only authorship, timestamp, words and ownership change a baseline;
-/// reactions and task state do not (§FS-005-dispatch.13).
+/// A baseline records authorship, timestamp, words and ownership; reactions
+/// and task state are no part of it (§FS-005-dispatch.13). Every comparison
+/// reads it through [`identity`].
 pub fn fingerprints(thread: &Value) -> Vec<Value> {
     thread
         .get("messages")
@@ -42,6 +43,28 @@ pub fn fingerprints(thread: &Value) -> Vec<Value> {
                 "mine": message.get("mine").cloned().unwrap_or(Value::Bool(false)),
             })
         })
+        .collect()
+}
+
+/// A message as every comparison reads it: author, time and words. Ownership
+/// is recorded beside them and moves nothing — a message is the same whether
+/// or not its source says it is the person's — so it reads `false`, as every
+/// baseline and generation key saved before ownership reached the recorded
+/// message holds it (§FS-005-dispatch.13.2).
+pub fn identity(message: &Value) -> Value {
+    let mut message = message.clone();
+    if let Some(fields) = message.as_object_mut() {
+        fields.insert("mine".into(), Value::Bool(false));
+    }
+    message
+}
+
+/// Every recorded thread's messages as comparisons read them
+/// (§FS-005-dispatch.13.2).
+pub fn identities(item: &Item) -> Vec<Vec<Value>> {
+    threads(item)
+        .iter()
+        .map(|thread| fingerprints(thread).iter().map(identity).collect())
         .collect()
 }
 
@@ -111,9 +134,16 @@ impl Binding {
     }
 
     /// Local generations belong to a thread's saved first message and position,
-    /// never the whole row (§FS-005-dispatch.13).
+    /// never the whole row (§FS-005-dispatch.13), whoever the source says
+    /// wrote it (§FS-005-dispatch.13.2).
     pub fn key(&self) -> String {
-        json!([self.thread, self.messages.first()]).to_string()
+        json!([self.thread, self.messages.first().map(identity)]).to_string()
+    }
+
+    /// The messages this draft saw, as comparisons read them
+    /// (§FS-005-dispatch.13.2).
+    pub fn seen(&self) -> Vec<Value> {
+        self.messages.iter().map(identity).collect()
     }
 
     /// The advancing message is named even when no target identity survived
@@ -157,11 +187,12 @@ impl Binding {
                 "Draft is stale: an accepted own send advanced this thread: {words}"
             ));
         }
-        let all: Vec<Vec<Value>> = threads(item).iter().map(fingerprints).collect();
-        if self.messages.is_empty()
+        let seen = self.seen();
+        let all = identities(item);
+        if seen.is_empty()
             || all
                 .iter()
-                .filter(|messages| messages.starts_with(&self.messages))
+                .filter(|messages| messages.starts_with(&seen))
                 .count()
                 != 1
         {
@@ -169,11 +200,11 @@ impl Binding {
         }
         let Some(messages) = all
             .get(self.thread)
-            .filter(|messages| messages.starts_with(&self.messages))
+            .filter(|messages| messages.starts_with(&seen))
         else {
             return Err("Draft is stale: bound thread moved or disappeared".into());
         };
-        if let Some(newer) = messages.get(self.messages.len()) {
+        if let Some(newer) = messages.get(seen.len()) {
             return Err(format!("Draft is stale: {}", Self::label(newer)));
         }
         if threads(item)[self.thread]

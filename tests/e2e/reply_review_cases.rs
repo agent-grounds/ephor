@@ -294,18 +294,30 @@ fn a_window_that_slid_is_new_and_no_longer_shown_never_an_edit() {
 
 #[test]
 fn a_thread_that_cannot_be_lined_up_keeps_its_sentence_and_lists_nothing() {
-    for case in ["reordered", "same author and time"] {
+    for case in ["reordered", "same author and time", "a missing time"] {
         let world = issue_like();
-        let second = match case {
-            "reordered" => "2026-10-07T09:10:00Z",
-            _ => "2026-10-07T09:00:00Z",
-        };
-        moved(&world, |messages| {
-            messages.push(said("<c1>", "dana", "The posts are in.", second))
+        moved(&world, |messages| match case {
+            // The source reports no time for the message the draft answers.
+            "a missing time" => {
+                messages[0].as_object_mut().unwrap().remove("when");
+            }
+            "reordered" => messages.push(said(
+                "<c1>",
+                "dana",
+                "The posts are in.",
+                "2026-10-07T09:10:00Z",
+            )),
+            _ => messages.push(said(
+                "<c1>",
+                "dana",
+                "The posts are in.",
+                "2026-10-07T09:00:00Z",
+            )),
         });
         world.drafted(DRAFT);
         moved(&world, |messages| match case {
             "reordered" => messages.reverse(),
+            "a missing time" => messages[0]["text"] = json!(EDITED),
             _ => messages[1]["text"] = json!(RAISED),
         });
         let seen = seen(&world);
