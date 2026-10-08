@@ -15,6 +15,10 @@
 //! and marked as unsent (§FS-005-dispatch.13): `p` posts it where the channel
 //! declares reply (§FS-007-matters.4), `e` opens it for editing first, and
 //! where nothing can post it the card is what the reader copies.
+//!
+//! `s` is the one write on the whole conversation rather than on a message:
+//! it settles the conversation at its source, and is taught only where that
+//! source declared it can (§FS-011-command-line.4).
 
 use std::ops::Range;
 use std::path::PathBuf;
@@ -71,6 +75,9 @@ pub(crate) struct ThreadScreen {
     pending_reply: Option<crate::api::views::PendingReply>,
     reply_error: Option<String>,
     reply_diagnostics: Vec<String>,
+    /// Its source can settle the conversation at its source
+    /// (§FS-001-forge-interface.1), so `s` is taught here.
+    settles: bool,
     /// Flat message index of the selected card.
     selected: usize,
     scroll: u16,
@@ -107,6 +114,7 @@ impl ThreadScreen {
             pending_reply,
             reply_error,
             reply_diagnostics,
+            settles,
         } = reading;
         if messages.is_empty()
             && pending_reply.is_none()
@@ -138,6 +146,7 @@ impl ThreadScreen {
             pending_reply,
             reply_error,
             reply_diagnostics,
+            settles,
             selected: 0,
             scroll: 0,
             follow: true,
@@ -188,6 +197,7 @@ impl ThreadScreen {
         self.pending_reply = reading.pending_reply;
         self.reply_error = reading.reply_error;
         self.reply_diagnostics = reading.reply_diagnostics;
+        self.settles = reading.settles;
         self.wrap_width = 0;
     }
 
@@ -233,6 +243,12 @@ impl ThreadScreen {
             if !pending.resolutions.is_empty() {
                 keys.push_str("  S resolve sent  N resolve not-sent (check channel first)");
             }
+        }
+        // A key about the whole conversation, so it does not follow the
+        // selection: the source declared it or it did not
+        // (§FS-004-quick-actions.2).
+        if self.settles {
+            keys.push_str("  s settle");
         }
         keys.push_str("  x actions  o open  m done  ; ops  esc back");
         keys
@@ -312,6 +328,11 @@ impl ThreadScreen {
             KeyCode::Char('t') => self.tick(),
             KeyCode::Char('p') => self.post_reply(),
             KeyCode::Char('e') => self.edit_reply(),
+            // Sent even where it is not taught, so the refusal is the one
+            // `ephor settle` gives (§FS-011-command-line.4).
+            KeyCode::Char('s') => Action::Settle {
+                item: self.item.clone(),
+            },
             KeyCode::Char('S') => self.resolve_reply(crate::api::reply::Resolution::Sent),
             KeyCode::Char('N') => self.resolve_reply(crate::api::reply::Resolution::NotSent),
             _ => Action::None,
@@ -970,6 +991,68 @@ mod tests {
             text: text.to_string(),
             path: PathBuf::from("/w/widget/panta/runtime/ephor/widget-77.reply.md"),
         }
+    }
+
+    /// `s` is about the whole conversation, so it is taught wherever the
+    /// source declared it can settle one, whichever message is selected, and
+    /// nowhere else (§FS-004-quick-actions.2). `m`, `d` and Space keep the
+    /// local mark, and `S` is still the held reply's (§FS-011-command-line.4).
+    #[test]
+    fn settle_is_taught_where_the_source_declared_it_and_no_other_key_sends_it() {
+        let tmp = tempfile::tempdir().unwrap();
+        let _replies = crate::replies::storage::use_test_directory(tmp.path().join("replies"));
+        let mut item = item_with_threads(json!([{ "messages": [
+            { "author": "dana", "text": "Did the quote arrive?", "when": "2026-10-07T09:00:00Z" },
+            { "author": "me", "text": "It did.", "when": "2026-10-07T10:00:00Z", "mine": true }
+        ] }]));
+        item.id = "mail:k-B".to_string();
+        item.source = "mail".to_string();
+        item.kind = ItemKind::Message;
+        item.raw["conversation"] = json!(true);
+        let declared = || {
+            let mut reading = Conversation::of(&item, None);
+            reading.settles = true;
+            reading
+        };
+
+        let mut screen = ThreadScreen::open_reading(item.clone(), declared()).unwrap();
+        for _ in 0..2 {
+            assert!(screen.footer().contains("s settle"), "{}", screen.footer());
+            screen.handle_key(KeyCode::Char('j'));
+        }
+        match screen.handle_key(KeyCode::Char('s')) {
+            Action::Settle { item: settled } => assert_eq!(settled.id, "mail:k-B"),
+            _ => panic!("`s` settles the conversation"),
+        }
+        for key in ['m', 'd', ' '] {
+            match screen.handle_key(KeyCode::Char(key)) {
+                Action::MarkDone { marks, pop } => {
+                    assert_eq!(marks[0].0, "mail:k-B");
+                    assert!(pop);
+                }
+                Action::Settle { .. } => panic!("`{key}` is the local mark, never a settle"),
+                _ => panic!("`{key}` marks the row done"),
+            }
+        }
+        assert!(
+            matches!(screen.handle_key(KeyCode::Char('S')), Action::SetMessage(_)),
+            "with nothing held, `S` refuses as it always did"
+        );
+
+        let mut undeclared =
+            ThreadScreen::open_reading(item.clone(), Conversation::of(&item, None)).unwrap();
+        assert!(
+            !undeclared.footer().contains("s settle"),
+            "{}",
+            undeclared.footer()
+        );
+        // A reading taken again after a move carries the offer with it.
+        undeclared.reread_reading(declared());
+        assert!(
+            undeclared.footer().contains("s settle"),
+            "{}",
+            undeclared.footer()
+        );
     }
 
     #[test]

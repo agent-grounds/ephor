@@ -108,6 +108,10 @@ pub(crate) enum Action {
         path: PathBuf,
         item: Item,
     },
+    /// Put a conversation away at its source (§FS-011-command-line.4).
+    Settle {
+        item: Item,
+    },
     /// Summon the configured action menu for an item.
     OpenActionMenu(Item),
     /// The same menu on a branch row, which has no item behind it: what ephor
@@ -629,6 +633,23 @@ impl App {
                 let reading = self.ctx.conversation(&item);
                 if let Screen::Thread(thread) = &mut self.screen {
                     thread.reread_reading(reading);
+                }
+            }
+            // `ephor settle` is this call too, so a row the key is pressed on
+            // in error is refused with the command's own sentence
+            // (§FS-011-command-line.4). Accepted, the row is done as `m`
+            // leaves it, and the thread it was pressed in closes as `m`
+            // closes it.
+            Action::Settle { item } => {
+                self.message = "Settling…".to_string();
+                terminal
+                    .draw(|frame| self.draw(frame))
+                    .map_err(|err| EphorError::Command(format!("draw failed: {err}")))?;
+                let outcome = self.ctx.settle(&item, crate::api::act::Sending::Now);
+                self.message = outcome.says;
+                if outcome.ok {
+                    self.screen = Screen::Navigator;
+                    self.rebuild_view();
                 }
             }
             Action::EditReply { path, item } => {
@@ -1865,18 +1886,13 @@ impl App {
             [(_, _, title)] => format!("Done: {title}"),
             _ => format!("Done: {} items", marks.len()),
         };
-        for (id, updated_at, _) in marks {
-            // Remember what it looked like, so the row can say what moved when
-            // it comes back (§FS-007-matters.5).
-            let mark = self
-                .ctx
-                .matter(&id)
-                .map(|matter| cache::Mark::of(&matter))
-                .unwrap_or_else(|| cache::Mark::at(updated_at));
-            self.ctx.resurfacing.remove(&id);
-            self.ctx.seen.insert(id, mark);
-        }
-        cache::store_seen(&self.ctx.seen)?;
+        // The session's write, which an accepted settle makes too
+        // (§FS-003-feed-categories.4).
+        self.ctx.mark_done(
+            marks
+                .into_iter()
+                .map(|(id, updated_at, _)| (id, updated_at)),
+        )?;
         self.rebuild_view();
         Ok(())
     }
@@ -1959,6 +1975,7 @@ impl App {
         };
         *slot = landed;
         self.ctx.recompute_resurfacing();
+        self.ctx.recompute_settling();
         // Where each new item sits, in the same pass. This is the cheap half —
         // an in-memory fold over what just landed, asking the world nothing —
         // and the tree reads the answer rather than placing rows itself, so

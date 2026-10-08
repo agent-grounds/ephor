@@ -50,6 +50,11 @@ pub struct Conversation {
     pub pending_reply: Option<views::PendingReply>,
     pub reply_error: Option<String>,
     pub reply_diagnostics: Vec<String>,
+    /// Its source declared it can settle the conversation at its source, so
+    /// `s` is offered on it (§FS-004-quick-actions.2). Set by
+    /// [`Session::conversation`](super::Session::conversation), which holds
+    /// the feeds; a walk of the item alone cannot know it.
+    pub settles: bool,
 }
 
 impl Conversation {
@@ -106,6 +111,7 @@ impl Conversation {
             pending_reply,
             reply_error,
             reply_diagnostics: crate::replies::Store::recovery().diagnostics,
+            settles: false,
         }
     }
 

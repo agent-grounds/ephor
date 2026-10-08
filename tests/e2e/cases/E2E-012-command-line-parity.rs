@@ -457,14 +457,23 @@ fn every_reading_publishes_the_shape_it_prints() {
 }
 
 /// A forge that answers everything a sweep of the machine forms needs: a
-/// matter with a conversation, a red gate, the failures behind it, and a
-/// restart it will accept.
+/// matter with a conversation, a red gate, the failures behind it, a restart
+/// it will accept, and a conversation of its own it can settle.
 const EVERYTHING: &str = r#"#!/usr/bin/env bash
 set -euo pipefail
 request="$(cat)"
 case "${1:?subcommand}" in
   capabilities)
-    printf '{"pull_requests":true,"conversation":true,"gate":true,"failures":true,"reactions":true,"replies":true,"tasks":true,"restart":true}'
+    printf '{"pull_requests":true,"conversation":true,"gate":true,"failures":true,"reactions":true,"replies":true,"tasks":true,"restart":true,"messages":true,"settle":true}'
+    ;;
+  messages)
+    printf '%s' '[
+      { "id": "k-1", "title": "Is the retry window documented?",
+        "updated_at": "2026-08-01T12:30:00Z", "reasons": ["mentioned"],
+        "threads": [ { "messages": [
+          { "author": "Cy", "text": "@you is the retry window documented?",
+            "when": "2026-08-01T12:30:00Z", "mine": false } ] } ] }
+    ]'
     ;;
   pull-requests)
     printf '%s' '[
@@ -489,10 +498,13 @@ case "${1:?subcommand}" in
                      "trace": "retry_window_test: expected 3 attempts, saw 1" } ]'
     ;;
   restart) printf '{"asked":2}' ;;
-  react|reply|resolve-task) printf '{}' ;;
+  react|reply|resolve-task|settle) printf '{}' ;;
   *) printf '[]' ;;
 esac
 "#;
+
+/// The conversation `EVERYTHING` reports under messages, which it can settle.
+const CONVERSATION: &str = "acme:k-1";
 
 /// Every machine form this world can reach, and the shape each one publishes.
 ///
@@ -526,6 +538,7 @@ const SWEEP: &[(&str, &[&str])] = &[
         &["react", ITEM, "THUMBS_UP", "--message", "0", "--json"],
     ),
     ("outcome", &["tick", ITEM, "--message", "1", "--json"]),
+    ("outcome", &["settle", CONVERSATION, "--json"]),
     ("outcome", &["reply", ITEM, "it", "resets", "--json"]),
     ("failures", &["failures", "--item", ITEM, "--json"]),
     ("restart", &["restart", "--item", ITEM, "--json"]),

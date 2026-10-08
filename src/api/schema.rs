@@ -21,8 +21,8 @@ pub const VIEWS_SCHEMA: &str = include_str!("../../assets/ephor-views.schema.jso
 ///
 /// A command is named by its path, as the parity list names one. Several
 /// commands share a shape and that is the point: `ephor actions run`,
-/// `ephor react`, `ephor tick` and `ephor reply` all print an `outcome`
-/// because they are all one move returning what it changed
+/// `ephor react`, `ephor tick`, `ephor reply` and `ephor settle` all print an
+/// `outcome` because they are all one move returning what it changed
 /// (§AR-009-surfaces.1). The moves that are sweeps or replays rather than one
 /// entry running print shapes of their own.
 ///
@@ -50,6 +50,7 @@ pub const SHAPES: &[(&str, &str)] = &[
     ("react", "outcome"),
     ("tick", "outcome"),
     ("reply", "outcome"),
+    ("settle", "outcome"),
     ("refresh", "refresh"),
     ("mark-read", "mark-read"),
     ("failures", "failures"),

@@ -164,7 +164,37 @@ pub fn feed_path(project_id: &str) -> PathBuf {
 }
 
 fn seen_path() -> PathBuf {
+    #[cfg(test)]
+    if let Some(path) = TEST_SEEN.with(|seen| seen.borrow().clone()) {
+        return path;
+    }
     paths::state_dir().join("seen.json")
+}
+
+#[cfg(test)]
+thread_local! {
+    static TEST_SEEN: std::cell::RefCell<Option<PathBuf>> = const { std::cell::RefCell::new(None) };
+}
+
+/// Keep this thread's seen store at `path` until the guard drops, so a test of
+/// a move that marks a row done never writes the reader's own.
+#[cfg(test)]
+pub(crate) fn use_test_seen(path: PathBuf) -> TestSeen {
+    TEST_SEEN.with(|seen| {
+        assert!(seen.borrow().is_none());
+        *seen.borrow_mut() = Some(path);
+    });
+    TestSeen
+}
+
+#[cfg(test)]
+pub(crate) struct TestSeen;
+
+#[cfg(test)]
+impl Drop for TestSeen {
+    fn drop(&mut self) {
+        TEST_SEEN.with(|seen| *seen.borrow_mut() = None);
+    }
 }
 
 pub fn load_feed(project_id: &str) -> Result<Option<ProjectFeed>> {
@@ -384,6 +414,7 @@ mod tests {
             events: Vec::new(),
             fingerprint: Default::default(),
             raw: serde_json::Value::Null,
+            settles: false,
         }
     }
 

@@ -171,6 +171,7 @@ fn feed_on(project: &str, key: &str, branch: &str) -> ProjectFeed {
         events: Vec::new(),
         fingerprint: Default::default(),
         raw: json!({ "branch": branch }),
+        settles: false,
     };
     ProjectFeed {
         project: project.to_string(),

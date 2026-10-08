@@ -164,6 +164,7 @@ pub fn honoured(command: &Command) -> (String, Honours) {
         Command::React(_) => said("react", Honours::Nothing),
         Command::Tick(_) => said("tick", Honours::Nothing),
         Command::Reply(_) => said("reply", Honours::Nothing),
+        Command::Settle(_) => said("settle", Honours::Nothing),
         // The three that answer for the site itself: they read every
         // configured project, so their refusal says that rather than denying
         // it (§FS-011-command-line.9).
@@ -286,6 +287,7 @@ pub fn sweeps(command: &Command, scope: &Scope) -> Sweeps {
         | Command::React(_)
         | Command::Tick(_)
         | Command::Reply(_)
+        | Command::Settle(_)
         | Command::Capabilities(_)
         | Command::Doctor(_)
         // `burn` reads the agents' transcripts and the runtime's records and

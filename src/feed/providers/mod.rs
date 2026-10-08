@@ -99,7 +99,7 @@ pub fn is_shared(name: &str) -> bool {
 /// this is the forge case in `build_provider`, kept in one place because a
 /// write has to make the same distinction and two copies of the list would
 /// drift into a source that fetches one way and writes another.
-fn built_in(name: &str) -> bool {
+pub(crate) fn built_in(name: &str) -> bool {
     matches!(
         name,
         "github-prs"

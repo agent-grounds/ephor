@@ -388,6 +388,30 @@ pub struct Matter {
     /// `EPHOR_RAW` (§AR-006-matters lead).
     #[serde(default, skip_serializing_if = "Value::is_null")]
     pub raw: Value,
+    /// The source that reported this conversation declared it can settle one
+    /// (§FS-001-forge-interface.1), so `s` is offered on it
+    /// (§FS-004-quick-actions.2). Kept on the matter rather than in `raw`:
+    /// it is ephor's note about the source, not something the source said
+    /// about the conversation, so neither `feed --json` nor `EPHOR_RAW` shows
+    /// it.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub settles: bool,
+}
+
+/// Where a provider leaves [`Matter::settles`] on the flat report it hands
+/// over. [`Matter::of_item`] lifts it out, so it never reaches a rendering.
+const SETTLES: &str = "ephor_settles";
+
+/// Note on a conversation's report that its source can settle it
+/// (§FS-001-forge-interface.1). Asked once per fetch, where the capabilities
+/// are already in hand, so offering the key costs no call of its own.
+pub fn offer_settle(item: &mut Item) {
+    if item.raw.is_null() {
+        item.raw = Value::Object(serde_json::Map::new());
+    }
+    if let Some(raw) = item.raw.as_object_mut() {
+        raw.insert(SETTLES.to_string(), Value::Bool(true));
+    }
 }
 
 /// What a report carries about where it belongs, extracted once at fetch
@@ -515,12 +539,16 @@ impl Matter {
             events: events_of(item),
             fingerprint: Fingerprint::default(),
             raw: item.raw.clone(),
+            settles: false,
         };
+        if let Some(raw) = matter.raw.as_object_mut() {
+            matter.settles = raw.remove(SETTLES) == Some(Value::Bool(true));
+        }
         // A source that reported a finished subject as still awaiting an answer
-        // is settled here rather than trusted: `forge::policy` settles what it
+        // is quieted here rather than trusted: `forge::policy` quiets what it
         // builds, and a source that answers the envelope directly does not go
         // through it (§FS-003-feed-categories.2).
-        matter.settle();
+        matter.finished_asks_nothing();
         matter.fingerprint = matter.print();
         matter
     }
@@ -619,7 +647,7 @@ impl Matter {
     /// the fold records it, and the fold is where it usually arrives — a
     /// notice saying somebody is waiting is exactly the report that did not
     /// know the subject had already finished.
-    fn settle(&mut self) {
+    fn finished_asks_nothing(&mut self) {
         if self.is_finished() {
             if self.needs_response
                 || self
@@ -719,7 +747,7 @@ impl Matter {
         // did not know the subject had finished — a notice's state is the
         // reason it was sent, never a terminal state, so nothing settled it
         // before it got here (§FS-003-feed-categories.2).
-        winner.settle();
+        winner.finished_asks_nothing();
         winner.fingerprint = winner.print();
         *self = winner;
     }
@@ -745,6 +773,7 @@ impl Matter {
             events: Vec::new(),
             fingerprint: Fingerprint::default(),
             raw: Value::Null,
+            settles: false,
         }
     }
 }

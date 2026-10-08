@@ -11,7 +11,7 @@ use crate::api::read::Subject;
 use crate::api::{offers, views, Session};
 use crate::cli::{
     ActionsArgs, ActionsCommand, ActionsListArgs, ActionsOpenArgs, ActionsRunArgs, BranchesArgs,
-    BurnArgs, OperationsArgs, ReactArgs, ReplyArgs, SubjectArgs, ThreadArgs, TickArgs,
+    BurnArgs, OperationsArgs, ReactArgs, ReplyArgs, SettleArgs, SubjectArgs, ThreadArgs, TickArgs,
 };
 use crate::error::{registry_error, EphorError, Result};
 use crate::feed::config::load_config;
@@ -745,6 +745,19 @@ pub fn reply(args: &ReplyArgs) -> Result<ExitCode> {
         None => session.reply(&item, words.as_deref(), sending),
     };
     Ok(report(&outcome, args.json))
+}
+
+/// `ephor settle` (§FS-011-command-line.4): the move `s` makes, with the
+/// dry run the move stopped one call short rather than a description of it.
+pub fn settle(args: &SettleArgs) -> Result<ExitCode> {
+    let config = load_config()?;
+    let mut session = Session::open(&config)?;
+    let item = matter(&session, &args.item)?;
+    let sending = match args.dry_run {
+        true => crate::api::act::Sending::Dry,
+        false => crate::api::act::Sending::Now,
+    };
+    Ok(report(&session.settle(&item, sending), args.json))
 }
 
 /// Saved unresolved rows remain addressable through both conversation commands

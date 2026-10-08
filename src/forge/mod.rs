@@ -79,6 +79,11 @@ pub struct Capabilities {
     /// Durable repeat reconciliation before descriptor freshness checks
     /// (§FS-001-forge-interface.1). Acceptance means remote delivery, not queue admission.
     pub reply_reconciliation: bool,
+    /// Answers [`Forge::settle`] — put one of the conversations `messages`
+    /// returned away at its source, the way that place itself settles a
+    /// conversation (§FS-001-forge-interface.1). Without it, `s` is never
+    /// offered and `ephor settle` refuses in that source's name.
+    pub settle: bool,
 }
 
 /// Both transports distinguish known acceptance from an explicitly unknown
@@ -663,6 +668,17 @@ pub trait Forge: Send + Sync {
             self.name()
         )))
     }
+
+    /// Settle one conversation at its source, given the id `messages`
+    /// returned for it (§FS-001-forge-interface.1). The source applies its own
+    /// notion of done; a conversation already settled there is settled again,
+    /// so a repeat answers like the first.
+    fn settle(&self, _request: &Request, _id: &str) -> Result<(), ProviderError> {
+        Err(ProviderError(format!(
+            "{} cannot settle a conversation at its source",
+            self.name()
+        )))
+    }
 }
 
 #[cfg(test)]
@@ -735,5 +751,18 @@ mod tests {
                 .unwrap();
         assert!(some.pull_requests && some.gate && some.review);
         assert!(!some.issues && !some.reactions);
+    }
+
+    /// `settle` is declared or absent, never guessed from a nearby name: a
+    /// gateway that answers `archive` has declared nothing ephor knows
+    /// (§FS-001-forge-interface.1).
+    #[test]
+    fn settle_is_declared_by_name_only() {
+        let archive: Capabilities = serde_json::from_value(json!({ "archive": true })).unwrap();
+        assert!(!archive.settle);
+        assert_eq!(archive, Capabilities::default());
+        let settle: Capabilities = serde_json::from_value(json!({ "settle": true })).unwrap();
+        assert!(settle.settle);
+        assert!(!settle.messages && !settle.replies);
     }
 }
