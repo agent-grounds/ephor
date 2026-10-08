@@ -1620,6 +1620,30 @@ mod tests {
         assert_eq!(merge(vec![stated, named]).len(), 1);
     }
 
+    /// A row's fallback claim says which project a conversation belongs to and
+    /// never which subject, so like resemblance it may start a row and may not
+    /// amend one (§FS-008-attribution.3).
+    #[test]
+    fn a_matter_placed_by_fallback_never_merges_onto_a_stated_subject() {
+        let fallback: crate::attribution::Strength = serde_json::from_value(json!("fallback"))
+            .expect("a placement may be reached by a row's fallback claim");
+        let stated = report(
+            "github-prs",
+            "github-prs:acme/widget#42",
+            json!({ "repo": "acme/widget" }),
+        );
+        let mut claimed = report(
+            "email",
+            "email:acme/widget#42",
+            json!({ "repo": "acme/widget" }),
+        );
+        // Placed on the same project, but only because the row claims the
+        // source it came from.
+        claimed.placement = Placement::claimed("widget", fallback);
+
+        assert_eq!(merge(vec![stated, claimed]).len(), 2);
+    }
+
     #[test]
     fn the_same_conversation_from_two_sources_is_one_conversation() {
         let thread = json!({"messages": [

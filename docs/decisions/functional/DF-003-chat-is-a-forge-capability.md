@@ -45,7 +45,7 @@ ephor could read without naming vendors. The row's say is its presence: a row
 that lists rooms, even none, has the last word over a checkout's hint
 ([§FS-008-attribution.1](../../functional-spec/FS-008-attribution.md#1-identity-is-declared-and-the-row-has-the-last-word)). A claimed room is a venue, as strong as a repository
 or a territory, so it beats whatever the conversation mentions
-([§FS-008-attribution.3](../../functional-spec/FS-008-attribution.md#3-venue-beats-reference-beats-resemblance)).
+([§FS-008-attribution.3](../../functional-spec/FS-008-attribution.md#3-venue-beats-reference-beats-fallback-beats-resemblance)).
 
 **A conversation its source keyed is a matter of its own.** It is a row, and
 what it names is linked to it rather than folded into it ([§FS-007-matters](../../functional-spec/FS-007-matters.md#fs-007-matters-the-feed-is-made-of-matters-and-a-matter-knows-why-it-is-there)). A

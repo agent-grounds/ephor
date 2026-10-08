@@ -12,9 +12,11 @@ identity the registry declares ([§GOAL-003-nothing-lost](../goals.md#goal-003-n
 A project's identity is the set of signals by which its matters are
 recognized: ticket patterns, the forest's repositories, the wider
 **territory** the project claims — repositories and organizations that are
-its business without being in its forest — names and aliases, addresses, and
-the **rooms** it claims: venues on a conversation source, named exactly by the
-id the source states. It lives in the registry row; a manifest may hint it
+its business without being in its forest — names and aliases, addresses, the
+**rooms** it claims: venues on a conversation source, named exactly by the
+id the source states, and the **fallback sources** it is the home for:
+conversation sources, named exactly as `status.json` names them. It lives in
+the registry row; a manifest may hint it
 ([§FS-006-project-interface.2](FS-006-project-interface.md#2-the-manifest-is-offered-never-required)), and the row adopts or overrides — a checkout
 must not be able to claim another project's conversations. Territory is what
 places the general case: a mention of the person on some repository of the
@@ -30,6 +32,16 @@ issue them ([§REQ-001-boundary.5](../requirements/REQ-001-boundary.md#5-no-prod
 row that lists rooms, even none, has said which are the project's, and only a
 row silent on them adopts a manifest's hint. A row that cannot say *none*
 cannot refuse a checkout's claim.
+
+A fallback source is the one signal no checkout can offer. A source's name
+exists only in the site's configuration, so neither a manifest nor a project
+type can hint one, and the claim lives on the row alone
+([§REQ-001-boundary.2](../requirements/REQ-001-boundary.md#2-three-homes-one-resolution-order)). With no hint to refuse, the presence rule rooms follow has
+nothing to do here: `fallback_sources: []` claims nothing, exactly as a row
+without the field does. Only a row whose project the site watches claims, as
+for every other signal. What a claim places, and what still beats it, is
+[§FS-008-attribution.3](FS-008-attribution.md#3-venue-beats-reference-beats-fallback-beats-resemblance); a claim that can place nothing is said
+([§FS-008-attribution.4](FS-008-attribution.md#4-unattributed-is-a-place-not-a-fate)).
 
 ## 2. Two stages, one engine
 
@@ -70,15 +82,15 @@ is placed as for any matter with no branch of its own, which a `branch`
 template mints ([§FS-005-dispatch.25](FS-005-dispatch.md#25-work-about-a-matter-with-no-branch-can-mint-the-branch-it-needs)).
 
 The first stage still reads the whole conversation, because a discussion
-with no subject of its own that names one belongs to the named matter ([§FS-008-attribution.3](FS-008-attribution.md#3-venue-beats-reference-beats-resemblance)). Which
+with no subject of its own that names one belongs to the named matter ([§FS-008-attribution.3](FS-008-attribution.md#3-venue-beats-reference-beats-fallback-beats-resemblance)). Which
 branch is a different question — which tree the matter's own work is in — and
 the tree a quote names is the one somebody else's work is in. Reading it as the
-matter's would let resemblance amend a row, which [§FS-008-attribution.3](FS-008-attribution.md#3-venue-beats-reference-beats-resemblance)
+matter's would let resemblance amend a row, which [§FS-008-attribution.3](FS-008-attribution.md#3-venue-beats-reference-beats-fallback-beats-resemblance)
 forbids, and it would get worse the longer a matter lived: the more of an
 issue's history the toolchain writes back onto it, the more checkout paths its
 thread quotes.
 
-## 3. Venue beats reference beats resemblance
+## 3. Venue beats reference beats fallback beats resemblance
 
 A discussion *on* a subject belongs to that subject's matter, and a
 conversation whose source stated its own key is on that subject
@@ -95,9 +107,27 @@ project's forest or declared territory, or in a room the project claims
 ([§FS-008-attribution.1](FS-008-attribution.md#1-identity-is-declared-and-the-row-has-the-last-word)), is that project's before any reference or alias is
 consulted. A conversation no claimed room places — a direct one, which has no
 room to claim, or one in a room nobody claimed — goes through the same stages
-as anything else: what it references places it, and it lands in the bucket
-only where nothing matches or several projects match equally
+as anything else: what it references places it, a row that claims its source
+places what references nothing, and it lands in the bucket only where nothing
+matches or several projects match equally
 ([§FS-008-attribution.4](FS-008-attribution.md#4-unattributed-is-a-place-not-a-fate)).
+
+A row's **fallback claim** ranks below venue and reference and above
+resemblance ([§FS-008-attribution.1](FS-008-attribution.md#1-identity-is-declared-and-the-row-has-the-last-word)). A conversation from a source a row claims
+belongs to that row unless a venue or a reference places it elsewhere: a
+claimed room, a repository of a forest or a territory, a ticket key, a
+repository named in its text, an address. A mail asking about
+`agent-grounds/rhei#12` still goes to the project claiming that repository.
+Resemblance never places a conversation from a claimed source, neither by a
+project's name nor by its aliases, so a family mail whose German *Grund*
+matches a project's name stays with the row that claimed the inbox. The claim
+says which project a conversation belongs to and never which subject: like
+resemblance, it may start a row and may never amend one. It never breaks a tie
+above it, so a conversation that references two projects equally goes to the
+bucket with those two, whoever claims its source. It covers conversations
+only. A notice or an issue is placed as it was, because a notice always
+carries a repository, and the bucket's prompt for it, a territory to add, is a
+signal somebody can add.
 
 In a conversation's title or message text, `owner/name#N`, where `N` is one
 or more ASCII decimal digits, references the repository `owner/name`, just as
@@ -118,3 +148,24 @@ in the interactive view and on demand — never dropped. The bucket is the
 attribution seam's degrade rule ([§REQ-001-boundary.1](../requirements/REQ-001-boundary.md#1-the-anatomy)): mapping failures are
 seen where they can be fixed, by adding the signal the identity was
 missing.
+
+A claimed source has a home for what names nothing. Its conversation that no
+venue and no reference places belongs to the claiming row, not to the bucket
+([§FS-008-attribution.3](FS-008-attribution.md#3-venue-beats-reference-beats-fallback-beats-resemblance)). The trade is deliberate: for such a conversation
+the bucket stops prompting for the signal it lacked, so a mail that is really
+about one project but names none lands under the claimer, and what moves it is
+a reference in the mail rather than a signal on an identity. Where several rows
+claim one source, nothing is resolved by order: a conversation only their
+claims reach goes to the bucket with every claimer as a candidate.
+
+A claim that can place nothing is said, never shrugged. That is a name no
+source in `status.json` has, a source bound only under projects, whose reports
+are that project's and are never weighed ([§FS-001-forge-interface.9](FS-001-forge-interface.md#9-a-source-is-bound-to-one-project-or-to-the-site-and-every-move-goes-back-to-the-source)), and a
+built-in source, none of which reports conversations. Each is a note naming the
+row, the source, and why the claim can place nothing. `ephor refresh` prints it
+as a `note:` and carries it under `notes` in `--json`, and `ephor doctor`
+prints the same sentence in its report and in its JSON
+([§FS-010-doctor.1](FS-010-doctor.md#1-it-reports-what-is-already-judged-and-judges-nothing-itself), [§REQ-002-parity.3](../requirements/REQ-002-parity.md#3-every-reading-answers-a-program)). It is news rather than a fault,
+so it moves neither a project's health nor the exit code
+([§FS-010-doctor.5](FS-010-doctor.md#5-the-answer-is-in-the-exit-code)): nothing is lost, because what the claim would have
+placed is still in sight, in the bucket or under a project.
