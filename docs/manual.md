@@ -2749,10 +2749,11 @@ any recipe naming one would put your conversation back in the project's tree.
 The template takes `work.root`'s vocabulary and refusals, and repeating
 `{org}/{project}` in it gives you a forest that mirrors the organization's.
 The run still starts from the checkout the matter resolves to, so an answer
-still reads the change; ephor writes nothing into that checkout and makes no
-workspace for the matter. Three things are refused by name before anything is
-written, at `dispatch --item`, `ask`, `lay` and the key alike, and `work offers`
-shows the same refusal on the entry, with no workspace and no root
+still reads the change; ephor writes none of the answer's plan, results, logs
+or proposal into that checkout, and makes no workspace for the matter. Three
+things are refused by name before anything is written, at `dispatch --item`,
+`ask`, `lay` and the key alike, and `work offers` shows the same refusal on the
+entry, with no workspace and no root
 ([§FS-018-private-sources.2](functional-spec/FS-018-private-sources.md#2-the-private-root-answers-first-and-alone)):
 
 - a listed source with no `root` declared — the refusal names the source and
