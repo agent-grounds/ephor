@@ -6,7 +6,7 @@ use crate::error::Result;
 use crate::feed::model::Item;
 use crate::forge::ReplyOutcome;
 use crate::replies::storage::{error, Receipt, ReplyStorage};
-use crate::replies::{Binding, Intent, Record, Status, Store};
+use crate::replies::{Binding, Intent, Record, Since, Status, Store};
 
 /// A checked local decision does not change the forge's ledger
 /// (§FS-005-dispatch.13, §FS-011-command-line.4).
@@ -26,9 +26,13 @@ impl Session {
         resolution: Option<Resolution>,
         sending: Sending,
     ) -> views::Outcome {
-        match self.perform_reply(item, words, resolution, sending) {
+        let mut since = Vec::new();
+        match self.perform_reply(item, words, resolution, sending, &mut since) {
             Ok(says) => views::Outcome::ok(says),
-            Err(err) => views::Outcome::refused(err.to_string()),
+            Err(err) => views::Outcome {
+                since,
+                ..views::Outcome::refused(err.to_string())
+            },
         }
     }
 
@@ -78,13 +82,15 @@ impl Session {
         words: Option<&str>,
         resolution: Option<Resolution>,
         sending: Sending,
+        since: &mut Vec<Since>,
     ) -> Result<String> {
         let store = Store::site(&item.id, sending == Sending::Now)?;
-        self.perform_reply_locked(item, words, resolution, sending, &store)
+        self.perform_reply_reviewed(item, words, resolution, sending, &store, since)
     }
 
     /// A locked persistence seam shared by all outcomes, so fault tests can
     /// exercise actual send/confirmation ordering (§FS-005-dispatch.13).
+    #[cfg(test)]
     pub(crate) fn perform_reply_locked(
         &self,
         item: &Item,
@@ -92,6 +98,20 @@ impl Session {
         resolution: Option<Resolution>,
         sending: Sending,
         store: &dyn ReplyStorage,
+    ) -> Result<String> {
+        self.perform_reply_reviewed(item, words, resolution, sending, store, &mut Vec::new())
+    }
+
+    /// [`Session::perform_reply_locked`], filling `since` with the review of a
+    /// draft it refuses as stale (§FS-005-dispatch.13.2).
+    fn perform_reply_reviewed(
+        &self,
+        item: &Item,
+        words: Option<&str>,
+        resolution: Option<Resolution>,
+        sending: Sending,
+        store: &dyn ReplyStorage,
+        since: &mut Vec<Since>,
     ) -> Result<String> {
         let mut record = store.read()?.unwrap_or_else(|| Record::new(item));
         if let Some(resolution) = resolution {
@@ -242,7 +262,12 @@ impl Session {
                         proposal.path.display()
                     ))
                 })?;
-                binding.freshness(item, &record).map_err(error)?;
+                // The refusal carries the review that explains it
+                // (§FS-005-dispatch.13.2).
+                if let Err(reason) = binding.freshness(item, &record) {
+                    *since = binding.review(item, &record);
+                    return Err(error(reason));
+                }
                 (binding, proposal.text, Some(proposal.path))
             }
         };

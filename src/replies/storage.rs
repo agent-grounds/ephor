@@ -258,6 +258,13 @@ impl Store {
         }
         .read()
     }
+    /// The scratch file a person types their own reply about one row into,
+    /// beside its record and never one: recovery reads records alone
+    /// (§FS-005-dispatch.13.2).
+    pub fn scratch(row: &str) -> PathBuf {
+        reply_dir().join(format!("{}.typed.md", digest(row)))
+    }
+
     /// Site-owned location (§FS-005-dispatch.13).
     pub fn site(row: &str, writing: bool) -> Result<Self> {
         Self::open(&reply_dir(), row, writing)

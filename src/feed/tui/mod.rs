@@ -108,6 +108,20 @@ pub(crate) enum Action {
         path: PathBuf,
         item: Item,
     },
+    /// Type the person's own reply in their editor, on a scratch file of its
+    /// own that starts from `start`, and ask once before it goes anywhere
+    /// (§FS-005-dispatch.13.2).
+    TypeReply {
+        item: Item,
+        start: String,
+    },
+    /// Send typed words through the move `ephor reply ID WORDS` makes
+    /// (§FS-005-dispatch.13.2). `path` is where they were typed.
+    SendTyped {
+        item: Item,
+        words: String,
+        path: PathBuf,
+    },
     /// Put a conversation away at its source (§FS-011-command-line.4).
     Settle {
         item: Item,
@@ -656,6 +670,46 @@ impl App {
                 self.edit_file(terminal, &path)?;
                 // The reader may have rewritten it, emptied it, or left it
                 // alone: what is on disk now is what would be posted.
+                let reading = self.ctx.conversation(&item);
+                if let Screen::Thread(thread) = &mut self.screen {
+                    thread.reread_reading(reading);
+                }
+            }
+            // A scratch file of its own, never the draft's: the draft stays as
+            // it was whatever is typed here (§FS-005-dispatch.13.2).
+            Action::TypeReply { item, start } => {
+                let path = crate::replies::Store::scratch(&item.id);
+                let written = path
+                    .parent()
+                    .map_or(Ok(()), std::fs::create_dir_all)
+                    .and_then(|()| std::fs::write(&path, &start));
+                match written {
+                    Err(err) => self.message = format!("Could not open {}: {err}", path.display()),
+                    Ok(()) => {
+                        self.edit_file(terminal, &path)?;
+                        let words = std::fs::read_to_string(&path).unwrap_or_default();
+                        let reading = self.ctx.conversation(&item);
+                        if let Screen::Thread(thread) = &mut self.screen {
+                            thread.reread_reading(reading);
+                            self.message = thread.typed(words, path);
+                        }
+                    }
+                }
+            }
+            Action::SendTyped { item, words, path } => {
+                self.message = "Sending your reply…".to_string();
+                terminal
+                    .draw(|frame| self.draw(frame))
+                    .map_err(|err| EphorError::Command(format!("draw failed: {err}")))?;
+                let outcome = self
+                    .ctx
+                    .reply(&item, Some(&words), crate::api::act::Sending::Now);
+                self.message = outcome.says;
+                // Sent, the words live in the record; refused, they stay
+                // where they were typed for the next try.
+                if outcome.ok {
+                    let _ = std::fs::remove_file(&path);
+                }
                 let reading = self.ctx.conversation(&item);
                 if let Screen::Thread(thread) = &mut self.screen {
                     thread.reread_reading(reading);

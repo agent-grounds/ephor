@@ -18,6 +18,12 @@
 //! declares reply (§FS-007-matters.4), `e` opens it for editing first, and
 //! where nothing can post it the card is what the reader copies.
 //!
+//! A stale draft's card shows what moved since it was drafted, and its two
+//! ways on (§FS-005-dispatch.13.2): `n` asks for a new draft where its recipe
+//! still applies, and `r` — or `e`, starting from the draft's words — types
+//! the person's own, asked once before `y` sends it. `r` types a reply on any
+//! conversation that can carry one.
+//!
 //! `s` is the one write on the whole conversation rather than on a message:
 //! it settles the conversation at its source, and is taught only where that
 //! source declared it can (§FS-011-command-line.4).
@@ -55,6 +61,13 @@ mod reply_tests;
 #[path = "thread_review_tests.rs"]
 mod review_tests;
 
+#[cfg(test)]
+#[path = "thread_typed_tests.rs"]
+mod typed_tests;
+
+#[path = "thread_card.rs"]
+mod card;
+
 /// A reply a run drafted, waiting under the conversation it answers
 /// (§FS-005-dispatch.13). It is a file until a person sends it, which is why
 /// `path` is shown wherever the channel cannot carry it.
@@ -71,6 +84,43 @@ struct Draft {
     bound_target: Option<serde_json::Value>,
     stale_reason: Option<String>,
     can_post: bool,
+    /// Refused by its binding: shown against what moved, with its ways on
+    /// (§FS-005-dispatch.13.2).
+    stale: bool,
+    since: Vec<crate::replies::Since>,
+    redraft: Option<crate::api::views::Redraft>,
+    redraft_refused: Option<String>,
+}
+
+impl Draft {
+    /// The session's draft as this screen keeps it. `clear` is whether no
+    /// saved send or unreadable record stands in front of it.
+    fn of(draft: crate::api::conversation::Draft, clear: bool) -> Self {
+        Draft {
+            can_post: draft.target.is_some() && draft.stale_reason.is_none() && clear,
+            text: draft.text,
+            path: draft.path,
+            thread: draft.thread,
+            target: draft.target,
+            posted: false,
+            bound_target: draft
+                .binding
+                .as_ref()
+                .and_then(|binding| binding.target.clone()),
+            stale_reason: draft.stale_reason,
+            stale: draft.stale,
+            since: draft.since,
+            redraft: draft.redraft,
+            redraft_refused: draft.redraft_refused,
+        }
+    }
+}
+
+/// Words the person typed, waiting on the one question before they are sent
+/// (§FS-005-dispatch.13.2).
+struct Typed {
+    words: String,
+    path: PathBuf,
 }
 
 pub(crate) struct ThreadScreen {
@@ -84,6 +134,10 @@ pub(crate) struct ThreadScreen {
     /// Its source can settle the conversation at its source
     /// (§FS-001-forge-interface.1), so `s` is taught here.
     settles: bool,
+    /// Where typed words would go, and what they would answer.
+    reply_to: Option<(usize, serde_json::Value)>,
+    /// Typed words the status line is asking about.
+    typed: Option<Typed>,
     /// Flat message index of the selected card.
     selected: usize,
     scroll: u16,
@@ -120,6 +174,7 @@ impl ThreadScreen {
             pending_reply,
             reply_error,
             reply_diagnostics,
+            reply_to,
             settles,
         } = reading;
         if messages.is_empty()
@@ -129,22 +184,8 @@ impl ThreadScreen {
         {
             return None;
         }
-        let draft = draft.map(|draft| Draft {
-            can_post: draft.target.is_some()
-                && draft.stale_reason.is_none()
-                && pending_reply.is_none()
-                && reply_error.is_none(),
-            text: draft.text,
-            path: draft.path,
-            thread: draft.thread,
-            target: draft.target,
-            posted: false,
-            bound_target: draft
-                .binding
-                .as_ref()
-                .and_then(|binding| binding.target.clone()),
-            stale_reason: draft.stale_reason,
-        });
+        let clear = pending_reply.is_none() && reply_error.is_none();
+        let draft = draft.map(|draft| Draft::of(draft, clear));
         Some(ThreadScreen {
             item,
             messages,
@@ -153,6 +194,8 @@ impl ThreadScreen {
             reply_error,
             reply_diagnostics,
             settles,
+            reply_to,
+            typed: None,
             selected: 0,
             scroll: 0,
             follow: true,
@@ -184,22 +227,9 @@ impl ThreadScreen {
     /// Re-read after moves and edits, preserving pending prepared words
     /// (§FS-005-dispatch.13, §FS-011-command-line.4).
     pub fn reread_reading(&mut self, reading: Conversation) {
-        self.draft = reading.draft.map(|draft| Draft {
-            can_post: draft.target.is_some()
-                && draft.stale_reason.is_none()
-                && reading.pending_reply.is_none()
-                && reading.reply_error.is_none(),
-            text: draft.text,
-            path: draft.path,
-            thread: draft.thread,
-            target: draft.target,
-            posted: false,
-            bound_target: draft
-                .binding
-                .as_ref()
-                .and_then(|binding| binding.target.clone()),
-            stale_reason: draft.stale_reason,
-        });
+        let clear = reading.pending_reply.is_none() && reading.reply_error.is_none();
+        self.draft = reading.draft.map(|draft| Draft::of(draft, clear));
+        self.reply_to = reading.reply_to;
         self.pending_reply = reading.pending_reply;
         self.reply_error = reading.reply_error;
         self.reply_diagnostics = reading.reply_diagnostics;
@@ -221,6 +251,9 @@ impl ThreadScreen {
         if self.picker.is_some() {
             return " ←/→ choose  1-8 pick  enter react  esc cancel".to_string();
         }
+        if self.typed.is_some() {
+            return " y send this reply  any other key keeps it unsent".to_string();
+        }
         let selected = self.messages.get(self.selected);
         let mut keys = String::from(" j/k message  f/b page");
         if selected.is_some_and(|selected| selected.react.is_some()) {
@@ -236,11 +269,24 @@ impl ThreadScreen {
         // nowhere else (§FS-007-matters.4): on a channel that cannot, the
         // draft is copy material and teaching a key for it would be a
         // keystroke spent to be refused.
+        // A stale draft's two ways on (§FS-005-dispatch.13.2): `e` types the
+        // person's own words from the draft's, and `n` asks for a new draft
+        // where one is offered.
         if let Some(draft) = self.draft.as_ref().filter(|draft| !draft.posted) {
-            keys.push_str("  e edit reply");
+            match self.types_from(draft) {
+                true => keys.push_str("  e reply from draft"),
+                false => keys.push_str("  e edit reply"),
+            }
             if draft.can_post {
                 keys.push_str("  p post reply");
             }
+            if draft.redraft.is_some() {
+                keys.push_str("  n new draft");
+            }
+        }
+        // Typed words go wherever a reply can be carried, draft or none.
+        if self.reply_to.is_some() {
+            keys.push_str("  r type reply");
         }
         if let Some(pending) = &self.pending_reply {
             if pending.retry {
@@ -266,12 +312,15 @@ impl ThreadScreen {
     /// it armed underneath, so the next `enter` after coming back posts a
     /// reaction the reader stopped meaning to.
     pub fn is_picking(&self) -> bool {
-        self.picker.is_some()
+        self.picker.is_some() || self.typed.is_some()
     }
 
     pub fn handle_key(&mut self, code: KeyCode) -> Action {
         if let Some(pick) = self.picker {
             return self.handle_picker_key(pick, code);
+        }
+        if let Some(typed) = self.typed.take() {
+            return self.answer(typed, code);
         }
         match code {
             KeyCode::Char('q') | KeyCode::Esc | KeyCode::Char('h') | KeyCode::Backspace => {
@@ -334,6 +383,8 @@ impl ThreadScreen {
             KeyCode::Char('t') => self.tick(),
             KeyCode::Char('p') => self.post_reply(),
             KeyCode::Char('e') => self.edit_reply(),
+            KeyCode::Char('r') => self.type_reply(String::new()),
+            KeyCode::Char('n') => self.redraft(),
             // Sent even where it is not taught, so the refusal is the one
             // `ephor settle` gives (§FS-011-command-line.4).
             KeyCode::Char('s') => Action::Settle {
@@ -412,14 +463,98 @@ impl ThreadScreen {
     }
 
     /// Open the draft in the reader's editor before it goes anywhere: posted
-    /// edited or as it stands is the reader's call (§FS-005-dispatch.13).
+    /// edited or as it stands is the reader's call (§FS-005-dispatch.13). A
+    /// stale draft is not posted however it is edited, so there `e` types
+    /// the person's own reply from its words instead, and the draft file stays
+    /// as it was (§FS-005-dispatch.13.2).
     fn edit_reply(&mut self) -> Action {
         match &self.draft {
+            Some(draft) if !draft.posted && self.types_from(draft) => {
+                self.type_reply(draft.text.clone())
+            }
             Some(draft) if !draft.posted => Action::EditReply {
                 path: draft.path.clone(),
                 item: self.item.clone(),
             },
             Some(_) => Action::SetMessage("This reply has already been posted".to_string()),
+            None => Action::SetMessage("No reply has been drafted for this".to_string()),
+        }
+    }
+
+    /// Whether `e` on this draft types a reply from its words: it is stale,
+    /// and there is a thread typed words can go to.
+    fn types_from(&self, draft: &Draft) -> bool {
+        draft.stale && self.reply_to.is_some()
+    }
+
+    /// The person's own words, typed in their editor on a scratch file of its
+    /// own and sent by the move `ephor reply ID WORDS` makes, once asked
+    /// (§FS-005-dispatch.13.2). `start` is what the file starts from.
+    fn type_reply(&self, start: String) -> Action {
+        match &self.reply_to {
+            Some(_) => Action::TypeReply {
+                item: self.item.clone(),
+                start,
+            },
+            None => {
+                Action::SetMessage("This conversation cannot be replied to from here".to_string())
+            }
+        }
+    }
+
+    /// The editor closed on `words`: ask once, naming the thread and the
+    /// target they would go to, and say what the status line should read.
+    /// Nothing typed is nothing to ask about.
+    pub fn typed(&mut self, words: String, path: PathBuf) -> String {
+        self.typed = None;
+        if words.trim().is_empty() {
+            return "Nothing typed — nothing sent".to_string();
+        }
+        let Some((thread, target)) = &self.reply_to else {
+            return format!(
+                "This conversation cannot be replied to from here — the words are at {}",
+                path.display()
+            );
+        };
+        let question = format!(
+            "Send this reply to thread {thread}, target {target}? y sends, any other key keeps it unsent"
+        );
+        self.typed = Some(Typed { words, path });
+        question
+    }
+
+    /// The one answer: `y` sends the words, and anything else keeps them where
+    /// they were typed.
+    fn answer(&mut self, typed: Typed, code: KeyCode) -> Action {
+        match code {
+            KeyCode::Char('y') => Action::SendTyped {
+                item: self.item.clone(),
+                words: typed.words,
+                path: typed.path,
+            },
+            _ => Action::SetMessage(format!(
+                "Not sent — the words are at {}",
+                typed.path.display()
+            )),
+        }
+    }
+
+    /// Ask for a new draft of a stale one: §FS-005-dispatch.5's reopen under
+    /// the recipe that laid it, which is the work screen's own dispatch
+    /// (§FS-005-dispatch.13.2). Where none is offered, why not.
+    fn redraft(&self) -> Action {
+        match &self.draft {
+            Some(draft) if draft.stale => match (&draft.redraft, &draft.redraft_refused) {
+                (Some(redraft), _) => Action::DispatchWork {
+                    item: self.item.clone(),
+                    entry: redraft.recipe.clone(),
+                },
+                (None, Some(why)) => Action::SetMessage(why.clone()),
+                (None, None) => Action::SetMessage("No new draft is offered here".to_string()),
+            },
+            Some(_) => Action::SetMessage(
+                "Only a stale draft asks for a new one; this one is current".to_string(),
+            ),
             None => Action::SetMessage("No reply has been drafted for this".to_string()),
         }
     }
@@ -773,7 +908,7 @@ impl ThreadScreen {
                     .as_ref()
                     .filter(|draft| draft.thread == msg.thread)
                 {
-                    draft_lines(draft, wrap_width, &mut self.lines);
+                    card::draft_lines(draft, self.reply_to.is_some(), wrap_width, &mut self.lines);
                 }
             }
         }
@@ -785,7 +920,7 @@ impl ThreadScreen {
                 .iter()
                 .any(|message| message.thread == draft.thread)
         }) {
-            draft_lines(draft, wrap_width, &mut self.lines);
+            card::draft_lines(draft, self.reply_to.is_some(), wrap_width, &mut self.lines);
         }
         if let Some(pending) = &self.pending_reply {
             let target = pending
@@ -822,59 +957,6 @@ impl ThreadScreen {
             self.lines.push(Line::from(diagnostic.clone()));
         }
     }
-}
-
-/// The draft as a card of its own: marked as unsent, with the one thing the
-/// reader can do about it here — post it, or copy it from where it sits
-/// (§FS-005-dispatch.13, §REQ-001-boundary.1).
-fn draft_lines(draft: &Draft, wrap_width: usize, lines: &mut Vec<Line<'static>>) {
-    let color = if draft.posted {
-        Color::Green
-    } else {
-        Color::Magenta
-    };
-    let gutter = || Span::styled("▍ ", Style::default().fg(color));
-    let banner = match (draft.posted, draft.can_post) {
-        (true, _) => "posted".to_string(),
-        (false, true) => "proposed reply — not posted".to_string(),
-        // A channel that declared no reply gets the honest half-offer: the
-        // words are here, sending them is somewhere else.
-        (false, false) => "proposed reply — copy or edit; posting unavailable".to_string(),
-    };
-    lines.push(Line::from(vec![
-        gutter(),
-        Span::styled(
-            banner,
-            Style::default().fg(color).add_modifier(Modifier::BOLD),
-        ),
-    ]));
-    for text_line in draft.text.lines() {
-        for wrapped in wrap_line(text_line, wrap_width) {
-            lines.push(Line::from(vec![gutter(), Span::raw(wrapped)]));
-        }
-    }
-    if let Some(target) = &draft.bound_target {
-        lines.push(Line::from(format!(
-            "Bound thread {} target: {target}",
-            draft.thread
-        )));
-    }
-    if let Some(reason) = &draft.stale_reason {
-        for line in wrap_line(reason, wrap_width) {
-            lines.push(Line::from(line));
-        }
-    }
-    if !draft.posted {
-        let hint = match draft.can_post {
-            true => format!("p posts it · e edits it first · {}", draft.path.display()),
-            false => format!("e edits it · copy it from {}", draft.path.display()),
-        };
-        lines.push(Line::from(vec![
-            gutter(),
-            Span::styled(hint, Style::default().fg(Color::DarkGray)),
-        ]));
-    }
-    lines.push(Line::default());
 }
 
 /// Stable per-author color so each participant keeps theirs across messages.

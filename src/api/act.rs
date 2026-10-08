@@ -764,6 +764,15 @@ impl Session {
             conversation.reply_error = Some(err.to_string());
         }
         conversation.settles = self.settling.contains(&item.id);
+        // A stale draft's two ways on: the person's own words are always
+        // there, and a new draft is offered where its recipe still applies
+        // (§FS-005-dispatch.13.2).
+        if let Some(draft) = conversation.draft.as_mut().filter(|draft| draft.stale) {
+            match self.redraft(item) {
+                Ok(redraft) => draft.redraft = Some(redraft),
+                Err(why) => draft.redraft_refused = Some(why),
+            }
+        }
         // Offers share the move's configured routing and carrier declarations
         // (§FS-007-matters.4, §FS-001-forge-interface.9).
         if let Some(draft) = conversation
@@ -837,6 +846,61 @@ impl Session {
             }
         }
         conversation
+    }
+
+    /// The new draft a stale one offers: §FS-005-dispatch.5's reopen under the
+    /// recipe that laid it, while that recipe still applies to the matter by
+    /// the test dispatch itself makes — or why none is offered, in so many
+    /// words (§FS-005-dispatch.13.2, §REQ-001-boundary.1). Lays nothing.
+    pub fn redraft(&self, item: &Item) -> Result<views::Redraft, String> {
+        let refused = |why: String| format!("No new draft is offered: {why}");
+        let Some(dispatcher) = &self.dispatcher else {
+            return Err(refused(
+                "work needs the registry, which could not be read".into(),
+            ));
+        };
+        let Some(recipe) = dispatcher
+            .ledger
+            .entries
+            .get(&item.id)
+            .and_then(|entry| entry.last())
+            .filter(|dispatch| !dispatch.is_workflow())
+            .map(|dispatch| dispatch.recipe.clone())
+        else {
+            return Err(refused("no recipe laid this draft".into()));
+        };
+        let recipes = dispatcher.recipes(&item.project);
+        let Some(configured) = recipes.iter().find(|candidate| candidate.id == recipe) else {
+            return Err(refused(format!(
+                "`{recipe}`, which laid it, is no longer configured for {}",
+                item.project
+            )));
+        };
+        if let Some(reason) = item.blocking_reason() {
+            return Err(refused(format!("{} is {reason}", item.id)));
+        }
+        let facts = self
+            .item_trailing(item)
+            .as_ref()
+            .map(super::offers::Trailing::facts)
+            .unwrap_or_default();
+        let offered = dispatcher.offered(item, &facts, self.placement(&item.project));
+        if offered.iter().any(|candidate| candidate.id == recipe) {
+            return Ok(views::Redraft {
+                command: format!(
+                    "ephor work dispatch --item {} --recipe {recipe} --again",
+                    item.id
+                ),
+                recipe,
+            });
+        }
+        let why = self
+            .excluded_recipes(item, std::slice::from_ref(configured))
+            .into_iter()
+            .next()
+            .map(|exclusion| format!("`{recipe}` would be refused: {}", exclusion.reason))
+            .unwrap_or_else(|| format!("`{recipe}` no longer applies to this matter"));
+        Err(refused(why))
     }
 
     /// Post a reaction on one message (§FS-004-quick-actions). `content` is a

@@ -649,8 +649,20 @@ pub fn thread(args: &ThreadArgs) -> Result<ExitCode> {
         if let Some(reason) = &draft.stale_reason {
             println!("\n    {reason}");
         }
+        let stale = draft.redraft.is_some() || draft.redraft_refused.is_some();
+        if stale {
+            println!();
+            for line in stale_lines(&view.item, draft, &draft.since) {
+                match line.is_empty() {
+                    true => println!(),
+                    false => println!("    {line}"),
+                }
+            }
+        }
         match draft.sendable {
             true => println!("\n    `ephor reply {}` sends it.", view.item),
+            // The ways on above already say where the words are.
+            false if stale => {}
             false
                 if draft.stale_reason.is_some()
                     || view.pending_reply.is_some()
@@ -749,7 +761,56 @@ pub fn reply(args: &ReplyArgs) -> Result<ExitCode> {
         Some(resolution) => session.resolve_reply(&item, words.as_deref(), resolution, sending),
         None => session.reply(&item, words.as_deref(), sending),
     };
-    Ok(report(&outcome, args.json))
+    let code = report(&outcome, args.json);
+    // A stale draft's refusal prints the review and the ways on under its
+    // reason, as the reading does (§FS-011-command-line.4); `--json` carries
+    // the review as `since` instead.
+    if !outcome.ok && !args.json && words.is_none() && args.resolve.is_none() {
+        let draft = session
+            .conversation(&item)
+            .view(&item)
+            .draft
+            .filter(|draft| {
+                draft.stale_reason.as_deref() == Some(outcome.says.as_str())
+                    && (draft.redraft.is_some() || draft.redraft_refused.is_some())
+            });
+        if let Some(draft) = draft {
+            eprintln!();
+            for line in stale_lines(&item.id, &draft, &outcome.since) {
+                eprintln!("{line}");
+            }
+        }
+    }
+    Ok(code)
+}
+
+/// What a stale draft is shown against, and its two ways on: the command that
+/// drafts it again or why none is offered, and the person's own words
+/// (§FS-005-dispatch.13.2, §FS-011-command-line.4). One rendering for the
+/// reading and the refusal, so both say the same lines. The path is the one
+/// the request recorded, as recorded.
+fn stale_lines(item: &str, draft: &views::Draft, since: &[crate::replies::Since]) -> Vec<String> {
+    let mut lines = Vec::new();
+    if !since.is_empty() {
+        lines.push("Since the draft:".to_string());
+        lines.extend(
+            since
+                .iter()
+                .flat_map(crate::replies::Since::lines)
+                .map(|line| format!("  {line}")),
+        );
+        lines.push(String::new());
+    }
+    match (&draft.redraft, &draft.redraft_refused) {
+        (Some(redraft), _) => lines.push(format!("Draft it again: `{}`", redraft.command)),
+        (None, Some(why)) => lines.push(why.clone()),
+        (None, None) => {}
+    }
+    lines.push(format!(
+        "Or type your own: `ephor reply {item} '<words>'` — the old words stay at {}",
+        draft.path.display()
+    ));
+    lines
 }
 
 /// `ephor settle` (§FS-011-command-line.4): the move `s` makes, with the

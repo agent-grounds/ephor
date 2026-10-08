@@ -1206,15 +1206,32 @@ impl Dispatcher {
             return Vec::new();
         }
         let facts = self.facts(item);
-        let mut offers = recipe::applicable(&self.recipes(&item.project), item, &facts);
-        let Some(placement) = self.placement(&item.project).cloned() else {
+        let placement = self.placement(&item.project).cloned();
+        self.offered(item, &facts, placement.as_ref())
+    }
+
+    /// [`Dispatcher::offers`] on facts and a placement the caller already
+    /// holds, for a reading that may not measure: whether a stale draft's
+    /// recipe would still be dispatched is this test and no other
+    /// (§FS-005-dispatch.13.2).
+    pub fn offered(
+        &self,
+        item: &Item,
+        facts: &recipe::Facts,
+        placement: Option<&Placement>,
+    ) -> Vec<Recipe> {
+        if item.is_blocked() {
+            return Vec::new();
+        }
+        let mut offers = recipe::applicable(&self.recipes(&item.project), item, facts);
+        let Some(placement) = placement else {
             return offers;
         };
         offers.retain(|recipe| {
             recipe.branch.as_deref().is_none_or(|template| {
-                crate::branches::why_not_served(&placement, item, template).is_none()
+                crate::branches::why_not_served(placement, item, template).is_none()
             }) && recipe.root.as_deref().is_none_or(|template| {
-                crate::branches::why_root_not_served(&placement, item, template).is_none()
+                crate::branches::why_root_not_served(placement, item, template).is_none()
             })
         });
         offers

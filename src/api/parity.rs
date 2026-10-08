@@ -67,9 +67,12 @@ pub const ABILITIES: &[Ability] = &[
         keys: &["t"],
         command: "tick",
     },
+    // `r` types the person's own words and `y` answers the one question
+    // before they go, which is the same move with the words given
+    // (§FS-005-dispatch.13.2).
     Ability {
-        what: "send a fresh bound draft or retry its saved send",
-        keys: &["p"],
+        what: "send a fresh bound draft or retry its saved send, or the person's own words",
+        keys: &["p", "r", "y"],
         command: "reply",
     },
     // §FS-011-command-line.4: held decisions never post.
@@ -93,6 +96,13 @@ pub const ABILITIES: &[Ability] = &[
         what: "what is being done about a matter, and what could be",
         keys: &["w"],
         command: "work offers",
+    },
+    // A stale draft's new draft is the reopen under the recipe that laid it,
+    // asked for about this one matter (§FS-005-dispatch.13.2).
+    Ability {
+        what: "ask for a new draft of a stale one",
+        keys: &["n"],
+        command: "work dispatch --again",
     },
     Ability {
         what: "ask a matter for something no recipe covers",
@@ -213,7 +223,11 @@ pub const PRESENTATION: &[(&str, &str)] = &[
     // [`ABILITIES`] because it is the one motion key that happens to land on an
     // ability on one row, and a key on both lists is refused by the check.
     ("l", "in"),
-    ("n", "the next project"),
+    // `n` is the next project on the feed, as `]` is, and that is motion. On
+    // a stale draft it asks for a new draft (§FS-005-dispatch.13.2), which is
+    // an ability carried by `ephor work dispatch --again`. The key is listed
+    // there rather than here because it lands on an ability on one screen, and
+    // a key on both lists is refused by the check; `]` stays here alone.
     ("P", "the previous project"),
     ("q", "leave"),
     ("o", "open it in the browser — the URL is on the reading"),

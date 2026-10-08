@@ -19,6 +19,19 @@
         "resolutions": { "type": "array", "items": { "enum": ["sent", "not-sent"] } }
       }
     },
+    "since": {
+      "type": "object",
+      "description": "One movement in a stale draft's bound thread since hand-off: an entry of its review, listed in the order of the conversation (FS-005-dispatch.13.2, FS-011-command-line.7). It explains a refusal and decides none.",
+      "required": ["change", "message", "text"],
+      "properties": {
+        "change": { "enum": ["new", "yours", "edited", "no-longer-shown"], "description": "`new` arrived after the messages the draft saw; `yours` is the configured user's, an arrival or an accepted send no refresh has shown yet; `edited` is a message the draft saw whose words changed; `no-longer-shown` is a message the draft saw that the conversation no longer holds — a window that slid looks exactly like a deletion, so it is called neither." },
+        "message": { "type": ["integer", "null"], "minimum": 0, "description": "The position the thread reading prints for the message, wherever it is still shown; null for a message no longer shown and for a send no refresh has shown." },
+        "author": { "type": ["string", "null"] },
+        "at": { "type": ["string", "null"], "description": "The time the source recorded for the message, as it recorded it." },
+        "text": { "type": "string", "description": "The message's words as the conversation now holds them; the draft saw them for a message no longer shown, and the saved words for an accepted send." },
+        "before": { "type": "string", "description": "An edited message's words as the draft saw them. Present on `edited` alone." }
+      }
+    },
     "distance": {
       "type": "object",
       "description": "A distance and how fresh the comparison behind it is (FS-004-quick-actions.6). No statement of a distance omits its day: a number with no day on it is a claim about now that nothing measured.",
@@ -699,7 +712,22 @@
             "thread": { "type": "integer" },
             "sendable": { "type": "boolean", "description": "The bound proposal is fresh, the configured channel can carry it, and no saved operation blocks it (FS-007-matters.4)." },
             "target": { "type": ["object", "null"], "description": "The saved opaque target, never the refreshed target (FS-011-command-line.7)." },
-            "stale_reason": { "type": ["string", "null"], "description": "Why posting is refused, naming advancing messages or accepted own words (FS-011-command-line.4)." }
+            "stale_reason": { "type": ["string", "null"], "description": "Why posting is refused, on one line: the review's most telling entry, and how many more there are (FS-011-command-line.4, FS-005-dispatch.13.2)." },
+            "since": {
+              "type": "array",
+              "items": { "$ref": "#/$defs/since" },
+              "description": "What moved in the bound thread since hand-off, where the binding refuses the draft: its review (FS-005-dispatch.13.2). Empty where nothing is refused, and where the messages cannot be lined up one to one."
+            },
+            "redraft": {
+              "type": ["object", "null"],
+              "description": "The new draft a stale one offers: FS-005-dispatch.5's reopen under the recipe that laid it, while that recipe still applies (FS-005-dispatch.13.2). Offered, never taken.",
+              "required": ["recipe", "command"],
+              "properties": {
+                "recipe": { "type": "string" },
+                "command": { "type": "string", "description": "The command that asks for it: `ephor work dispatch --item <id> --recipe <recipe> --again`." }
+              }
+            },
+            "redraft_refused": { "type": ["string", "null"], "description": "Why a stale draft offers no new draft, in so many words (FS-005-dispatch.13.2, REQ-001-boundary.1). Null where one is offered and where the draft is not stale." }
           }
         },
         "pending_reply": { "$ref": "#/$defs/pending_reply" },
@@ -784,6 +812,11 @@
         "tickets": {
           "type": "array",
           "items": { "type": "string" }
+        },
+        "since": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/since" },
+          "description": "What moved under the draft `ephor reply` refused as stale: the draft's own review (FS-005-dispatch.13.2, FS-011-command-line.7). Absent where the refusal was about something else, or where the messages cannot be lined up."
         }
       }
     },
