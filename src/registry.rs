@@ -915,6 +915,78 @@ pub fn organizations_over_nobody<'a>(
         .collect()
 }
 
+/// The conversation sources a registry row names itself the fallback home
+/// for, exactly as the site configuration names them (§FS-008-attribution.1).
+/// An absent field and `[]` are both no claim: no checkout can name a source,
+/// so there is no hint for an empty list to refuse.
+pub fn fallback_sources(row: &Value) -> Vec<String> {
+    array_field(row, "fallback_sources")
+        .iter()
+        .filter_map(Value::as_str)
+        .map(String::from)
+        .collect()
+}
+
+/// The fallback claims of the rows the site watches that can place nothing,
+/// one sentence each naming the row, the source, and why
+/// (§AR-003-attribution.2). A claim reaches only a conversation the site's
+/// engine weighs, so three are dead: a name no source has, a source bound
+/// only under projects, whose reports are that project's and never weighed
+/// (§FS-001-forge-interface.9), and a built-in source, none of which reports
+/// conversations (§FS-008-attribution.4). Registry validation cannot ask
+/// this, because the answer is in the site configuration rather than in the
+/// row, so `refresh` and `doctor` print what this says, as news rather than
+/// a fault.
+pub fn fallback_claims_over_nothing(
+    registry: &Value,
+    config: &crate::feed::config::StatusConfig,
+) -> Vec<String> {
+    let site = crate::feed::refresh::site_source_names(config);
+    let rows = array_field(registry, "projects");
+    let mut said = Vec::new();
+    for project in config.projects.keys() {
+        let Some(row) = rows.iter().find(|row| id_of(row) == project) else {
+            continue;
+        };
+        for source in fallback_sources(row) {
+            let why = if crate::feed::providers::built_in(&source) {
+                format!("'{source}' is built into ephor and reports no conversations")
+            } else if site.contains(&source) {
+                continue;
+            } else {
+                let under: Vec<String> = config
+                    .projects
+                    .iter()
+                    .filter(|(_, bound)| {
+                        bound.providers.iter().any(|block| {
+                            block.get("provider").and_then(Value::as_str) == Some(source.as_str())
+                        })
+                    })
+                    .map(|(owner, _)| format!("'{owner}'"))
+                    .collect();
+                match under.len() {
+                    0 => format!("no source in status.json is named '{source}'"),
+                    1 => format!(
+                        "'{source}' is bound only under project {}, where what it reports \
+                         is that project's and is never weighed",
+                        under[0]
+                    ),
+                    _ => format!(
+                        "'{source}' is bound only under projects {}, where what it reports \
+                         is the binding project's and is never weighed",
+                        under.join(", ")
+                    ),
+                }
+            };
+            said.push(format!(
+                "registry row '{project}' claims '{source}' as its fallback source, but {why}, \
+                 so the claim places nothing"
+            ));
+        }
+    }
+    said
+}
+
 pub fn array_field<'a>(registry: &'a Value, field: &str) -> &'a [Value] {
     registry
         .get(field)
@@ -1050,5 +1122,77 @@ mod tests {
         let barren = serde_json::json!({ "projects": [] });
         assert_eq!(organizations_over_nobody(&barren, named.iter()).len(), 3);
         assert!(organizations_over_nobody(&registry, [].iter()).is_empty());
+    }
+
+    /// A site that watches `me`, `rhei` and `grund`, with `mail-me` bound for
+    /// the site and `wa-me` bound only under `me`.
+    fn site_watching_me() -> crate::feed::config::StatusConfig {
+        serde_json::from_value(serde_json::json!({
+            "sources": [{ "provider": "mail-me" }],
+            "projects": {
+                "me": { "providers": [{ "provider": "wa-me" }] },
+                "rhei": { "providers": [] },
+                "grund": { "providers": [] }
+            }
+        }))
+        .expect("a site configuration")
+    }
+
+    /// The notes for `me` claiming `claimed`, beside a `rhei` row claiming
+    /// nothing.
+    fn notes_for(claimed: Value) -> Vec<String> {
+        let registry = serde_json::json!({
+            "projects": [
+                { "id": "me", "fallback_sources": claimed },
+                { "id": "rhei" }
+            ]
+        });
+        fallback_claims_over_nothing(&registry, &site_watching_me())
+    }
+
+    /// One note, naming the row, the source, and the reason.
+    fn one_note(claimed: &str, reason: &str) {
+        let notes = notes_for(serde_json::json!([claimed]));
+        assert_eq!(notes.len(), 1, "one dead claim, one note: {notes:?}");
+        let note = &notes[0];
+        for named in ["'me'", &format!("'{claimed}'"), reason] {
+            assert!(note.contains(named), "{note:?} must name {named}");
+        }
+    }
+
+    /// §FS-008-attribution.4: a claim on a name no source in `status.json`
+    /// has is said.
+    #[test]
+    fn a_fallback_claim_on_an_unknown_source_is_said() {
+        one_note("mail-me-old", "no source in status.json");
+    }
+
+    /// §FS-008-attribution.4: a claim on a source bound only under a project
+    /// is said, because that source's reports are the project's unweighed.
+    #[test]
+    fn a_fallback_claim_on_a_source_bound_under_a_project_is_said() {
+        one_note("wa-me", "bound only under project 'me'");
+    }
+
+    /// §FS-008-attribution.4: a claim on a built-in source is said, because no
+    /// built-in source reports conversations. The predicate is the one that
+    /// decides which sources are built in, so the list is not written twice.
+    #[test]
+    fn a_fallback_claim_on_a_built_in_source_is_said() {
+        assert!(crate::feed::providers::built_in("custom-status"));
+        one_note("custom-status", "built into ephor");
+    }
+
+    /// §FS-008-attribution.4: a claim on a source bound for the site places
+    /// what it reports, so nothing is said, and a row with no claim or `[]`
+    /// is not a claim at all. A row the site does not watch claims nothing.
+    #[test]
+    fn a_working_claim_and_no_claim_are_not_said() {
+        assert!(notes_for(serde_json::json!(["mail-me"])).is_empty());
+        assert!(notes_for(serde_json::json!([])).is_empty());
+        let unwatched = serde_json::json!({
+            "projects": [{ "id": "family", "fallback_sources": ["wa-me"] }]
+        });
+        assert!(fallback_claims_over_nothing(&unwatched, &site_watching_me()).is_empty());
     }
 }

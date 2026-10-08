@@ -20,6 +20,7 @@ fn placement(project: &str, root: &Path, template: Option<&str>) -> Placement {
         aliases: Vec::new(),
         territory: Vec::new(),
         rooms: None,
+        fallback_sources: Vec::new(),
         trust: Default::default(),
         organization: None,
     }

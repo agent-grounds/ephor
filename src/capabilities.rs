@@ -414,6 +414,7 @@ mod tests {
             aliases: Vec::new(),
             territory: Vec::new(),
             rooms: None,
+            fallback_sources: Vec::new(),
             trust: crate::manifest::Trust::Full,
             organization: None,
         }

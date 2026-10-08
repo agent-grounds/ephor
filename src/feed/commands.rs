@@ -123,6 +123,13 @@ fn refresh_projects(
              finds; the per-project form still works for now."
         );
     }
+    // A row's fallback claim that can place nothing is said, never shrugged:
+    // news rather than a fault, so it counts towards no exit code
+    // (§FS-008-attribution.4).
+    let notes = crate::registry::fallback_claims_over_nothing(&registry_doc, config);
+    for note in &notes {
+        eprintln!("note: {note}");
+    }
     let site_sources = site_source_names(config);
     let mut total_failures = 0usize;
     let mut degraded = 0usize;
@@ -223,6 +230,7 @@ fn refresh_projects(
         total_failures,
         degraded,
         projects: per_project,
+        notes,
     })
 }
 
@@ -263,6 +271,10 @@ struct RefreshTally {
     /// is last-good data or nothing at all, and either reads exactly like "you
     /// have no work here" (§FS-001-forge-interface.6).
     projects: Vec<serde_json::Value>,
+    /// What the site's configuration says that no one project's refresh
+    /// does: a row's fallback claim that can place nothing
+    /// (§FS-008-attribution.4).
+    notes: Vec<String>,
 }
 
 /// Refresh when the cache is missing or older than the TTL (unless --cached).
@@ -600,6 +612,9 @@ pub fn refresh(args: &RefreshArgs, scope: &Projects) -> Result<ExitCode> {
                 "degraded": tally.degraded,
                 "lost": tally.total_failures,
                 "projects": tally.projects,
+                // What the prose says on the error stream, said here too
+                // (§REQ-002-parity.3).
+                "notes": tally.notes,
             }))
             .unwrap_or_else(|_| "null".to_string())
         );

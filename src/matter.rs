@@ -122,14 +122,19 @@ impl Placement {
         }
     }
 
-    /// Whether nothing firmer than the project's own name placed this. Such a
-    /// matter may start a row of its own and may never be folded onto a
-    /// subject some source actually named (§FS-008-attribution.3).
-    pub fn by_resemblance(&self) -> bool {
+    /// Whether nothing firmer than the project's own name, or a row's fallback
+    /// claim on the source that reported it, placed this. Either says which
+    /// project and never which subject, so such a matter may start a row of
+    /// its own and may never be folded onto a subject some source actually
+    /// named (§FS-008-attribution.3, §AR-003-attribution.3).
+    pub fn may_only_start_a_row(&self) -> bool {
         matches!(
             self,
             Placement::On {
-                how: Some(crate::attribution::Strength::Resemblance),
+                how: Some(
+                    crate::attribution::Strength::Resemblance
+                        | crate::attribution::Strength::Fallback
+                ),
                 ..
             }
         )
@@ -586,6 +591,10 @@ pub fn evidence_of(item: &Item) -> Evidence {
         }
     }
     let spoken = words.join("\n");
+    // The name the site configuration gives the source, and only for a
+    // conversation: what a row's fallback claim is matched against
+    // (§AR-003-attribution.1). Never read from what the conversation says.
+    let conversation = item.raw.get("conversation").and_then(Value::as_bool) == Some(true);
     Evidence {
         venue: Some(SubjectKey::stated(&item.id)),
         repo: item.repo(),
@@ -594,6 +603,7 @@ pub fn evidence_of(item: &Item) -> Evidence {
             .get("room")
             .and_then(Value::as_str)
             .map(String::from),
+        source: conversation.then(|| item.source.clone()),
         tickets: crate::ticket_ids::tickets_in(&spoken),
         repos: repos_in(&spoken)
             .into_iter()
@@ -822,12 +832,12 @@ impl Matter {
     /// than guessed into somebody else's row.
     pub fn subject(&self) -> String {
         let item = self.as_item();
-        // Resemblance may start a new row, it may not amend one
-        // (§FS-008-attribution.3): a conversation placed by nothing firmer
-        // than the project's name is its own subject, so it can never be
-        // folded onto one a source actually stated.
+        // Resemblance and a fallback claim may start a new row, they may not
+        // amend one (§FS-008-attribution.3): a conversation placed by nothing
+        // firmer than the project's name or the source it came from is its own
+        // subject, so it can never be folded onto one a source actually stated.
         match (item.repo(), item.number()) {
-            (Some(repo), Some(number)) if !self.placement.by_resemblance() => {
+            (Some(repo), Some(number)) if !self.placement.may_only_start_a_row() => {
                 format!("{:?}\u{0}{repo}#{number}", self.kind)
             }
             _ => format!("key\u{0}{}", self.key),
@@ -1625,8 +1635,6 @@ mod tests {
     /// amend one (§FS-008-attribution.3).
     #[test]
     fn a_matter_placed_by_fallback_never_merges_onto_a_stated_subject() {
-        let fallback: crate::attribution::Strength = serde_json::from_value(json!("fallback"))
-            .expect("a placement may be reached by a row's fallback claim");
         let stated = report(
             "github-prs",
             "github-prs:acme/widget#42",
@@ -1639,7 +1647,7 @@ mod tests {
         );
         // Placed on the same project, but only because the row claims the
         // source it came from.
-        claimed.placement = Placement::claimed("widget", fallback);
+        claimed.placement = Placement::claimed("widget", crate::attribution::Strength::Fallback);
 
         assert_eq!(merge(vec![stated, claimed]).len(), 2);
     }
@@ -1903,6 +1911,76 @@ mod tests {
             },
         );
         assert_eq!(evidence_of(&notice).repo.as_deref(), Some("whatsapp/acme"));
+    }
+
+    /// A conversation's evidence names the source that reported it, by the
+    /// name the site configuration gives it; a notice's and an issue's name
+    /// none, so a row claiming that source as its fallback home reaches the
+    /// conversation and neither of the others (§AR-003-attribution.1).
+    #[test]
+    fn only_a_conversations_evidence_names_the_source_that_reported_it() {
+        use crate::attribution::{place, Identity, Placed, Strength};
+        use crate::forge::{policy, Conversation, Notice};
+        let when = "2026-10-07T09:02:00Z".parse().unwrap();
+        let conversation = policy::conversation_item(
+            "mail-me",
+            "",
+            &Conversation {
+                id: "sunday".to_string(),
+                title: "Sunday".to_string(),
+                url: None,
+                updated_at: when,
+                room: None,
+                reasons: Vec::new(),
+                threads: Vec::new(),
+            },
+        );
+        let notice = policy::notice_item(
+            "mail-me",
+            "",
+            &Notice {
+                id: "n-1".to_string(),
+                title: "Sunday".to_string(),
+                url: None,
+                reason: "mention".to_string(),
+                subject: crate::forge::SubjectKind::Other,
+                repo: None,
+                number: None,
+                updated_at: when,
+                read: false,
+            },
+        );
+        let issue = policy::issue_item(
+            "mail-me",
+            "",
+            &serde_json::from_value(json!({
+                "key": "ABC-42",
+                "title": "Sunday",
+                "updated_at": "2026-10-07T09:02:00Z"
+            }))
+            .expect("an issue"),
+            policy::Unclaimed::Ignored,
+        );
+        let me = Identity {
+            project: "me".to_string(),
+            fallback_sources: vec!["mail-me".to_string()],
+            ..Identity::default()
+        };
+
+        let evidence = evidence_of(&conversation);
+        assert_eq!(evidence.source.as_deref(), Some("mail-me"));
+        assert_eq!(
+            place(&evidence, std::slice::from_ref(&me)),
+            Placed::On {
+                project: "me".to_string(),
+                how: Strength::Fallback
+            }
+        );
+        for other in [notice, issue] {
+            let evidence = evidence_of(&other);
+            assert_eq!(evidence.source, None, "{} names no source", other.id);
+            assert_eq!(place(&evidence, std::slice::from_ref(&me)), Placed::Nothing);
+        }
     }
 
     #[test]
