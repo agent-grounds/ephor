@@ -30,6 +30,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 from pathlib import Path
 from typing import NamedTuple
@@ -59,6 +60,11 @@ GIT_ENV = {
 }
 # What the machine running the tests may carry and the release must not read.
 SCRUBBED = ("GH_TOKEN", "GITHUB_TOKEN", "GH_HOST", "GH_REPO", "GH_ENTERPRISE_TOKEN", "GITHUB_REPOSITORY")
+# git's words when it cannot make a loose object's temporary file. On the hosted macOS runner one such
+# write now and then fails with `Invalid argument` and the next one does not, so the fixture's own
+# `git` outlasts it, and only it, in at most this many attempts (#202).
+GIT_TRANSIENT = "unable to create temporary file"
+GIT_ATTEMPTS = 3
 
 # A changelog before its first release: the conventions, an empty slot, no older release.
 FIRST_CHANGELOG = (
@@ -264,10 +270,23 @@ class ReleaseRepo:
     # --- git -----------------------------------------------------------------
 
     def git(self, *args: str) -> str:
-        result = subprocess.run(["git", *args], cwd=self.path, env=self.env, capture_output=True, text=True)
-        if result.returncode != 0:
-            raise AssertionError(f"fixture: git {' '.join(args)} failed: {result.stderr.strip()}")
-        return result.stdout.strip()
+        """Run the fixture's own `git`, raising on failure; git's transient alone is tried again, and says so."""
+        call = " ".join(args)
+        said = []
+        for attempt in range(1, GIT_ATTEMPTS + 1):
+            result = subprocess.run(["git", *args], cwd=self.path, env=self.env, capture_output=True, text=True)
+            if result.returncode == 0:
+                return result.stdout.strip()
+            said.append(result.stderr.strip())
+            if GIT_TRANSIENT not in result.stderr or attempt == GIT_ATTEMPTS:
+                break
+            print(f"fixture: git {call} met git's transient on attempt {attempt} of {GIT_ATTEMPTS}; trying again",
+                  file=sys.stderr)
+            time.sleep(0.2 * attempt)
+        if len(said) > 1:
+            said = [f"[attempt {number}] {text}" for number, text in enumerate(said, 1)]
+        words = "\n".join(said)
+        raise AssertionError(f"fixture: git {call} failed: {words}")
 
     def write(self, relative: str, text: str) -> Path:
         target = self.path / relative
