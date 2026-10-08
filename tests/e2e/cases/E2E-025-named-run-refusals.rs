@@ -561,7 +561,9 @@ fn screen(world: &World) -> Output {
 /// `python3 -c PTY_DRIVER <program>` runs `<program> tui` on the pty, types
 /// `jwRqq` into it, writes everything the terminal received to its own stdout,
 /// and exits with the program's own status; 124 means its 15 s deadline came
-/// first.
+/// first. An end of file on the master ends the reading but not the wait: the
+/// driver then waits for the program, up to that same deadline, before it
+/// reports anything.
 #[cfg(unix)]
 const PTY_DRIVER: &str = r#"import fcntl, os, pty, select, struct, subprocess, sys, termios, time
 master, slave = pty.openpty()
@@ -604,12 +606,12 @@ while time.monotonic() < deadline:
     if child.poll() is not None:
         break
 
-if child.poll() is None:
+try:
+    status = child.wait(timeout=max(deadline - time.monotonic(), 0))
+except subprocess.TimeoutExpired:
     child.terminate()
     child.wait(timeout=2)
     status = 124
-else:
-    status = child.wait()
 os.close(master)
 sys.stdout.buffer.write(b"".join(chunks))
 sys.exit(status)
