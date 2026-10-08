@@ -572,7 +572,7 @@ and gate verbs, task stores, and offers — menu entries you invoke.
 
 | Block | Says | Where it is documented |
 |---|---|---|
-| `identity` | names, aliases, ticket patterns, repositories, territory, addresses, rooms — hints your row adopts or overrides ([§FS-008-attribution.1](functional-spec/FS-008-attribution.md#1-identity-is-declared-and-the-row-has-the-last-word)) | §4.2.2, [the registry](registry.md#identity-and-territory) |
+| `identity` | aliases, territory, addresses, rooms — hints your row adopts or overrides, one list at a time ([§FS-008-attribution.1.1](functional-spec/FS-008-attribution.md#11-the-rows-word-on-a-hinted-list-is-its-presence)) | §4.2.2, [the registry](registry.md#identity-and-territory) |
 | `forest` | the repositories under the root, as the project declares them ([§AR-004-forest.1](architecture/AR-004-forest.md#1-folds)) | §5.1, `EPHOR_REPOS` |
 | `checks` | what fills `check`, `style`, `smoke` ([§FS-006-project-interface.5](functional-spec/FS-006-project-interface.md#5-checks-are-verbs-and-every-script-is-self-contained)) | §4.2.3 |
 | `clean` | what gives an idle branch checkout's build output back ([§FS-017-clean.1](functional-spec/FS-017-clean.md#1-cleaning-is-a-verb-the-project-declares)) | §8.11.2 |
@@ -599,8 +599,9 @@ else failed
 ([§FS-006-project-interface.3](functional-spec/FS-006-project-interface.md#3-a-summons-environment-in-exit-code-and-answer-out)).
 
 Two rules make it safe to read. **The row is authoritative**: identity fields
-are hints your registry adopts where it says nothing of its own and overrides
-where it does, because attribution keys must not be forgeable by a checkout.
+are hints your registry adopts where the row has no key of its own and
+overrides where it writes one, `[]` included, because attribution keys must
+not be forgeable by a checkout.
 And **the row sets the trust**: `manifest_trust` is `full` (the default —
 its commands run with the trust you extend to the project's own build),
 `descriptions` (read what it says about itself, run none of it), or `ignore`.
@@ -632,12 +633,24 @@ the project's business without being in its forest — `"acme/plugin"` for one,
 mention of you on some repository of the project's ecosystem, an issue filed
 there, none of it in any checkout.
 
-A manifest may hint the same things — `identity.aliases`, `identity.repos`,
-`identity.ticket_patterns`, `identity.territory`, `identity.addresses`,
-`identity.rooms` — and the row adopts a hint where it says nothing of its own
-and overrides it where it does. The row has the last word because a checkout
-must not be able to claim another project's conversations
-([§FS-008-attribution.1](functional-spec/FS-008-attribution.md#1-identity-is-declared-and-the-row-has-the-last-word)).
+A manifest may hint four lists — `identity.aliases`, `identity.territory`,
+`identity.addresses` and `identity.rooms` — and for each of them the row's
+word is its **presence**. A row with no key for a list adopts the hint. A row
+that writes the list has said what is the project's, and the hint is ignored:
+`"addresses": ["bob@example.org"]` replaces every address the checkout claims,
+and `"addresses": []` is a refusal, not an omission — it says *none*. Each
+list stands alone, so a row can refuse one hint and keep the others, and a
+list the row writes wins whatever `manifest_trust` says. The row has the last
+word because a checkout must not be able to claim another project's
+conversations, and whoever can push to a repository can edit its manifest
+([§FS-008-attribution.1.1](functional-spec/FS-008-attribution.md#11-the-rows-word-on-a-hinted-list-is-its-presence)).
+
+`addresses` on a row are matched as written and place a mail as firmly as a
+reference to the project does. A manifest's `identity.name`,
+`identity.ticket_patterns` and `identity.repos` are accepted and not read as
+identity: ticket prefixes come from the branches your row declares, and the
+forest's repositories from its project type. A repository you want claimed
+beyond the forest goes in `territory`.
 
 **Rooms** are territory for conversations. `rooms` on a registry row names the
 venues on a chat source — a group, a channel — that are the project's, each
@@ -657,11 +670,9 @@ claimed room places — a direct one, which has no room, or one in a room nobody
 claimed — is placed like anything else: by what it refers to, then under a row
 that claims its source, and into the unattributed bucket where nothing matches.
 
-For rooms the row's word is its **presence**. A row that lists rooms has said
-which are the project's, and a manifest's `identity.rooms` is then ignored.
-`"rooms": []` is a refusal, not an omission: it says *none*, and is the only
-way a row can turn down a checkout's claim on a room. Only a row with no
-`rooms` key adopts the hint.
+Rooms follow the presence rule above: a row that lists rooms has said which
+are the project's, `"rooms": []` turns down every room a checkout claims, and
+only a row with no `rooms` key adopts `identity.rooms`.
 
 **Fallback sources** give a conversation source a home for what names no
 project. Keep a personal mailbox as a site-level source, so that a mail naming
