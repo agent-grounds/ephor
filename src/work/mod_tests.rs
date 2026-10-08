@@ -6792,3 +6792,34 @@ fn issue_191_a_plain_run_passes_a_private_plan_over() {
     assert_eq!(named[0].plans, vec!["chatgw-dm".to_string()]);
     assert!(named[0].private.is_none());
 }
+
+/// A name that is a workflow entry rather than a recipe is pointed at the door
+/// that lays it, not told it is unconfigured (§FS-005-dispatch.27.1).
+#[test]
+fn a_workflow_entry_named_as_a_recipe_is_pointed_at_work_lay() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut dispatcher = issue_43_dispatcher(tmp.path(), empty_ledger());
+    // Unplaced, so no runtime is asked for the workflows it carries; the entry is configured.
+    dispatcher.placements.insert("widget".to_string(), None);
+    dispatcher.actions = vec![serde_json::from_value(serde_json::json!({
+        "id": "lay-it", "icon": "⛬", "description": "lay the fix",
+        "workflow": "supervised-ticket-fix"
+    }))
+    .unwrap()];
+    let item = issue_43_item();
+
+    let says = dispatcher.why_not_offered(&item, "lay-it");
+    assert!(says.contains("lay-it") && says.contains(&item.id), "{says}");
+    assert!(says.contains("work lay"), "{says}");
+    assert!(
+        !says.contains("does not apply") && !says.contains("work ask"),
+        "{says}"
+    );
+
+    // A name that is neither keeps its own sentence and its own door.
+    let unknown = dispatcher.why_not_offered(&item, "no-such-entry");
+    assert!(
+        unknown.contains("work ask") && !unknown.contains("work lay"),
+        "{unknown}"
+    );
+}
