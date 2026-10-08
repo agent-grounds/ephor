@@ -85,8 +85,11 @@ impl Binding {
     }
 }
 
-/// Identity hints. The row adopts these where it says nothing of its own and
-/// overrides them where it does (§FS-008-attribution.1).
+/// Identity hints (§FS-008-attribution.1). Of these the row adopts aliases,
+/// territory, addresses and rooms, each only where it has no key of its own
+/// for that list, `[]` refusing the hint (§FS-008-attribution.1.1). The rest
+/// are read but not adopted: the forest's repositories come from the row's
+/// project type.
 #[derive(Debug, Clone, Default, Deserialize)]
 pub struct Identity {
     #[serde(default)]
@@ -102,7 +105,7 @@ pub struct Identity {
     #[serde(default)]
     pub addresses: Vec<String>,
     /// Rooms on a conversation source, as the source states them
-    /// (§FS-008-attribution.1). Adopted only where the row is silent on rooms.
+    /// (§FS-008-attribution.1).
     #[serde(default)]
     pub rooms: Vec<String>,
 }
@@ -721,8 +724,9 @@ mod row_tests {
             branches: Vec::new(),
             main_branch: Some("main".to_string()),
             repos: Vec::new(),
-            aliases: Vec::new(),
-            territory: Vec::new(),
+            aliases: None,
+            territory: None,
+            addresses: None,
             rooms: None,
             fallback_sources: Vec::new(),
             trust,
@@ -733,7 +737,9 @@ mod row_tests {
     /// The row adopts what the project says where it says nothing itself, and
     /// overrides it where it does — the row is authoritative, because
     /// attribution keys must not be forgeable by a checkout
-    /// (§FS-008-attribution.1).
+    /// (§FS-008-attribution.1). Saying nothing is having no key: a row that
+    /// writes `[]` has said *none*, at every trust level
+    /// (§FS-008-attribution.1.1).
     #[test]
     fn the_row_adopts_the_projects_hints_and_overrides_them() {
         let tmp = tempfile::tempdir().unwrap();
@@ -753,11 +759,23 @@ mod row_tests {
 
         // Row speaks: it wins, and the hint does not creep in beside it.
         let mut row = placement(tmp.path(), Trust::Full);
-        row.aliases = vec!["from the row".to_string()];
-        row.territory = vec!["acme".to_string()];
+        row.aliases = Some(vec!["from the row".to_string()]);
+        row.territory = Some(vec!["acme".to_string()]);
+        row.addresses = Some(vec!["gadget@acme.example".to_string()]);
         let overridden = row.identity();
         assert_eq!(overridden.aliases, vec!["from the row"]);
         assert_eq!(overridden.territory, vec!["acme"]);
+        assert_eq!(overridden.addresses, vec!["gadget@acme.example"]);
+
+        // Row says none: the hints are refused, not adopted as silence.
+        let mut refusing = placement(tmp.path(), Trust::Full);
+        refusing.aliases = Some(Vec::new());
+        refusing.territory = Some(Vec::new());
+        refusing.addresses = Some(Vec::new());
+        let refused = refusing.identity();
+        assert!(refused.aliases.is_empty());
+        assert!(refused.territory.is_empty());
+        assert!(refused.addresses.is_empty());
 
         // A checkout trusted less still describes itself.
         let narrowed = placement(tmp.path(), Trust::Descriptions).identity();
@@ -767,11 +785,19 @@ mod row_tests {
         let ignored = placement(tmp.path(), Trust::Ignore).identity();
         assert!(ignored.aliases.is_empty());
         assert!(ignored.territory.is_empty());
+        assert!(ignored.addresses.is_empty());
+
+        // Trust decides only whether there is a hint: the row's own list
+        // stands where nothing of the manifest is read.
+        let mut unread = placement(tmp.path(), Trust::Ignore);
+        unread.addresses = Some(vec!["gadget@acme.example".to_string()]);
+        assert_eq!(unread.identity().addresses, vec!["gadget@acme.example"]);
     }
 
-    /// For rooms the row's word is its presence (§FS-008-attribution.1): a row
-    /// silent on them adopts the checkout's hint, one that lists none refuses
-    /// it, and one that lists its own replaces it.
+    /// For rooms the row's word is its presence, as for every list a checkout
+    /// can hint (§FS-008-attribution.1.1): a row silent on them adopts the
+    /// checkout's hint, one that lists none refuses it, and one that lists its
+    /// own replaces it.
     #[test]
     fn a_row_that_names_rooms_even_none_has_the_last_word_on_them() {
         let tmp = tempfile::tempdir().unwrap();

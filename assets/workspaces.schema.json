@@ -1,5 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/agent-grounds/ephor/schemas/registry/v2",
   "title": "Project Registry",
   "type": "object",
   "required": ["project_types", "hook_sets", "projects"],
@@ -132,7 +133,7 @@
           "aliases": {
             "type": "array",
             "items": { "type": "string", "minLength": 1 },
-            "description": "Alternative names for this project (useful for polyrepos with multiple repos)"
+            "description": "Alternative names for this project (useful for polyrepos with multiple repos). Present, even empty, it is the row's last word; absent, a manifest's identity.aliases is adopted (FS-008-attribution.1.1)."
           },
           "manifest_trust": {
             "enum": ["full", "descriptions", "ignore"],
@@ -141,12 +142,17 @@
           "territory": {
             "type": "array",
             "items": { "type": "string", "minLength": 1 },
-            "description": "Repositories and organizations that are this project's business without being in its forest (FS-008-attribution.1): 'owner/name' for one repository, 'owner' for a whole organization. What places a mention or an issue filed in the project's ecosystem."
+            "description": "Repositories and organizations that are this project's business without being in its forest (FS-008-attribution.1): 'owner/name' for one repository, 'owner' for a whole organization. What places a mention or an issue filed in the project's ecosystem. Present, even empty, it is the row's last word; absent, a manifest's identity.territory is adopted (FS-008-attribution.1.1)."
+          },
+          "addresses": {
+            "type": "array",
+            "items": { "type": "string", "minLength": 1 },
+            "description": "Mail addresses and lists whose conversations are this project's, matched as written and placed as firmly as a reference to the project (FS-008-attribution.1.1). Present, even empty, it is the row's last word; absent, a manifest's identity.addresses is adopted."
           },
           "rooms": {
             "type": "array",
             "items": { "type": "string", "minLength": 1 },
-            "description": "Rooms on a conversation source that are this project's (FS-008-attribution.1): each the id the source states for it, matched exactly, with no prefix and no organization-wide claim. Present, even empty, it is the row's last word; absent, a manifest's identity.rooms is adopted. A conversation in a claimed room is placed here as firmly as a pull request on one of the project's repositories."
+            "description": "Rooms on a conversation source that are this project's (FS-008-attribution.1): each the id the source states for it, matched exactly, with no prefix and no organization-wide claim. Present, even empty, it is the row's last word; absent, a manifest's identity.rooms is adopted (FS-008-attribution.1.1). A conversation in a claimed room is placed here as firmly as a pull request on one of the project's repositories."
           },
           "fallback_sources": {
             "type": "array",
