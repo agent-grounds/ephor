@@ -2,6 +2,8 @@
 //! freshness refuses rather than deciding it (§FS-005-dispatch.13.2).
 
 use super::*;
+use crate::forge::policy::conversation_item;
+use crate::forge::{Conversation, Message, Thread};
 use crate::replies::storage::tests::{item, sources};
 use crate::replies::storage::Accepted;
 
@@ -10,6 +12,7 @@ const EDITED: &str = "Can you do the fence for €150?";
 const RAISED: &str = "Sorry, the posts went up: it is €150 now.";
 const TUESDAY: &str = "And Monday does not work, Tuesday?";
 const MINE: &str = "Yes, €150 is fine.";
+const SIGNED: &str = "Yes, €150 is fine.\n\n-- \nSent from my phone";
 
 fn said(author: &str, when: Option<&str>, text: &str) -> Value {
     let mut message = json!({"author": author, "text": text, "mine": author == "me"});
@@ -27,6 +30,44 @@ fn at(time: &str) -> Option<String> {
 fn row(messages: Vec<Value>) -> Item {
     let mut row = item();
     row.raw = json!({"threads": [{"messages": messages, "reply": {"issue": 7}}]});
+    row
+}
+
+/// The row as a refresh records it: the source's messages written through the
+/// policy that fills the cache, whose each one is included where the source
+/// said it is the person's (§FS-001-forge-interface.3).
+fn recorded(messages: &[(&str, &str, &str)]) -> Item {
+    let conversation = Conversation {
+        id: "k-B".into(),
+        title: "Fence".into(),
+        url: None,
+        updated_at: chrono::Utc::now(),
+        room: None,
+        reasons: vec![],
+        threads: vec![Thread {
+            messages: messages
+                .iter()
+                .map(|(author, time, text)| Message {
+                    author: author.to_string(),
+                    text: text.to_string(),
+                    when: Some(format!("2026-10-07T{time}:00Z").parse().unwrap()),
+                    mine: *author == "me",
+                    ..Message::default()
+                })
+                .collect(),
+            reply: json!({"issue": 7}),
+        }],
+    };
+    conversation_item("mail", "demo", &conversation)
+}
+
+/// The same row as it was recorded before ownership reached the recorded
+/// message: no message says whose it is.
+fn unowned(row: &Item) -> Item {
+    let mut row = row.clone();
+    for message in row.raw["threads"][0]["messages"].as_array_mut().unwrap() {
+        message.as_object_mut().unwrap().remove("mine");
+    }
     row
 }
 
@@ -152,8 +193,15 @@ fn moved() -> Vec<Moved> {
             "that send once a refresh shows it",
             saw.clone(),
             row(vec![q(), said("me", at("10:00").as_deref(), MINE)]),
-            accepted,
+            accepted.clone(),
             vec![entry("yours", Some(1), MINE)],
+        ),
+        (
+            "that send once a refresh shows it as the forge rewrote it",
+            saw.clone(),
+            row(vec![q(), said("me", at("10:00").as_deref(), SIGNED)]),
+            accepted,
+            vec![entry("yours", Some(1), SIGNED)],
         ),
     ]
 }
@@ -186,11 +234,91 @@ fn an_edit_carries_its_author_time_and_words_before() {
 
 #[test]
 fn arrivals_need_no_time_while_the_thread_still_begins_with_what_was_seen() {
-    let saw = row(vec![said("dana", None, ASKED)]);
-    let now = row(vec![said("dana", None, ASKED), said("dana", None, RAISED)]);
+    // No time at all, and the empty time a refresh records for one.
+    for when in [None, Some("")] {
+        let saw = row(vec![said("dana", when, ASKED)]);
+        let now = row(vec![said("dana", when, ASKED), said("dana", when, RAISED)]);
+        assert_eq!(
+            listed(&review(&bound(&saw), &now, &Record::new(&saw))),
+            [entry("new", Some(1), RAISED)],
+            "{when:?}"
+        );
+    }
+}
+
+#[test]
+fn the_persons_own_reply_is_theirs_as_a_refresh_records_it() {
+    let saw = recorded(&[("dana", "09:00", ASKED)]);
+    let now = recorded(&[("dana", "09:00", ASKED), ("me", "10:00", MINE)]);
+    let messages = &now.raw["threads"][0]["messages"];
+    assert_eq!(messages[1]["mine"], true, "the person's own is recorded so");
+    assert!(
+        messages[0].get("mine").is_none(),
+        "and nothing is written where it is not theirs: {messages}"
+    );
+    let binding = bound(&saw);
     assert_eq!(
-        listed(&review(&bound(&saw), &now, &Record::new(&saw))),
-        [entry("new", Some(1), RAISED)]
+        listed(&review(&binding, &now, &Record::new(&saw))),
+        [entry("yours", Some(1), MINE)]
+    );
+    let mut record = Record::new(&saw);
+    record.accepted.insert(
+        binding.key(),
+        Accepted {
+            generation: 1,
+            text: MINE.into(),
+            target: Some(json!({"issue": 7})),
+        },
+    );
+    assert_eq!(
+        listed(&review(&binding, &saw, &record)),
+        [entry("yours", None, MINE)],
+        "a send accepted here, before a refresh shows it"
+    );
+    assert_eq!(
+        listed(&review(&binding, &now, &record)),
+        [entry("yours", Some(1), MINE)],
+        "and once one does, listed once"
+    );
+}
+
+#[test]
+fn whose_a_message_is_never_moves_a_draft() {
+    // A thread the person began, bound before ownership was recorded: its
+    // baseline says the first message is not theirs, and the source now says
+    // it is. Nothing moved.
+    let now = recorded(&[
+        ("me", "08:00", "Can we talk fence?"),
+        ("dana", "09:00", ASKED),
+    ]);
+    let before = bound(&unowned(&now));
+    assert_eq!(before.messages[0]["mine"], false, "{:?}", before.messages);
+    let record = Record::new(&now);
+    assert_eq!(before.freshness(&now, &record), Ok(()));
+    assert!(review(&before, &now, &record).is_empty());
+    // The generation key is the one every send accepted before was saved
+    // under, whoever captures the thread now.
+    let captured = bound(&now);
+    assert_eq!(captured.messages[0]["mine"], true, "the baseline holds it");
+    assert_eq!(captured.key(), before.key());
+    assert_eq!(
+        before.key(),
+        json!([0, before.messages[0]]).to_string(),
+        "the key a pre-upgrade send was accepted under"
+    );
+    assert_eq!(captured.freshness(&unowned(&now), &record), Ok(()));
+    let mut sent = record.clone();
+    sent.accepted.insert(
+        captured.key(),
+        Accepted {
+            generation: 1,
+            text: MINE.into(),
+            target: Some(json!({"issue": 7})),
+        },
+    );
+    assert!(
+        before.freshness(&now, &sent).is_err(),
+        "a send accepted now still advances a draft bound before"
     );
 }
 
@@ -227,6 +355,11 @@ fn nothing_is_guessed_where_the_messages_cannot_be_lined_up() {
             "a missing time",
             row(vec![said("dana", None, ASKED)]),
             row(vec![said("dana", None, EDITED)]),
+        ),
+        (
+            "a missing time as a refresh records it",
+            row(vec![said("dana", Some(""), ASKED)]),
+            row(vec![said("dana", Some(""), EDITED)]),
         ),
         (
             "two messages with one author and time",

@@ -181,6 +181,12 @@ fn message_json(message: &Message) -> Value {
         "text": message.text,
         "when": message.when.map(|when| when.to_rfc3339()).unwrap_or_default(),
     });
+    // Whose it is, as the implementation decided (§FS-001-forge-interface.3),
+    // so a draft's review can name the person's own (§FS-005-dispatch.13.2).
+    // Only where it is theirs: a conversation with none reads as it always did.
+    if message.mine {
+        value["mine"] = Value::Bool(true);
+    }
     if !message.reactions.is_empty() {
         value["reactions"] = Value::Array(
             message

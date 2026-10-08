@@ -5,7 +5,7 @@
 use serde::Serialize;
 use serde_json::{json, Value};
 
-use super::binding::{fingerprints, threads, Binding};
+use super::binding::{fingerprints, identities, threads, Binding};
 use super::Record;
 use crate::feed::model::Item;
 
@@ -104,17 +104,21 @@ fn flat(text: &str) -> String {
 /// identity is missing or ambiguous, or whose messages cannot be lined up one
 /// to one, lists nothing.
 pub fn review(binding: &Binding, item: &Item, record: &Record) -> Vec<Since> {
-    if binding.row != item.id || binding.source != item.source || binding.messages.is_empty() {
+    let seen = binding.seen();
+    if binding.row != item.id || binding.source != item.source || seen.is_empty() {
         return Vec::new();
     }
-    let all: Vec<Vec<Value>> = threads(item).iter().map(fingerprints).collect();
-    let Some(current) = all.get(binding.thread) else {
+    let all = identities(item);
+    let Some(compared) = all.get(binding.thread) else {
         return Vec::new();
     };
-    let begins = current.starts_with(&binding.messages);
+    // Whose each message is comes from the conversation as it is now, where
+    // `Yours` is decided; it never decides what moved.
+    let current = fingerprints(&threads(item)[binding.thread]);
+    let begins = compared.starts_with(&seen);
     let prefixed = all
         .iter()
-        .filter(|messages| messages.starts_with(&binding.messages))
+        .filter(|messages| messages.starts_with(&seen))
         .count();
     if prefixed > 1 || (prefixed == 1 && !begins) {
         return Vec::new();
@@ -123,19 +127,22 @@ pub fn review(binding: &Binding, item: &Item, record: &Record) -> Vec<Since> {
     // this one comes first.
     let offset: usize = all[..binding.thread].iter().map(Vec::len).sum();
     let mut since = match begins {
-        true => arrivals(current, binding.messages.len(), offset),
-        false => match aligned(&binding.messages, current, offset) {
+        true => arrivals(&current, seen.len(), offset),
+        false => match aligned(&seen, &current, offset) {
             Some(since) => since,
             None => return Vec::new(),
         },
     };
     // A send accepted here is the person's own, listed once: as the message a
-    // refresh made of it, or as itself until one does.
+    // refresh made of it, or as itself until one does. A forge may sign or
+    // rewrap what it posts, so once this thread has advanced, a reply of the
+    // person's that arrived after the baseline is that send whatever its
+    // words; the record keeps one accepted send per thread for it to be.
     if record.generation(binding) != binding.generation {
         if let Some(accepted) = record.accepted.get(&binding.key()) {
-            let shown = since.iter().any(|entry| {
-                entry.change == Change::Yours && entry.text.trim() == accepted.text.trim()
-            });
+            let shown = since
+                .iter()
+                .any(|entry| entry.change == Change::Yours && entry.message.is_some());
             if !shown {
                 since.push(Since {
                     change: Change::Yours,
@@ -176,10 +183,9 @@ fn aligned(saved: &[Value], current: &[Value], offset: usize) -> Option<Vec<Sinc
         let keys: Vec<(Value, String)> = messages
             .iter()
             .map(|message| {
-                Some((
-                    message["author"].clone(),
-                    message["when"].as_str()?.to_string(),
-                ))
+                // A message recorded with no time carries `""`: it is missing.
+                let when = message["when"].as_str().filter(|when| !when.is_empty())?;
+                Some((message["author"].clone(), when.to_string()))
             })
             .collect::<Option<_>>()?;
         let unique = keys
