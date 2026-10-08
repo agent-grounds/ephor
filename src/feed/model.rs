@@ -73,7 +73,8 @@ pub const AWAITS: &str = "awaits";
 /// the reader, by the calculus of §FS-003-feed-categories.4. Written by the
 /// forge policy, which alone sees whose each message is, and read by the
 /// row's file mark, which counts only the discussions that wait
-/// (§FS-007-matters.3). Absent is a discussion that does not wait.
+/// (§FS-007-matters.3). Absent is a discussion that does not wait. It is
+/// ephor's own annotation rather than a source's word (§AR-006-matters.1).
 pub const THREAD_AWAITS: &str = "awaits_reader";
 
 /// One reason a matter waits on the reader (§FS-005-dispatch.31.2): its
