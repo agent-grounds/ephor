@@ -148,6 +148,11 @@
             "items": { "type": "string", "minLength": 1 },
             "description": "Rooms on a conversation source that are this project's (FS-008-attribution.1): each the id the source states for it, matched exactly, with no prefix and no organization-wide claim. Present, even empty, it is the row's last word; absent, a manifest's identity.rooms is adopted. A conversation in a claimed room is placed here as firmly as a pull request on one of the project's repositories."
           },
+          "fallback_sources": {
+            "type": "array",
+            "items": { "type": "string", "minLength": 1 },
+            "description": "Conversation sources this project is the fallback home for (FS-008-attribution.1), each named exactly as status.json names it. A conversation one of them reports goes to this project unless a claimed room, a repository of a forest or territory, a ticket key, a repository named in its text, or an address places it elsewhere; what only resembles another project's name stays here (FS-008-attribution.3). Notices and issues are placed as before. Only the row can name one, so [] is the same as leaving the field out. Two rows claiming one source send what only their claims reach to the unattributed bucket with both as candidates. A claim on a name no source has, on a source bound only under projects, or on a built-in source places nothing, and refresh and doctor say so (FS-008-attribution.4)."
+          },
           "organization": { "type": "string", "minLength": 1 },
           "type": { "type": "string", "minLength": 1 },
           "display_name": { "type": "string", "minLength": 1 },

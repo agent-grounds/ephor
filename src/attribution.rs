@@ -25,6 +25,11 @@ pub struct Evidence {
     /// The room a conversation states it happened in, kept apart from its
     /// key and from what it references (§AR-003-attribution.1).
     pub room: Option<String>,
+    /// The source that reported a conversation, by the name the site
+    /// configuration gives it, and None for anything that is not a
+    /// conversation (§AR-003-attribution.1). It places nothing by itself: it
+    /// is what a row's fallback claim is matched against.
+    pub source: Option<String>,
     /// Ticket keys found in the text.
     pub tickets: Vec<String>,
     /// Repositories named in the text or the url.
@@ -58,23 +63,32 @@ pub struct Identity {
     /// The rooms it claims on a conversation source, each the id the source
     /// states (§FS-008-attribution.1).
     pub rooms: Vec<String>,
+    /// The conversation sources this project is the fallback home for, each
+    /// named exactly as the site configuration names it. Compiled from the
+    /// row alone, because no checkout can name a source
+    /// (§AR-003-attribution.2).
+    pub fallback_sources: Vec<String>,
 }
 
 /// How firmly the evidence points at a project (§FS-008-attribution.3). An
 /// explicit venue — a repository of the forest or the territory, or a room the
-/// project claims — wins outright; a reference places on the named matter;
-/// only resemblance may be argued with.
+/// project claims — wins outright; a reference places on the named matter; a
+/// row's fallback claim on the source that reported a conversation places
+/// what references nothing; only resemblance may be argued with. The order of
+/// the variants is the order of the ladder (§AR-003-attribution.3).
 ///
 /// It is kept on the placement rather than consumed and dropped: what may be
-/// done with a placement depends on how it was reached — resemblance may start
-/// a new row and may not amend one — and a misplacement is debugged by looking
-/// at the strength rather than by rereading a source (§AR-003-attribution.1).
+/// done with a placement depends on how it was reached — resemblance and a
+/// fallback claim may start a new row and may not amend one — and a
+/// misplacement is debugged by looking at the strength rather than by
+/// rereading a source (§AR-003-attribution.1).
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
 )]
 #[serde(rename_all = "lowercase")]
 pub enum Strength {
     Resemblance,
+    Fallback,
     Reference,
     Venue,
 }
@@ -138,6 +152,15 @@ impl Identity {
             .any(|address| self.addresses.contains(address))
         {
             return Some(Strength::Reference);
+        }
+        // A row that claims the source a conversation came from is its home
+        // once no venue or reference has spoken, and it outranks resemblance,
+        // so a word that matches another project's name cannot take it there
+        // (§FS-008-attribution.3). Exact equality with the configured name.
+        if let Some(source) = &evidence.source {
+            if self.fallback_sources.iter().any(|own| own == source) {
+                return Some(Strength::Fallback);
+            }
         }
         // Resemblance may only be argued with, never asserted.
         if self.resembles(&evidence.words) {
@@ -250,6 +273,7 @@ mod tests {
             aliases: vec!["the widget".to_string()],
             addresses: vec!["widget@acme.example".to_string()],
             rooms: vec![ROOM.to_string()],
+            fallback_sources: Vec::new(),
         }
     }
 
@@ -515,6 +539,116 @@ mod tests {
                 Strength::Reference,
                 Strength::Venue
             ]
+        );
+    }
+
+    const INBOX: &str = "mail-me";
+
+    /// A personal row that claims the inbox as its fallback home and says
+    /// nothing else about itself.
+    fn me() -> Identity {
+        Identity {
+            project: "me".to_string(),
+            fallback_sources: vec![INBOX.to_string()],
+            ..Identity::default()
+        }
+    }
+
+    /// Evidence a conversation from `source` carries, with `text` as what it
+    /// says.
+    fn from(source: &str, text: &str) -> Evidence {
+        Evidence {
+            source: Some(source.to_string()),
+            ..words(text)
+        }
+    }
+
+    /// The claim sits below every reference and above resemblance: a mail
+    /// naming widget's repository is widget's, one that only says widget's
+    /// name is still the claimer's, and one naming nothing is the claimer's
+    /// too rather than the bucket's (§FS-008-attribution.3).
+    #[test]
+    fn a_fallback_claim_yields_to_a_reference_and_outranks_resemblance() {
+        let referenced = Evidence {
+            repos: vec!["acme/widget".to_string()],
+            ..from(INBOX, "could you look at acme/widget before Friday?")
+        };
+        assert_eq!(
+            place(&referenced, &[me(), widget()]),
+            Placed::On {
+                project: "widget".to_string(),
+                how: Strength::Reference
+            }
+        );
+
+        let resembling = from(INBOX, "the widget is stuck again");
+        assert_eq!(widget().claim(&resembling), Some(Strength::Resemblance));
+        assert_eq!(
+            place(&resembling, &[widget(), me()]),
+            Placed::On {
+                project: "me".to_string(),
+                how: Strength::Fallback
+            }
+        );
+
+        assert_eq!(
+            place(&from(INBOX, "can you bring the cake?"), &[widget(), me()]),
+            Placed::On {
+                project: "me".to_string(),
+                how: Strength::Fallback
+            }
+        );
+    }
+
+    /// Only the name the site configuration gives the source, whole and in its
+    /// own case (§FS-008-attribution.1).
+    #[test]
+    fn a_fallback_claim_matches_its_source_only_exactly() {
+        assert_eq!(me().claim(&from(INBOX, "")), Some(Strength::Fallback));
+        assert_eq!(me().claim(&from("mail-me-2", "")), None);
+        assert_eq!(me().claim(&from("Mail-me", "")), None);
+    }
+
+    /// Evidence that is not a conversation's carries no source, so no claim
+    /// reaches it and it is placed as it was before (§FS-008-attribution.3).
+    #[test]
+    fn a_fallback_claim_reaches_conversations_only() {
+        let notice = words("can you bring the cake?");
+        assert_eq!(notice.source, None);
+        assert_eq!(me().claim(&notice), None);
+        assert_eq!(place(&notice, &[widget(), me()]), Placed::Nothing);
+    }
+
+    /// Two rows claiming one source is the ordinary tie, sent to the bucket
+    /// with both as candidates (§FS-008-attribution.4).
+    #[test]
+    fn a_source_claimed_twice_is_a_tie() {
+        let family = Identity {
+            project: "family".to_string(),
+            ..me()
+        };
+        assert_eq!(
+            place(&from(INBOX, "can you bring the cake?"), &[me(), family]),
+            Placed::Ambiguous {
+                candidates: vec!["me".to_string(), "family".to_string()]
+            }
+        );
+    }
+
+    /// A mail that references two projects equally goes to the bucket with
+    /// those two, whoever claims its source: the claim ranks below the tie and
+    /// is no candidate in it (§FS-008-attribution.3).
+    #[test]
+    fn a_fallback_claim_never_breaks_a_tie_above_it() {
+        let both = Evidence {
+            repos: vec!["acme/widget".to_string(), "acme/gadget".to_string()],
+            ..from(INBOX, "acme/widget and acme/gadget both broke")
+        };
+        assert_eq!(
+            place(&both, &[me(), widget(), gadget()]),
+            Placed::Ambiguous {
+                candidates: vec!["widget".to_string(), "gadget".to_string()]
+            }
         );
     }
 }

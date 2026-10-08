@@ -224,6 +224,11 @@ pub struct Placement {
     /// nothing, kept apart from `Some([])`: a row that lists none has refused
     /// every room a checkout might claim for it.
     pub rooms: Option<Vec<String>>,
+    /// The conversation sources it is the fallback home for, named exactly as
+    /// the site configuration names them (§FS-008-attribution.1). Empty where
+    /// the row writes none or `[]`, which are the same: there is no hint for
+    /// either to refuse.
+    pub fallback_sources: Vec<String>,
     /// How much of the project's own manifest the row is willing to believe
     /// (§FS-006-project-interface.2).
     pub trust: crate::manifest::Trust,
@@ -696,6 +701,7 @@ impl Placement {
             territory: strings(entry, "territory"),
             // Presence is the row's word: an empty list is still an answer.
             rooms: entry.get("rooms").map(|_| strings(entry, "rooms")),
+            fallback_sources: registry::fallback_sources(entry),
             trust: registry::str_field(entry, "manifest_trust")
                 .map(crate::manifest::Trust::parse)
                 .transpose()
@@ -847,6 +853,10 @@ impl Placement {
                 .rooms
                 .clone()
                 .unwrap_or_else(|| hint(|identity| &identity.rooms)),
+            // The row's alone, never a hint: a source's name lives only in the
+            // site configuration, so nothing a checkout says can name one
+            // (§AR-003-attribution.2).
+            fallback_sources: self.fallback_sources.clone(),
         }
     }
 
@@ -1287,6 +1297,7 @@ mod tests {
             aliases: Vec::new(),
             territory: Vec::new(),
             rooms: None,
+            fallback_sources: Vec::new(),
             trust: crate::manifest::Trust::Full,
             organization: None,
         }
@@ -1423,6 +1434,30 @@ mod tests {
         );
         assert_eq!(rooms("gadget"), Some(Vec::new()));
         assert_eq!(rooms("sprocket"), None);
+    }
+
+    /// A row's fallback sources reach its identity as the row wrote them, and
+    /// a row that writes `[]` claims exactly what a row silent on them does:
+    /// nothing, since no checkout can offer a source for it to refuse
+    /// (§FS-008-attribution.1, §AR-003-attribution.2).
+    #[test]
+    fn a_rows_fallback_sources_are_its_identitys_and_empty_is_silent() {
+        let doc = json!({
+            "projects": [
+                { "id": "me", "root": "/w/me", "fallback_sources": ["mail-me", "wa-me"] },
+                { "id": "gadget", "root": "/w/gadget", "fallback_sources": [] },
+                { "id": "sprocket", "root": "/w/sprocket" }
+            ]
+        });
+        let claims = |project: &str| {
+            Placement::load(&doc, project)
+                .expect("a row")
+                .identity()
+                .fallback_sources
+        };
+        assert_eq!(claims("me"), vec!["mail-me", "wa-me"]);
+        assert_eq!(claims("gadget"), Vec::<String>::new());
+        assert_eq!(claims("gadget"), claims("sprocket"));
     }
 
     #[test]

@@ -656,6 +656,10 @@ fn site(args: &DoctorArgs, style: &Style, say: &Narrator) -> Result<(Health, Opt
              (no registry row places a project in it)."
         ));
     }
+    // A row's fallback claim that can place nothing, in the sentence `refresh`
+    // prints. News rather than a fault: it moves neither a project's health
+    // nor the exit code (§FS-008-attribution.4).
+    let notes = crate::registry::fallback_claims_over_nothing(&registry_doc, &config);
     say.pass("reading each project's ladder …");
 
     let mut rows = Vec::new();
@@ -678,6 +682,7 @@ fn site(args: &DoctorArgs, style: &Style, say: &Narrator) -> Result<(Health, Opt
         let mut report = json!({
             "projects": rows.iter().map(Diagnosis::to_json).collect::<Vec<_>>(),
             "roster": roster_json(&roster, &config),
+            "notes": notes,
         });
         if !shared_refusals.is_empty() {
             report["shared_sources"] = json!({
@@ -712,6 +717,9 @@ fn site(args: &DoctorArgs, style: &Style, say: &Narrator) -> Result<(Health, Opt
                 failure.message
             );
         }
+    }
+    for note in &notes {
+        println!("  {} {}", style.dim("·"), style.dim(note));
     }
     // Who could be asked to work any of it (§FS-005-dispatch.14). An empty
     // roster is a choice, not a fault: it never moves the exit code, exactly

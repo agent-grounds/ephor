@@ -800,6 +800,11 @@
               }
             }
           }
+        },
+        "notes": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "What the site's configuration says that no one project's refresh does: a registry row's fallback claim that can place nothing — a name no source has, a source bound only under projects, a built-in source — one sentence each, naming the row, the source and why (FS-008-attribution.4). The same sentences the prose prints as `note:` lines. News rather than a fault: it moves no count and no exit code."
         }
       }
     },
@@ -992,6 +997,11 @@
           "description": "The site pass, per project. Absent under `--self-only`."
         },
         "roster": { "$ref": "#/$defs/roster", "description": "Absent under `--self-only`." },
+        "notes": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "A registry row's fallback claim that can place nothing, one sentence each naming the row, the source and why, the same sentences `ephor refresh` prints (FS-008-attribution.4). News rather than a fault: it moves neither a project's health nor the exit code. Absent under `--self-only`."
+        },
         "self": {
           "type": "object",
           "description": "ephor asked of itself against a scratch site of its own. Absent under `--skip-self`.",
