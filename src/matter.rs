@@ -275,18 +275,23 @@ pub fn attachments_of(message: &Value) -> Option<Vec<Attachment>> {
 
 /// One file on one line, the way every surface a person reads writes it
 /// (§FS-011-command-line.4): the name, then the type and the size where the
-/// source gave them. The name is cut to `limit` characters and `…`
-/// (§FS-005-dispatch.2); `usize::MAX` cuts nothing.
+/// source gave them. The name and the type are each cut to `limit` characters
+/// and `…` (§FS-005-dispatch.2); `usize::MAX` cuts nothing.
 pub fn shown_file(name: &str, media_type: Option<&str>, size: Option<u64>, limit: usize) -> String {
-    let mut name = shown_file_name(name);
-    if name.chars().count() > limit {
-        name = name.chars().take(limit).collect::<String>() + "…";
-    }
+    let cut = |text: String| {
+        if text.chars().count() > limit {
+            text.chars().take(limit).collect::<String>() + "…"
+        } else {
+            text
+        }
+    };
+    let name = cut(shown_file_name(name));
     // The type is the source's word as much as the name is, so it is held to
-    // the same one line (§FS-005-dispatch.3.2).
+    // the same one line and the same bound (§FS-005-dispatch.3.2).
     let details: Vec<String> = media_type
         .map(one_line_of)
         .filter(|media_type| !media_type.is_empty())
+        .map(cut)
         .into_iter()
         .chain(size.map(shown_file_size))
         .collect();
