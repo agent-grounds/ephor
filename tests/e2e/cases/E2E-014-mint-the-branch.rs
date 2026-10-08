@@ -1277,7 +1277,9 @@ fn a_template_that_will_not_do_is_refused_by_name_and_makes_nothing() {
 /// task has no `{number}` to render. The entry does not serve that task, so the
 /// menu and its readings withhold it, `work offers` explains the exclusion,
 /// and neither a recipe sweep nor a workflow autorun turns the mismatch into a
-/// refusal (§FS-005-dispatch.25, §FS-005-dispatch.27).
+/// refusal (§FS-005-dispatch.25, §FS-005-dispatch.27). Naming the recipe for
+/// that one matter is a request, and it is refused with the field the template
+/// needed (§FS-005-dispatch.27.1).
 #[test]
 fn a_template_missing_a_matter_field_does_not_serve_that_matter() {
     let world = watching(Some("fix/issue-{number}"), true);
@@ -1378,8 +1380,10 @@ fn a_template_missing_a_matter_field_does_not_serve_that_matter() {
     assert_eq!(sweep["refused"], json!(0), "{sweep}");
     assert_eq!(sweep["items"], json!([]), "{sweep}");
 
-    // Naming the incompatible recipe behaves like naming any recipe whose
-    // selector does not match: it opens nothing and the explicit request fails.
+    // Naming the incompatible recipe for this one matter is refused out loud,
+    // like naming any recipe the matter is not offered: one refused row that
+    // says the template needs `{number}`, nothing opened, and the explicit
+    // request fails (§FS-005-dispatch.27.1).
     let explicit = world
         .ephor()
         .args([
@@ -1401,8 +1405,18 @@ fn a_template_missing_a_matter_field_does_not_serve_that_matter() {
     let dispatch = json_of(explicit.get_output());
     assert_eq!(dispatch["opened"], json!(0), "{dispatch}");
     assert_eq!(dispatch["laid"], json!(0), "{dispatch}");
-    assert_eq!(dispatch["refused"], json!(0), "{dispatch}");
-    assert_eq!(dispatch["items"], json!([]), "{dispatch}");
+    assert_eq!(dispatch["refused"], json!(1), "{dispatch}");
+    let rows = dispatch["items"].as_array().expect("items");
+    assert_eq!(rows.len(), 1, "{dispatch}");
+    assert_eq!(rows[0]["item"], json!(NUMBERLESS_TASK), "{dispatch}");
+    assert_eq!(rows[0]["recipe"], json!("branch-by-number"), "{dispatch}");
+    assert_eq!(rows[0]["outcome"], json!("refused"), "{dispatch}");
+    assert!(
+        rows[0]["says"]
+            .as_str()
+            .is_some_and(|says| says.contains("{number}")),
+        "the refusal did not name the field the template needs: {dispatch}"
+    );
     assert!(
         !world.forest().join("fix").exists(),
         "withheld work left a workspace behind"
