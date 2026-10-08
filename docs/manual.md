@@ -690,8 +690,9 @@ reference in the mail
 ([§FS-008-attribution.4](functional-spec/FS-008-attribution.md#4-unattributed-is-a-place-not-a-fate)).
 
 Fallback sources cover conversations only. A notice or an issue from the same
-source is placed as before, because it always carries a repository, and the
-bucket's prompt for it — a territory to add — is one you can act on.
+source is placed as before: what it usually names is a repository or a ticket
+key, and the bucket's prompt for it — a territory or a ticket pattern to add —
+is one you can act on.
 
 Only the row can name a source: no manifest or project type knows the site's
 source names, so `"fallback_sources": []` claims nothing, exactly as a row
