@@ -189,6 +189,32 @@ A dossier is bounded. A conversation of two hundred messages is not evidence,
 it is a transcript; what is quoted is bounded per thread and in total, and
 where anything was dropped the ticket says so and links to the whole.
 
+**A file on a message is named in the dossier, and its contents are not.** The
+files a source reported on a message
+([§FS-001-forge-interface.1](FS-001-forge-interface.md#1-capabilities)) are part of what was said: a run
+asked to answer "is this the one?" has to know that "this" is a photo. So under
+each quoted message, outside the message's fence, one line in ephor's own words
+names them:
+
+```text
+Attached, contents not included: IMG_2041.jpg (image/jpeg, 1.8 MB)
+```
+
+Each file is written as `ephor thread` writes it, on one line
+([§FS-011-command-line.4](FS-011-command-line.md#4-a-conversation-and-the-moves-inside-it)), so no name can open or close a fence or stand as
+a heading
+([§FS-005-dispatch.3.2](FS-005-dispatch.md#32-what-is-already-fenced-is-what-the-plan-language-fences)). Names are
+separated by commas, at most five are given, and then the line ends
+`and N more files`. A name longer than 120 characters is cut to its first 120
+and `…`. Files are bounded with the messages they are on: the line that counts
+the earlier messages not quoted also counts the files those messages carried,
+as in `30 earlier messages not quoted, with 4 files on them`. A message that is
+a file with no words is quoted as its line alone, with no empty fence above
+it. The contents are left out on purpose, and the line says so: ephor fetches
+no file, so none reaches a run because its matter was dispatched. The source's
+own id for a file is never written into the dossier either. It may be a link
+the run could follow, and a link is the opening move handed back.
+
 **One field every matter can answer: `{id_slug}`.** Most of this vocabulary is
 the forge's. A `{number}` and a `{repo}` belong to a matter a forge filed, and a
 project's own task has neither

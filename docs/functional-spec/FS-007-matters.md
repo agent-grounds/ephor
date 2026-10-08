@@ -37,10 +37,29 @@ lossy one.
 ## 3. A discussion is messages grouped in a channel
 
 A matter's conversation arrives as **discussions**: ordered messages with
-authors, times, reactions, and task boxes, grouped within one channel.
-Whether a discussion awaits the reader is decided per discussion, by the
-calculus of [§FS-003-feed-categories.4](FS-003-feed-categories.md#4-a-conversation-is-answered-in-whatever-form-the-forge-recorded-it), identically in every channel. A
+authors, times, reactions, task boxes, and the files on them, grouped within
+one channel. Whether a discussion awaits the reader is decided per discussion,
+by the calculus of [§FS-003-feed-categories.4](FS-003-feed-categories.md#4-a-conversation-is-answered-in-whatever-form-the-forge-recorded-it), identically in every channel. A
 matter awaits its reader while any of its discussions does.
+
+A file on a message is named and never fetched
+([§FS-001-forge-interface.1](FS-001-forge-interface.md#1-capabilities)), and it takes no part in that calculus.
+Whether a discussion waits is read from who spoke and what was ticked or reacted
+to, never from what was attached, so a photo sent with no words is still the
+last word.
+
+What a row shows of the files is bounded like everything else on a row
+([§GOAL-002-glance](../goals.md#goal-002-glance-one-glance-answers-what-needs-me-now)). While the matter awaits its reader, the row carries one
+mark, `📎N`, and nothing else about files. N is the number of files on the
+**newest turn** of each discussion that awaits the reader, summed. A turn is a
+discussion's last message together with the messages its author sent just
+before it, as a photo is followed by "is this the one?". The mark is one token
+whatever the number: one file reads `📎1` and twelve read `📎12`. A row that
+does not await its reader shows no mark, and neither does one whose newest
+turns carry no file, because a logo on a mail already answered is nothing to
+do. The conversation itself names every file
+([§FS-011-command-line.4](FS-011-command-line.md#4-a-conversation-and-the-moves-inside-it)), and the screen and `ephor feed` show the same mark
+([§REQ-002-parity.2](../requirements/REQ-002-parity.md#2-parity-runs-both-ways)).
 
 ## 4. A channel says what it can do
 

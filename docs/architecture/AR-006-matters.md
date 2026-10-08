@@ -38,8 +38,21 @@ reserved key is built on and what a selector refuses on
   unattributed-with-candidates. `links` are referenced keys
   ([§FS-007-matters.2](../functional-spec/FS-007-matters.md#2-same-subject-one-matter-related-subjects-linked-matters)).
 - `Discussion { channel, messages, needs_response }`;
-  `Message { author, time, text, reactions, task }` — task state carried
-  where a channel tracks one ([§FS-003-feed-categories.4](../functional-spec/FS-003-feed-categories.md#4-a-conversation-is-answered-in-whatever-form-the-forge-recorded-it)).
+  `Message { author, time, text, reactions, task, attachments }` — task state
+  carried where a channel tracks one ([§FS-003-feed-categories.4](../functional-spec/FS-003-feed-categories.md#4-a-conversation-is-answered-in-whatever-form-the-forge-recorded-it)).
+  `attachments` is the files the source named on the message, each
+  `Attachment { name, media_type, size, id }` exactly as reported
+  ([§FS-001-forge-interface.1](../functional-spec/FS-001-forge-interface.md#1-capabilities)). It is a field on the model and not a key in
+  `raw`, by the lead's own exit: mail, chat and a forge's comments all carry
+  files, so the fact belongs to every matter whatever reported it, and `raw`
+  belongs to the whole matter where a file belongs to one message. It is
+  optional, and **absent stays distinct from empty** through every layer: absent
+  is a source that did not report files, `[]` one that reported none. A cache
+  written before the field existed therefore reads as not reported until the
+  next refresh, with no rebuild
+  ([§AR-006-matters.4](AR-006-matters.md#4-the-cache-is-a-cache)), and the published
+  machine forms gain the field without losing one
+  ([§REQ-002-parity.4](../requirements/REQ-002-parity.md#4-the-machine-form-is-a-contract-not-a-dump)).
 - `Channel { id, capabilities }` — react, tick, reply
   ([§FS-007-matters.4](../functional-spec/FS-007-matters.md#4-a-channel-says-what-it-can-do)).
 - `Event { kind, time, payload }` — gate counts per repository, state

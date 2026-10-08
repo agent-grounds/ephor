@@ -66,6 +66,28 @@ doing it.
 message, its author, when it arrived, what is on it, and the reply a run
 drafted where one is waiting ([§FS-005-dispatch.13](FS-005-dispatch.md#13-a-communication-is-work-too-and-its-answer-comes-back-as-a-proposal)).
 
+What is on a message includes the files its source named on it
+([§FS-001-forge-interface.1](FS-001-forge-interface.md#1-capabilities)), every one of them, each on a line of its own
+under the message's words: `attached: IMG_2041.jpg (image/jpeg, 1.8 MB)`.
+Whatever the source did not report is left out, so the line may read
+`attached: scan.pdf (application/pdf)` or just `attached: Photo`. A size is
+written in decimal units, with one decimal place below ten: `512 B`, `15 kB`,
+`1.8 MB`. A name is the source's and is not trusted. It is shown on one line,
+with every run of whitespace, newlines included, collapsed to one space and
+control characters dropped, and an empty name reads `unnamed file`. A message
+whose source reported no files, or reported `[]`, shows no such line, and a
+message that is a file with no words shows its `attached:` line alone. The
+thread screen shows the same lines on each card
+([§REQ-002-parity.2](../requirements/REQ-002-parity.md#2-parity-runs-both-ways)).
+
+`--json` carries each message's `attachments` as its source reported them:
+`name` as the source wrote it, and `media_type` and `size` where the source gave
+them. It never carries the source's `id`, just as it carries `can_react` rather
+than the descriptor a reaction is posted with. The id is the source's to be
+handed back, and it rides only in what the source reported, which is the matter
+`ephor feed --json` prints. A message whose source reported no list carries no
+`attachments` key, and one whose source reported none carries `[]`.
+
 The moves inside a conversation are commands as well as keys: `ephor react`
 posts a reaction, `ephor tick` resolves a task the source reported
 ([§FS-004-quick-actions.5](FS-004-quick-actions.md#5-a-task-is-ticked-where-it-is-read)), `ephor reply` sends the drafted reply, or a
