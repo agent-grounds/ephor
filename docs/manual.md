@@ -149,7 +149,9 @@ provider may watch several projects with different settings.
 (`pr`/`ci`/`issue`/`task`/`message`/`status`), an optional `role`
 (`author`/`reviewer`), a title, a url, a state as its forge spells it, a
 `needs_response` flag, a last-activity time, and a `raw` blob its provider
-filled with whatever else it knows — conversation, gate, branch.
+filled with whatever else it knows — conversation, gate, branch. ephor writes a
+few keys of its own beside those, `awaits_reader: true` on each conversation
+thread that waits on you among them, which is what the row's `📎N` reads.
 
 **Gate** — a pull request's CI: job counts (passed / failed / running) per
 repository the gate covers, plus, where the forge reaches a verdict of its own,

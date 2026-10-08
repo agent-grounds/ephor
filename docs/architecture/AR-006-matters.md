@@ -53,6 +53,16 @@ reserved key is built on and what a selector refuses on
   ([§AR-006-matters.4](AR-006-matters.md#4-the-cache-is-a-cache)), and the published
   machine forms gain the field without losing one
   ([§REQ-002-parity.4](../requirements/REQ-002-parity.md#4-the-machine-form-is-a-contract-not-a-dump)).
+
+  Which discussion awaits the reader, by [§FS-003-feed-categories.4](../functional-spec/FS-003-feed-categories.md#4-a-conversation-is-answered-in-whatever-form-the-forge-recorded-it), is
+  known to the forge policy alone, because only it sees whose each message is,
+  so it writes `awaits_reader: true` on each such thread of `raw`. The row's
+  file mark ([§FS-007-matters.3](../functional-spec/FS-007-matters.md#3-a-discussion-is-messages-grouped-in-a-channel)) reads it, and nothing else does. Absent
+  is a thread that does not wait, one stored before the key existed, or one
+  that did not come through the forge policy, and each shows no mark. The key
+  is ephor's own annotation, like `awaits` and `unanswered`: no source's word,
+  and not one of the reserved keys the lead's test admits, so no source fills
+  it and no selector names it.
 - `Channel { id, capabilities }` — react, tick, reply
   ([§FS-007-matters.4](../functional-spec/FS-007-matters.md#4-a-channel-says-what-it-can-do)).
 - `Event { kind, time, payload }` — gate counts per repository, state

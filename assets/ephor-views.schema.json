@@ -1321,7 +1321,7 @@
       }
     },
     "feed": {
-      "description": "`ephor feed --json` — the cached matters themselves, newest first, as an array. Declared by reference rather than restated: what a source reported is the source's own document, held to the forge answer schema when it arrived (FS-001-forge-interface.1) and stored unchanged — `ephor schema forge` prints that shape. A second description of it here would be a second thing to keep true, and the two would drift the moment a binding gained a field.",
+      "description": "`ephor feed --json` — the cached matters themselves, newest first, as an array. Declared by reference rather than restated: what a source reported is the source's own document, held to the forge answer schema when it arrived (FS-001-forge-interface.1) and stored as it came, with only keys of ephor's own written beside the source's, `awaits_reader` on a thread that waits on the reader among them (AR-006-matters.1) — `ephor schema forge` prints the source's shape. A second description of it here would be a second thing to keep true, and the two would drift the moment a binding gained a field.",
       "type": "array",
       "items": { "type": "object" }
     },
