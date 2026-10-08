@@ -373,8 +373,15 @@ impl Snapshot {
     /// the words the reopened ticket will use. Empty means the work still
     /// answers the item it was asked about.
     pub fn changes(&self, now: &Snapshot) -> Vec<String> {
+        self.changed(now, true)
+    }
+
+    /// [`Snapshot::changes`], with or without what the message count and the
+    /// clock say: a conversation whose review names its movement says it in
+    /// those terms instead (§FS-005-dispatch.13.2).
+    fn changed(&self, now: &Snapshot, counted: bool) -> Vec<String> {
         let mut changes = Vec::new();
-        if now.messages > self.messages {
+        if counted && now.messages > self.messages {
             let new = now.messages - self.messages;
             changes.push(format!(
                 "{new} new message{}",
@@ -439,7 +446,7 @@ impl Snapshot {
         if now.running != self.running && self.running > 0 && now.running == 0 {
             changes.push("the gate finished running".to_string());
         }
-        if changes.is_empty() && now.updated_at > self.updated_at {
+        if counted && changes.is_empty() && now.updated_at > self.updated_at {
             changes.push("there is new activity".to_string());
         }
         changes
@@ -494,12 +501,38 @@ impl Entry {
         self.dispatches.last()
     }
 
-    /// What changed since the last dispatch onto this item.
+    /// What changed since the last dispatch onto this item. Whether anything
+    /// did is the snapshot's to say. Where the last request was bound to a
+    /// conversation, what moved in it is named in the terms of its review —
+    /// who edited or wrote which message — and quotes nobody's words, which
+    /// stay inside the dossier's fences (§FS-005-dispatch.5,
+    /// §FS-005-dispatch.13.2).
     pub fn changes_since(&self, item: &Item) -> Vec<String> {
-        match self.last() {
-            Some(dispatch) => dispatch.snapshot.changes(&Snapshot::of(item)),
-            None => Vec::new(),
+        let Some(dispatch) = self.last() else {
+            return Vec::new();
+        };
+        let now = Snapshot::of(item);
+        let changes = dispatch.snapshot.changes(&now);
+        let Some(binding) = dispatch
+            .reply_binding
+            .as_ref()
+            .filter(|_| !changes.is_empty())
+        else {
+            return changes;
+        };
+        let record = crate::replies::Store::inspect(&item.id)
+            .ok()
+            .flatten()
+            .unwrap_or_else(|| crate::replies::Record::new(item));
+        let review = binding.review(item, &record);
+        if review.is_empty() {
+            return changes;
         }
+        review
+            .iter()
+            .map(crate::replies::Since::named)
+            .chain(dispatch.snapshot.changed(&now, false))
+            .collect()
     }
 }
 

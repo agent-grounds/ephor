@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::path::PathBuf;
 
+use super::review::{self, Since};
 use super::Record;
 use crate::feed::{config::Defaults, model::Item, providers::Sources};
 use crate::forge::Request;
@@ -126,7 +127,16 @@ impl Binding {
 
     /// Compare only this bound thread. Missing, reordered or ambiguous identity
     /// refuses safely; unrelated thread activity is immaterial (§FS-005-dispatch.13).
+    /// Which drafts are refused is decided exactly as before; the reason then
+    /// names the review's most telling entry (§FS-005-dispatch.13.2).
     pub fn freshness(&self, item: &Item, record: &Record) -> Result<(), String> {
+        self.decided(item, record).map_err(|decided| {
+            let advanced = record.generation(self) != self.generation;
+            review::reason(&self.review(item, record), advanced, decided)
+        })
+    }
+
+    fn decided(&self, item: &Item, record: &Record) -> Result<(), String> {
         if self.row != item.id || self.source != item.source {
             return Err("Draft is stale: its row or source changed".into());
         }
@@ -178,8 +188,8 @@ impl Binding {
     /// after, and messages no longer shown. Where the messages cannot be lined
     /// up one to one it lists nothing. It explains a refusal and decides none:
     /// [`Binding::freshness`] alone does (§FS-005-dispatch.13.2).
-    pub fn review(&self, _item: &Item, _record: &Record) -> Vec<Value> {
-        Vec::new()
+    pub fn review(&self, item: &Item, record: &Record) -> Vec<Since> {
+        review::review(self, item, record)
     }
 
     /// Recovery must find the original configured binding and scope, including
