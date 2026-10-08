@@ -705,11 +705,12 @@ reported the matter in `work.private.sources` ([§FS-018-private-sources.1](FS-0
 project, organization or site root is consulted, and `work ask`, which has no
 override of its own, reaches it exactly as a recipe's dispatch does. It is
 rendered from the same vocabulary and refused on the same names as any other
-root. Two refusals are its own, each said by name before anything is written:
-a listed source with no `work.private.root` declared, and a root that renders
-inside the project's registry root, which holds the project's checkouts and its
-own work root ([§FS-018-private-sources.2](FS-018-private-sources.md#2-the-private-root-answers-first-and-alone)). Every other matter climbs the ladder
-above, unchanged.
+root. Three refusals are its own, each said by name before anything is
+written: a listed source with no `work.private.root` declared, a root that
+renders inside the project's registry root, which holds the project's checkouts
+and its own work root, and a `branch` template that would make a workspace for
+the matter there ([§FS-018-private-sources.2](FS-018-private-sources.md#2-the-private-root-answers-first-and-alone)). Every other matter climbs the
+ladder above, unchanged.
 
 **Narrowest-wins is the root's own reading and does not carry across the block
 it is written in.** `organizations.<org-id>.work.recipes` sits beside
@@ -1138,7 +1139,8 @@ lists the matter's source as private ([§FS-018-private-sources](FS-018-private-
 results, logs and proposal are written under the private root even where a
 branch workspace exists ([§FS-005-dispatch.6.1](FS-005-dispatch.md#61-the-work-root-is-a-template-and-it-may-reach-above-the-project)). Its run still starts from the
 checkout the matter resolves to, as every run does, so the answer still reads
-the change. Ephor writes nothing into that checkout, and the one-run-per-checkout
+the change. Ephor writes nothing into that checkout and makes no workspace for
+the matter ([§FS-018-private-sources.2](FS-018-private-sources.md#2-the-private-root-answers-first-and-alone)), and the one-run-per-checkout
 guard counts the run, because it is an agent in that tree
 ([§FS-005-dispatch.24](FS-005-dispatch.md#24-work-nobody-has-to-start-starts-itself)).
 
@@ -2966,9 +2968,12 @@ each one carries beside its `kind`:
   ([§FS-018-private-sources.3](FS-018-private-sources.md#3-only-a-named-move-writes-or-starts-work-on-a-private-matter)). `source` is that source, as the site lists it,
   and `tickets` each ticket the hold keeps, with the state it sits in, in the
   shape `person` gives them, so the key reads one way whatever the kind. It is
-  asked first because nothing a sweep could wait for lifts it. The same kind, with `source` and without `tickets`, is the hold
-  on a `passed-over` row of `work sync` and of a `work dispatch` without
-  `--item`, about the one matter that row would have written work on.
+  asked first because nothing a sweep could wait for lifts it. It is the one
+  hold a plain `work run`, which names no matter, puts on a row of its own,
+  with the same members; that run asks none of the others. The same kind, with
+  `source` and without `tickets`, is the hold on a `passed-over` row of
+  `work sync` and of a `work dispatch` without `--item`, about the one matter
+  that row would have written work on.
 - `excluded` — the reader's `--except` named the root. `except` is the value
   the reader gave, as they gave it.
 - `person` — the root waits on a person: every ticket that would have made it
@@ -3826,7 +3831,11 @@ the tickets ephor opened. `work run` and `work run --item X` disagreeing about
 what X's work is would be this same fault one level up. It is still one live run
 per checkout, and it is still a mutating verb, so above one project it reports
 and acts only under `--act`
-([§FS-011-command-line.10](FS-011-command-line.md#10-a-mutating-verb-above-one-project-reports-and-acts-under---act)).
+([§FS-011-command-line.10](FS-011-command-line.md#10-a-mutating-verb-above-one-project-reports-and-acts-under---act)). A private matter's plans are the exception, because
+naming no matter is what makes a move a sweep: the plain run passes them over
+with the `private` hold, and runs a root that holds other work beside them for
+that work alone
+([§FS-018-private-sources.3](FS-018-private-sources.md#3-only-a-named-move-writes-or-starts-work-on-a-private-matter)).
 
 **A root whose machine will not read is judged by nobody here either.**
 Finality and gating are the machine's words, and with none to say them nothing

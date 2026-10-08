@@ -69,8 +69,9 @@ inside it ([§FS-014-work-root-scopes.2](FS-014-work-root-scopes.md#2-reach-plac
 where a branch workspace exists, and its run still starts from the checkout the
 matter resolves to ([§FS-005-dispatch.13](FS-005-dispatch.md#13-a-communication-is-work-too-and-its-answer-comes-back-as-a-proposal)).
 
-Two cases are refused by name, before anything is written, at every move that
-would write:
+Three cases are refused by name, before anything is written, at every move that
+would write, and `work offers` carries the same refusal on the entry in place of
+a root ([§FS-005-dispatch.25](FS-005-dispatch.md#25-work-about-a-matter-with-no-branch-can-mint-the-branch-it-needs)):
 
 1. **`sources` lists the matter's source and no `root` is declared.** The
    refusal names the source and `work.private.root`. The file still loads —
@@ -81,6 +82,18 @@ would write:
    holds the project's checkouts and its own work root, so a private root there
    is the organization's root under another name. The refusal names
    `work.private.root`, what it rendered, and the project root it is inside.
+   The path is judged as it will stand once made: through every symlink above
+   it, and with every `..` in it taken, whether or not the directory it passes
+   through exists yet.
+3. **A `branch` template would make a workspace for the matter in the
+   project's tree** ([§FS-005-dispatch.25](FS-005-dispatch.md#25-work-about-a-matter-with-no-branch-can-mint-the-branch-it-needs)). The workspace would be a new
+   directory and a new branch among the project's checkouts, named from the
+   matter — a correspondent's name, a number — and made by the project's own
+   checkout command where one is bound, which is handed the whole matter. The
+   refusal names the source as private, the recipe or entry and its `branch`
+   template, and the workspace it would have made; nothing is run to make it.
+   A workspace already on disk is used as it is, since nothing is written to
+   it, and so is a branch the matter has of its own.
 
 ## 3. Only a named move writes or starts work on a private matter
 
@@ -92,17 +105,21 @@ on the matter's row. Everything else is a sweep, whoever typed it:
 - `work sync`, whether it would open work on the matter or reopen it;
 - `work run --due`, with or without `--item`, because that sweep walks every
   due root ([§FS-011-command-line.10](FS-011-command-line.md#10-a-mutating-verb-above-one-project-reports-and-acts-under---act));
+- a plain `work run`, which names no matter, with or without `--project` and
+  `--act` ([§FS-005-dispatch.30](FS-005-dispatch.md#30-a-run-asked-for-by-name-reaches-the-whole-of-that-matters-work));
 - the sweep `work dispatch --item` runs after it has written
   ([§FS-005-dispatch.24](FS-005-dispatch.md#24-work-nobody-has-to-start-starts-itself)).
 
 **A sweep never writes or starts work on a private matter, and says so.**
 `work sync` and a `work dispatch` without `--item` report the matter as
 `passed-over`, with `hold: {"kind": "private", "source": <provider>}` beside a
-sentence naming the source as private. `work run --due` passes over a root whose
-every would-be-due ticket is about a private matter, with the `private` hold
-([§FS-005-dispatch.24.2](FS-005-dispatch.md#242-a-passed-over-row-names-its-hold-as-data)). A plan the person laid is never started by a sweep, then
-or later: it starts on `work run --item` or the run key, which nothing here
-refuses.
+sentence naming the source as private. `work run --due` and a plain `work run`
+pass over a root whose every would-be-due ticket is about a private matter,
+with the `private` hold, and run a root that holds other work beside it for that
+work alone ([§FS-005-dispatch.24.2](FS-005-dispatch.md#242-a-passed-over-row-names-its-hold-as-data)). A plain run keeps everything else it is: blind
+to `autorun`, and bound by none of the sweep's ceilings. A plan the person laid
+is never started by a sweep, then or later: it starts on `work run --item` or
+the run key, which nothing here refuses.
 
 **Whose a ticket is, is read off the ticket.** The sweep takes the source from
 what the ticket records about its matter ([§FS-005-dispatch.8](FS-005-dispatch.md#8-the-ticket-carries-the-item-as-data-not-only-as-prose)), never from the
