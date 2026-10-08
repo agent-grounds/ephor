@@ -60,9 +60,11 @@ GIT_ENV = {
 }
 # What the machine running the tests may carry and the release must not read.
 SCRUBBED = ("GH_TOKEN", "GITHUB_TOKEN", "GH_HOST", "GH_REPO", "GH_ENTERPRISE_TOKEN", "GITHUB_REPOSITORY")
-# git's words when it cannot make a loose object's temporary file. On the hosted macOS runner one such
-# write now and then fails with `Invalid argument` and the next one does not, so the fixture's own
-# `git` outlasts it, and only it, in at most this many attempts (#202).
+# git's words when it cannot make a loose object's temporary file. On the macOS runner, about one run
+# in twelve, one such write was refused with `Invalid argument`; tests seconds later on that VM passed
+# (#202). A retry 0.2-0.6 s later is not known to escape it, so each retry says so on stderr. The
+# fixture's own `git` is retried on this and nothing else. A merge whose commit object meets it is not
+# outlasted: MERGE_HEAD is written, so the retry is refused and raised with both attempts' words.
 GIT_TRANSIENT = "unable to create temporary file"
 GIT_ATTEMPTS = 3
 
