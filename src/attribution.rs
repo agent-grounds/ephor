@@ -487,4 +487,34 @@ mod tests {
         );
         assert_eq!(branch(&words("nothing here"), &branches), None);
     }
+
+    /// A row's fallback claim is a fourth strength, spelled `fallback` where a
+    /// placement is kept, and ranked above resemblance and below every
+    /// reference, so a reference still wins and resemblance never does
+    /// (§FS-008-attribution.3).
+    #[test]
+    fn fallback_is_a_strength_between_resemblance_and_reference() {
+        let fallback: Strength = serde_json::from_value(serde_json::json!("fallback"))
+            .expect("a cached placement may say it was reached by fallback");
+        assert_eq!(
+            serde_json::to_value(fallback).unwrap(),
+            serde_json::json!("fallback")
+        );
+        let mut ladder = vec![
+            Strength::Venue,
+            fallback,
+            Strength::Resemblance,
+            Strength::Reference,
+        ];
+        ladder.sort();
+        assert_eq!(
+            ladder,
+            vec![
+                Strength::Resemblance,
+                fallback,
+                Strength::Reference,
+                Strength::Venue
+            ]
+        );
+    }
 }

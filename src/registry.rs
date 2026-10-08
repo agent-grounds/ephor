@@ -997,6 +997,32 @@ mod tests {
         assert!(!refused(serde_json::json!([])));
     }
 
+    /// A row's `fallback_sources` is a list of source names
+    /// (§FS-008-attribution.1). No checkout can hint one, so `[]` is the same
+    /// as no field and is accepted; what is refused is anything that is not a
+    /// list of non-empty names.
+    #[test]
+    fn fallback_sources_on_a_row_is_a_list_of_source_names() {
+        let schema: Value = serde_json::from_str(EMBEDDED_SCHEMA).unwrap();
+        let validator = jsonschema::validator_for(&schema).unwrap();
+        let refused = |sources: Value| {
+            let registry = serde_json::json!({
+                "projects": [{ "id": "me", "fallback_sources": sources }]
+            });
+            let at: Vec<String> = validator
+                .iter_errors(&registry)
+                .map(|error| error.instance_path.to_string())
+                .collect();
+            at.iter()
+                .any(|path| path.starts_with("/projects/0/fallback_sources"))
+        };
+        assert!(refused(serde_json::json!("mail-me")));
+        assert!(refused(serde_json::json!([7])));
+        assert!(refused(serde_json::json!([""])));
+        assert!(!refused(serde_json::json!(["mail-me", "wa-me"])));
+        assert!(!refused(serde_json::json!([])));
+    }
+
     /// §FS-005-dispatch.24: a binding written over an organization no
     /// registry row places a project inside is a binding over nobody, and the
     /// caller is told which name it was. Membership is the `organization`

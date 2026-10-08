@@ -629,7 +629,7 @@ spelled exactly as the source states it in a conversation's `room`:
 
 A conversation in a claimed room is that project's before any reference or
 alias is consulted, as a pull request on one of its repositories is
-([§FS-008-attribution.3](functional-spec/FS-008-attribution.md#3-venue-beats-reference-beats-resemblance)).
+([§FS-008-attribution.3](functional-spec/FS-008-attribution.md#3-venue-beats-reference-beats-fallback-beats-resemblance)).
 A room matches only when it is equal: no prefix, no case folding, and no claim
 on everything under one organization, because chat ids share no grammar ephor
 could read without naming the networks that issue them. A conversation no

@@ -246,6 +246,10 @@ name = "e2e_054_a_file_on_a_message_is_named"
 path = "tests/e2e/cases/E2E-054-a-file-on-a-message-is-named.rs"
 
 [[test]]
+name = "e2e_055_a_row_is_a_sources_fallback_home"
+path = "tests/e2e/cases/E2E-055-a-row-is-a-sources-fallback-home.rs"
+
+[[test]]
 name = "checkout_test"
 path = "tests/integration/checkout_test.rs"
 
