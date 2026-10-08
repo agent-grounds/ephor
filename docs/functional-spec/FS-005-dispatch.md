@@ -2445,7 +2445,10 @@ work about it, whatever its recipe or entry asked and whoever typed the sweep
 pass the matter over, and so does the sweep a `work dispatch --item` runs after
 it has written. A root whose every would-be-due ticket is about a private
 matter is passed over with the hold `private`
-([§FS-005-dispatch.24.2](FS-005-dispatch.md#242-a-passed-over-row-names-its-hold-as-data)). Whose a ticket is,
+([§FS-005-dispatch.24.2](FS-005-dispatch.md#242-a-passed-over-row-names-its-hold-as-data)); a root that holds other due work beside
+such a ticket is due for that work alone, because a plan holding one is never
+among the plans a sweep's run is pointed at, and its row names only the tickets
+the run starts. Whose a ticket is,
 is read off the ticket — the source it records about its matter
 ([§FS-005-dispatch.8](FS-005-dispatch.md#8-the-ticket-carries-the-item-as-data-not-only-as-prose)) — so a ticket
 laid before its source was listed is held too. The person's key is untouched:
