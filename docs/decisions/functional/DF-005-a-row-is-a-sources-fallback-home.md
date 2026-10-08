@@ -63,11 +63,11 @@ and an empty list has nothing to refuse. Validation still refuses a value that
 is not a list, an entry that is not a string, and an empty name.
 
 **Conversations only.** A notice or an issue from a claimed source is placed as
-it was. A notice always carries a repository, and the bucket's prompt for it, a
-territory to add, is a signal somebody can add. A conversation that names
-nothing has no signal anyone could add, and that is the gap the claim fills.
-Keeping to conversations also keeps the narrowing of DF-003 to what DF-003
-decided.
+it was. What either usually names is a repository or a ticket key, and the
+bucket's prompt for it, a territory or a ticket pattern to add, is a signal
+somebody can add. A conversation that names nothing has no signal anyone could
+add, and that is the gap the claim fills. Keeping to conversations also keeps
+the narrowing of DF-003 to what DF-003 decided.
 
 **A claim that can place nothing is said.** There are three such claims: one
 naming no source `status.json` has, one naming a source bound only under
