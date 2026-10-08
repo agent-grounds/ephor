@@ -6357,7 +6357,7 @@ fn issue_191_the_private_root_outranks_a_recipes_own() {
     let item = issue_191_item();
 
     let site = dispatcher
-        .site_for(&item, false, None, Some("{root}/answers"))
+        .site_for(&item, "answer", false, None, Some("{root}/answers"))
         .expect("a private root is a root");
     assert_eq!(site.dir, mine);
     assert_eq!(
@@ -6367,7 +6367,7 @@ fn issue_191_the_private_root_outranks_a_recipes_own() {
 
     let unlisted = issue_43_item();
     let site = dispatcher
-        .site_for(&unlisted, false, None, Some("{root}/answers"))
+        .site_for(&unlisted, "answer", false, None, Some("{root}/answers"))
         .unwrap();
     assert_eq!(site.dir, project.join("answers"));
 }
@@ -6387,7 +6387,7 @@ fn issue_191_the_private_rung_refuses_by_name_and_never_falls_back() {
 
     dispatcher.global = issue_191_site(None);
     let why = dispatcher
-        .site_for(&item, false, None, None)
+        .site_for(&item, "answer", false, None, None)
         .err()
         .expect("refused")
         .to_string();
@@ -6399,7 +6399,7 @@ fn issue_191_the_private_rung_refuses_by_name_and_never_falls_back() {
 
     dispatcher.global = issue_191_site(Some(Path::new("{root}/private")));
     let why = dispatcher
-        .site_for(&item, false, None, None)
+        .site_for(&item, "answer", false, None, None)
         .err()
         .expect("refused")
         .to_string();
@@ -6618,4 +6618,176 @@ fn issue_191_a_sweep_passes_a_private_matter_over_naming_its_source() {
         hold: hold.clone(),
     };
     assert_eq!(outcome.describe(), hold.says());
+}
+
+/// Git at `dir`, quietly, with an identity of its own.
+fn issue_191_git(dir: &Path, args: &[&str]) -> String {
+    let out = std::process::Command::new("git")
+        .args(["-c", "user.name=t", "-c", "user.email=t@t", "-C"])
+        .arg(dir)
+        .args(args)
+        .output()
+        .expect("git runs");
+    assert!(out.status.success(), "git {args:?}: {out:?}");
+    String::from_utf8_lossy(&out.stdout).into_owned()
+}
+
+/// A `branch` template would make a workspace for a private matter among the
+/// project's checkouts, named from the matter — here the correspondent — and
+/// made by the project's own checkout command, which would be handed the whole
+/// message. It is refused by name before anything runs: no directory, no
+/// branch, no summons, and no root to preview. A source the site does not
+/// list still mints, and a workspace already on disk is used as it is
+/// (§FS-018-private-sources.2, §FS-005-dispatch.25).
+#[test]
+fn issue_191_a_private_matter_mints_no_workspace() {
+    let tmp = tempfile::tempdir().unwrap();
+    let project = tmp.path().join("widget");
+    fs::create_dir_all(&project).unwrap();
+    issue_191_git(&project, &["init", "-q", "-b", "main"]);
+    issue_191_git(&project, &["commit", "-q", "--allow-empty", "-m", "first"]);
+    let mut dispatcher = issue_43_dispatcher(&project, empty_ledger());
+    dispatcher.placements.insert(
+        "widget".to_string(),
+        Some(Placement {
+            main_branch: Some("main".to_string()),
+            ..placement("widget", &project, Some("{project_root}/{branch}"))
+        }),
+    );
+    dispatcher.global = issue_191_site(Some(&tmp.path().join("me/{project}")));
+    let summoned = tmp.path().join("summoned");
+    dispatcher.checkouts.insert(
+        "widget".to_string(),
+        crate::feed::config::CheckoutConfig {
+            icon: String::new(),
+            description: String::new(),
+            command: format!("env > '{}'", summoned.display()),
+        },
+    );
+    let recipe: Recipe = serde_json::from_value(serde_json::json!({
+        "id": "answer",
+        "description": "draft a reply",
+        "state": "fix",
+        "brief": "Draft a reply to {title}.",
+        "branch": "answer/{title}"
+    }))
+    .unwrap();
+    let item = crate::feed::model::Item {
+        title: "Dana".to_string(),
+        ..issue_191_item()
+    };
+    let workspace = project.join("answer/Dana");
+
+    for bound in [true, false] {
+        if !bound {
+            dispatcher.checkouts.clear();
+        }
+        let why = dispatcher
+            .dispatch(&item, &recipe, None, false)
+            .expect_err("refused")
+            .to_string();
+        for word in [
+            "chatgw",
+            "private",
+            "'answer'",
+            "\"branch\": \"answer/{title}\"",
+            &*workspace.to_string_lossy(),
+        ] {
+            assert!(why.contains(word), "names {word}: {why}");
+        }
+        assert!(!project.join("answer").exists(), "made nothing");
+        assert!(!summoned.exists(), "summoned nobody");
+        assert_eq!(
+            issue_191_git(&project, &["branch", "--list", "answer/*"]),
+            ""
+        );
+        assert!(!tmp.path().join("me").exists(), "wrote no plan");
+    }
+    assert_eq!(
+        dispatcher.work_root_for(&item, Some("answer/{title}"), None),
+        None
+    );
+
+    let unlisted = crate::feed::model::Item {
+        title: "Dana".to_string(),
+        ..issue_43_item()
+    };
+    let site = dispatcher
+        .site_for(&unlisted, "answer", false, Some("answer/{title}"), None)
+        .expect("an unlisted source mints as ever");
+    assert_eq!(site.mint, Some(workspace.clone()));
+
+    fs::create_dir_all(&workspace).unwrap();
+    let site = dispatcher
+        .site_for(&item, "answer", false, Some("answer/{title}"), None)
+        .expect("a workspace on disk is used as it is");
+    assert_eq!(site.mint, None);
+    assert_eq!(site.checkout.workspace, workspace);
+    assert_eq!(site.dir, tmp.path().join("me/widget"));
+}
+
+/// A plain `work run` names no matter, so for a private one it is a sweep:
+/// a root holding only a private plan is passed over with the `private` hold
+/// naming each ticket it keeps, a mixed root runs its other plans alone, and
+/// a run naming the private matter still starts it. Blind to `autorun` as
+/// ever (§FS-018-private-sources.3, §FS-005-dispatch.30).
+#[test]
+fn issue_191_a_plain_run_passes_a_private_plan_over() {
+    let tmp = tempfile::tempdir().unwrap();
+    let root = tmp.path().join("panta");
+    let mut group = due_root(&root, &ticket_at("fix-gate-1", "fix"));
+    group.plans.push(issue_191_plan(
+        &root,
+        "chatgw-dm",
+        &format!(
+            "{}{}",
+            ticket_at("fix-gate-1", "fix"),
+            ticket_at("fix-gate-2", "collect")
+        ),
+        Some("chatgw"),
+    ));
+    let site = issue_191_site(Some(&tmp.path().join("me")));
+    let read = |group: &runtime::watch::RootPlans, reach| {
+        due_among(
+            &site,
+            std::slice::from_ref(group),
+            &BTreeMap::new(),
+            &BTreeMap::new(),
+            &empty_ledger(),
+            Utc::now(),
+            reach,
+        )
+    };
+
+    let due = read(&group, Reach::Key(None));
+    assert_eq!(due.len(), 1);
+    assert_eq!(due[0].plans, vec!["widget-42".to_string()]);
+    assert_eq!(due[0].tickets, vec!["widget-42.fix-gate-1".to_string()]);
+    assert!(due[0].hold().is_none(), "{:?}", due[0].hold());
+
+    let named = read(&group, Reach::Key(Some("chatgw:chatgw-dm")));
+    assert_eq!(named.len(), 1);
+    assert_eq!(named[0].plans, vec!["chatgw-dm".to_string()]);
+    assert!(named[0].hold().is_none(), "{:?}", named[0].hold());
+
+    group.plans.retain(|plan| plan.plan_id == "chatgw-dm");
+    let due = read(&group, Reach::Key(None));
+    assert_eq!(due.len(), 1);
+    assert_eq!(due[0].plans, vec!["chatgw-dm".to_string()]);
+    assert_eq!(
+        due[0].hold().map(Hold::data),
+        Some(serde_json::json!({
+            "kind": "private",
+            "source": "chatgw",
+            "tickets": [
+                { "ticket": "chatgw-dm.fix-gate-1", "state": "fix" },
+                { "ticket": "chatgw-dm.fix-gate-2", "state": "collect" }
+            ]
+        }))
+    );
+    assert!(due[0].refusal.is_none());
+
+    let named = read(&group, Reach::Key(Some("chatgw:chatgw-dm")));
+    assert_eq!(named[0].plans, vec!["chatgw-dm".to_string()]);
+    assert!(named[0].private.is_none());
 }

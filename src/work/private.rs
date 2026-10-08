@@ -4,12 +4,13 @@
 //! Every reading that renders a work root with the matter in hand asks
 //! [`root`] first — [`super::Dispatcher::site_for`] for every write, and both
 //! previews of it — so the private rung is one rung, refused in one sentence
-//! wherever it is met (§AR-009-surfaces.1). The sweep asks [`of_ticket`], and
-//! reads the answer off the ticket rather than off the ledger
+//! wherever it is met (§AR-009-surfaces.1). The same three ask [`unmade`]
+//! before a `branch` template makes a workspace. The sweep asks [`of_ticket`],
+//! and reads the answer off the ticket rather than off the ledger
 //! (§FS-005-dispatch.8, §FS-005-dispatch.4).
 
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 
 use serde_json::Value;
 
@@ -89,27 +90,77 @@ fn outside(rendered: &Path, project: &Path) -> Result<(), String> {
     ))
 }
 
-/// A path with every symlink above it resolved, as far as it exists: the
-/// deepest ancestor on disk canonicalized, and the rest joined back on. A root
-/// is usually not made yet when it is judged.
+/// A path as it will stand once made: the deepest ancestor on disk
+/// canonicalized, so every symlink above it is resolved, and the rest taken
+/// onto it a part at a time. A root is usually not made yet when it is judged,
+/// and a `..` in the part not on disk climbs out of a directory that will be
+/// made as written — so it is taken here rather than carried along, where it
+/// would hide a root inside the project behind a path that does not start with
+/// it (§FS-018-private-sources.2).
 fn real(path: &Path) -> PathBuf {
-    let mut existing = path;
-    let mut rest = Vec::new();
-    loop {
+    for existing in path.ancestors() {
         if let Ok(resolved) = fs::canonicalize(existing) {
-            return rest
-                .iter()
-                .rev()
-                .fold(resolved, |resolved, part| resolved.join(part));
-        }
-        match (existing.parent(), existing.file_name()) {
-            (Some(parent), Some(name)) => {
-                rest.push(name.to_os_string());
-                existing = parent;
-            }
-            _ => return path.to_path_buf(),
+            let rest = path.strip_prefix(existing).unwrap_or(path);
+            let made = taken(resolved, rest);
+            // A `..` may have climbed back onto disk, beneath a symlink this
+            // reading stood above, so the path it came to is read again. It
+            // holds no `..` now, so that reading is the last.
+            return match rest.components().any(|part| part == Component::ParentDir) {
+                true => real(&made),
+                false => made,
+            };
         }
     }
+    taken(PathBuf::new(), path)
+}
+
+/// `rest` taken onto `base` lexically: `.` stays where it is and `..` climbs
+/// one directory. Sound for parts not on disk, which no symlink stands behind;
+/// [`real`] reads again whatever a `..` climbed back onto.
+fn taken(mut base: PathBuf, rest: &Path) -> PathBuf {
+    for part in rest.components() {
+        match part {
+            Component::CurDir => {}
+            Component::ParentDir => {
+                base.pop();
+            }
+            part => base.push(part),
+        }
+    }
+    base
+}
+
+/// Why a `branch` template may not make the workspace it names for a matter
+/// `source` reported, where the site lists that source as private
+/// (§FS-018-private-sources.2): the workspace would be a new directory and
+/// branch among the project's checkouts, named from the matter, and made by
+/// the project's own checkout command where one is bound — which is handed the
+/// whole matter. The sentence names the source, `entry` (the recipe or entry
+/// that carries the template, where one is in hand) with its template, and
+/// the workspace. None for a source the site does not list.
+///
+/// Asked only where the workspace is not on disk: one that is there is used
+/// as it is, and nothing is written to it.
+pub fn unmade(
+    global: &WorkConfig,
+    source: &str,
+    entry: Option<&str>,
+    template: &str,
+    workspace: &Path,
+) -> Option<String> {
+    let source = listed(global, source)?;
+    let carrier = match entry {
+        Some(entry) => format!("'{entry}' says \"branch\": \"{template}\""),
+        None => format!("the template \"branch\": \"{template}\""),
+    };
+    Some(format!(
+        "{source} is private (work.private.sources), and {carrier}, which would make {} for \
+         this matter among the project's checkouts — named from the matter, and made by the \
+         project's own checkout command where one is bound. Work on a private matter makes \
+         nothing there: hand it over through an entry with no \"branch\", which reads the \
+         change from the checkout the matter resolves to.",
+        workspace.display()
+    ))
 }
 
 /// The listed source a ticket is about, where it is about one: whose the
@@ -226,6 +277,43 @@ mod tests {
             assert!(why.contains(word), "names {word}: {why}");
         }
         let beside = link.join("me/rhei");
+        let site = self::site(Some(&beside.to_string_lossy()));
+        assert_eq!(root(&site, "chatgw", &project, rendered), Some(Ok(beside)));
+    }
+
+    /// A `..` through a directory not made yet is taken where it lands, so a
+    /// root that climbs back into the project is refused as inside it — and so
+    /// is one whose `..` lands beneath a symlink to it, read again once the
+    /// `..` is taken (§FS-018-private-sources.2).
+    #[test]
+    fn issue_191_a_dotdot_through_a_directory_not_made_is_judged_where_it_lands() {
+        let tmp = tempfile::tempdir().unwrap();
+        let base = tmp.path().join("base");
+        fs::create_dir_all(base.join("rhei")).unwrap();
+        let project = base.join("rhei");
+        let climbing = base.join("me/../rhei/private");
+        assert!(!base.join("me").exists());
+        let site = site(Some(&climbing.to_string_lossy()));
+        let why = root(&site, "chatgw", &project, rendered)
+            .unwrap()
+            .unwrap_err();
+        for word in [
+            "work.private.root",
+            &*climbing.to_string_lossy(),
+            &*project.to_string_lossy(),
+        ] {
+            assert!(why.contains(word), "names {word}: {why}");
+        }
+
+        #[cfg(unix)]
+        {
+            std::os::unix::fs::symlink(&project, base.join("alias")).unwrap();
+            let aliased = base.join("me/../alias/private");
+            let site = self::site(Some(&aliased.to_string_lossy()));
+            assert!(root(&site, "chatgw", &project, rendered).unwrap().is_err());
+        }
+
+        let beside = base.join("me/../mine/rhei");
         let site = self::site(Some(&beside.to_string_lossy()));
         assert_eq!(root(&site, "chatgw", &project, rendered), Some(Ok(beside)));
     }

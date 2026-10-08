@@ -1971,6 +1971,11 @@ fn run_work(
         /// sentence that says the matter holds nothing
         /// (§FS-005-dispatch.30).
         refusal: Option<String>,
+        /// Why this run passes the root over: its plans are all about a
+        /// private matter, and naming no matter makes this run a sweep for
+        /// one (§FS-018-private-sources.3). Not a refusal — the root is said
+        /// to be passed over, as the sweep says it, and nothing is counted.
+        hold: Option<crate::work::hold::Hold>,
     }
     // The sweep behind autorun (§FS-005-dispatch.24): which roots are due is
     // read from the world — the plans on disk, the machine's own words about
@@ -1999,9 +2004,9 @@ fn run_work(
     for root in &due {
         // A root nothing may start in has no run for a hand to ride, and
         // asking for one would note about a run that is not going to happen.
-        let hand = match root.refusal {
-            Some(_) => None,
-            None => dispatcher.run_hand_over(root),
+        let hand = match (&root.refusal, &root.private) {
+            (None, None) => dispatcher.run_hand_over(root),
+            _ => None,
         };
         roots.push(Group {
             root: root.root.clone(),
@@ -2009,15 +2014,23 @@ fn run_work(
             hand,
             plans: root.plans.clone(),
             refusal: root.refusal.clone(),
+            hold: root.private.clone(),
         });
     }
+    // Only the roots this run would start are owed a word about how they
+    // would start: a root passed over as private starts nothing.
+    let starting: Vec<crate::work::Due> = due
+        .iter()
+        .filter(|root| root.private.is_none())
+        .cloned()
+        .collect();
     // A reader who names the work keeps the key: a plan whose pools cannot
     // all be had right now carries the same clause as a *warning* and starts,
     // because the plan is in front of them and already laid
     // (§FS-005-dispatch.33, §FS-005-dispatch.30). Only the sweep nobody typed
     // is held. Said on the error stream, where standard output is the
     // reading's alone (§FS-011-command-line.7).
-    for said in dispatcher.held_warnings(&due, Utc::now()) {
+    for said in dispatcher.held_warnings(&starting, Utc::now()) {
         eprintln!("note: {said}");
     }
     // What the reader should know about who gets this run — a hand that went
@@ -2046,9 +2059,10 @@ fn run_work(
                     // refused rather than run, and a report that said it
                     // would run would be a report of something that cannot
                     // happen (§FS-011-command-line.10).
-                    "outcome": match group.refusal {
-                        Some(_) => "refused",
-                        None => "would-run",
+                    "outcome": match (&group.refusal, &group.hold) {
+                        (Some(_), _) => "refused",
+                        (None, Some(_)) => "passed-over",
+                        (None, None) => "would-run",
                     },
                 });
                 if let (Some(row), Some(hand)) = (row.as_object_mut(), group.hand.as_ref()) {
@@ -2056,6 +2070,14 @@ fn run_work(
                 }
                 if let (Some(row), Some(says)) = (row.as_object_mut(), group.refusal.as_ref()) {
                     row.insert("says".to_string(), serde_json::json!(says));
+                }
+                // The hold as data beside the sentence rendered from it, as
+                // the sweep's own rows carry it (§FS-005-dispatch.24.2).
+                if let (Some(row), Some(hold), None) =
+                    (row.as_object_mut(), group.hold.as_ref(), &group.refusal)
+                {
+                    row.insert("reason".to_string(), serde_json::json!(hold.says()));
+                    row.insert("hold".to_string(), hold.data());
                 }
                 row
             })
@@ -2079,6 +2101,10 @@ fn run_work(
                 eprintln!("error: {says}");
                 continue;
             }
+            if let Some(hold) = &group.hold {
+                println!("↷ {} passed over: {}", group.root.display(), hold.says());
+                continue;
+            }
             println!(
                 "would run {} {} ({} plan(s){})",
                 runtime::label(&config.work),
@@ -2093,7 +2119,10 @@ fn run_work(
         }
         println!(
             "\n{} root(s) would be run",
-            roots.iter().filter(|group| group.refusal.is_none()).count()
+            roots
+                .iter()
+                .filter(|group| group.refusal.is_none() && group.hold.is_none())
+                .count()
         );
         if let Some(says) = gate.says() {
             println!("{says}");
@@ -2125,7 +2154,7 @@ fn run_work(
     // passed validation reach that warning; an invalid root has no ordinary
     // start to warn about, while a valid root remains eligible even when the
     // later live-run safety decision refuses it (§FS-015-spend-ceiling.6).
-    let over: Vec<String> = due
+    let over: Vec<String> = starting
         .iter()
         .filter(|root| root.refusal.is_none())
         .flat_map(|root| root.projects.iter().cloned())
@@ -2181,6 +2210,7 @@ fn run_work(
             hand,
             plans,
             refusal,
+            hold,
         } = group;
         let landed = |outcome: &str, says: Option<String>, id: Option<&str>| {
             let mut row = serde_json::json!({
@@ -2204,6 +2234,22 @@ fn run_work(
             }
             row
         };
+        // Its plans are all about a private matter, and this run names none:
+        // passed over as the sweep passes it, said and not counted
+        // (§FS-018-private-sources.3, §FS-005-dispatch.24.2).
+        if let Some(hold) = hold {
+            let says = hold.says();
+            if !args.json {
+                println!("\n↷ {} passed over: {says}", root.display());
+            }
+            let mut row = landed("passed-over", Some(says.clone()), None);
+            if let Some(row) = row.as_object_mut() {
+                row.insert("reason".to_string(), serde_json::json!(says));
+                row.insert("hold".to_string(), hold.data());
+            }
+            runs.push(row);
+            continue;
+        }
         // Root validity and live-run safety are the shared named-run decision,
         // in that order: the lock lookup is lazy so an invalid root answers
         // without even probing it, and `--force` skips only that lookup

@@ -1207,12 +1207,17 @@ impl Session {
         branch: Option<&str>,
         override_root: Option<&str>,
     ) -> Option<std::path::PathBuf> {
-        self.work_root_for_result(item, branch, override_root).ok()
+        self.work_root_for_result(item, None, branch, override_root)
+            .ok()
     }
 
+    /// The same, with the reason where there is no root. `entry` is the
+    /// recipe or entry carrying the templates, where one is in hand, for a
+    /// refusal that names it.
     fn work_root_for_result(
         &self,
         item: &Item,
+        entry: Option<&str>,
         branch: Option<&str>,
         override_root: Option<&str>,
     ) -> std::result::Result<std::path::PathBuf, String> {
@@ -1222,7 +1227,25 @@ impl Session {
             .ok_or_else(|| format!("{} has no registry placement", item.project))?;
         let checkout = match (placement.own_branch(item), branch) {
             (Some(_), _) | (None, None) => placement.own_checkout(item),
-            (None, Some(template)) => crate::branches::minted(placement, item, template)?,
+            (None, Some(template)) => {
+                let minted = crate::branches::minted(placement, item, template)?;
+                // A private matter's workspace is never made, so the offer
+                // carries the dispatch's refusal in place of a root
+                // (§FS-018-private-sources.2).
+                if let WorkspaceState::Missing(target) = &minted.state {
+                    let refused = crate::work::private::unmade(
+                        &self.work_config,
+                        &item.source,
+                        entry,
+                        template,
+                        target,
+                    );
+                    if let Some(why) = refused {
+                        return Err(why);
+                    }
+                }
+                minted
+            }
         };
         let root = self
             .root(&item.project)
@@ -1448,7 +1471,7 @@ impl Session {
                 Some(recipe) => (recipe.branch.as_deref(), recipe.root.as_deref()),
                 None => (entry.branch.as_deref(), entry.root.as_deref()),
             };
-            if let Err(why) = self.work_root_for_result(item, branch, root) {
+            if let Err(why) = self.work_root_for_result(item, Some(&entry.id), branch, root) {
                 entry.minted = Some(Minted::Refused(why));
             }
         }
@@ -1714,16 +1737,97 @@ mod tests {
             ..merged(Utc::now())
         };
         assert_eq!(
-            session.work_root_for_result(&item, None, Some("{root}/answers")),
+            session.work_root_for_result(&item, None, None, Some("{root}/answers")),
             Ok(tmp.path().join("me/widget"))
         );
         session.work_config.private.as_mut().unwrap().root.take();
         let why = session
-            .work_root_for_result(&item, None, Some("{root}/answers"))
+            .work_root_for_result(&item, None, None, Some("{root}/answers"))
             .unwrap_err();
         assert!(
             why.contains("work.private.root") && why.contains("chatgw"),
             "{why}"
+        );
+    }
+
+    /// The offer for a private matter carries the dispatch's refusal where a
+    /// `branch` template would make a workspace among the project's
+    /// checkouts: no workspace, no branch and no root are shown, and the
+    /// sentence names the source, the recipe with its template, and the
+    /// workspace. An unlisted source's offer still names the workspace it
+    /// would make (§FS-018-private-sources.2, §FS-005-dispatch.25).
+    #[test]
+    fn issue_191_the_offer_refuses_to_make_a_private_matters_workspace() {
+        use offers::Naming;
+        let tmp = tempfile::tempdir().unwrap();
+        let project = tmp.path().join("widget");
+        std::fs::create_dir_all(&project).unwrap();
+        let registry = serde_json::json!({ "projects": [{
+            "id": "widget",
+            "root": project.to_string_lossy(),
+            "branch_root_template": "{project_root}/{branch}"
+        }] });
+        let mut session = Session::default();
+        session.placements.insert(
+            "widget".to_string(),
+            crate::branches::Placement::load(&registry, "widget").expect("placed"),
+        );
+        session.work_config.private = Some(crate::work::recipe::PrivateSources {
+            sources: vec!["chatgw".to_string()],
+            root: Some(
+                tmp.path()
+                    .join("me/{project}")
+                    .to_string_lossy()
+                    .into_owned(),
+            ),
+        });
+        let recipe: crate::work::recipe::Recipe = serde_json::from_value(serde_json::json!({
+            "id": "answer",
+            "description": "draft a reply",
+            "state": "fix",
+            "brief": "Draft a reply to {title}.",
+            "branch": "answer/{title}"
+        }))
+        .unwrap();
+        let item = Item {
+            id: "chatgw:signal/you#1".to_string(),
+            source: "chatgw".to_string(),
+            kind: crate::feed::model::ItemKind::Issue,
+            title: "Dana".to_string(),
+            ..merged(Utc::now())
+        };
+        let workspace = project.join("answer/Dana");
+
+        let mut menu = vec![offers::agent_entry(&recipe)];
+        session.naming(Some(&item)).name(&mut menu);
+        let Some(Minted::Refused(why)) = &menu[0].minted else {
+            panic!("refused: {:?}", menu[0].minted);
+        };
+        for word in [
+            "chatgw",
+            "private",
+            "'answer'",
+            "\"branch\": \"answer/{title}\"",
+            &*workspace.to_string_lossy(),
+        ] {
+            assert!(why.contains(word), "names {word}: {why}");
+        }
+        assert_eq!(
+            session.work_root_for(&item, Some("answer/{title}"), None),
+            None
+        );
+
+        let unlisted = Item {
+            id: "github-issues:acme/widget#7".to_string(),
+            source: "github-issues".to_string(),
+            ..item.clone()
+        };
+        let mut menu = vec![offers::agent_entry(&recipe)];
+        session.naming(Some(&unlisted)).name(&mut menu);
+        assert!(
+            matches!(&menu[0].minted, Some(Minted::Named { workspace: named, .. }) if *named == workspace),
+            "{:?}",
+            menu[0].minted
         );
     }
 }

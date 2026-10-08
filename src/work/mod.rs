@@ -1404,7 +1404,18 @@ impl Dispatcher {
         let placement = self.placement(&item.project)?.clone();
         let checkout = match (placement.own_branch(item), branch) {
             (Some(_), _) | (None, None) => placement.own_checkout(item),
-            (None, Some(template)) => crate::branches::minted(&placement, item, template).ok()?,
+            (None, Some(template)) => {
+                let minted = crate::branches::minted(&placement, item, template).ok()?;
+                // Nor where the dispatch would refuse to make a private
+                // matter's workspace (§FS-018-private-sources.2).
+                if let WorkspaceState::Missing(target) = &minted.state {
+                    if private::unmade(&self.global, &item.source, None, template, target).is_some()
+                    {
+                        return None;
+                    }
+                }
+                minted
+            }
         };
         let subject = Subject {
             item,
@@ -1747,6 +1758,7 @@ impl Dispatcher {
     fn site(&mut self, item: &Item, recipe: &Recipe) -> Result<Site> {
         let mut site = self.site_for(
             item,
+            &recipe.id,
             recipe.needs_checkout,
             recipe.branch.as_deref(),
             recipe.root.as_deref(),
@@ -1781,7 +1793,8 @@ impl Dispatcher {
     /// where it carries one (§FS-005-dispatch.25). It applies only to a matter
     /// with no branch of its own, and saying it means the work needs the
     /// checkout — so it decides where the work goes without resolving anything
-    /// the matter already answered.
+    /// the matter already answered. `entry` is the recipe or entry carrying
+    /// it, named where the template is refused.
     ///
     /// Two answers come out of it, because it is asked two questions
     /// (§FS-005-dispatch.25): [`Site::checkout`] is where the work *runs* —
@@ -1793,6 +1806,7 @@ impl Dispatcher {
     fn site_for(
         &mut self,
         item: &Item,
+        entry: &str,
         needs_checkout: bool,
         branch: Option<&str>,
         root: Option<&str>,
@@ -1842,6 +1856,20 @@ impl Dispatcher {
                         .map_err(EphorError::Command)?;
                     named = Some(checkout.workspace.clone());
                     if let WorkspaceState::Missing(target) = &checkout.state {
+                        // A private matter's workspace is never made: it would be a
+                        // checkout of the project's named from the matter, made by
+                        // the project's own command with the matter in hand. Refused
+                        // here, before anything runs (§FS-018-private-sources.2).
+                        let refused = private::unmade(
+                            &self.global,
+                            &item.source,
+                            Some(entry),
+                            template,
+                            target,
+                        );
+                        if let Some(why) = refused {
+                            return Err(EphorError::Command(why));
+                        }
                         mint = Some(target.clone());
                     }
                 }
@@ -2800,6 +2828,7 @@ impl Dispatcher {
             .map_err(EphorError::Command)?;
         let site = self.site_for(
             item,
+            &entry.id,
             entry.requires_checkout,
             entry.branch.as_deref(),
             entry.root.as_deref(),
@@ -3692,6 +3721,10 @@ pub fn due_among(
     // the whole of the difference between the two readers
     // (§FS-005-dispatch.30).
     let key = matches!(reach, Reach::Key(_));
+    // Whose a matter is draws the line elsewhere: a run that names no matter
+    // is a sweep for a private one, whoever typed it, so only a run naming
+    // the matter may start its work (§FS-018-private-sources.3).
+    let named = matches!(reach, Reach::Key(Some(_)));
     // What ephor dispatched, so a ticket it wrote is judged by the recipe it
     // was written from rather than by the shape of its id.
     let dispatched: BTreeMap<(PathBuf, String), String> = ledger
@@ -3910,10 +3943,12 @@ pub fn due_among(
                     if !asked_for.is_some_and(|what| asked.contains(what)) {
                         continue;
                     }
-                    // Would be due, but it is about a private matter, and that
-                    // is asked first: no sweep could wait for anything that
-                    // lifts it. Whose the ticket is, is what the ticket
-                    // records (§FS-018-private-sources.3, §FS-005-dispatch.8).
+                }
+                // Would be due, but it is about a private matter, and that is
+                // asked first: no sweep could wait for anything that lifts it,
+                // and a plain run is one. Whose the ticket is, is what the
+                // ticket records (§FS-018-private-sources.3, §FS-005-dispatch.8).
+                if !named {
                     if let Some(source) =
                         private::of_ticket(global, plan_ref, laid.is_some(), &plan, &ticket.id)
                     {
@@ -5386,8 +5421,9 @@ pub struct Due {
     /// Why no sweep starts this root, where every ticket that would have made
     /// it due is about a matter a source the site lists as private reported
     /// (§FS-018-private-sources.3). Always [`Hold::Private`], and asked first:
-    /// nothing a sweep could wait for lifts it (§FS-005-dispatch.24.2). Never
-    /// set for the key, which is the person's own move.
+    /// nothing a sweep could wait for lifts it (§FS-005-dispatch.24.2). Set for
+    /// a plain run, which names no matter and so is a sweep here; never for a
+    /// run that names the matter, which is the person's own move.
     pub private: Option<Hold>,
     /// Why the reader's own `--except` leaves this root out, where it does
     /// (§FS-005-dispatch.24). Set after the reading, because an exclusion is
