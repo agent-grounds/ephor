@@ -204,6 +204,7 @@ fn run(cli: Cli) -> Result<ExitCode> {
         Command::React(args) => return ephor::commands::react(args),
         Command::Tick(args) => return ephor::commands::tick(args),
         Command::Reply(args) => return ephor::commands::reply(args),
+        Command::Settle(args) => return ephor::commands::settle(args),
         // A job outlives the interface that started it (§FS-005-dispatch.17), so
         // it is answerable without one — and the supervisor itself is here.
         Command::Job(args) => return ephor::seams::jobs::job(args),
@@ -368,6 +369,7 @@ fn run(cli: Cli) -> Result<ExitCode> {
         | Command::React(_)
         | Command::Tick(_)
         | Command::Reply(_)
+        | Command::Settle(_)
         | Command::Tui => {
             unreachable!("handled above")
         }

@@ -115,6 +115,8 @@ pub enum Command {
     Tick(TickArgs),
     /// Send a reply: the one a run drafted, or one given in words.
     Reply(ReplyArgs),
+    /// Put a conversation away at its source, where the source can.
+    Settle(SettleArgs),
     /// What a project can do, rung by rung, and why a rung is missing.
     #[command(visible_alias = "caps")]
     Capabilities(CapabilitiesArgs),
@@ -1230,6 +1232,22 @@ pub struct ReplyArgs {
     /// Emit the outcome as JSON (§REQ-002-parity.3). With `--dry-run`, the
     /// words that would go out and where — the reading a program checks
     /// before letting the move happen.
+    #[arg(long)]
+    pub json: bool,
+}
+
+/// `ephor settle` (§FS-011-command-line.4).
+#[derive(Args, Debug)]
+pub struct SettleArgs {
+    /// The conversation, by its feed id.
+    pub item: String,
+
+    /// Say which source would be asked to settle which conversation, refusing
+    /// wherever the move would, and send nothing.
+    #[arg(long)]
+    pub dry_run: bool,
+
+    /// Emit the outcome as JSON (§REQ-002-parity.3).
     #[arg(long)]
     pub json: bool,
 }

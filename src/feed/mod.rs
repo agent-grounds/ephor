@@ -13,5 +13,6 @@ pub mod react;
 pub mod refresh;
 pub mod render;
 pub mod reply;
+pub mod settle;
 pub mod task;
 pub mod tui;

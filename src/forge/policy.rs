@@ -279,7 +279,7 @@ pub fn pull_request_item(forge: &str, project: &str, pr: &PullRequest) -> Item {
         updated_at: pr.updated_at,
         raw: Value::Object(raw),
     };
-    settle(&mut item);
+    finished_asks_nothing(&mut item);
     item
 }
 
@@ -355,7 +355,7 @@ pub fn notice_item(forge: &str, project: &str, notice: &Notice) -> Item {
         updated_at: notice.updated_at,
         raw: Value::Object(raw),
     };
-    settle(&mut item);
+    finished_asks_nothing(&mut item);
     item
 }
 
@@ -423,7 +423,7 @@ pub fn conversation_item(forge: &str, project: &str, conversation: &Conversation
         updated_at: conversation.updated_at,
         raw: Value::Object(raw),
     };
-    settle(&mut item);
+    finished_asks_nothing(&mut item);
     item
 }
 
@@ -434,7 +434,7 @@ pub fn conversation_item(forge: &str, project: &str, conversation: &Conversation
 /// end that decides whether the news is worth showing at all, and a report that
 /// forgot it would leave Recent unable to tell the merge somebody commented on
 /// from the merge nobody did.
-fn settle(item: &mut Item) {
+fn finished_asks_nothing(item: &mut Item) {
     if item.is_finished() {
         if item.needs_response {
             crate::feed::model::note_unanswered(&mut item.raw);
@@ -531,7 +531,7 @@ pub fn issue_item(forge: &str, project: &str, issue: &Issue, unclaimed: Unclaime
         updated_at: issue.updated_at,
         raw,
     };
-    settle(&mut item);
+    finished_asks_nothing(&mut item);
     // Why it waits, where nobody holding it is one of the reasons: an issue
     // nobody holds is owed work, not an answer (§FS-005-dispatch.13.1), and the
     // flag alone cannot tell the two apart (§FS-005-dispatch.31.2).

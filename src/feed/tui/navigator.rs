@@ -91,6 +91,9 @@ struct Row {
     /// The one line a job that ran about this matter left when it ended
     /// (§FS-005-dispatch.17).
     news: Option<String>,
+    /// Its source can settle the conversation at its source, so `s` is
+    /// taught on it (§FS-004-quick-actions.2).
+    settles: bool,
 }
 
 /// One line in a tree view.
@@ -256,6 +259,12 @@ impl NavigatorState {
             true => "C checkout  ",
             false => "",
         };
+        // Taught on a conversation whose source declared it can settle one,
+        // and nowhere else (§FS-011-command-line.4).
+        let settle = match self.row_under_cursor().is_some_and(|row| row.settles) {
+            true => "s settle  ",
+            false => "",
+        };
         if let Some(line) = self.work_under_cursor() {
             let take = match line.ticket.is_some() {
                 true => "c cancel it  ",
@@ -263,13 +272,13 @@ impl NavigatorState {
             };
             return format!(
                 " j/k move  enter thread  {take}a watch the run  e read the plan  w work  \
-                 {make}x actions  o browser  m done  ; ops  r refresh  q quit"
+                 {make}x actions  o browser  {settle}m done  ; ops  r refresh  q quit"
             );
         }
         match self.mode {
-            Mode::Stream => format!(" j/k move  enter thread  c gate  w work  {make}o browser  x actions  m done  a all done  u unread  ; ops  tab projects  r refresh  q quit"),
+            Mode::Stream => format!(" j/k move  enter thread  c gate  w work  {make}o browser  x actions  {settle}m done  a all done  u unread  ; ops  tab projects  r refresh  q quit"),
             Mode::Projects => " j/k move  enter view project  ; ops  tab stream  r refresh  q quit".to_string(),
-            Mode::Detail => format!(" j/k move  enter thread  c gate  w work  {make}o browser  x actions  m done  [/] project  esc back  u unread  ; ops  r refresh  q quit"),
+            Mode::Detail => format!(" j/k move  enter thread  c gate  w work  {make}o browser  x actions  {settle}m done  [/] project  esc back  u unread  ; ops  r refresh  q quit"),
         }
     }
 
@@ -303,21 +312,28 @@ impl NavigatorState {
             return false;
         };
         match entries.get(index) {
-            Some(Entry::Item(row)) => row.checked_out == Some(false),
             Some(Entry::Branch(_, _, checked_out, ..)) => !checked_out,
-            // A work row is about the matter above it (§FS-005-dispatch.23),
-            // and that matter's row is the one carrying the reading.
-            Some(Entry::Work(item, _)) => entries[..index]
-                .iter()
-                .rev()
-                .find_map(|entry| match entry {
-                    Entry::Item(row) if row.item.id == item.id => {
-                        Some(row.checked_out == Some(false))
-                    }
+            _ => self
+                .row_under_cursor()
+                .is_some_and(|row| row.checked_out == Some(false)),
+        }
+    }
+
+    /// The matter row the cursor is on, or the one a work row under the
+    /// cursor is about: a work row is about the matter above it
+    /// (§FS-005-dispatch.23), and that matter's row is the one carrying the
+    /// readings.
+    fn row_under_cursor(&self) -> Option<&Row> {
+        let (entries, index) = self.under_cursor()?;
+        match entries.get(index) {
+            Some(Entry::Item(row)) => Some(row),
+            Some(Entry::Work(item, _)) => {
+                entries[..index].iter().rev().find_map(|entry| match entry {
+                    Entry::Item(row) if row.item.id == item.id => Some(row),
                     _ => None,
                 })
-                .unwrap_or(false),
-            _ => false,
+            }
+            _ => None,
         }
     }
 
@@ -367,6 +383,7 @@ impl NavigatorState {
                         .job_news
                         .get(&JobSubject::Matter(project.to_string(), item.id.clone()))
                         .cloned(),
+                    settles: ctx.settling.contains(&item.id),
                     item,
                 })
                 .collect();
@@ -477,6 +494,7 @@ impl NavigatorState {
                     .job_news
                     .get(&JobSubject::Matter(item.project.clone(), item.id.clone()))
                     .cloned(),
+                settles: ctx.settling.contains(&item.id),
                 item,
             })
             .collect();
@@ -680,6 +698,13 @@ impl NavigatorState {
                     None => Action::None,
                 }
             }
+            // Sent from any matter row, taught or not, so a row it cannot
+            // settle is refused with `ephor settle`'s own sentence
+            // (§FS-011-command-line.4). Never `m`'s: the local mark stays local.
+            KeyCode::Char('s') => match self.selected_item() {
+                Some(item) => Action::Settle { item },
+                None => Action::None,
+            },
             // On a work row, watch the run holding it (§FS-005-dispatch.20).
             KeyCode::Char('a') if self.selected_work().is_some() => match self.selected_work() {
                 Some((item, _)) => Action::AttachWork(item),
@@ -1135,6 +1160,7 @@ fn item_line(row: &Row, seen: &Seen, now: chrono::DateTime<Utc>) -> Line<'static
         work: _,
         resurfacing: _,
         news: _,
+        settles: _,
     } = row;
     let (stale, checked_out) = (*stale, *checked_out);
     let marker = if item.needs_response {
@@ -1331,6 +1357,7 @@ mod tests {
             work: Vec::new(),
             resurfacing: None,
             news: None,
+            settles: false,
         })
     }
 
@@ -1953,6 +1980,108 @@ mod tests {
             "{}",
             navigator.footer()
         );
+    }
+
+    /// `s` is taught on a conversation whose source declared it can settle
+    /// one, read off the session as the row is built, and on no other row
+    /// (§FS-004-quick-actions.2). Pressed, it sends the settle from the row
+    /// and from the work beneath it; `m`, `d` and Space keep the local mark
+    /// and never send it (§FS-011-command-line.4).
+    #[test]
+    fn settle_is_taught_only_where_the_source_declared_it_and_done_never_sends_it() {
+        let tmp = tempfile::tempdir().unwrap();
+        let _replies = crate::replies::storage::use_test_directory(tmp.path().join("replies"));
+        let mut ctx = super::super::tests::ctx_with_branch(tmp.path(), None);
+        let conversation = |id: &str, settles: bool| {
+            let mut item = match row(id) {
+                Entry::Item(row) => row.item,
+                _ => unreachable!("the fixture is a row"),
+            };
+            item.source = "mail".to_string();
+            item.kind = ItemKind::Message;
+            item.raw = json!({ "conversation": true });
+            if settles {
+                crate::matter::offer_settle(&mut item);
+            }
+            crate::matter::Matter::of_item(&item)
+        };
+        ctx.feeds.push(cache::ProjectFeed {
+            project: "widget".to_string(),
+            model: cache::MODEL,
+            providers: std::collections::BTreeMap::from([(
+                "mail".to_string(),
+                cache::ProviderSlot {
+                    ok: true,
+                    matters: vec![
+                        conversation("mail:k-1", true),
+                        conversation("mail:k-2", false),
+                    ],
+                    ..Default::default()
+                },
+            )]),
+            ..Default::default()
+        });
+        ctx.recompute_settling();
+        let mut navigator = NavigatorState::new();
+        navigator.mode = Mode::Detail;
+        navigator.rebuild_detail(&ctx);
+        let at = |navigator: &NavigatorState, id: &str| {
+            navigator
+                .detail_entries
+                .iter()
+                .position(|entry| matches!(entry, Entry::Item(row) if row.item.id == id))
+                .unwrap_or_else(|| panic!("{id} is on the screen"))
+        };
+
+        let declared = at(&navigator, "mail:k-1");
+        navigator.detail_state = on(&navigator.detail_entries, declared);
+        assert!(
+            navigator.footer().contains("s settle"),
+            "{}",
+            navigator.footer()
+        );
+        match navigator.handle_key(&ctx, KeyCode::Char('s')) {
+            Action::Settle { item } => assert_eq!(item.id, "mail:k-1"),
+            _ => panic!("`s` settles the conversation under the cursor"),
+        }
+        for key in ['m', 'd', ' '] {
+            match navigator.handle_key(&ctx, KeyCode::Char(key)) {
+                Action::MarkDone { marks, .. } => assert_eq!(marks[0].0, "mail:k-1"),
+                Action::Settle { .. } => panic!("`{key}` is the local mark, never a settle"),
+                _ => panic!("`{key}` marks the row done"),
+            }
+        }
+
+        let undeclared = at(&navigator, "mail:k-2");
+        navigator.detail_state = on(&navigator.detail_entries, undeclared);
+        assert!(
+            !navigator.footer().contains("s settle"),
+            "{}",
+            navigator.footer()
+        );
+
+        // A pull request is never a conversation to settle, and a work row
+        // answers for the matter above it (§FS-005-dispatch.23).
+        let mut navigator = NavigatorState::new();
+        navigator.mode = Mode::Detail;
+        navigator.detail_entries = worked("pr:1", vec![going("fix-gate-1", "fix-gate · fix")]);
+        navigator.detail_state = on(&navigator.detail_entries, 0);
+        assert!(!navigator.footer().contains("s settle"));
+        let mut entries = worked("mail:k-1", vec![going("answer-1", "answer · reply")]);
+        if let Entry::Item(row) = &mut entries[0] {
+            row.settles = true;
+        }
+        navigator.detail_entries = entries;
+        navigator.detail_state = on(&navigator.detail_entries, 1);
+        assert!(
+            navigator.footer().contains("s settle"),
+            "{}",
+            navigator.footer()
+        );
+        match navigator.handle_key(&ctx, KeyCode::Char('s')) {
+            Action::Settle { item } => assert_eq!(item.id, "mail:k-1"),
+            _ => panic!("a work row settles the matter it is about"),
+        }
     }
 
     /// On a work row the keys are the work's: cancel takes back *that* ticket

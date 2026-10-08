@@ -83,6 +83,12 @@ pub const ABILITIES: &[Ability] = &[
         keys: &["N"],
         command: "reply --resolve not-sent",
     },
+    // §FS-011-command-line.4: on the row and in its thread.
+    Ability {
+        what: "settle a conversation at its source",
+        keys: &["s"],
+        command: "settle",
+    },
     Ability {
         what: "what is being done about a matter, and what could be",
         keys: &["w"],

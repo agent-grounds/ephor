@@ -287,11 +287,13 @@ impl Provider for ForgeProvider {
         // (§FS-001-forge-interface.1).
         if capabilities.messages {
             for conversation in self.forge.messages(&request)? {
-                items.push(policy::conversation_item(
-                    self.name,
-                    &ctx.project_id,
-                    &conversation,
-                ));
+                let mut item = policy::conversation_item(self.name, &ctx.project_id, &conversation);
+                // Offered only where it would work (§FS-004-quick-actions.2):
+                // the probe above is the one place the declaration is in hand.
+                if capabilities.settle {
+                    crate::matter::offer_settle(&mut item);
+                }
+                items.push(item);
             }
         }
         Ok(items)

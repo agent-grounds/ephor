@@ -16,6 +16,7 @@
 //!     ephor-forge-<name> react          <<< '{"config":…,"target":…,"emoji":…}'
 //!     ephor-forge-<name> resolve-task   <<< '{"config":…,"target":…}'
 //!     ephor-forge-<name> reply          <<< '{"config":…,"target":…,"text":…}'
+//!     ephor-forge-<name> settle         <<< '{"config":…,"target":"<id>"}'
 //! ```
 //!
 //! The [`Request`] goes in on stdin, the answer comes back as JSON on stdout,
@@ -37,7 +38,7 @@ use crate::feed::provider::{command_exists, run_json_stdin, ProviderError};
 /// (§FS-001-forge-interface.2). One list, so the published schema can be held
 /// to it: a subcommand added here and not described there is a move a gateway
 /// author has no way to learn about.
-pub const SUBCOMMANDS: [&str; 10] = [
+pub const SUBCOMMANDS: [&str; 11] = [
     "capabilities",
     "pull-requests",
     "issues",
@@ -48,6 +49,7 @@ pub const SUBCOMMANDS: [&str; 10] = [
     "react",
     "resolve-task",
     "reply",
+    "settle",
 ];
 
 /// One literal executable binding, with its provenance retained for diagnostics
@@ -269,5 +271,13 @@ impl Forge for ExternalForge {
             request,
             json!({ "target": target, "text": text }),
         )?)
+    }
+
+    /// The conversation's own id goes out as `target`, a string where every
+    /// other write hands back an object; the answer carries nothing ephor
+    /// reads, and a refusal is the exit and stderr (§FS-001-forge-interface.2).
+    fn settle(&self, request: &Request, id: &str) -> Result<(), ProviderError> {
+        self.call("settle", request, json!({ "target": id }))?;
+        Ok(())
     }
 }

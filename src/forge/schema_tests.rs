@@ -432,6 +432,7 @@ esac
         forge.react(&request, &target, "+1").expect("react");
         forge.resolve_task(&request, &target).expect("resolve-task");
         forge.reply(&request, &target, "on it").expect("reply");
+        forge.settle(&request, "k-B").expect("settle");
         fs::read_to_string(dir.join("calls"))
             .expect("the recorder was run")
             .lines()

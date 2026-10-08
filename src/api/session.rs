@@ -7,7 +7,7 @@
 //! state; it lives below the screen so that a command answers from exactly the
 //! data a key would have answered from (§REQ-002-parity.3).
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
 use chrono::Utc;
@@ -114,6 +114,10 @@ pub struct Session {
     /// reappearance never sends the reader to re-read everything
     /// (§FS-007-matters.5).
     pub resurfacing: BTreeMap<String, String>,
+    /// The conversations whose source declared it can settle them at the
+    /// source, keyed by matter key, so `s` is offered on exactly those
+    /// (§FS-004-quick-actions.2). Recomputed with the feed.
+    pub settling: BTreeSet<String>,
     /// Conversations attribution could not place, and ones two projects
     /// claimed equally. Shown rather than dropped: a guess that lands wrong
     /// amends someone's matter silently (§FS-008-attribution.4).
@@ -503,6 +507,25 @@ impl Session {
         self.resurfacing = reasons;
     }
 
+    /// Which conversations offer `s` (§FS-004-quick-actions.2), from the
+    /// project feeds. What nothing claimed is kept as it was read: it changes
+    /// only when every feed is read again, which reads it too.
+    pub fn recompute_settling(&mut self) {
+        let unattributed: BTreeSet<&str> = self
+            .unattributed
+            .iter()
+            .map(|item| item.id.as_str())
+            .collect();
+        let mut settling: BTreeSet<String> = self
+            .settling
+            .iter()
+            .filter(|key| unattributed.contains(key.as_str()))
+            .cloned()
+            .collect();
+        settling.extend(self.feeds.iter().flat_map(settling_in));
+        self.settling = settling;
+    }
+
     /// What a project can do. A project the registry does not describe holds
     /// nothing, and says so rather than being absent.
     pub fn can(&self, project: &str) -> CapabilitySet {
@@ -876,6 +899,15 @@ impl Session {
     }
 }
 
+/// The keys of one feed's conversations whose source can settle them
+/// (§FS-001-forge-interface.1).
+fn settling_in(feed: &ProjectFeed) -> impl Iterator<Item = String> {
+    feed.matters()
+        .into_iter()
+        .filter(|matter| matter.settles)
+        .map(|matter| matter.key.as_str().to_string())
+}
+
 /// A root as a person reads it: their home written `~`, everything else as it
 /// stands. Shown on an organization row, and on any command that names where
 /// a project lives.
@@ -997,6 +1029,7 @@ impl Session {
             stats: BTreeMap::new(),
             capabilities: BTreeMap::new(),
             resurfacing: BTreeMap::new(),
+            settling: BTreeSet::new(),
             unattributed: Vec::new(),
             actions: config.actions.clone(),
             project_actions: config
@@ -1042,9 +1075,12 @@ impl Session {
     /// only counted (§FS-008-attribution.4).
     pub fn reload_feeds(&mut self) -> Result<()> {
         self.feeds.clear();
-        self.unattributed = cache::load_feed(crate::feed::refresh::UNATTRIBUTED)?
+        let unattributed = cache::load_feed(crate::feed::refresh::UNATTRIBUTED)?;
+        self.unattributed = unattributed
+            .as_ref()
             .map(|feed| feed.items().collect())
             .unwrap_or_default();
+        self.settling = unattributed.iter().flat_map(settling_in).collect();
         for project in self.projects.clone() {
             match cache::load_feed(&project)? {
                 Some(feed) => self.feeds.push(feed),
@@ -1058,6 +1094,7 @@ impl Session {
         self.recompute_placements();
         self.recompute_capabilities();
         self.recompute_resurfacing();
+        self.recompute_settling();
         Ok(())
     }
 

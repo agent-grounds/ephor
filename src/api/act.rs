@@ -763,6 +763,7 @@ impl Session {
         if let Err(err) = latest {
             conversation.reply_error = Some(err.to_string());
         }
+        conversation.settles = self.settling.contains(&item.id);
         // Offers share the move's configured routing and carrier declarations
         // (§FS-007-matters.4, §FS-001-forge-interface.9).
         if let Some(draft) = conversation
