@@ -2230,6 +2230,35 @@ mod tests {
         assert!(!level.matches(&pr, &Facts::default()));
     }
 
+    /// What withholds a recipe keeps `behind` refusing alone: the offers
+    /// reading drops it, and a recipe named for the matter names it
+    /// (§FS-005-dispatch.27.1).
+    #[test]
+    fn a_behind_refusal_alone_is_kept_among_what_withholds_a_recipe() {
+        let trailing = serde_json::from_value::<Recipe>(json!({
+            "id": "trailing", "description": "replay it", "brief": "Replay {title}.",
+            "when": { "behind": true }
+        }))
+        .unwrap();
+        let level = Facts {
+            behind: Some(0),
+            ..Facts::default()
+        };
+        let refused = trailing.withheld(&item(ItemKind::Pr, None), &level, None);
+        assert_eq!(
+            refused
+                .iter()
+                .map(|refusal| refusal.field)
+                .collect::<Vec<_>>(),
+            ["behind"]
+        );
+        assert!(
+            refused[0].reason.contains("level with"),
+            "{}",
+            refused[0].reason
+        );
+    }
+
     /// The other distance is asked about in the same words, and answered from
     /// the same fold (§FS-004-quick-actions.8). The two are separate
     /// questions: a branch level with main can be well behind its own copy.
