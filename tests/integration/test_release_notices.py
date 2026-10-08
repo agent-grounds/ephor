@@ -118,6 +118,15 @@ class NoticeTests(NoticeCase):
         self.change(repo, schema)
         self.assertIn("unversioned", self.assert_noticed(self.notices(repo), "/properties/b").lower())
 
+    def test_a_version_marker_given_to_an_unversioned_schema_is_noticed(self) -> None:
+        unversioned = {key: value for key, value in BASE.items() if key != "$id"}
+        repo = self.tagged(unversioned)
+        schema = copy.deepcopy(BASE)
+        schema["$id"] = schema["$id"].replace("/v1", "/v2")
+        self.change(repo, schema)
+        notice = self.assert_noticed(self.notices(repo), "/$id", "v2")
+        self.assertIn("added", notice.lower())
+
     def test_a_removal_undone_before_head_is_still_noticed(self) -> None:
         repo = self.tagged()
         schema = copy.deepcopy(BASE)
