@@ -2058,26 +2058,32 @@ fn run_work(
                     // A root the reading will start nothing in would be
                     // refused rather than run, and a report that said it
                     // would run would be a report of something that cannot
-                    // happen (§FS-011-command-line.10).
-                    "outcome": match (&group.refusal, &group.hold) {
-                        (Some(_), _) => "refused",
-                        (None, Some(_)) => "passed-over",
+                    // happen (§FS-011-command-line.10). The private hold is
+                    // asked first, as `--act` asks it (§FS-018-private-sources.3).
+                    "outcome": match (&group.hold, &group.refusal) {
+                        (Some(_), _) => "passed-over",
+                        (None, Some(_)) => "refused",
                         (None, None) => "would-run",
                     },
                 });
                 if let (Some(row), Some(hand)) = (row.as_object_mut(), group.hand.as_ref()) {
                     row.insert("hand".to_string(), serde_json::json!(hand.describe()));
                 }
-                if let (Some(row), Some(says)) = (row.as_object_mut(), group.refusal.as_ref()) {
-                    row.insert("says".to_string(), serde_json::json!(says));
-                }
                 // The hold as data beside the sentence rendered from it, as
                 // the sweep's own rows carry it (§FS-005-dispatch.24.2).
-                if let (Some(row), Some(hold), None) =
-                    (row.as_object_mut(), group.hold.as_ref(), &group.refusal)
-                {
-                    row.insert("reason".to_string(), serde_json::json!(hold.says()));
-                    row.insert("hold".to_string(), hold.data());
+                match (
+                    row.as_object_mut(),
+                    group.hold.as_ref(),
+                    group.refusal.as_ref(),
+                ) {
+                    (Some(row), Some(hold), _) => {
+                        row.insert("reason".to_string(), serde_json::json!(hold.says()));
+                        row.insert("hold".to_string(), hold.data());
+                    }
+                    (Some(row), None, Some(says)) => {
+                        row.insert("says".to_string(), serde_json::json!(says));
+                    }
+                    _ => {}
                 }
                 row
             })
@@ -2097,12 +2103,12 @@ fn run_work(
             // Said about the root rather than counted into the roots that
             // would be run: a report that a run would happen where it would be
             // refused is a report of something that cannot happen.
-            if let Some(says) = &group.refusal {
-                eprintln!("error: {says}");
-                continue;
-            }
             if let Some(hold) = &group.hold {
                 println!("↷ {} passed over: {}", group.root.display(), hold.says());
+                continue;
+            }
+            if let Some(says) = &group.refusal {
+                eprintln!("error: {says}");
                 continue;
             }
             println!(
@@ -2609,8 +2615,8 @@ fn would_sweep(
                         None => "would-run",
                     },
                     "reason": root.passed_over(),
-                    // Only the holds this report asks: excluded, person,
-                    // rested, stopped (§FS-005-dispatch.24.2,
+                    // Only the holds this report asks: private, excluded,
+                    // person, rested, stopped (§FS-005-dispatch.24.2,
                     // §FS-005-dispatch.24.3.2).
                     "hold": root.hold().map(Hold::data),
                 }))
