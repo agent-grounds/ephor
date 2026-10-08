@@ -3426,7 +3426,13 @@ ephor work states
   workflow plan is still going is open work and is shown
   ([§FS-005-dispatch.35](functional-spec/FS-005-dispatch.md#35-what-a-ledger-entry-may-be-forgotten-for-is-read-from-the-plans)).
 - **`dispatch`** is the sweep: every item that matches a recipe and has no work
-  yet. It takes the *first* matching recipe unless `--recipe` names one. It
+  yet. It takes the *first* matching recipe unless `--recipe` names one. A
+  recipe named for one `--item` that the item does not offer is refused with
+  its reason — the selector field that refused, `kinds` included, the template
+  field the item lacks, or that no recipe by that name is configured — as a
+  `refused` row under `--json` and the same sentence as a `note:` in prose,
+  exiting 1
+  ([§FS-005-dispatch.27.1](functional-spec/FS-005-dispatch.md#271-a-recipe-asked-for-by-name-and-not-offered-says-why)). It
   skips items that already have work — naming `--recipe` asks for that work
   specifically and lands as another ticket; `--again` overrides the skip
   entirely. Issues with an open GitHub prerequisite are skipped until it
