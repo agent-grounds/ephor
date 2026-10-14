@@ -227,6 +227,14 @@ read is a store that did not answer, never permission to substitute another
 machine, exactly like a plan that cannot be read
 ([§FS-001-forge-interface.6](FS-001-forge-interface.md#6-a-source-that-did-not-answer-says-so-and-says-which-kind-of-not)).
 
+**A human gate waits on the reader.** A store task whose effective machine
+marks its current state as gating needs the reader's response. Refreshing the
+store remains read-only; the explicit review and transition described by
+[§FS-005-dispatch.9.1](FS-005-dispatch.md#91-a-human-gate-is-reviewed-and-moved-where-its-matter-is-read)
+asks the runtime to make the owner's declared move. A plan ephor laid is
+reviewed through the matter it belongs to rather than reintroduced as fresh
+work by the store.
+
 **A plan ephor caused to exist is not read.** The store holds the project's
 work, and a plan ephor put there to *do* some of that work is ephor's own
 filing rather than a second piece of it. So the seam yields no matter for such

@@ -14,6 +14,12 @@ use ratatui::widgets::{Block, Borders, Clear, Paragraph};
 
 /// What the prompt is collecting, so the shell knows what to do with it.
 pub(crate) enum Asking {
+    Transition {
+        item: crate::feed::model::Item,
+        ticket: String,
+        from: String,
+        to: String,
+    },
     /// Words for a ticket about this item.
     Work(crate::feed::model::Item),
     /// A shell command to run on the item the action menu is open on.

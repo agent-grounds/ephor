@@ -10,6 +10,7 @@
 pub mod act;
 pub mod burn;
 pub mod conversation;
+pub mod human_gate;
 pub mod offers;
 pub mod parity;
 pub mod read;

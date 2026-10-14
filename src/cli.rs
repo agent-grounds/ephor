@@ -231,6 +231,10 @@ pub enum WorkCommand {
     List(WorkListArgs),
     /// What could be handed over about one matter, and what already has been.
     Offers(WorkOffersArgs),
+    /// Inspect human-gated work, its declared choices, and local review files.
+    Review(WorkReviewArgs),
+    /// Apply one explicit human decision through the runtime's guarded transition.
+    Transition(WorkTransitionArgs),
     /// Open tickets for items that match a recipe and have no work yet.
     Dispatch(WorkDispatchArgs),
     /// Ask one item for something no recipe covers, in your own words.
@@ -291,6 +295,50 @@ pub struct WorkOffersArgs {
     pub all: bool,
 
     /// Emit raw JSON instead of a listing.
+    #[arg(long)]
+    pub json: bool,
+}
+
+/// Local review and file navigation (§FS-005-dispatch.9.1).
+#[derive(Args, Debug)]
+pub struct WorkReviewArgs {
+    /// The matter, by its feed id.
+    #[arg(long)]
+    pub item: String,
+
+    /// Read the numbered file from this matter's review listing (one-based).
+    #[arg(long, value_parser = clap::value_parser!(usize))]
+    pub file: Option<usize>,
+
+    /// Emit the review or selected file as JSON.
+    #[arg(long)]
+    pub json: bool,
+}
+
+/// An explicit owner-selected gate transition (§FS-005-dispatch.9.1).
+#[derive(Args, Debug)]
+pub struct WorkTransitionArgs {
+    /// The matter, by its feed id.
+    #[arg(long)]
+    pub item: String,
+
+    /// The qualified ticket id from the review listing.
+    #[arg(long)]
+    pub ticket: String,
+
+    /// Expected current state; a changed state refuses the decision.
+    #[arg(long)]
+    pub from: String,
+
+    /// One of the destinations declared by the ticket's machine.
+    #[arg(long)]
+    pub to: String,
+
+    /// The owner's decision, recorded as the runtime result.
+    #[arg(long)]
+    pub result: String,
+
+    /// Emit the transition outcome as JSON.
     #[arg(long)]
     pub json: bool,
 }
@@ -1256,6 +1304,56 @@ pub struct SettleArgs {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn human_gate_transition_requires_expected_state_and_result() {
+        let arguments = [
+            "ephor",
+            "work",
+            "transition",
+            "--item",
+            "rhei:proposal.1",
+            "--ticket",
+            "proposal.1",
+            "--from",
+            "human-review",
+            "--to",
+            "accepted",
+            "--result",
+            "Read the proposal and accepted it",
+        ];
+        assert!(Cli::try_parse_from(arguments).is_ok());
+        assert!(Cli::try_parse_from(&arguments[..11]).is_err());
+        let without_from: Vec<_> = arguments
+            .iter()
+            .enumerate()
+            .filter_map(|(index, argument)| (!matches!(index, 7 | 8)).then_some(*argument))
+            .collect();
+        assert!(Cli::try_parse_from(without_from).is_err());
+    }
+
+    #[test]
+    fn human_gate_review_accepts_a_numbered_file() {
+        let cli = Cli::try_parse_from([
+            "ephor",
+            "work",
+            "review",
+            "--item",
+            "rhei:proposal.1",
+            "--file",
+            "2",
+            "--json",
+        ])
+        .expect("review file arguments");
+        let Command::Work(WorkArgs {
+            command: Some(WorkCommand::Review(arguments)),
+        }) = cli.command
+        else {
+            panic!("expected work review");
+        };
+        assert_eq!(arguments.file, Some(2));
+        assert!(arguments.json);
+    }
 
     #[test]
     fn work_lay_accepts_repeatable_values_files() {

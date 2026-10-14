@@ -120,6 +120,21 @@ pub const ABILITIES: &[Ability] = &[
         command: "work cancel",
     },
     Ability {
+        what: "inspect a matter's human gates and local review files",
+        keys: &["H"],
+        command: "work review",
+    },
+    Ability {
+        what: "read a selected local review file",
+        keys: &["enter"],
+        command: "work review --file",
+    },
+    Ability {
+        what: "apply an explicit decision at a human gate",
+        keys: &["enter"],
+        command: "work transition",
+    },
+    Ability {
         what: "let the runtime work a plan",
         keys: &["R"],
         command: "work run",

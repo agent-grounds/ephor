@@ -585,6 +585,18 @@ const SWEEP: &[(&str, &[&str])] = &[
 /// somebody made rather than an oversight nobody noticed.
 const ELSEWHERE: &[(&str, &str)] = &[
     (
+        "work-review",
+        "human_gate_commands_print_the_shapes_they_publish",
+    ),
+    (
+        "work-review-file",
+        "human_gate_commands_print_the_shapes_they_publish",
+    ),
+    (
+        "work-transition",
+        "human_gate_commands_print_the_shapes_they_publish",
+    ),
+    (
         "rebase",
         "a_conflict_handed_over_is_part_of_the_reading — it needs a git forest mid-conflict",
     ),
@@ -601,6 +613,116 @@ const ELSEWHERE: &[(&str, &str)] = &[
         "E2E-011-workflows's own lay — it needs a runtime that offers workflows",
     ),
 ];
+
+/// Local review and an explicit owner decision share the published command
+/// surface, including a runtime refusal (§FS-005-dispatch.9.1).
+#[test]
+fn human_gate_commands_print_the_shapes_they_publish() {
+    let world = World::new();
+    world.file(
+        "panta/review.rhei.md",
+        "# Rhei: Review\n\n## Tasks\n\n### Task 1: Decide\n**State:** waiting\n",
+    );
+    world.file(
+        "panta/states.yaml",
+        "name: review\nstates:\n  waiting:\n    gating: true\n  accepted:\n    final: true\n",
+    );
+    world.file("panta/proposal.md", "A fictional reply, kept local.\n");
+    world.file(
+        "panta/machine.json",
+        &json!({
+            "states": [
+                {"name": "waiting", "gating": true,
+                 "inputs": [{"name": "proposal", "path": "proposal.md"}]},
+                {"name": "accepted", "description": "Approve locally"}
+            ],
+            "transitions": [{"from": "waiting", "to": "accepted"}]
+        })
+        .to_string(),
+    );
+    world.stub(
+        "gate-runtime",
+        r#"#!/bin/sh
+set -eu
+case "$1" in
+  states) cat machine.json ;;
+  transition)
+    if [ -f refuse ]; then
+      printf '%s\n' 'callback refused: proposal changed' >&2
+      exit 1
+    fi
+    printf '%s\n' "$@" > invocation ;;
+  *) exit 1 ;;
+esac
+"#,
+    );
+    world.configure(json!({"work": {"runner": "gate-runtime"}}));
+    world.ephor().args(["refresh", PROJECT]).assert().success();
+    let output = world
+        .ephor()
+        .args(["work", "review", "--item", "rhei:review.1", "--json"])
+        .output()
+        .unwrap();
+    assert!(output.status.success(), "{output:?}");
+    let review = shaped("work-review", &output);
+    assert_eq!(review["gates"][0]["ticket"], "review.1");
+    assert_eq!(review["gates"][0]["destinations"][0]["state"], "accepted");
+    let number = review["files"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .position(|file| file["path"].as_str().unwrap().ends_with("proposal.md"))
+        .map(|index| (index + 1).to_string())
+        .unwrap();
+    let output = world
+        .ephor()
+        .args([
+            "work",
+            "review",
+            "--item",
+            "rhei:review.1",
+            "--file",
+            &number,
+            "--json",
+        ])
+        .output()
+        .unwrap();
+    assert!(output.status.success(), "{output:?}");
+    assert_eq!(
+        shaped("work-review-file", &output)["text"],
+        "A fictional reply, kept local.\n"
+    );
+    assert!(!world.forest().join("panta/invocation").exists());
+    let arguments = [
+        "work",
+        "transition",
+        "--item",
+        "rhei:review.1",
+        "--ticket",
+        "review.1",
+        "--from",
+        "waiting",
+        "--to",
+        "accepted",
+        "--result",
+        "Reviewed locally",
+        "--json",
+    ];
+    let output = world.ephor().args(arguments).output().unwrap();
+    assert!(output.status.success(), "{output:?}");
+    assert_eq!(shaped("work-transition", &output)["transitioned"], true);
+    let invocation = std::fs::read_to_string(world.forest().join("panta/invocation")).unwrap();
+    assert!(invocation.contains("--from\nwaiting\n--to\naccepted\n--result\nReviewed locally\n"));
+    world.file("panta/refuse", "refuse");
+    let output = world.ephor().args(arguments).output().unwrap();
+    assert!(!output.status.success());
+    let refusal = shaped("work-transition", &output);
+    assert_eq!(refusal["transitioned"], false);
+    assert!(refusal["says"]
+        .as_str()
+        .unwrap()
+        .contains("proposal changed"));
+}
 
 /// Every `--json` prints the shape it publishes — validated against the
 /// schema, not merely named in it (§REQ-002-parity.4).

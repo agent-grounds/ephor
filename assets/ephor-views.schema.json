@@ -1444,6 +1444,77 @@
         }
       }
     },
+    "work-review": {
+      "description": "`ephor work review --json` — current human gates, declared destinations, and local review files for one matter (FS-005-dispatch.9.1). Reading this view does not advance work.",
+      "type": "object",
+      "required": ["gates", "files"],
+      "properties": {
+        "gates": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["ticket", "title", "state", "root", "plan", "machine", "destinations"],
+            "properties": {
+              "ticket": { "type": "string" },
+              "title": { "type": "string" },
+              "state": { "type": "string" },
+              "root": { "type": "string" },
+              "plan": { "type": "string" },
+              "machine": { "type": ["string", "null"] },
+              "destinations": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": ["state", "condition", "description"],
+                  "properties": {
+                    "state": { "type": "string" },
+                    "condition": { "type": ["string", "null"] },
+                    "description": { "type": ["string", "null"] }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "files": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["name", "path", "problem"],
+            "properties": {
+              "name": { "type": "string" },
+              "path": { "type": "string" },
+              "problem": { "type": ["string", "null"] }
+            }
+          }
+        }
+      }
+    },
+    "work-review-file": {
+      "description": "`ephor work review --file N --json` — the selected local review file's name, path, and bounded text; files are read, never executed (FS-005-dispatch.9.1).",
+      "type": "object",
+      "required": ["name", "path", "text"],
+      "properties": {
+        "name": { "type": "string" },
+        "path": { "type": "string" },
+        "text": { "type": "string" }
+      }
+    },
+    "work-transition": {
+      "description": "`ephor work transition --json` — whether the runtime accepted an explicit owner decision from the expected gate state, with a reason on refusal (FS-005-dispatch.9.1). Runtime guards and callbacks remain authoritative.",
+      "type": "object",
+      "required": ["item", "ticket", "from", "to", "transitioned"],
+      "properties": {
+        "item": { "type": "string" },
+        "ticket": { "type": "string" },
+        "from": { "type": "string" },
+        "to": { "type": "string" },
+        "transitioned": { "type": "boolean" },
+        "says": { "type": "string" }
+      },
+      "if": { "properties": { "transitioned": { "const": false } } },
+      "then": { "required": ["says"] }
+    },
     "work-states": {
       "description": "`ephor work states --json` (FS-005-dispatch.11) — the state machine tickets actually run under, and where it came from. The machine itself is the runtime's language rather than ephor's, so it rides in a field as text; what this reading adds is *which* machine is in force, which the document alone never said.",
       "type": "object",

@@ -16,6 +16,7 @@ mod actions;
 mod answers;
 mod burn;
 mod gate;
+mod human_gate;
 mod navigator;
 mod operations;
 mod prompt;
@@ -50,6 +51,7 @@ use actions::{ActionMenu, MenuOutcome};
 use answers::{AnswerOutcome, AnswerScreen};
 use burn::BurnScreen;
 use gate::GateScreen;
+use human_gate::HumanGateScreen;
 use navigator::NavigatorState;
 use operations::OperationsScreen;
 use prompt::{Asking, Prompt, PromptOutcome};
@@ -59,6 +61,13 @@ use work::WorkScreen;
 /// What a screen asks the shell to do in response to a key.
 pub(crate) enum Action {
     None,
+    ReviewHumanGate(Item),
+    TransitionHumanGate {
+        item: Item,
+        ticket: String,
+        from: String,
+        to: String,
+    },
     Quit,
     /// Show the item's thread screen. With `or_url`, an item without any
     /// recorded messages falls back to opening its URL.
@@ -215,6 +224,7 @@ pub(crate) enum CheckoutOf {
 }
 
 enum Screen {
+    HumanGate(HumanGateScreen),
     Navigator,
     Thread(ThreadScreen),
     Gate(GateScreen),
@@ -504,6 +514,7 @@ impl App {
                 Screen::Thread(thread) => thread.handle_key(key.code),
                 Screen::Gate(gate) => gate.handle_key(key.code),
                 Screen::Work(work) => work.handle_key(key.code),
+                Screen::HumanGate(review) => review.handle_key(key.code),
                 Screen::Operations(board) => board.handle_key(key.code),
                 Screen::Burn(page) => page.handle_key(key.code),
             };
@@ -954,6 +965,24 @@ impl App {
                 )
                 .empty_submits(),
             ),
+            Action::ReviewHumanGate(item) => self.open_human_review(item),
+            Action::TransitionHumanGate {
+                item,
+                ticket,
+                from,
+                to,
+            } => {
+                self.prompt = Some(Prompt::new(
+                    Asking::Transition {
+                        item,
+                        ticket: ticket.clone(),
+                        from: from.clone(),
+                        to: to.clone(),
+                    },
+                    format!("{ticket}: {from} → {to} — record your decision"),
+                    "type a reason, then Enter confirms · Esc leaves the state unchanged",
+                ));
+            }
             Action::ReadPlan(path) => {
                 self.edit_file(terminal, &path)?;
                 // The reader may have edited what the screens read.
@@ -1054,6 +1083,21 @@ impl App {
                 self.rebuild_view();
                 self.open_work(item);
             }
+            Asking::Transition {
+                item,
+                ticket,
+                from,
+                to,
+            } => {
+                self.message = match self.ctx.transition_work(&item, &ticket, &from, &to, line) {
+                    Ok(()) => format!("{ticket}: {from} → {to}"),
+                    Err(err) => err.to_string(),
+                };
+                self.reload_work();
+                self.reload_operations();
+                self.rebuild_view();
+                self.open_human_review(item);
+            }
             Asking::Command(menu) => {
                 let entry = actions::MenuEntry {
                     action: ActionConfig {
@@ -1076,7 +1120,13 @@ impl App {
         Ok(())
     }
 
-    /// The work screen for an item, rebuilt from the plan each time it opens.
+    fn open_human_review(&mut self, item: Item) {
+        match self.ctx.human_review(&item) {
+            Ok(review) => self.screen = Screen::HumanGate(HumanGateScreen::new(item, review)),
+            Err(err) => self.message = err.to_string(),
+        }
+    }
+
     /// Hand a file to the reader's editor, the terminal theirs while they have
     /// it — the same handover the runtime gets (§AR-002-summons).
     fn edit_file(&mut self, terminal: &mut DefaultTerminal, path: &Path) -> Result<()> {
@@ -2327,6 +2377,7 @@ impl App {
                 Screen::Thread(thread) => thread.title(),
                 Screen::Gate(gate) => gate.title(),
                 Screen::Work(work) => work.title(),
+                Screen::HumanGate(review) => review.title(),
                 Screen::Operations(board) => board.title(),
                 Screen::Burn(page) => page.title(),
             },
@@ -2363,6 +2414,7 @@ impl App {
             Screen::Thread(thread) => thread.draw(frame, body_area),
             Screen::Gate(gate) => gate.draw(frame, body_area),
             Screen::Work(work) => work.draw(frame, body_area),
+            Screen::HumanGate(review) => review.draw(frame, body_area),
             // The refresh reports on the board additionally — the header
             // above keeps its line (§FS-001-forge-interface.7).
             Screen::Operations(board) => {
@@ -2387,7 +2439,10 @@ impl App {
         }
 
         let footer = if self.prompt.is_some() {
-            " type  ·  enter sends  ·  esc cancels  ·  ^w word back  ·  ^u clear".to_string()
+            match self.prompt.as_ref().map(|prompt| &prompt.asking) {
+                Some(Asking::Transition { .. }) => " type a reason  ·  enter confirms  ·  esc keeps the state  ·  ^w word back  ·  ^u clear".to_string(),
+                _ => " type  ·  enter sends  ·  esc cancels  ·  ^w word back  ·  ^u clear".to_string(),
+            }
         // Built from what is open, not fixed for the screen: what Enter does
         // on a row of answers depends on the row (§FS-004-quick-actions.2).
         } else if let Some(answers) = &self.answers {
@@ -2402,6 +2457,7 @@ impl App {
                 Screen::Thread(thread) => thread.footer(),
                 Screen::Gate(gate) => gate.footer().to_string(),
                 Screen::Work(work) => work.footer(),
+                Screen::HumanGate(review) => review.footer(),
                 Screen::Operations(board) => board.footer().to_string(),
                 Screen::Burn(page) => page.footer().to_string(),
             }
