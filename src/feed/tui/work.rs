@@ -208,7 +208,7 @@ impl WorkScreen {
             (false, false, over) if over > 0 => "  z folds them back",
             _ => "",
         };
-        format!("{keys}{fold}  o browser  ; ops  esc back")
+        format!("{keys}{fold}  H human review  o browser  ; ops  esc back")
     }
 
     fn plan(&self) -> Option<PathBuf> {
@@ -222,6 +222,7 @@ impl WorkScreen {
             return self.pick_key(code);
         }
         match code {
+            KeyCode::Char('H') => Action::ReviewHumanGate(self.item.clone()),
             KeyCode::Char('q') | KeyCode::Esc | KeyCode::Char('h') | KeyCode::Backspace => {
                 Action::Back
             }

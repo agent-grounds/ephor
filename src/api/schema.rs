@@ -79,6 +79,9 @@ pub const SHAPES: &[(&str, &str)] = &[
     ("work workflows", "work-workflows"),
     ("work forget", "work-forget"),
     ("work states", "work-states"),
+    ("work review", "work-review"),
+    ("work review --file", "work-review-file"),
+    ("work transition", "work-transition"),
     ("update", "update"),
     ("ensure-agents", "ensure-agents"),
 ];
@@ -86,7 +89,7 @@ pub const SHAPES: &[(&str, &str)] = &[
 /// Every shape this API publishes, by the name the schema files it under. The
 /// tests below hold it to the document in both directions, so it is a
 /// spelling of the document rather than a second list to keep true.
-pub const NAMES: [&str; 36] = [
+pub const NAMES: [&str; 39] = [
     "actions",
     "branches",
     "operations",
@@ -121,6 +124,9 @@ pub const NAMES: [&str; 36] = [
     "work-workflows",
     "work-forget",
     "work-states",
+    "work-review",
+    "work-review-file",
+    "work-transition",
     "update",
     "ensure-agents",
 ];
@@ -261,6 +267,47 @@ mod tests {
         // in the tree passed.
         assert!(holds("branches", &serde_json::json!([])).is_empty());
         assert!(!holds("branches", &serde_json::json!({})).is_empty());
+    }
+
+    #[test]
+    fn human_gate_shapes_hold_serialized_reviews_and_decisions() {
+        use crate::work::runtime::human_gate::{Artifact, Destination, Gate, Review};
+
+        let review = Review {
+            gates: vec![Gate {
+                ticket: "demo.1".into(),
+                title: "Review a reply".into(),
+                state: "human-review".into(),
+                root: "/demo".into(),
+                plan: "/demo/demo.rhei.md".into(),
+                machine: None,
+                destinations: vec![Destination {
+                    state: "accepted".into(),
+                    condition: None,
+                    description: None,
+                }],
+            }],
+            files: vec![Artifact {
+                name: "review".into(),
+                path: "/demo/review.md".into(),
+                problem: None,
+            }],
+        };
+        let value = serde_json::to_value(review).unwrap();
+        assert!(holds("work-review", &value).is_empty());
+        assert!(!holds("work-review", &serde_json::json!({"gates": []})).is_empty());
+        let file =
+            serde_json::json!({"name": "review", "path": "/demo/review.md", "text": "Draft"});
+        assert!(holds("work-review-file", &file).is_empty());
+        let mut decision = serde_json::json!({
+            "item": "rhei:demo.1", "ticket": "demo.1", "from": "human-review",
+            "to": "accepted", "transitioned": true,
+        });
+        assert!(holds("work-transition", &decision).is_empty());
+        decision["transitioned"] = false.into();
+        assert!(!holds("work-transition", &decision).is_empty());
+        decision["says"] = "The expected state changed".into();
+        assert!(holds("work-transition", &decision).is_empty());
     }
 
     /// A shape without a schema is a `--json` nobody can rely on

@@ -15,6 +15,7 @@
 
 pub mod accounting;
 pub mod events;
+pub mod human_gate;
 pub mod plan;
 pub mod results;
 pub mod roster;

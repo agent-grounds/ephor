@@ -25,6 +25,8 @@ use crate::work::runtime;
 
 use crate::work::{Dispatcher, Outcome};
 
+mod human_gate;
+
 /// `scope` is what the project selectors left (§FS-011-command-line.9). The
 /// four verbs that read a set of projects take it as the `--project`
 /// restriction they already knew how to apply, so the scope is felt where each
@@ -48,6 +50,8 @@ pub fn work(args: &WorkArgs, scope: &Projects, act: crate::scope::Act) -> Result
             list_work(&config, list, &projects)
         }
         WorkCommand::Offers(offers) => work_offers(&config, offers),
+        WorkCommand::Review(review) => human_gate::review(&config, review),
+        WorkCommand::Transition(transition) => human_gate::transition(&config, transition),
         WorkCommand::Dispatch(dispatch) => {
             let projects = scope.narrow(&dispatch.project, watched())?;
             let gate = gate(

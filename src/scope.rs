@@ -186,6 +186,8 @@ fn work_honoured(args: &WorkArgs) -> (String, Honours) {
         Some(WorkCommand::Sync(_)) => said("work sync", Honours::Watched),
         Some(WorkCommand::Run(_)) => said("work run", Honours::Watched),
         Some(WorkCommand::Offers(_)) => said("work offers", Honours::Nothing),
+        Some(WorkCommand::Review(_)) => said("work review", Honours::Nothing),
+        Some(WorkCommand::Transition(_)) => said("work transition", Honours::Nothing),
         Some(WorkCommand::Ask(_)) => said("work ask", Honours::Nothing),
         Some(WorkCommand::Cancel(_)) => said("work cancel", Honours::Nothing),
         Some(WorkCommand::Workflows(_)) => said("work workflows", Honours::Nothing),
@@ -311,6 +313,8 @@ fn work_sweeps(args: &WorkArgs) -> Sweeps {
         None
         | Some(WorkCommand::List(_))
         | Some(WorkCommand::Offers(_))
+        | Some(WorkCommand::Review(_))
+        | Some(WorkCommand::Transition(_))
         | Some(WorkCommand::Ask(_))
         | Some(WorkCommand::Cancel(_))
         | Some(WorkCommand::Workflows(_))

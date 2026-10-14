@@ -271,14 +271,14 @@ impl NavigatorState {
                 false => "",
             };
             return format!(
-                " j/k move  enter thread  {take}a watch the run  e read the plan  w work  \
+                " j/k move  enter thread  {take}a watch the run  e read the plan  w work  H human review  \
                  {make}x actions  o browser  {settle}m done  ; ops  r refresh  q quit"
             );
         }
         match self.mode {
-            Mode::Stream => format!(" j/k move  enter thread  c gate  w work  {make}o browser  x actions  {settle}m done  a all done  u unread  ; ops  tab projects  r refresh  q quit"),
+            Mode::Stream => format!(" j/k move  enter thread  c gate  w work  H human review  {make}o browser  x actions  {settle}m done  a all done  u unread  ; ops  tab projects  r refresh  q quit"),
             Mode::Projects => " j/k move  enter view project  ; ops  tab stream  r refresh  q quit".to_string(),
-            Mode::Detail => format!(" j/k move  enter thread  c gate  w work  {make}o browser  x actions  {settle}m done  [/] project  esc back  u unread  ; ops  r refresh  q quit"),
+            Mode::Detail => format!(" j/k move  enter thread  c gate  w work  H human review  {make}o browser  x actions  {settle}m done  [/] project  esc back  u unread  ; ops  r refresh  q quit"),
         }
     }
 
@@ -575,6 +575,10 @@ impl NavigatorState {
 
     pub fn handle_key(&mut self, ctx: &Ctx, code: KeyCode) -> Action {
         match code {
+            KeyCode::Char('H') => match self.selected_item() {
+                Some(item) => Action::ReviewHumanGate(item),
+                None => Action::SetMessage("Select a matter to review its human gates".to_string()),
+            },
             KeyCode::Char('q') => Action::Quit,
             KeyCode::Tab => {
                 self.mode = match self.mode {

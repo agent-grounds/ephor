@@ -834,8 +834,10 @@ older spelling of that key, `tickets`, is still read. Attribution needs no
 configuration: a store in a checkout is about that checkout's project. The
 tasks arrive under the source name the store carries (`rhei`, `beads`), so they
 sit in **Tasks** ([§6.1](#61-the-categories)), carrying the state the store gave
-them. Nothing is ever written back — the store is the project's, and ephor only
-reads it.
+them. Refreshing the feed only reads the store. A human gate marks the task as
+needing your response; an explicit owner decision through `H` or
+`ephor work transition` asks the runtime to move that task (§8.7.2). Ephor never
+rewrites its state directly.
 
 A flat plan is a `*.rhei.md` file (or the compatible `*.panta.md` spelling). A
 direct, non-hidden directory workspace is named by its directory and contains
@@ -3138,8 +3140,11 @@ this ticket ([§FS-005-dispatch.9](functional-spec/FS-005-dispatch.md#9-work-tha
 
 ephor reads `gating` out of the machine, so the item's row says
 `⚠ fix-gate · waiting on you · cause-2` ahead of anything else, and the work
-screen prints the question and the command that resumes it. Answer **in the
-plan** — `e` opens it in your editor — then:
+screen prints the question and the command that resumes it. Press `H` on the
+matter or work screen to review its files and choose one of the machine's
+declared transitions (§8.7.2). Answer **in the plan** where the workflow asks
+for a written artifact — `e` opens it in your editor. The runtime command is
+also available:
 
 ```bash
 rhei transition <ticket> --from needs-human --to propose
@@ -3274,6 +3279,7 @@ is open at all and `ephor work forget --done` clears it
 | `c` | take a ticket back (§8.7.1) |
 | `R` | hand **this item's plan** to the runtime |
 | `e` | read the plan in `$EDITOR` |
+| `H` | review human gates, their local files and declared transitions (§8.7.2) |
 | `L` | read the newest job ephor ran here (§8.14), where it ran one |
 | `o` | open the item in the browser |
 | `j` `k` | move between recipes · `f`/`b` page · `;` ops · `Esc` back |
@@ -3375,6 +3381,45 @@ ephor work cancel --item github-prs:acme/widget#42 fix-gate-2 --why "asked twice
 ephor work cancel --item ID fix-gate-1 fix-gate-2          # several at once, each reported
 ephor work cancel --item ID fix-gate-2 --dry-run           # what would be cancelled, nothing moved
 ```
+
+#### 8.7.2 Reviewing a human gate
+
+`H` on a matter in the navigator or on its work screen opens the same local
+review. This includes tasks from a project's own task store, as well as work
+ephor laid about another matter. Source tasks at a gate are marked as needing
+your response
+([§FS-005-dispatch.9.1](functional-spec/FS-005-dispatch.md#91-a-human-gate-is-reviewed-and-moved-where-its-matter-is-read)).
+
+`j`/`k` selects a declared transition or file. Each transition names the task,
+current state, destination and any condition. Destination names come from the
+workflow: it may offer approval, revision or dismissal under whatever names it
+declared. `Enter` asks for your decision reason; typing it and pressing `Enter`
+confirms that transition. `Esc` cancels the prompt without moving the task.
+The bound runtime checks the expected state and runs its guards and callbacks.
+A refusal stays visible; a successful move rereads the gate. No run starts and
+no message is posted by this screen itself.
+
+`f` jumps to the files. `Enter` opens a selected file in a read-only text view;
+`j`/`k` and Page Up/Down scroll, and `Esc` returns to the file list. The list
+includes plan/task files, declared inputs and outputs, local Markdown links
+from task/result files, and runtime results that exist. Declared artifact paths
+resolve from the owning execution root; Markdown links resolve from their
+containing file. Missing files, unresolved templates and non-text files
+say why they cannot be read. Text previews stop at 256 KiB. Viewing local
+materials never inserts them into a reply or sends them to a provider.
+
+`H` reloads the review; `Esc` returns to work. The same operations are commands:
+
+```bash
+ephor work review --item <matter-id> --json
+ephor work review --item <matter-id> --file 1
+ephor work transition --item <matter-id> --ticket <qualified-ticket> \
+  --from <current-state> --to <declared-destination> --result 'Reviewed locally'
+```
+
+The review numbers its files from one and lists the qualified ticket ids the
+transition command takes. `--json` is also supported for a file reading and a
+transition outcome.
 
 ### 8.8 By hand
 

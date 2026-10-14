@@ -991,6 +991,37 @@ rather than in a chat window, a comment, or somebody's memory: the plan is the
 record of what was decided about this item, and a decision taken anywhere else
 is one the next round cannot read.
 
+### 9.1 A human gate is reviewed and moved where its matter is read
+
+A task in a project's own store and a ticket laid about a matter both expose
+their human gates from that matter. Reviewing a gate reads the current task,
+the machine it runs under, its declared outgoing transitions and its local
+materials. The reader chooses a destination by its declared name: approval,
+revision and dismissal are meanings the workflow gives its states, never names
+ephor assumes. A conditional edge is labelled with its condition; the runtime
+still decides whether its guards and callbacks permit that move.
+
+The reader confirms a selected transition with a reason. The move names the
+exact task, plan, machine and expected source state, rereads the gate before
+acting, and asks the bound runtime to perform its normal transition. A changed
+state, missing edge or runtime refusal leaves the failure visible. Ephor never
+rewrites task state, forces a move, or calls a successful transition proof that
+the whole workflow has completed or that a message was sent. Leaving the
+review, cancelling confirmation and opening a file move nothing. A later run
+may continue work released by the reader; reviewing never starts a run.
+
+The review lists the plan, task files, declared input and output artifacts,
+existing runtime result files, and local Markdown links in task/result files
+as selectable local paths. Relative artifact
+paths resolve from the owning execution root, including directory workspaces;
+Markdown links resolve relative to the file that contains them. Both
+unresolved template variables and missing, unreadable or non-text files are
+reported without leaving the review. Viewing is bounded and read-only, with
+scrolling and a way back to the file list. These contents stay local and are
+never copied into a reply, dossier or provider call by reviewing or deciding.
+The command line exposes the same reading and transition as the interface,
+including a JSON reading of destinations, conditions and file availability.
+
 ## 10. What ephor offers is not a limit on what can be asked
 
 Recipes are for the work that repeats. Most work does not: a reader looks at a

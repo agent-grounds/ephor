@@ -183,7 +183,10 @@ fn plans(store: &Store, project: &str) -> Result<(Vec<Item>, Vec<String>), Strin
             // the selector's silence rule turns on it (§AR-006-matters).
             let said = plan.task_meta(&found.plan_id, &task.id);
             notes.extend(said.dropped.iter().map(|why| format!("{id}: {why}")));
-            let mut raw = serde_json::json!({ "plan": path.to_string_lossy() });
+            let mut raw = serde_json::json!({
+                "plan": path.to_string_lossy(),
+                "task_root": store.path.to_string_lossy(),
+            });
             if !said.values.is_empty() {
                 raw[crate::feed::model::META] = serde_json::Value::Object(said.values);
             }
@@ -197,10 +200,9 @@ fn plans(store: &Store, project: &str) -> Result<(Vec<Item>, Vec<String>), Strin
                 role: None,
                 title: task.title.clone(),
                 url: None,
-                state: (!state.is_empty()).then_some(state),
-                // A task waits on whoever keeps the store; nothing about it
-                // says anyone is waiting on an answer.
-                needs_response: false,
+                state: (!state.is_empty()).then_some(state.clone()),
+                // §FS-005-dispatch.9.1: a gate explicitly waits on the store's owner.
+                needs_response: machine.is_gating(&state),
                 // Activity follows the task's file (§FS-006-project-interface.7).
                 updated_at: modified(task_path),
                 raw,
@@ -222,6 +224,46 @@ fn modified(path: &Path) -> chrono::DateTime<chrono::Utc> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Reading a gate creates an actionable matter, never a move (§FS-005-dispatch.9.1).
+    #[test]
+    fn human_gate_tasks_request_the_owners_response_without_changing_the_store() {
+        let temp = tempfile::tempdir().unwrap();
+        let original = "# Rhei: Work\n## Tasks\n### Task 1: Decide\n**State:** waiting\n\n### Task 2: Draft\n**State:** draft\n";
+        let root = plan_dir(temp.path(), "panta", original);
+        std::fs::write(
+            root.join("states.yaml"),
+            "name: review\nstates:\n  waiting:\n    gating: true\n  draft:\n",
+        )
+        .unwrap();
+        let items = read(
+            &Store {
+                kind: Kind::Plans,
+                path: root.clone(),
+            },
+            "demo",
+        )
+        .unwrap();
+        assert!(
+            items
+                .iter()
+                .find(|item| item.id == "rhei:work.1")
+                .unwrap()
+                .needs_response
+        );
+        assert!(
+            !items
+                .iter()
+                .find(|item| item.id == "rhei:work.2")
+                .unwrap()
+                .needs_response
+        );
+        assert_eq!(items[0].raw["task_root"], root.display().to_string());
+        assert_eq!(
+            std::fs::read_to_string(root.join("work.rhei.md")).unwrap(),
+            original
+        );
+    }
 
     fn plan_dir(root: &Path, name: &str, body: &str) -> PathBuf {
         let dir = root.join(name);
