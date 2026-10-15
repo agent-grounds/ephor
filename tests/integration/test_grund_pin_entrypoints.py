@@ -37,6 +37,7 @@ CACHE_KEY = re.compile(r"cargo-grund-(\S+?)\s*$", re.MULTILINE)
 RELEASE = re.compile(r"^\d+\.\d+\.\d+$")
 BLOCK_HEADING = re.compile(r"^## Grounding with grund \(v(\d+)\)$", re.MULTILINE)
 BLOCK_TOKEN = re.compile(r"\bv(\d+)\b")
+BLOCK_MENTION = re.compile(r"`?\bv(\d+)`? block\b")
 
 
 class HarnessError(Exception):
@@ -81,6 +82,16 @@ def pin_comment(ci_text: str) -> str:
                 break
         return "\n".join(comment)
     raise HarnessError("no grund install step in ci.yml")
+
+
+def named_installs(text: str) -> list:
+    """Every grund release a document tells a contributor to install."""
+    return INSTALL.findall(text)
+
+
+def named_blocks(text: str) -> list:
+    """Every `vN block` a document says the pinned release writes."""
+    return BLOCK_MENTION.findall(text)
 
 
 def managed_region(text: str) -> str:
@@ -277,6 +288,40 @@ class PinnedCheckerContract(unittest.TestCase):
             f"release; none of {list(SETUP_DOCS)} carries `{command}`",
         )
 
+    def test_every_setup_document_names_the_pinned_release(self) -> None:
+        """§FS-002-release.7: each documented setup moves with the pin, not one of them.
+
+        One stale copy is a contributor installing the release the gate no longer
+        runs, so every setup document must name the install, and only the pin.
+        """
+        version = install_version(self.ci)
+        for name in SETUP_DOCS:
+            with self.subTest(document=name):
+                named = named_installs(read(name))
+                self.assertTrue(
+                    named,
+                    f"§FS-002-release.7: {name} documents no `cargo install grund --version`",
+                )
+                self.assertEqual(
+                    set(named),
+                    {version},
+                    f"§FS-002-release.7: {name} names grund {sorted(set(named))}, "
+                    f"while CI pins {version}",
+                )
+
+    def test_every_setup_document_names_the_block_the_entrypoints_carry(self) -> None:
+        """§FS-002-release.7: the block a setup document promises is the one checked in."""
+        carried = block_version(managed_region(read(ENTRYPOINTS[0])))
+        for name in SETUP_DOCS:
+            with self.subTest(document=name):
+                stale = sorted(set(named_blocks(read(name))) - {carried})
+                self.assertFalse(
+                    stale,
+                    f"§FS-002-release.7: {name} names the "
+                    f"{', '.join('v' + block for block in stale)} block, "
+                    f"while the entrypoints carry v{carried}",
+                )
+
     def test_both_entrypoints_carry_the_same_block_version(self) -> None:
         versions = {name: block_version(managed_region(read(name))) for name in ENTRYPOINTS}
         self.assertEqual(
@@ -361,6 +406,18 @@ class PairingCheckerCases(unittest.TestCase):
         self.assertEqual(block_version(managed_region(current)), "10")
         self.assertEqual(block_version(managed_region(stale)), "8")
         self.assertNotEqual(managed_region(current), managed_region(stale))
+
+    def test_one_setup_document_left_behind_is_found(self) -> None:
+        moved = "```bash\ncargo install grund --version 1.2.3 --locked\n```\n"
+        stale = "      #     cargo install grund --version 1.2.2 --locked\n"
+        self.assertEqual(named_installs(moved), ["1.2.3"])
+        self.assertEqual(named_installs(stale), ["1.2.2"])
+        self.assertEqual(named_installs("no install line here\n"), [])
+
+    def test_a_block_mention_is_read_with_or_without_backticks(self) -> None:
+        self.assertEqual(named_blocks("wrote the `v10` block in"), ["10"])
+        self.assertEqual(named_blocks("wrote the v19 block in both"), ["19"])
+        self.assertEqual(named_blocks("the v2 config and its blocks"), [])
 
     def test_content_around_the_block_is_compared_separately(self) -> None:
         kept = f"preamble\n\n{BEGIN}\nbody\n{END}\n\nrepository notes\n"
