@@ -75,7 +75,7 @@ the entrypoints carry
 the gate reaches the verdict CI reaches only with the same release on `PATH`.
 
 ```bash
-cargo install grund --version 0.14.0 --locked
+cargo install grund --version 0.18.0 --locked
 ```
 
 ```bash
