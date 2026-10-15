@@ -48,9 +48,9 @@ repos:
         always_run: true
         stages: [pre-commit]
       # Requires the pinned `grund` on PATH, which is the release CI
-      # installs and the one that wrote the v10 block in both entrypoints
+      # installs and the one that wrote the v19 block in both entrypoints
       # (§FS-002-release.7):
-      #     cargo install grund --version 0.14.0 --locked
+      #     cargo install grund --version 0.18.0 --locked
       # Another version reaches another verdict on an untouched tree.
       #
       # `local-section-citation` is held out, and only that code. The same

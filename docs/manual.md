@@ -5897,10 +5897,10 @@ The pre-commit hook calls whatever `grund` is on `PATH`, so it has to be that
 release:
 
 ```bash
-cargo install grund --version 0.14.0 --locked
+cargo install grund --version 0.18.0 --locked
 ```
 
-That is the version CI installs and the version that wrote the `v10` block in
+That is the version CI installs and the version that wrote the `v19` block in
 `CLAUDE.md` and `.claude/CLAUDE.md`. Nothing is promised about any other.
 
 If you are already on that release and a bare `grund check` still fails, the

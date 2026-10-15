@@ -204,16 +204,16 @@ jobs:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-          key: ${{ runner.os }}-cargo-grund-0.14.0
+          key: ${{ runner.os }}-cargo-grund-0.18.0
 
-      # One pairing, moved in one change (§FS-002-release.7): grund 0.14.0 and
-      # the v10 `grund init` block both entrypoints carry. The version decides
+      # One pairing, moved in one change (§FS-002-release.7): grund 0.18.0 and
+      # the v19 `grund init` block both entrypoints carry. The version decides
       # which block they may carry, so the release named here, the cache key
       # above and the contributor setup the README and `.pre-commit-config.yaml`
       # document are the same number. Bumping one alone is a gate that fails on
       # the documentation rather than on anything a change did.
       - name: Install grund
-        run: cargo install grund --version 0.14.0 --locked
+        run: cargo install grund --version 0.18.0 --locked
 
       # §FS-002-release.7: the pairing is proved where the pinned binary is.
       # The `test` job installs no grund, so the regeneration half of
