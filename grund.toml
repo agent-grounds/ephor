@@ -1,98 +1,126 @@
-grund_config_version = 1
+grund_config_version = 2
 project_name = "ephor"
-project_description = "Project registry and per-project status feed across forges and issue trackers"
 
-[reference]
+[schema]
 marker = "§"
-trigger = "$$"
-strict = true
-require_grounding = false
-inline_style = "citation-with-note" # citation-with-note | citation-only
-inline_note_suggested_lines = 1
-inline_note_max_lines = 25
-inline_note_max_columns = 180
-warn_on_suggested = false
-
-[id]
-format = "{kind}-{number}-{slug}" # placeholders: {kind} required; use {number}, {slug}, or both
-section_separator = "."
-section_heading_levels = "strict" # strict | warn | loose
-number_pattern = "\\d+"
+shorthand = "canonical"
+id_format = "{kind}-{number}-{slug}" # placeholders: {kind} required; use {number}, {slug}, or both
 slug_pattern = "[a-z0-9][a-z0-9-]*"
+number_pattern = "\\d+"
+section_separator = "."
+heading_depth = "must" # strict | warn | loose
 
-[[kinds]]
-kind = "GRUND"
-file = "docs/grund.md"
-title = "Why: project motivation"
+[schema.sources]
+languages = ["v1_markdown", "v1_c_family", "v1_go", "v1_python", "v1_ruby", "v1_plain"]
+declarations = "any-comment"
+exclude = ["target/", "node_modules/", ".git/", "dist/", "build/", ".venv/"]
+respect_gitignore = true
 
-[[kinds]]
-kind = "GOAL"
-file = "docs/goals.md"
-title = "Where: project direction and outcomes"
+[schema.sources.extensions]
+md = "v1_markdown"
+rs = "v1_c_family"
+go = "v1_go"
+java = "v1_c_family"
+kt = "v1_c_family"
+ts = "v1_c_family"
+tsx = "v1_c_family"
+js = "v1_c_family"
+py = "v1_python"
+c = "v1_c_family"
+cpp = "v1_c_family"
+swift = "v1_c_family"
+scala = "v1_c_family"
+rb = "v1_ruby"
+php = "v1_c_family"
+cs = "v1_c_family"
+yml = "v1_plain"
+yaml = "v1_plain"
 
-[[kinds]]
-kind = "FS"
-folder = "docs/functional-spec"
-title = "What: behavior, requirements, and constraints"
+[schema.sources.definitions.v1_markdown]
+class = "document"
+comment_prefixes = ["//", "#", ";", "--", "*", "/*"]
+doc_comments = "none"
+docstrings = "off"
 
-[[kinds]]
-kind = "REQ"
-folder = "docs/requirements"
-title = "Laws: standing requirements every change observes"
+[schema.sources.definitions.v1_c_family]
+class = "source"
+comment_prefixes = ["//", "#", ";", "--", "*", "/*"]
+doc_comments = "c-family"
+docstrings = "off"
 
-[[kinds]]
-kind = "AR"
-folder = "docs/architecture"
-title = "How: high-level implementation, structure, and design"
+[schema.sources.definitions.v1_go]
+class = "source"
+comment_prefixes = ["//", "#", ";", "--", "*", "/*"]
+doc_comments = "go"
+docstrings = "off"
 
-[[kinds]]
-kind = "DF"
-folder = "docs/decisions/functional"
-title = "Product behavior decisions and tradeoffs"
+[schema.sources.definitions.v1_python]
+class = "source"
+comment_prefixes = ["//", "#", ";", "--", "*", "/*"]
+doc_comments = "python"
+docstrings = "python"
 
-[[kinds]]
-kind = "DA"
-folder = "docs/decisions/architectural"
-title = "Architecture decisions and tradeoffs"
+[schema.sources.definitions.v1_ruby]
+class = "source"
+comment_prefixes = ["//", "#", ";", "--", "*", "/*"]
+doc_comments = "ruby"
+docstrings = "off"
+
+[schema.sources.definitions.v1_plain]
+class = "source"
+comment_prefixes = ["//", "#", ";", "--", "*", "/*"]
+doc_comments = "none"
+docstrings = "off"
+
+[schema.notes.lines]
+must = 25
+may = 1
+
+[schema.notes.columns]
+must = 180
+
+[schema.notes.text]
+must = true # citation-with-note | citation-only
+
+[schema.kinds.GRUND]
+files = ["docs/grund.md"]
+
+[schema.kinds.GOAL]
+files = ["docs/goals.md"]
+
+[schema.kinds.FS]
+folders = ["docs/functional-spec"]
+
+[schema.kinds.REQ]
+folders = ["docs/requirements"]
+
+[schema.kinds.AR]
+folders = ["docs/architecture"]
+
+[schema.kinds.DF]
+folders = ["docs/decisions/functional"]
+
+[schema.kinds.DA]
+folders = ["docs/decisions/architectural"]
 
 # The two test homes are places, not ID namespaces: a test cites the document
 # whose claim it proves and is never cited back. Each is declared by path in
 # Cargo.toml (subdirectories are not auto-discovered).
-[[kinds]]
-kind = "e2e"
-folder = "tests/e2e"
+[schema.kinds.e2e]
+folders = ["tests/e2e"]
 citable = false
-title = "User scenarios: black-box proof of the spec"
 
-[[kinds]]
-kind = "integration"
-folder = "tests/integration"
+[schema.kinds.integration]
+folders = ["tests/integration"]
 citable = false
-title = "Integration tests: proof that the parts fit as designed"
 
-[[kinds]]
-kind = "RM"
-file = "docs/roadmap.md"
-title = "Planned milestones and sequencing"
+[schema.kinds.RM]
+files = ["docs/roadmap.md"]
 
-[scan]
-# Every `[[kinds]]` home is walked by construction, so `tests/e2e` and
+# Every other kind home is walked by construction, so `tests/e2e` and
 # `tests/integration` are not repeated here.
-include = ["docs", "src", ".github", "assets"]
-exclude = ["target", "node_modules", ".git", "dist", "build", ".venv"]
-extensions = ["md", "rs", "go", "java", "kt", "ts", "tsx", "js", "py", "c", "cpp", "swift", "scala", "rb", "php", "cs", "yml", "yaml"]
-comment_prefixes = ["//", "#", ";", "--", "*", "/*"]
-docstring_python = true
-respect_gitignore = true
-
-[output]
-format = "text" # text | json
-color = "auto" # auto | always | never
-relative_paths = true
-
-[fmt.cross_refs]
-enabled = true
-anchor_format = "github" # github | gitlab | mkdocs | pandoc | none
+[schema.kinds.code]
+folders = ["docs", "src", ".github", "assets"]
 
 # Citation directions (FS-config.3.9): encode which kinds may cite which, with
 # RFC-2119 levels. must/must-not gate `grund check`; should/should-not surface
@@ -100,37 +128,77 @@ anchor_format = "github" # github | gitlab | mkdocs | pandoc | none
 # canonical climbing ruleset, with REQ in the ladder: laws cite reasons, specs
 # and decisions cite the law that binds them; `code` is the reserved
 # pseudo-kind for citation sites outside any kind home.
-[citations]
-default = "may"                # global default level for unlisted pairs
+[rules.citations]
+default = "may" # global default level for unlisted pairs
 
-[citations.GOAL]
+[rules.citations.GOAL]
 should = ["GRUND|GOAL"]
 
-[citations.REQ]
-should = ["GOAL|GRUND"]        # a law climbs straight to reasons
-
-[citations.FS]
+[rules.citations.FS]
 should = ["GOAL|FS", "REQ"]
-must-not = ["AR"]              # the What may never depend on the How
+must-not = ["AR"] # the What may never depend on the How
 
-[citations.AR]
+[rules.citations.REQ]
+should = ["GOAL|GRUND"] # a law climbs straight to reasons
+
+[rules.citations.AR]
 should = ["FS|GOAL", "REQ"]
 
-[citations.DF]
+[rules.citations.DF]
 should = ["FS|GOAL", "REQ"]
 
-[citations.DA]
+[rules.citations.DA]
 should = ["AR|FS", "REQ"]
 
 # A scenario proves the What as a user sees it; one that reads the design is
 # not black-box. `must` reaches every scanned file in the home.
-[citations.e2e]
+[rules.citations.e2e]
 must = ["FS"]
 should-not = ["AR"]
 
 # An integration test proves the How: that the parts fit as designed.
-[citations.integration]
+[rules.citations.integration]
 should = ["AR"]
 
-[citations.code]
+[rules.citations.code]
 should = ["FS|AR|REQ"]
+
+[presentation]
+description = "Project registry and per-project status feed across forges and issue trackers"
+trigger = "$$"
+rules = "root"
+
+[presentation.kinds.GRUND]
+title = "Why: project motivation"
+
+[presentation.kinds.GOAL]
+title = "Where: project direction and outcomes"
+
+[presentation.kinds.FS]
+title = "What: behavior, requirements, and constraints"
+
+[presentation.kinds.REQ]
+title = "Laws: standing requirements every change observes"
+
+[presentation.kinds.AR]
+title = "How: high-level implementation, structure, and design"
+
+[presentation.kinds.DF]
+title = "Product behavior decisions and tradeoffs"
+
+[presentation.kinds.DA]
+title = "Architecture decisions and tradeoffs"
+
+[presentation.kinds.e2e]
+title = "User scenarios: black-box proof of the spec"
+
+[presentation.kinds.integration]
+title = "Integration tests: proof that the parts fit as designed"
+
+[presentation.kinds.RM]
+title = "Planned milestones and sequencing"
+
+[presentation.fmt]
+anchors = "github" # github | gitlab | mkdocs | pandoc | none
+links = "index"
+exclude = []
