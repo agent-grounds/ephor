@@ -8,8 +8,10 @@
 use serde_json::{json, Value};
 
 use super::{
-    Conversation, Issue, Message, Notice, PullRequest, Reason, Review, Role, SubjectKind, Thread,
+    BranchGate, Conversation, Issue, Message, Notice, PullRequest, Reason, Review, Role,
+    SubjectKind, Thread,
 };
+use crate::feed::gate::{Gate, RepoGate};
 use crate::feed::model::{Awaiting, Item, ItemKind, ItemRole, AWAITS, THREAD_AWAITS};
 
 /// Review states that mean the author has work to do. Matched as substrings
@@ -299,6 +301,87 @@ pub fn pull_request_item(forge: &str, project: &str, pr: &PullRequest) -> Item {
     };
     finished_asks_nothing(&mut item);
     item
+}
+
+/// One watched branch's gate as a feed item, while it is red, and nothing once
+/// it is green or nothing on it has reached a verdict yet
+/// (§FS-001-forge-interface.3). One decision for every forge, `github-ci` and
+/// an extension alike, so a branch goes red and resolves the same way on both.
+///
+/// The row is the branch and never a run: its key is `<forge>:<repo>@<branch>`,
+/// so a second red run updates it rather than adding one, and its `raw` marks
+/// the subject a branch, so a branch named `release/2` is never read as pull
+/// request 2 (§FS-007-matters.1). The title names the red workflows and none
+/// of the green ones, so a red *Auto bump* does not read as CI. The red runs
+/// travel in `raw.runs`, which is what `failures` and `restart` name the gate
+/// by (§FS-001-forge-interface.2).
+pub fn branch_gate_item(forge: &str, project: &str, branch: &BranchGate) -> Option<Item> {
+    let red: Vec<&super::Workflow> = branch.red().collect();
+    if red.is_empty() {
+        return None;
+    }
+    let names: Vec<&str> = red.iter().map(|workflow| workflow.name.as_str()).collect();
+    let runs: Vec<&str> = red.iter().map(|workflow| workflow.run.as_str()).collect();
+    // The counts under the red runs where the forge read them; otherwise one
+    // failed entry per red workflow and one passed per green, so the row
+    // carries the red gate every red-gate move is offered on
+    // (§FS-004-quick-actions.4).
+    let gate = match &branch.gate {
+        Some(gate) if gate.is_red() => gate.clone(),
+        _ => Gate {
+            repos: vec![RepoGate {
+                repo: branch.repo.clone(),
+                failed: red.len() as u64,
+                passed: (branch.workflows.len() - red.len()) as u64,
+                running: 0,
+            }],
+            ..Gate::default()
+        },
+    };
+    let mut raw = serde_json::Map::new();
+    raw.insert("repo".to_string(), json!(branch.repo));
+    raw.insert("branch".to_string(), json!(branch.branch));
+    raw.insert("watched_branch".to_string(), json!(true));
+    raw.insert("runs".to_string(), json!(runs));
+    raw.insert(
+        "workflows".to_string(),
+        json!(red
+            .iter()
+            .map(|workflow| json!({
+                "id": workflow.id, "name": workflow.name, "run": workflow.run, "url": workflow.url
+            }))
+            .collect::<Vec<_>>()),
+    );
+    if let Some(sha) = &branch.head_sha {
+        raw.insert("head_sha".to_string(), json!(sha));
+    }
+    raw.insert("gate".to_string(), gate.to_value());
+    Some(Item {
+        id: format!("{forge}:{}@{}", branch.repo, branch.branch),
+        project: project.to_string(),
+        source: forge.to_string(),
+        kind: ItemKind::Ci,
+        role: None,
+        title: match &branch.head_sha {
+            Some(sha) => format!(
+                "{} is red: {} at {}",
+                branch.branch,
+                names.join(", "),
+                sha.chars().take(7).collect::<String>()
+            ),
+            None => format!("{} is red: {}", branch.branch, names.join(", ")),
+        },
+        url: branch
+            .url
+            .clone()
+            .or_else(|| red.iter().find_map(|workflow| workflow.url.clone())),
+        state: None,
+        // A red branch waits on the reader until the first refresh that finds
+        // it green, which reports no row at all (§FS-001-forge-interface.3).
+        needs_response: true,
+        updated_at: branch.updated_at,
+        raw: Value::Object(raw),
+    })
 }
 
 /// Carry what the forge said about who holds a matter and what it is labelled
@@ -1739,5 +1822,79 @@ mod conversation_tests {
         );
         assert_eq!(item.raw["threads"][0][THREAD_AWAITS], json!(true));
         assert!(item.raw["threads"][1].get(THREAD_AWAITS).is_none());
+    }
+}
+
+/// A watched branch is a row while it is red and none once it is green or has
+/// no verdict yet (§FS-001-forge-interface.3), keyed by the branch and marked
+/// one (§FS-007-matters.1).
+#[cfg(test)]
+mod branch_gate_tests {
+    use chrono::{TimeZone, Utc};
+
+    use super::branch_gate_item;
+    use crate::feed::gate::Gate;
+    use crate::feed::model::ItemKind;
+    use crate::forge::{BranchGate, Verdict, Workflow};
+
+    fn workflow(id: &str, name: &str, run: &str, verdict: Verdict) -> Workflow {
+        Workflow {
+            id: id.into(),
+            name: name.into(),
+            run: run.into(),
+            url: Some(format!("https://forge.example/app/runs/{run}")),
+            verdict,
+        }
+    }
+
+    fn branch(workflows: Vec<Workflow>) -> BranchGate {
+        BranchGate {
+            repo: "app".into(),
+            branch: "release/2".into(),
+            url: None,
+            head_sha: Some("aa4484657d3fb2c3e8f459ba715f2d0df5d2e3f6".into()),
+            updated_at: Utc.with_ymd_and_hms(2026, 10, 14, 15, 2, 0).unwrap(),
+            workflows,
+            gate: None,
+        }
+    }
+
+    #[test]
+    fn a_red_branch_is_one_row_naming_its_red_workflows_and_runs() {
+        let item = branch_gate_item(
+            "acmeforge",
+            "demo",
+            &branch(vec![
+                workflow("11", "CI", "901", Verdict::Red),
+                workflow("12", "Docs", "902", Verdict::Green),
+                workflow("14", "Auto bump", "903", Verdict::Red),
+            ]),
+        )
+        .expect("red is a row");
+        assert_eq!(item.id, "acmeforge:app@release/2");
+        assert_eq!(item.kind, ItemKind::Ci);
+        assert!(item.needs_response);
+        assert!(item.title.contains("CI") && item.title.contains("Auto bump"));
+        assert!(!item.title.contains("Docs"), "{}", item.title);
+        assert_eq!(item.title, "release/2 is red: CI, Auto bump at aa44846");
+        assert_eq!(item.raw["runs"], serde_json::json!(["901", "903"]));
+        assert_eq!(item.watched_branch().as_deref(), Some("release/2"));
+        assert_eq!(item.number(), None);
+        assert_eq!(
+            item.url.as_deref(),
+            Some("https://forge.example/app/runs/901")
+        );
+        let gate = Gate::of(&item).expect("the row carries a red gate");
+        assert!(gate.is_red());
+        assert_eq!((gate.failed(), gate.passed()), (2, 1));
+    }
+
+    #[test]
+    fn a_green_or_unjudged_branch_is_no_row() {
+        let green = branch(vec![workflow("11", "CI", "901", Verdict::Green)]);
+        assert!(branch_gate_item("acmeforge", "demo", &green).is_none());
+        // Runs still going or ended without a verdict are passed over before
+        // the report, so a branch where nothing has one reports no workflow.
+        assert!(branch_gate_item("acmeforge", "demo", &branch(Vec::new())).is_none());
     }
 }

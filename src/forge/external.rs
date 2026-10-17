@@ -11,6 +11,7 @@
 //!     ephor-forge-<name> issues         <<< '{"config":…,"tickets":[…],…}'
 //!     ephor-forge-<name> notices        <<< '{"config":…,"tickets":[…],…}'
 //!     ephor-forge-<name> messages       <<< '{"config":…,"project":…,…}'
+//!     ephor-forge-<name> branch-gates   <<< '{"config":…,"project":…,…}'
 //!     ephor-forge-<name> failures       <<< '{"config":…,"repo":…,"number":…}'
 //!     ephor-forge-<name> restart        <<< '{"config":…,"repo":…,"number":…,"scope":…}'
 //!     ephor-forge-<name> react          <<< '{"config":…,"target":…,"emoji":…}'
@@ -24,13 +25,19 @@
 //! purpose: `pull-requests` returns conversation and gate inline, so a refresh
 //! costs two spawns rather than one per pull request. `failures` is the one
 //! call a refresh never makes — it is asked when a reader opens a red gate, so
-//! it may take as long as the forge needs.
+//! it may take as long as the forge needs. A watched branch's gate is asked
+//! as `branch-gates`, of an implementation declaring `branch_gate`, and its
+//! `failures` and `restart` carry `branch` and `runs` where a pull request's
+//! carry `number` (§FS-001-forge-interface.2).
 
 use std::process::Command;
 
 use serde_json::{json, Value};
 
-use super::{Capabilities, Conversation, Forge, Issue, Notice, PullRequest, Request, Restarted};
+use super::{
+    BranchGate, Capabilities, Conversation, Forge, GateSubject, Issue, Notice, PullRequest,
+    Request, Restarted,
+};
 use crate::feed::gate::Failure;
 use crate::feed::provider::{command_exists, run_json_stdin, ProviderError};
 
@@ -38,12 +45,13 @@ use crate::feed::provider::{command_exists, run_json_stdin, ProviderError};
 /// (§FS-001-forge-interface.2). One list, so the published schema can be held
 /// to it: a subcommand added here and not described there is a move a gateway
 /// author has no way to learn about.
-pub const SUBCOMMANDS: [&str; 11] = [
+pub const SUBCOMMANDS: [&str; 12] = [
     "capabilities",
     "pull-requests",
     "issues",
     "notices",
     "messages",
+    "branch-gates",
     "failures",
     "restart",
     "react",
@@ -205,17 +213,20 @@ impl Forge for ExternalForge {
         self.decode("messages", value)
     }
 
+    fn branch_gates(&self, request: &Request) -> Result<Vec<BranchGate>, ProviderError> {
+        let value = self.call("branch-gates", request, json!({}))?;
+        self.decode("branch-gates", value)
+    }
+
     fn failures(
         &self,
         request: &Request,
         repo: &str,
-        number: &str,
+        subject: &GateSubject,
     ) -> Result<Vec<Failure>, ProviderError> {
-        let value = self.call(
-            "failures",
-            request,
-            json!({ "repo": repo, "number": number }),
-        )?;
+        let mut extra = subject.to_wire();
+        extra.insert("repo".to_string(), json!(repo));
+        let value = self.call("failures", request, Value::Object(extra))?;
         self.decode("failures", value)
     }
 
@@ -223,14 +234,13 @@ impl Forge for ExternalForge {
         &self,
         request: &Request,
         repo: &str,
-        number: &str,
+        subject: &GateSubject,
         scope: crate::feed::gate::Scope,
     ) -> Result<Restarted, ProviderError> {
-        let value = self.call(
-            "restart",
-            request,
-            json!({ "repo": repo, "number": number, "scope": scope.name() }),
-        )?;
+        let mut extra = subject.to_wire();
+        extra.insert("repo".to_string(), json!(repo));
+        extra.insert("scope".to_string(), json!(scope.name()));
+        let value = self.call("restart", request, Value::Object(extra))?;
         // A struct deserializes from a sequence as readily as from a map, so
         // an implementation that answered `[]` — the shape every *listing*
         // subcommand returns — would decode into "asked nothing" and read as a

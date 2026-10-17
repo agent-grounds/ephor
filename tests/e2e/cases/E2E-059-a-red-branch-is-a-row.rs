@@ -132,7 +132,6 @@ fn command<'a>(menu: &'a [(String, String)], id: &str) -> &'a str {
 }
 
 #[test]
-#[ignore = "red until #216: github-ci refuses `branches`, so a red main is never a row; implement removes this"]
 fn a_red_main_is_one_row_until_a_green_run_clears_it() {
     let world = World::new();
     watching(&world);

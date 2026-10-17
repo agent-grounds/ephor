@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/agent-grounds/ephor/schemas/forge/v1",
   "title": "ephor out-of-process forge protocol",
-  "description": "The protocol of FS-001-forge-interface.2: an executable named 'ephor-forge-<name>', resolved on PATH, invoked as 'ephor-forge-<name> <subcommand>' with a request as JSON on stdin and the answer as JSON on stdout. Diagnostics go to stderr; a non-zero exit is a failure, never an empty answer (FS-001-forge-interface.6). Subcommands: capabilities, pull-requests, issues, notices, messages, failures, restart, resolve-task, react, reply, settle. An implementation answers the subcommands whose capabilities it declared; ephor never calls an undeclared one. This document defines the request shape and one response shape per subcommand; message, gate, and failure shapes are the answer envelope's $defs, referenced here so the two transports cannot drift (FS-001-forge-interface.2).",
+  "description": "The protocol of FS-001-forge-interface.2: an executable named 'ephor-forge-<name>', resolved on PATH, invoked as 'ephor-forge-<name> <subcommand>' with a request as JSON on stdin and the answer as JSON on stdout. Diagnostics go to stderr; a non-zero exit is a failure, never an empty answer (FS-001-forge-interface.6). Subcommands: capabilities, pull-requests, issues, notices, messages, branch-gates, failures, restart, resolve-task, react, reply, settle. An implementation answers the subcommands whose capabilities it declared; ephor never calls an undeclared one. This document defines the request shape and one response shape per subcommand; message, gate, and failure shapes are the answer envelope's $defs, referenced here so the two transports cannot drift (FS-001-forge-interface.2).",
   "$defs": {
     "request": {
       "type": "object",
@@ -19,7 +19,13 @@
         "user": { "type": "string", "description": "The user's login on this forge, where ephor knows it. Omitted where it does not." },
         "timeout_seconds": { "type": "integer", "minimum": 1 },
         "repo": { "type": "string", "description": "failures and restart: the repository whose gate is being asked about." },
-        "number": { "type": "string", "description": "failures and restart: the pull request whose gate is being asked about." },
+        "number": { "type": "string", "description": "failures and restart: the pull request whose gate is being asked about. Absent where the gate is a watched branch's, which carries 'branch' and 'runs' instead." },
+        "branch": { "type": "string", "description": "failures and restart, of an implementation declaring branch_gate: the watched branch whose gate is being asked about, in place of 'number' (FS-001-forge-interface.2)." },
+        "runs": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "failures and restart, beside 'branch': the red runs the branch's entry in branch-gates reported, so the implementation never looks them up again (FS-001-forge-interface.2)."
+        },
         "scope": {
           "enum": ["failed", "all"],
           "description": "restart only: how much of the gate to run again \u2014 only what is not green, or everything it covers. The caller's word, never the implementation's guess: the two are different asks and one of them spends an hour of a shared machine pool (FS-004-quick-actions.9)."
@@ -64,6 +70,11 @@
           "type": "boolean",
           "default": false,
           "description": "Answers settle: put a conversation away at the network it came from, whatever that means there (a mail thread archived, a chat marked done), given its 'id' in request.target (FS-001-forge-interface.1). Asked only by the reader's own move, never because something was read, marked done or answered. Declare it only while a later message in a settled conversation still reaches messages, so that the matter comes back: if settling takes a conversation out of the view messages reads, read that view too, or do not declare it. A name this set does not have, such as 'archive', is not an offer."
+        },
+        "branch_gate": {
+          "type": "boolean",
+          "default": false,
+          "description": "Answers branch-gates: the gate of each branch the source's configuration names, the periodic build that belongs to no change (FS-001-forge-interface.1). Only an implementation declaring it is asked branch-gates, or handed a branch in failures and restart."
         }
       },
       "description": "The capability set of FS-001-forge-interface.1. ephor degrades to what is declared; a probe that could not run is a failure, not an empty declaration (FS-001-forge-interface.6)."
@@ -213,10 +224,44 @@
       "items": { "$ref": "#/$defs/conversation" },
       "description": "The conversations addressed to the user. An implementation that cannot vouch that this is the venue as it is now fails rather than answering: an empty list is a quiet venue, never a listener that stopped hearing it (FS-001-forge-interface.6)."
     },
+    "branch_gates_response": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["repo", "branch", "updated_at", "workflows"],
+        "properties": {
+          "repo": { "type": "string" },
+          "branch": { "type": "string", "description": "A branch the source's configuration names. ephor keys the row '<provider>:<repo>@<branch>', never by a run (FS-007-matters.1)." },
+          "url": { "type": "string" },
+          "head_sha": { "type": "string", "description": "The commit the red verdict was reached on." },
+          "updated_at": { "type": "string", "format": "date-time" },
+          "workflows": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["id", "name", "run", "verdict"],
+              "properties": {
+                "id": { "type": "string", "description": "The forge's stable identity for the workflow, never its display name: two may share a name and a name may change." },
+                "name": { "type": "string", "description": "What the row calls it, so it says which workflow is red." },
+                "run": { "type": "string", "description": "The run that reached the verdict. A red one is handed back in 'runs'." },
+                "url": { "type": "string" },
+                "verdict": { "enum": ["red", "green"], "description": "The workflow's newest verdict: newest by the run's number or creation time, never by its last update. A run still going, or one that ended without a verdict (cancelled, skipped), is passed over before it is reported, so the verdict before it stands." }
+              }
+            },
+            "description": "The newest verdict of each workflow, from the branch's own runs only: a run whose head is in another repository, or that a pull request's event started, is somebody else's change. Empty is an answer: nothing has reached a verdict yet."
+          },
+          "gate": {
+            "$ref": "https://github.com/agent-grounds/ephor/schemas/answer/v1#/$defs/gate",
+            "description": "The job counts under the red runs, where the implementation read them."
+          }
+        }
+      },
+      "description": "One entry per repository and branch the source watches (FS-001-forge-interface.1). The branch needs the reader while any workflow is red, and stops on the first refresh that finds none red; that is ephor's to decide, so an entry carries verdicts, never 'needs_response' (FS-001-forge-interface.3)."
+    },
     "failures_response": {
       "type": "array",
       "items": { "$ref": "https://github.com/agent-grounds/ephor/schemas/answer/v1#/$defs/failure" },
-      "description": "What failed under the red gate of request.repo/request.number. The empty array is an answer — 'the gate is red and nothing failed', a gate blocked on approvals or unstarted jobs — and ephor then shows the blockers it already has. Asked on demand, never during refresh (FS-001-forge-interface.1)."
+      "description": "What failed under the red gate of request.repo/request.number, or of request.repo/request.branch for a watched branch. The empty array is an answer — 'the gate is red and nothing failed', a gate blocked on approvals or unstarted jobs — and ephor then shows the blockers it already has. Asked on demand, never during refresh (FS-001-forge-interface.1)."
     },
     "restart_response": {
       "type": "object",
@@ -229,7 +274,7 @@
           "description": "What could not be restarted, one line each: an external status somebody else's system wrote, a run too old to re-run. Reported rather than swallowed \u2014 a restart that silently did three quarters of the job is worse than one that says which quarter it skipped (FS-001-forge-interface.1)."
         }
       },
-      "description": "What the restart of request.repo/request.number actually asked for, at request.scope. A gate is minutes from saying anything itself, so this has to stand on its own until then (FS-004-quick-actions.9)."
+      "description": "What the restart of request.repo/request.number (or request.branch and its request.runs) actually asked for, at request.scope. A gate is minutes from saying anything itself, so this has to stand on its own until then (FS-004-quick-actions.9)."
     },
     "resolve_task_response": {
       "type": "object",

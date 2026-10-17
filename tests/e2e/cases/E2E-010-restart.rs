@@ -260,7 +260,6 @@ esac
 /// red runs its row carries cross with the scope, so the forge never looks
 /// them up again (§FS-011-command-line.6, §FS-001-forge-interface.1).
 #[test]
-#[ignore = "red until #216: `ephor restart` has no `--branch` and no forge is asked for a branch's gate; implement removes this"]
 fn a_watched_branch_is_restarted_by_its_branch_and_its_red_runs() {
     let world = World::new();
     world.stub("ephor-forge-acmeforge", BRANCH_FORGE);

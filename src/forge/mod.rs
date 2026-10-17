@@ -88,6 +88,12 @@ pub struct Capabilities {
     /// conversation (§FS-001-forge-interface.1). Without it, `s` is never
     /// offered and `ephor settle` refuses in that source's name.
     pub settle: bool,
+    /// Answers [`Forge::branch_gates`] — the gate of each branch a source is
+    /// told to watch, the periodic build that belongs to no change
+    /// (§FS-001-forge-interface.1). Kept apart from `gate` for the reason
+    /// `review` is: a pull request's gate says how a change is doing, and no
+    /// question about pull requests reaches whether a branch itself is red.
+    pub branch_gate: bool,
 }
 
 /// Both transports distinguish known acceptance from an explicitly unknown
@@ -534,6 +540,121 @@ pub struct Conversation {
     pub threads: Vec<Thread>,
 }
 
+/// What one workflow's newest verdict on a watched branch was
+/// (§FS-001-forge-interface.1). Two words and no third: a run still going, or
+/// one that ended without a verdict, is passed over by the implementation
+/// before it reports, so the verdict before it stands.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Verdict {
+    Red,
+    Green,
+}
+
+/// One workflow on a watched branch, by the forge's stable identity for it and
+/// the run that reached its newest verdict (§FS-001-forge-interface.1).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Workflow {
+    /// The forge's stable identity for the workflow, never its display name:
+    /// two may share a name and a name may change.
+    pub id: String,
+    /// The name the row shows, so it can say which workflow is red.
+    pub name: String,
+    /// The run that reached the verdict, which a move on the row names.
+    pub run: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub url: Option<String>,
+    pub verdict: Verdict,
+}
+
+/// The gate of one watched branch of one repository
+/// (§FS-001-forge-interface.1): the newest verdict of each workflow that ran
+/// on it, from the branch's own runs only. Whether it needs the reader is
+/// policy's ([`policy::branch_gate_item`]).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct BranchGate {
+    pub repo: String,
+    pub branch: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub url: Option<String>,
+    /// The commit the red verdict was reached on, where the forge says.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub head_sha: Option<String>,
+    pub updated_at: DateTime<Utc>,
+    /// Empty is an answer: nothing has reached a verdict on the branch yet.
+    #[serde(default)]
+    pub workflows: Vec<Workflow>,
+    /// The job counts under the red runs, where the implementation read them.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gate: Option<Gate>,
+}
+
+impl BranchGate {
+    /// The workflows whose newest verdict is red.
+    pub fn red(&self) -> impl Iterator<Item = &Workflow> {
+        self.workflows
+            .iter()
+            .filter(|workflow| workflow.verdict == Verdict::Red)
+    }
+}
+
+/// Whose gate `failures` and `restart` are asked about
+/// (§FS-001-forge-interface.2, §FS-011-command-line.6): a pull request by its
+/// number, or a watched branch, which has no number to give, by its name and
+/// the red runs its row carries.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum GateSubject {
+    PullRequest { number: String },
+    Branch { branch: String, runs: Vec<String> },
+}
+
+impl GateSubject {
+    /// The keys the subject adds to a request on the wire: `number`, or
+    /// `branch` and `runs` in its place (§FS-001-forge-interface.2).
+    pub fn to_wire(&self) -> serde_json::Map<String, Value> {
+        let mut wire = serde_json::Map::new();
+        match self {
+            GateSubject::PullRequest { number } => {
+                wire.insert("number".to_string(), Value::from(number.as_str()));
+            }
+            GateSubject::Branch { branch, runs } => {
+                wire.insert("branch".to_string(), Value::from(branch.as_str()));
+                wire.insert("runs".to_string(), Value::from(runs.clone()));
+            }
+        }
+        wire
+    }
+
+    /// The repository and the subject a cached row names, where it names one:
+    /// a watched branch by its mark, with the red runs it carries, and
+    /// anything else by its number (§FS-007-matters.1).
+    pub fn of_item(item: &crate::feed::model::Item) -> Option<(String, GateSubject)> {
+        let repo = item.repo()?;
+        if let Some(branch) = item.watched_branch() {
+            let runs = item
+                .raw
+                .get("runs")
+                .and_then(Value::as_array)
+                .into_iter()
+                .flatten()
+                .filter_map(Value::as_str)
+                .map(String::from)
+                .collect();
+            return Some((repo, GateSubject::Branch { branch, runs }));
+        }
+        let number = item.number()?;
+        Some((repo, GateSubject::PullRequest { number }))
+    }
+
+    /// How the subject reads in a refusal: `app#101`, or `app@main`.
+    pub fn named_in(&self, repo: &str) -> String {
+        match self {
+            GateSubject::PullRequest { number } => format!("{repo}#{number}"),
+            GateSubject::Branch { branch, .. } => format!("{repo}@{branch}"),
+        }
+    }
+}
+
 /// Everything an implementation is told about the request. Out of process this
 /// is the JSON written to the implementation's stdin: its own configuration
 /// block verbatim, plus the context ephor holds.
@@ -611,15 +732,23 @@ pub trait Forge: Send + Sync {
         Ok(Vec::new())
     }
 
-    /// What failed under one pull request's red gate. Asked only when a reader
-    /// asks, so it may be as slow as the forge needs it to be, and it may
-    /// return nothing — a gate blocked on an approval has no failed job to
-    /// show and that is an answer, not an error.
+    /// The gate of each branch the source's configuration names, one entry per
+    /// repository and branch (§FS-001-forge-interface.1). Asked only of an
+    /// implementation declaring `branch_gate`.
+    fn branch_gates(&self, _request: &Request) -> Result<Vec<BranchGate>, ProviderError> {
+        Ok(Vec::new())
+    }
+
+    /// What failed under one red gate, a pull request's or a watched branch's
+    /// (§FS-001-forge-interface.1). Asked only when a reader asks, so it may be
+    /// as slow as the forge needs it to be, and it may return nothing — a gate
+    /// blocked on an approval has no failed job to show and that is an
+    /// answer, not an error.
     fn failures(
         &self,
         _request: &Request,
         _repo: &str,
-        _number: &str,
+        _subject: &GateSubject,
     ) -> Result<Vec<Failure>, ProviderError> {
         Err(ProviderError(format!(
             "{} does not report what failed",
@@ -627,8 +756,8 @@ pub trait Forge: Send + Sync {
         )))
     }
 
-    /// Run a pull request's gate again, at the scope asked for
-    /// (§FS-004-quick-actions.9). The one write here that spends somebody
+    /// Run a pull request's or a watched branch's gate again, at the scope
+    /// asked for (§FS-004-quick-actions.9, §FS-001-forge-interface.1). The one write here that spends somebody
     /// else's machines, so the scope is passed through rather than
     /// interpreted: an implementation that widened *what failed* into
     /// *everything* would be answering a question nobody put.
@@ -636,7 +765,7 @@ pub trait Forge: Send + Sync {
         &self,
         _request: &Request,
         _repo: &str,
-        _number: &str,
+        _subject: &GateSubject,
         _scope: Scope,
     ) -> Result<Restarted, ProviderError> {
         Err(ProviderError(format!(

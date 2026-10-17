@@ -1286,7 +1286,7 @@ your open pull requests, so a red `main` never reaches the feed. With
 
 ```console
 $ ephor feed --kind ci
-● widget  ci  main is red — CI failed at aa44846 (run 38585777400): cargo test (ubuntu-latest)
+  * ci    widget        3d    main is red: CI at aa44846  ✗1  ← needs response
 ```
 
 Red means that a workflow's newest run with a verdict failed. Each workflow is
@@ -1757,7 +1757,10 @@ system wrote, is named rather than silently skipped. On a project whose forge
 is reached through an extension, the same two entries run `ephor restart`
 ([§12.1](#121-every-command)) and the forge answers what it actually asked for.
 On a watched branch's row (§5.1) all three entries name the red runs the row
-carries rather than a pull request, so they never look the runs up again.
+carries rather than a pull request, so they never look the runs up again. On
+GitHub, *restart what failed* re-runs those runs' failed jobs and *restart the
+whole gate* re-runs each red run whole; a workflow that is green on the branch
+is left alone.
 
 Read the row before you press it. Where a forge starts its gate as a whole
 rather than job by job, *restart what failed* is the failing gate **and

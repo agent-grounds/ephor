@@ -803,24 +803,29 @@ pub struct FailuresArgs {
     /// The matter, by its feed id — which is how a reader who just read the
     /// feed names it, rather than by taking it apart into four coordinates
     /// (§FS-011-command-line.6).
-    #[arg(long, conflicts_with_all = ["project", "source", "repo", "number"])]
+    #[arg(long, conflicts_with_all = ["project", "source", "repo", "number", "branch"])]
     pub item: Option<String>,
 
-    /// Project the pull request belongs to.
-    #[arg(long, requires_all = ["source", "repo", "number"])]
+    /// Project the pull request or the watched branch belongs to.
+    #[arg(long, requires_all = ["source", "repo"])]
     pub project: Option<String>,
 
     /// Source that reported it (the provider name).
     #[arg(long)]
     pub source: Option<String>,
 
-    /// Repository the pull request lives in.
+    /// Repository the pull request or the watched branch lives in.
     #[arg(long)]
     pub repo: Option<String>,
 
     /// Pull request number.
-    #[arg(long)]
+    #[arg(long, conflicts_with = "branch")]
     pub number: Option<String>,
+
+    /// A watched branch, which has no number to give, in place of `--number`
+    /// (§FS-011-command-line.6).
+    #[arg(long)]
+    pub branch: Option<String>,
 
     /// Emit the gate and what failed as JSON.
     #[arg(long)]
@@ -836,24 +841,29 @@ pub struct RestartArgs {
     /// The matter, by its feed id — which is how a reader who just read the
     /// feed names it, rather than by taking it apart into four coordinates
     /// (§FS-011-command-line.6).
-    #[arg(long, conflicts_with_all = ["project", "source", "repo", "number"])]
+    #[arg(long, conflicts_with_all = ["project", "source", "repo", "number", "branch"])]
     pub item: Option<String>,
 
-    /// Project the pull request belongs to.
-    #[arg(long, requires_all = ["source", "repo", "number"])]
+    /// Project the pull request or the watched branch belongs to.
+    #[arg(long, requires_all = ["source", "repo"])]
     pub project: Option<String>,
 
     /// Source that reported it (the provider name).
     #[arg(long)]
     pub source: Option<String>,
 
-    /// Repository the pull request lives in.
+    /// Repository the pull request or the watched branch lives in.
     #[arg(long)]
     pub repo: Option<String>,
 
     /// Pull request number.
-    #[arg(long)]
+    #[arg(long, conflicts_with = "branch")]
     pub number: Option<String>,
+
+    /// A watched branch, which has no number to give, in place of `--number`
+    /// (§FS-011-command-line.6).
+    #[arg(long)]
+    pub branch: Option<String>,
 
     /// How much to run again: `failed` (the default — the failing gate and
     /// everything downstream of it) or `all`.

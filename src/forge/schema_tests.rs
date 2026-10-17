@@ -362,7 +362,6 @@ fn every_capability_is_declared_and_every_declared_one_is_read() {
 /// branch's gate where a pull request's carries a number
 /// (§FS-001-forge-interface.1, §FS-001-forge-interface.2).
 #[test]
-#[ignore = "red until #216: the forge schema has no `branch_gate`, `branch-gates` or branch request; implement removes this"]
 fn the_branch_gate_question_is_published() {
     let mut missing = Vec::new();
     if !declared(&definition("capabilities_response")).contains("branch_gate") {
@@ -509,14 +508,14 @@ mod transport {
     use super::{declared, definition, forge, keys};
     use crate::feed::gate::Scope;
     use crate::forge::external::{ExternalForge, SUBCOMMANDS};
-    use crate::forge::{Forge, Request};
+    use crate::forge::{Forge, GateSubject, Request};
 
     const RECORDER: &str = r#"#!/bin/sh
 here=$(dirname "$0")
 echo "$1" >> "$here/calls"
-cat > "$here/$1.json"
+cat > "$here/$(wc -l < "$here/calls" | tr -d ' ').json"
 case "$1" in
-  pull-requests | issues | notices | messages | failures) printf '[]' ;;
+  pull-requests | issues | notices | messages | branch-gates | failures) printf '[]' ;;
   *) printf '{}' ;;
 esac
 "#;
@@ -543,10 +542,20 @@ esac
         forge.issues(&request).expect("issues");
         forge.notices(&request).expect("notices");
         forge.messages(&request).expect("messages");
-        forge.failures(&request, "acme/app", "7").expect("failures");
-        forge
-            .restart(&request, "acme/app", "7", Scope::Failed)
-            .expect("restart");
+        forge.branch_gates(&request).expect("branch-gates");
+        let pull_request = GateSubject::PullRequest { number: "7".into() };
+        let branch = GateSubject::Branch {
+            branch: "main".into(),
+            runs: vec!["901".into()],
+        };
+        for subject in [&pull_request, &branch] {
+            forge
+                .failures(&request, "acme/app", subject)
+                .expect("failures");
+            forge
+                .restart(&request, "acme/app", subject, Scope::Failed)
+                .expect("restart");
+        }
         forge.react(&request, &target, "+1").expect("react");
         forge.resolve_task(&request, &target).expect("resolve-task");
         forge.reply(&request, &target, "on it").expect("reply");
@@ -554,8 +563,9 @@ esac
         fs::read_to_string(dir.join("calls"))
             .expect("the recorder was run")
             .lines()
-            .map(|call| {
-                let sent = fs::read_to_string(dir.join(format!("{call}.json")))
+            .enumerate()
+            .map(|(index, call)| {
+                let sent = fs::read_to_string(dir.join(format!("{}.json", index + 1)))
                     .expect("the recorder kept what it was sent");
                 let sent = serde_json::from_str(&sent).expect("stdin was JSON");
                 (call.to_string(), sent)
