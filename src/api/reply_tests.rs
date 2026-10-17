@@ -48,6 +48,9 @@ else:
     if (root/'unknown').exists():
         print('{{"status":"unknown","note":"Check the channel: delivery unknown"}}')
         sys.exit(0)
+    if (root/'refused').exists():
+        print('{{"status":"refused","note":"descriptor is no longer fresh"}}')
+        sys.exit(0)
     print('{{"status":"accepted"}}')
 "#,
                 root = tmp.path().to_str().unwrap()
@@ -700,4 +703,107 @@ fn eligible_pending_is_not_a_checked_hold_and_refuses_both_choices_and_words() {
         Status::Pending
     );
     assert!(world.calls().is_empty());
+}
+
+/// A refusal is saved as not-sent under the move's lock and answered with the
+/// shared sentence; the draft is neither confirmed nor retired, and nothing
+/// advances (§FS-005-dispatch.13.3).
+#[test]
+fn a_refused_send_is_saved_as_not_sent_and_keeps_its_draft() {
+    let world = World::new();
+    let path = world.draft("Thanks");
+    fs::write(world.tmp.path().join("refused"), "").unwrap();
+    let outcome = world.session.reply(&world.item, None, Sending::Now);
+    assert!(!outcome.ok, "{}", outcome.says);
+    assert!(outcome.says.starts_with(&crate::feed::reply::not_sent(
+        "descriptor is no longer fresh"
+    )));
+    assert!(!outcome.says.contains("Cannot record"), "{}", outcome.says);
+    assert_eq!(world.calls().len(), 1);
+    let store = Store::site(&world.item.id, true).unwrap();
+    let saved = store.read().unwrap().unwrap();
+    let intent = saved.intent.as_ref().unwrap();
+    assert_eq!(intent.status, Status::NotSent);
+    assert_eq!(
+        intent.note.as_deref(),
+        Some("descriptor is no longer fresh")
+    );
+    assert!(saved.accepted.is_empty() && saved.confirmed.is_empty());
+    assert_eq!(fs::read_to_string(&path).unwrap(), "Thanks");
+    assert!(world
+        .session
+        .perform_reply_locked(
+            &world.item,
+            None,
+            Some(Resolution::NotSent),
+            Sending::Now,
+            &store
+        )
+        .unwrap_err()
+        .to_string()
+        .contains("Only a held"));
+    assert_eq!(world.calls().len(), 1);
+}
+
+/// A refusal whose terminal save fails says both the note and the storage
+/// failure and claims no release. Before the rename the retained intent is
+/// still pending and the next move replays it; after it, the next move reads
+/// the ended send it finds (§FS-005-dispatch.13.3).
+#[test]
+fn a_refusal_whose_save_fails_claims_no_release_and_leaves_what_was_retained() {
+    for phase in [
+        SavePhase::Write,
+        SavePhase::FileSync,
+        SavePhase::Rename,
+        SavePhase::DirectorySync,
+    ] {
+        let world = World::new();
+        let path = world.draft("Thanks");
+        let refused = world.tmp.path().join("refused");
+        fs::write(&refused, "").unwrap();
+        let store = Store::site(&world.item.id, true).unwrap();
+        let fault = Fault {
+            store: &store,
+            save: Cell::new(0),
+            at: 2,
+            phase,
+            crash: false,
+        };
+        let err = world
+            .session
+            .perform_reply_locked(&world.item, None, None, Sending::Now, &fault)
+            .unwrap_err()
+            .to_string();
+        assert!(
+            err.starts_with(&crate::feed::reply::not_sent(
+                "descriptor is no longer fresh"
+            )),
+            "{phase:?}: {err}"
+        );
+        assert!(err.contains("injected writer failure"), "{phase:?}: {err}");
+        assert!(!err.contains("Nothing was sent"), "{phase:?}: {err}");
+        assert_eq!(world.calls().len(), 1);
+        let saved = store.read().unwrap().unwrap();
+        assert!(saved.accepted.is_empty() && saved.confirmed.is_empty());
+        assert_eq!(fs::read_to_string(&path).unwrap(), "Thanks");
+        drop(store);
+        fs::remove_file(&refused).unwrap();
+        let restarted = Store::site(&world.item.id, true).unwrap();
+        world
+            .session
+            .perform_reply_locked(&world.item, None, None, Sending::Now, &restarted)
+            .unwrap();
+        let calls = world.calls();
+        assert_eq!(calls.len(), 2);
+        if phase == SavePhase::DirectorySync {
+            // The rename happened: the ended send is read, and the draft goes
+            // out as a new intent rather than a replay.
+            assert_eq!(saved.intent.as_ref().unwrap().status, Status::NotSent);
+            assert_ne!(saved.evidence, restarted.read().unwrap().unwrap().evidence);
+        } else {
+            assert_eq!(saved.intent.as_ref().unwrap().status, Status::Pending);
+            assert_eq!(calls[0], calls[1], "{phase:?}: the saved bytes replay");
+        }
+        assert!(restarted.read().unwrap().unwrap().confirmed.contains(&path));
+    }
 }

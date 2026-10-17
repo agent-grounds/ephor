@@ -4160,6 +4160,16 @@ and suppresses the associated draft; `not-sent` releases the hold for a separate
 send subject to the ordinary checks. A local decision does not resolve a gateway
 ledger. Saved unresolved rows remain addressable when absent from the cached feed.
 
+A carrier that definitely did not deliver answers `refused` with a note, and the
+send ends there rather than waiting. The move fails with *Reply not sent:
+`<note>`* (under `--json`, `ok` is false and `says` carries it), the saved send
+is recorded as not-sent, and the row reads as it does after `--resolve
+not-sent`: the draft is kept, unconfirmed, and nothing advances. Nothing replays
+the ended send; your next send, typed or drafted, is a new one under the
+ordinary binding and freshness checks. A nonzero exit, a timeout or a malformed
+answer is never a refusal, so on a reconciling carrier those still leave the
+send pending for retry ([§FS-005-dispatch.13.3](functional-spec/FS-005-dispatch.md#133-a-send-the-carrier-refused-is-ended-not-held)).
+
 `thread`, its JSON and the screen show the saved position/target, stale reason
 and review, pending prepared words, unknown note and retry versus resolution choices.
 `reply --dry-run` rehearses sending, replay or `--resolve` with the same refusals
@@ -5536,8 +5546,12 @@ does not send replies*, and a dry run refuses it the same way
 It promises durable operation lookup **before** checking descriptor freshness:
 the same descriptor and payload return the earlier known remote acceptance
 without delivering again, while changed payload on a used descriptor refuses.
-Replies return `{"status":"accepted"}` or `{"status":"unknown","note":"…"}`;
-legacy `{}` still means success. Queue admission is insufficient for declaring
+Replies return `{"status":"accepted"}`, `{"status":"unknown","note":"…"}` or
+`{"status":"refused","note":"…"}`; legacy `{}` still means success. Any carrier
+may answer `refused`, with a string note, when it definitely did not deliver: the
+send ends as not sent, and a refused operation does not make its descriptor
+used. An operation whose delivery is unresolved never answers `refused`, and a
+nonzero exit is never one ([§FS-005-dispatch.13.3](functional-spec/FS-005-dispatch.md#133-a-send-the-carrier-refused-is-ended-not-held)). Queue admission is insufficient for declaring
 reconciliation. The request remains `target`/`text` with the original configured
 context: ephor adds no operation field and promises no exactly-once delivery.
 The queue-only [gateway example](../config/chat-gateway.example.sh) leaves this

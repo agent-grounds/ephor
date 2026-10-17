@@ -148,7 +148,8 @@ impl Prepared {
     }
 }
 
-/// Prepare the reply and send it.
+/// Prepare the reply and send it. A refusal fails with its note, never as
+/// success (§FS-005-dispatch.13.3).
 pub fn post(
     target: &ReplyTarget,
     text: &str,
@@ -158,7 +159,15 @@ pub fn post(
     match prepare(target, text, sources, defaults)?.send()? {
         crate::forge::ReplyOutcome::Accepted => Ok(()),
         crate::forge::ReplyOutcome::Unknown { note } => Err(EphorError::Command(note)),
+        crate::forge::ReplyOutcome::Refused { note } => Err(EphorError::Command(not_sent(&note))),
     }
+}
+
+/// The one sentence every surface answers a carrier's definite refusal with:
+/// the send failed, and the carrier's note says why (§FS-005-dispatch.13.3,
+/// §FS-011-command-line.7).
+pub(crate) fn not_sent(note: &str) -> String {
+    format!("Reply not sent: {note}")
 }
 
 #[cfg(test)]

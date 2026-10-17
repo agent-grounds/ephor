@@ -100,3 +100,77 @@ fn real_prepared_inprocess_send_returns_accepted_unknown_and_default_refusal() {
         .contains("does not support"));
     assert!(!DefaultReply.capabilities().unwrap().reply_reconciliation);
 }
+
+/// A refusal is one outcome whichever transport carries it: the in-process
+/// `Refused` and the executable's `{"status":"refused"}` decode alike, and
+/// `post` fails with the shared sentence rather than succeeding
+/// (§FS-001-forge-interface.2, §FS-005-dispatch.13.3).
+#[cfg(unix)]
+#[test]
+fn a_refusal_reaches_the_same_outcome_in_process_and_through_an_executable() {
+    use std::os::unix::fs::PermissionsExt;
+    let note = "descriptor is no longer fresh";
+    let dir = tempfile::tempdir().unwrap();
+    let command = dir.path().join("ephor-forge-refusing");
+    std::fs::write(
+        &command,
+        "#!/bin/sh\n\
+         cat > /dev/null\n\
+         case \"$1\" in\n\
+           capabilities) printf '{\"replies\":true,\"reply_reconciliation\":true}' ;;\n\
+           *) printf '{\"status\":\"refused\",\"note\":\"descriptor is no longer fresh\"}' ;;\n\
+         esac\n",
+    )
+    .unwrap();
+    std::fs::set_permissions(&command, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let request = Request {
+        config: json!({"provider":"refusing"}),
+        project: String::new(),
+        tickets: vec![],
+        user: None,
+        timeout_seconds: 5,
+    };
+    let send = |forge: Box<dyn Forge>| {
+        Prepared {
+            text: "Yes, €100 works.".into(),
+            carrier: Carrier::Forge {
+                forge,
+                request: request.clone(),
+                target: json!({"in_reply_to":"H"}),
+            },
+            reconciliation: true,
+        }
+        .send()
+        .unwrap()
+    };
+    let refused = ReplyOutcome::Refused { note: note.into() };
+    let in_process = send(Box::new(InProcess {
+        outcome: refused.clone(),
+        calls: Arc::new(Mutex::new(vec![])),
+    }));
+    let executable = send(Box::new(crate::forge::external::ExternalForge::new(
+        "refusing",
+        Some(command.to_string_lossy().into_owned()),
+    )));
+    assert_eq!(in_process, refused);
+    assert_eq!(executable, in_process);
+
+    let sources = Sources {
+        project: String::new(),
+        own: Vec::new(),
+        site: vec![json!({ "provider": "refusing", "command": command.to_string_lossy() })],
+    };
+    let target = ReplyTarget::Forge {
+        source: "refusing".into(),
+        target: json!({"in_reply_to":"H"}),
+    };
+    let err = post(
+        &target,
+        "Yes, €100 works.",
+        &sources,
+        &crate::feed::config::Defaults::default(),
+    )
+    .expect_err("a refusal is never reported as success");
+    assert_eq!(err.to_string(), not_sent(note));
+    assert_eq!(err.to_string(), format!("Reply not sent: {note}"));
+}

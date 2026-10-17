@@ -579,7 +579,8 @@ the reply as a file of its own, and nothing posts it: the run writes it, ephor
 reads it back, and the thread screen shows it under the conversation it answers
 with its saved target. New messages and accepted sends stale an unsent draft;
 lost acknowledgements recover the saved send on a reconciling carrier, or hold
-for a checked decision. See [reply recovery](docs/manual.md#812-an-answer-comes-back-as-a-proposal).
+for a checked decision, and a send the carrier definitely refused ends as not
+sent, with its note, so you can write again. See [reply recovery](docs/manual.md#812-an-answer-comes-back-as-a-proposal).
 `p` posts a fresh draft through the same provider a reaction goes through, `e` edits it
 first, and where the channel cannot carry a reply the card still names the file
 you copy from

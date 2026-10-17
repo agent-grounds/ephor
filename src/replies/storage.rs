@@ -135,6 +135,21 @@ impl Record {
         intent.status = Status::NotSent;
         Ok(())
     }
+    /// A definite refusal ends the pending or held send as not-sent with the
+    /// carrier's note, as a checked not-sent would, and leaves every accepted
+    /// generation and confirmed draft as it was (§FS-005-dispatch.13.3).
+    pub fn refuse(&mut self, note: &str) -> Result<()> {
+        let intent = self
+            .intent
+            .as_mut()
+            .ok_or_else(|| error("No saved send was refused"))?;
+        if !intent.unresolved() {
+            return Err(error("This send is already resolved"));
+        }
+        intent.status = Status::NotSent;
+        intent.note = Some(note.into());
+        Ok(())
+    }
 }
 
 /// Fault injection points on the real save seam; callers can refuse each stage

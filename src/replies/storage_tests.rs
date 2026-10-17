@@ -326,3 +326,41 @@ fn readonly_open_and_read_do_not_create_or_write_even_transiently() {
     assert!(take_operations().is_empty());
     assert!(!dir.exists());
 }
+
+/// A refusal ends a pending or held send as not-sent with its note, where a
+/// checked not-sent accepts only a hold, and keeps every earlier generation
+/// and confirmation (§FS-005-dispatch.13.3).
+#[test]
+fn a_refusal_ends_a_pending_send_and_keeps_its_history() {
+    let row = item();
+    let mut record = pending(&row, "first".into(), true);
+    let binding = record.intent.as_ref().unwrap().binding.clone();
+    record.confirm().unwrap();
+    let mut later = pending(&row, "second".into(), true).intent.unwrap();
+    later.binding = binding.clone();
+    record.intent = Some(later);
+    let (accepted, confirmed) = (
+        serde_json::to_value(&record.accepted).unwrap(),
+        record.confirmed.clone(),
+    );
+    assert!(record.release().is_err(), "an eligible pending is not held");
+    record.refuse("descriptor is no longer fresh").unwrap();
+    let intent = record.intent.as_ref().unwrap();
+    assert_eq!(intent.status, Status::NotSent);
+    assert_eq!(
+        intent.note.as_deref(),
+        Some("descriptor is no longer fresh")
+    );
+    assert!(!intent.unresolved());
+    assert_eq!(record.generation(&binding), 1);
+    assert_eq!(serde_json::to_value(&record.accepted).unwrap(), accepted);
+    assert_eq!(record.confirmed, confirmed);
+    assert!(!record.confirmed.contains(Path::new("second")));
+    assert!(record.refuse("again").is_err(), "an ended send stays ended");
+
+    let mut held = pending(&row, "third".into(), false);
+    assert!(held.intent.as_ref().unwrap().held());
+    held.refuse("rejected").unwrap();
+    assert_eq!(held.intent.as_ref().unwrap().status, Status::NotSent);
+    assert!(held.accepted.is_empty() && held.confirmed.is_empty());
+}
