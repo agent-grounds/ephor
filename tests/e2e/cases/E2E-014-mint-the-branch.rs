@@ -1595,7 +1595,6 @@ esac
 /// (§FS-008-attribution.2.1, §FS-005-dispatch.25, the defect
 /// `agent-grounds/ephor#217` reported).
 #[test]
-#[ignore = "red until #217: work lay places an issue in an undeclared checkout its title names; implement removes this"]
 fn an_undeclared_checkout_a_title_names_does_not_take_the_issues_work() {
     let world = watching(Some("fix/issue-{number}"), true);
     let main = world.forest().join("main");

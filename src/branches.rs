@@ -30,29 +30,6 @@ pub struct BranchInfo {
     pub declared: bool,
 }
 
-/// Whether an item is work on this branch: by ticket key, by the branch name
-/// the provider recorded, or by the branch name appearing in the title — the
-/// matter's own word, never its conversation's (§FS-008-attribution.2.1).
-pub fn matches(item: &Item, branch: &BranchInfo) -> bool {
-    // The provider-recorded branch is ground truth and is not a match to be
-    // argued about: the forge said which branch this is on.
-    if item.raw.get("branch").and_then(Value::as_str) == Some(branch.branch.as_str())
-        && !branch.branch.is_empty()
-    {
-        return true;
-    }
-    // Everything else is the one matching engine at its second scope
-    // (§AR-003-attribution.3): the matter's own evidence, the project's
-    // branches as the identity table. [`place`] is what the surfaces ask — it
-    // puts the whole table in front of the engine at once, which is both
-    // cheaper and the engine's own ranking rather than list order.
-    crate::attribution::branch(
-        &evidence(item),
-        &[(branch.branch.clone(), branch.ticket.clone())],
-    )
-    .is_some()
-}
-
 /// Which of a project's branches an item belongs to, by index. The branch the
 /// provider recorded is taken before any that merely resembles it: two branch
 /// names can carry one ticket key — `you/ABC-42` and `you/ABC-42-retry` are
@@ -66,7 +43,11 @@ pub fn matches(item: &Item, branch: &BranchInfo) -> bool {
 /// building an item's evidence per branch is the same answer at N times the
 /// price — and N is now every workspace on disk, not the handful somebody wrote
 /// down.
-pub fn place(item: &Item, branches: &[BranchInfo]) -> Option<usize> {
+///
+/// A title names only a branch the row declares, or the row's `main_branch`
+/// — counted as declared here rather than through [`BranchInfo::declared`],
+/// which also feeds the project's identity (§FS-008-attribution.2.1).
+pub fn place(item: &Item, branches: &[BranchInfo], main_branch: Option<&str>) -> Option<usize> {
     let recorded = item
         .raw
         .get("branch")
@@ -77,9 +58,13 @@ pub fn place(item: &Item, branches: &[BranchInfo]) -> Option<usize> {
             return Some(exact);
         }
     }
-    let table: Vec<(String, Option<String>)> = branches
+    let table: Vec<crate::attribution::BranchKey> = branches
         .iter()
-        .map(|branch| (branch.branch.clone(), branch.ticket.clone()))
+        .map(|branch| crate::attribution::BranchKey {
+            name: branch.branch.clone(),
+            ticket: branch.ticket.clone(),
+            titled: branch.declared || main_branch == Some(branch.branch.as_str()),
+        })
         .collect();
     let chosen = crate::attribution::branch(&evidence(item), &table)?;
     branches.iter().position(|branch| branch.branch == chosen)
@@ -1124,7 +1109,8 @@ impl Placement {
     }
 
     pub fn matched(&self, item: &Item) -> Option<&BranchInfo> {
-        self.branches.get(place(item, &self.branches)?)
+        self.branches
+            .get(place(item, &self.branches, self.main_branch.as_deref())?)
     }
 
     /// Whether `name` is this project's configured main branch — the trunk
@@ -1816,7 +1802,6 @@ mod tests {
     /// (§FS-008-attribution.2.1, the defect `agent-grounds/ephor#217`
     /// reported).
     #[test]
-    #[ignore = "red until #217: an undeclared checkout a title names is the matter's branch; implement removes this"]
     fn an_undeclared_branch_a_title_names_is_no_branch() {
         let tmp = tempfile::tempdir().unwrap();
         let mut placement = placement(tmp.path(), Some("{project_root}/{branch}"));
@@ -1837,7 +1822,15 @@ mod tests {
             "Finish fix/issue-274",
         ] {
             let matter = item(title, json!({}));
-            assert_eq!(place(&matter, &placement.branches), None, "{title}");
+            assert_eq!(
+                place(
+                    &matter,
+                    &placement.branches,
+                    placement.main_branch.as_deref()
+                ),
+                None,
+                "{title}"
+            );
             assert!(placement.matched(&matter).is_none(), "{title}");
             assert_eq!(placement.own_branch(&matter), None, "{title}");
             assert_eq!(placement.branch_name(&matter), None, "{title}");
@@ -1891,7 +1884,6 @@ mod tests {
     /// The same main branch is not named by a word that only contains it
     /// (§FS-008-attribution.2.1).
     #[test]
-    #[ignore = "red until #217: a title word that only contains the main branch's name names it; implement removes this"]
     fn a_word_that_only_contains_the_main_branch_does_not_name_it() {
         let tmp = tempfile::tempdir().unwrap();
         let mut placement = placement(tmp.path(), Some("{project_root}/{branch}"));
