@@ -262,6 +262,10 @@ name = "e2e_058_a_recipe_asked_for_by_name_says_why"
 path = "tests/e2e/cases/E2E-058-a-recipe-asked-for-by-name-says-why.rs"
 
 [[test]]
+name = "e2e_059_a_red_branch_is_a_row"
+path = "tests/e2e/cases/E2E-059-a-red-branch-is-a-row.rs"
+
+[[test]]
 name = "checkout_test"
 path = "tests/integration/checkout_test.rs"
 

@@ -149,8 +149,10 @@ across everything; this is one matter's work screen ([§FS-005-dispatch.4](FS-00
 
 `ephor failures` answers about a matter by its feed id as well as by the four
 coordinates a quick action passes it, and prints the forge's own reasons for
-refusing the merge beside what failed ([§FS-001-forge-interface.1](FS-001-forge-interface.md#1-capabilities)). `ephor
-restart` takes the same id.
+refusing the merge beside what failed ([§FS-001-forge-interface.1](FS-001-forge-interface.md#1-capabilities)). The
+fourth coordinate is `--number` for a pull request and `--branch` for a watched
+branch, which has no number to give. `ephor restart` takes the same id and the
+same coordinates.
 
 ## 7. `--json` is the same answer, not a second one
 

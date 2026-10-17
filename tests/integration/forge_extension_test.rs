@@ -5,6 +5,7 @@
 //! vendor CLI is a complete way to add one.
 
 mod common;
+mod forge_extension_branches;
 
 use std::fs;
 use std::path::Path;

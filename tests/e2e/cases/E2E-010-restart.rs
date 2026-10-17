@@ -226,3 +226,91 @@ fn a_forge_that_does_not_restart_is_asked_for_nothing() {
         .failure()
         .stderr(predicates::str::contains("does not restart a gate"));
 }
+
+/// A forge whose watched `main` is red, with no pull request open. It records
+/// the restart request like the forge above, so the case reads back what
+/// crossed the seam for a branch, which has no number to give.
+const BRANCH_FORGE: &str = r#"#!/usr/bin/env bash
+set -euo pipefail
+request="$(cat)"
+case "${1:?subcommand}" in
+  capabilities)
+    printf '{"pull_requests":true,"branch_gate":true,"failures":true,"restart":true}'
+    ;;
+  branch-gates)
+    printf '%s' '[
+      { "repo": "app", "branch": "main",
+        "url": "https://acme.example/app/tree/main",
+        "head_sha": "aa4484657d3fb2c3e8f459ba715f2d0df5d2e3f6",
+        "updated_at": "2026-10-14T15:02:00Z",
+        "workflows": [
+          { "id": "11", "name": "CI", "run": "901",
+            "url": "https://acme.example/app/runs/901", "verdict": "red" } ] }
+    ]'
+    ;;
+  restart)
+    printf '%s' "$request" > "$ACME_ASKED"
+    printf '{"asked":1,"skipped":[]}'
+    ;;
+  *) printf '[]' ;;
+esac
+"#;
+
+/// A watched branch's gate is restarted by its repository and branch, and the
+/// red runs its row carries cross with the scope, so the forge never looks
+/// them up again (§FS-011-command-line.6, §FS-001-forge-interface.1).
+#[test]
+#[ignore = "red until #216: `ephor restart` has no `--branch` and no forge is asked for a branch's gate; implement removes this"]
+fn a_watched_branch_is_restarted_by_its_branch_and_its_red_runs() {
+    let world = World::new();
+    world.stub("ephor-forge-acmeforge", BRANCH_FORGE);
+    world.configure(serde_json::json!({
+        "projects": { PROJECT: { "providers": [
+            { "provider": "acmeforge", "user": "you", "repos": ["app"], "branches": ["main"] }
+        ] } }
+    }));
+    world.ephor().args(["refresh", PROJECT]).assert().success();
+    let asked = world.path().join("asked.json");
+
+    world
+        .ephor()
+        .env("ACME_ASKED", &asked)
+        .args([
+            "restart",
+            "--project",
+            PROJECT,
+            "--source",
+            "acmeforge",
+            "--repo",
+            "app",
+            "--branch",
+            "main",
+            "--scope",
+            "failed",
+        ])
+        .assert()
+        .success()
+        .stdout(predicates::str::contains("asked 1 job(s) to run again"));
+    let handed: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&asked).expect("the request")).unwrap();
+    assert_eq!(handed["repo"], "app");
+    assert_eq!(handed["branch"], "main");
+    assert_eq!(handed["runs"], serde_json::json!(["901"]));
+    assert_eq!(handed["scope"], "failed");
+    assert!(
+        handed.get("number").is_none(),
+        "a branch has no number: {handed}"
+    );
+
+    // The row's feed id names the same branch.
+    world
+        .ephor()
+        .env("ACME_ASKED", &asked)
+        .args(["restart", "--item", "acmeforge:app@main", "--scope", "all"])
+        .assert()
+        .success();
+    let handed: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&asked).expect("the request")).unwrap();
+    assert_eq!(handed["branch"], "main");
+    assert_eq!(handed["scope"], "all");
+}
