@@ -23,6 +23,10 @@ conversation matched a project but no known subject, an identity synthesized
 for it as a topic. Identity is never guessed from resemblance: two pull
 requests may share a title, and a subject whose identity cannot be
 established is left alone ([§FS-003-feed-categories.5](FS-003-feed-categories.md#5-one-subject-is-one-row-however-many-sources-reported-it)).
+A watched branch's gate, the periodic build, is keyed by its repository and
+branch and never by a run, and its report says it is a branch, so a branch
+named `release/2` is never read as pull request 2
+([§FS-001-forge-interface.1](FS-001-forge-interface.md#1-capabilities)).
 
 ## 2. Same subject, one matter; related subjects, linked matters
 

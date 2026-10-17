@@ -123,18 +123,21 @@ ephor degrades to what is answered rather than failing.
   forbids. A name a source declares that this set does not have, such as
   `archive`, offers nothing.
 - **Gate status** — the job counts (passed, failed, running) for a pull
-  request, per repository the gate covers, since one change may gate across
+  request or for a watched branch (**Branch gate**, below), per repository the
+  gate covers, since one change may gate across
   several repositories at once; and, where the forge reaches a verdict of its
   own, whether the gate blocks the merge and the reasons it gives for that.
   Counts alone cannot say it: a gate whose jobs are all green may still be
   blocked on an approval, on a downstream repository, or on jobs it has not
   started, and a row showing only what passed reads as finished work.
-- **Failures** — for a pull request whose gate is red, what actually failed:
+- **Failures** — for a pull request or a watched branch whose gate is red, what
+  actually failed:
   each failure as the job that produced it, a link to its log, and the error
   text itself where the forge can extract it. Asked on demand rather than
   during a refresh — it is the expensive question, and nobody asks it of a
   green gate.
-- **Restart** — run a pull request's gate again, at a stated scope: everything
+- **Restart** — run a pull request's or a watched branch's gate again, at a
+  stated scope: everything
   it covers, or only what is not green
   ([§FS-004-quick-actions.9](FS-004-quick-actions.md#9-a-gate-is-offered-the-restart-in-two-shapes)).
   The one capability here that spends somebody else's machines, which is why
@@ -150,6 +153,45 @@ ephor degrades to what is answered rather than failing.
   from the gate. What must not happen is that answer arriving as *nothing*. An
   implementation whose forge cannot re-run a check does not declare it, and
   ephor offers nothing rather than a key that fails.
+- **Branch gate** — the gate of a branch a source is told to watch, the
+  periodic build that belongs to no change of its own. It is declared on its
+  own, as `branch_gate`, for the reason **Own review** is kept apart from pull
+  requests: it is a second question of the forge. A pull request's gate says
+  how a change is doing, and a branch's says whether the branch itself is red,
+  which no question about pull requests can reach: a source that asks only
+  about changes reads a red default branch as nothing, and that is the sweep
+  [§GOAL-003-nothing-lost](../goals.md#goal-003-nothing-lost-the-watch-is-trusted-enough-to-retire-the-sweep)
+  wants retired run by hand again. A source names the branches; for each
+  repository it watches and each branch it names, the implementation reports
+  one gate.
+
+  That gate is **the newest verdict of each workflow** that ran on the branch,
+  and red while any of them is red. Judging the branch by its single newest run
+  instead hides a red: one push starts several workflows, and the one that
+  finishes last says nothing about the others. A workflow is named by the
+  forge's stable identity for it, never by its display name, since two may
+  share a name and a name may change. *Newest* is by the run's own order, its
+  number or when it was created, and never by when it last changed: an old red
+  run rerun until it goes green must not clear a newer red one. A run still
+  going, or one that ended without a verdict (cancelled, skipped), is passed
+  over, so the verdict before it stands: it neither raises the branch nor
+  clears it. Which of the forge's own words are red, green or no verdict is the
+  implementation's, since only it knows that vocabulary.
+
+  Only runs **the branch itself made** count. A forge may list a run under the
+  branch's name because that is the name of its head branch: a pull request
+  opened from a fork's own `main`, or a run that pull request then triggered.
+  Each of those is somebody else's change, and a stranger's red pull request
+  must not turn the watched `main` red. So a run counts only where its head is
+  in the watched repository and no pull request's event started it. A
+  scheduled run on the branch counts like a pushed one, because it ran there,
+  and a nightly that goes red is what the watch is for.
+
+  Each red workflow is reported by its name and by the run that reached its
+  verdict, so the row can say which workflow is red and a move on it can name
+  that run. Whether the branch then needs the reader is policy's
+  ([§FS-001-forge-interface.3](FS-001-forge-interface.md#3-policy-lives-above-the-interface-never-in-an-implementation)), and what the question costs is bounded
+  by [§FS-001-forge-interface.8.4](FS-001-forge-interface.md#84-a-watched-branch-is-one-listing-and-a-red-one-a-listing-more).
 - **Issues by role** — the ones the user opened, and the ones they are engaged
   in without having opened them. Each is a ticket by key, with title, url,
   state as the forge spells it, last-updated time, and its comments in the same
@@ -278,6 +320,17 @@ Rust's typing; because Rust has no stable plugin ABI, an in-process
 implementation outside this repository means depending on ephor as a library
 and building a binary that registers it — not a dynamically loaded object.
 
+Out of process, **Branch gate** is the optional `branch-gates` subcommand. It is
+handed the request with the source's configuration as written, the branches it
+names included, and answers one entry per repository and branch. It is run only
+for an implementation whose `capabilities` declared `branch_gate`; one that did
+not is never asked it, and is never handed a branch. Where it did, `failures`
+and `restart` may name a watched branch in place of a pull request: the request
+carries `branch`, and the red runs the entry reported as `runs`, where it would
+otherwise carry `number`. An implementation that declares nothing new is asked
+exactly what it was asked before
+([§REQ-001-boundary.1](../requirements/REQ-001-boundary.md#1-the-anatomy)).
+
 For the executable transport, a source's `command`, when supplied, is one
 literal executable name or path. It is neither a shell command nor an argv
 array: ephor appends the protocol subcommand as one argument, without splitting
@@ -321,7 +374,9 @@ no new operation field is required, and descriptors are handed back verbatim.
 
 An implementation answers questions about a forge. It does not decide what the
 answers mean. Whether a citation was answered, whether an item needs a
-response, which reported reason puts the user on which side of a pull request,
+response, whether a watched branch does (it does while its gate is red, and
+stops on the first refresh that finds it green), which reported reason puts the
+user on which side of a pull request,
 which of two reports of the same subject the reader sees, how threads and gate
 counts roll up, how items match registry branches, and what counts as unread
 are ephor's, applied identically to every implementation — so the feed stays
@@ -492,6 +547,20 @@ direction that punishes exactly the busiest reader.
 
 None of this licenses asking for more than is needed: the cheap form of a
 question is still only asked because the answer is read.
+
+### 8.4 A watched branch is one listing, and a red one a listing more
+
+A watched branch ([§FS-001-forge-interface.1](FS-001-forge-interface.md#1-capabilities)) costs one request per repository
+and branch per refresh: one listing of the branch's newest runs, a hundred at
+most, which carries every workflow's verdict at once. A red verdict costs one
+request more, for the jobs under the run that reached it, which is where the
+row's counts and its failed jobs come from. A green branch costs nothing beyond
+its listing. Both are asked on the ordinary meter, never on search
+([§FS-001-forge-interface.8.2](FS-001-forge-interface.md#82-the-scarce-meter-is-the-last-resort)), and in the form that is one request: a
+convenience form that spends a second request naming the workflows, or a
+third one on the run, is the same answer bought twice. They are asked no more
+often than the source's `ttl_seconds` allows, and a source that names no branch
+asks none of it.
 
 ## 9. A source is bound to one project or to the site, and every move goes back to the source
 

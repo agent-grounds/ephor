@@ -400,7 +400,7 @@ ephor refresh [PROJECT ...] [--quiet]      # fetch into the cache
 ephor status [PROJECT] [--refresh|--cached] [--max-age SECS] [--json] [--check]
 ephor feed [--project P ...] [--unread] [--kind pr|ci|issue|task|message|status] [--json]
 ephor mark-read PROJECT | --all | --id ITEM_ID [--kind K]   # --all: every watched project
-ephor failures --project P --source S --repo R --number N
+ephor failures --item ID | --project P --source S --repo R (--number N | --branch B) [--json]
 ephor rebase [--checkout DIR] [--project P] [--onto BRANCH | --upstream] [--item ID] [--dispatch] [--report PATH]
 ephor checkout [--project P] [--branch B] [--item ID] [--from BRANCH] [--report PATH]
 ephor capabilities [PROJECT] [--json]      # what a project can do, rung by rung
@@ -1190,7 +1190,7 @@ A provider block always has `provider`; the rest is its own.
 | Provider | Source | Needs a response when |
 |---|---|---|
 | `github-prs` | one GraphQL search per role in one request: authored, and with `reviews` the ones you are in a thread on, cited in, asked to review, or assigned | authored: changes requested; reviewing: a review asked of you, or an unanswered citation |
-| `github-ci` | `gh pr list` + `gh pr checks` per open PR | a check is failing |
+| `github-ci` | `gh pr list` + `gh pr checks` per open PR; with `branches`, one `gh api …/actions/runs` per branch (§5.1) | a check is failing, or a watched branch's newest verdict is red |
 | `github-issues` | one GraphQL search per question in one request: by role, plus comments; with `labels`, the open issues carrying them whoever is in them | a comment awaits your reply |
 | `github-notifications` | `GET /notifications` — everything GitHub says is directed at you (§5.2) | GitHub's reason is a mention, a review request, an assignment, a broken gate, or an advisory |
 | `github-threads` | GraphQL unresolved review threads | the last comment is not yours |
@@ -1226,7 +1226,12 @@ per-project search overruns on a registry of a handful of projects. What is
 still per-item is the conversation on a pull request or issue you did not open,
 and `gates` (one `gh pr checks` per unfinished pull request); both are answered
 from the roomy meter, and `ttl_seconds` is what decides how often either is
-asked at all.
+asked at all. A `github-ci` source with `branches` adds one REST request per
+repository and branch, `gh api "repos/<r>/actions/runs?branch=<b>&per_page=100"`,
+and one `gh api repos/<r>/actions/runs/<id>/jobs` per red run; a green branch
+costs its listing and nothing else. It never asks `gh run list` or
+`gh run view`, which spend two and three requests on the same answer
+([§FS-001-forge-interface.8.4](functional-spec/FS-001-forge-interface.md#84-a-watched-branch-is-one-listing-and-a-red-one-a-listing-more)).
 
 ### 5.1 Options
 
@@ -1239,7 +1244,10 @@ asked at all.
   "limit": 30,                  // per search, per role
   "host": "github.example.com" } // GitHub Enterprise; sets GH_HOST
 
-{ "provider": "github-ci", "repos": ["acme/widget"], "host": null }
+{ "provider": "github-ci",
+  "repos": ["acme/widget"],
+  "branches": ["main"],         // watch these branches' runs too; absent watches only PRs
+  "host": null }
 
 { "provider": "github-issues",
   "repos": [],                  // empty searches the whole forge; open requires repos
@@ -1269,6 +1277,30 @@ asked at all.
   "format": "text",             // "answer", or the legacy "text" / "json"
   "cwd": "{project_root}/app" } // defaults to the project root
 ```
+
+**Watching a branch.** Without `branches`, `github-ci` reads only the gates of
+your open pull requests, so a red `main` never reaches the feed. With
+`"branches": ["main"]` it also reads each named branch on every repository in
+`repos`, and the feed holds one `ci` row per branch while it is red, keyed
+`github-ci:<repo>@<branch>`:
+
+```console
+$ ephor feed --kind ci
+● widget  ci  main is red — CI failed at aa44846 (run 38585777400): cargo test (ubuntu-latest)
+```
+
+Red means that a workflow's newest run with a verdict failed. Each workflow is
+judged on its own, so a red `ci.yml` is not hidden by a green `docs.yml` that
+finished later. A run still going, or one cancelled or skipped, leaves the
+verdict before it standing. Only the branch's own runs count: a pull request
+opened from a fork's own `main` is listed under `main` too, and it does not turn
+yours red. Scheduled runs count, so a weekly job that ends red raises the row,
+and the title names that workflow. A newer red run updates the same row, and the
+first refresh that finds the workflow green again removes it. The row offers
+the usual `✗ see the CI failures`, `⟳ restart what failed` and `⟳ restart the
+whole gate` (§7.1), each naming the red runs the row carries
+([§DF-007-a-red-branch-is-a-row](decisions/functional/DF-007-a-red-branch-is-a-row.md#df-007-a-red-branch-is-a-row-a-watched-branchs-gate-is-a-row-of-its-own-keyed-by-the-branch-and-judged-workflow-by-workflow)).
+An older ephor refuses a source with `branches` by name rather than ignoring it.
 
 **Issue question completeness.** The authored search, the participating
 search, the opt-in open search, and every uncovered followed-label search are
@@ -1724,6 +1756,8 @@ and a check that is not a workflow run, an external status somebody else's
 system wrote, is named rather than silently skipped. On a project whose forge
 is reached through an extension, the same two entries run `ephor restart`
 ([§12.1](#121-every-command)) and the forge answers what it actually asked for.
+On a watched branch's row (§5.1) all three entries name the red runs the row
+carries rather than a pull request, so they never look the runs up again.
 
 Read the row before you press it. Where a forge starts its gate as a whole
 rather than job by job, *restart what failed* is the failing gate **and
@@ -5497,8 +5531,11 @@ ephor-forge-<name> pull-requests  <<< '{"config":…,"tickets":[…],…}'
 ephor-forge-<name> issues         <<< '{"config":…,"tickets":[…],…}'
 ephor-forge-<name> notices        <<< '{"config":…,"project":…,…}'
 ephor-forge-<name> messages       <<< '{"config":…,"project":…,…}'
+ephor-forge-<name> branch-gates   <<< '{"config":{…,"branches":[…]},"project":…,…}'
 ephor-forge-<name> failures       <<< '{"config":…,"repo":…,"number":…}'
+ephor-forge-<name> failures       <<< '{"config":…,"repo":…,"branch":…,"runs":[…]}'
 ephor-forge-<name> restart        <<< '{"config":…,"repo":…,"number":…,"scope":"failed"|"all"}'
+ephor-forge-<name> restart        <<< '{"config":…,"repo":…,"branch":…,"runs":[…],"scope":…}'
 ephor-forge-<name> react          <<< '{"config":…,"target":…,"emoji":…}'
 ephor-forge-<name> resolve-task   <<< '{"config":…,"target":…}'
 ephor-forge-<name> reply          <<< '{"config":…,"target":…,"text":…}'
@@ -5529,6 +5566,34 @@ Where a gate is started as a whole and executed elsewhere, **omit `asked`** and
 answer `{"note": "…"}` in the forge's own words: reporting a zero there would
 read as *nothing needed restarting*, which is the one thing it must not say. A
 request the forge declines is a non-zero exit, never an empty answer.
+
+`branch-gates`, declared as `"branch_gate": true`, is the gate of each branch
+the source names: one entry per repository and branch, holding the newest
+verdict of every workflow that ran there
+([§FS-001-forge-interface.1](functional-spec/FS-001-forge-interface.md#1-capabilities)). Name a workflow by your
+forge's stable id for it, never by its display name. Take *newest* by run
+number or creation time, never by the last update. Pass over a run still going
+or one that ended without a verdict, and count only runs the branch itself made,
+not a pull request's:
+
+```json
+[ { "repo": "app", "branch": "main",
+    "url": "https://forge.example/app/tree/main",
+    "head_sha": "aa4484657d3fb2c3e8f459ba715f2d0df5d2e3f6",
+    "updated_at": "2026-10-14T15:40:00Z",
+    "workflows": [
+      { "id": "11", "name": "CI",   "run": "901", "url": "https://forge.example/runs/901", "verdict": "red" },
+      { "id": "12", "name": "Docs", "run": "902", "url": "https://forge.example/runs/902", "verdict": "green" } ],
+    "gate": { "repos": [ { "repo": "app", "passed": 7, "failed": 1, "running": 0 } ] } } ]
+```
+
+`verdict` is `red` or `green`; `url`, `head_sha` and `gate` may be left out.
+Whether the branch then needs you is ephor's: a row `<name>:<repo>@<branch>`
+while any workflow is red, and nothing once none is. On that row `failures` and
+`restart` carry `branch` and the red workflows' `runs` where a pull request's
+carry `number`, and only to an extension that declared `branch_gate`. One that
+did not is never asked `branch-gates` and never handed a branch, whatever its
+block says about branches.
 
 `react`, `resolve-task` and `reply` receive back, verbatim, the `react` and
 `task` descriptors the extension put on a message and the `reply` descriptor it
@@ -5667,7 +5732,7 @@ stalled on *"required outputs are missing"* no matter how well it reasons.
 ```
 ephor list | validate | ensure-agents | update            # the registry
 ephor refresh | status | feed | mark-read | failures      # the feed
-ephor restart --scope failed|all                          # run a gate again
+ephor restart --scope failed|all [--item ID|--branch B]   # run a gate again
 ephor rebase [--org O | --workspace W | --tag T] [--act]  # one checkout, or a sweep
 ephor clean [--org O | --workspace W | --tag T] [--act]   # each idle checkout's clean verb
 ephor checkout | branches                                 # the checkout

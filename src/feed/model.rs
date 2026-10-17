@@ -757,4 +757,46 @@ mod tests {
         let all = [said("dana"), said("dana")];
         assert_eq!(newest_turn(&all).len(), 2);
     }
+
+    fn ci(id: &str, raw: Value) -> Item {
+        Item {
+            id: id.to_string(),
+            source: id.split(':').next().unwrap_or_default().to_string(),
+            kind: ItemKind::Ci,
+            raw,
+            ..item(None, Utc::now())
+        }
+    }
+
+    /// A watched branch has no number, whatever its name ends in: its row says
+    /// it is a branch, so `release/2` is never read as pull request 2
+    /// (§FS-007-matters.1, §FS-011-command-line.6).
+    #[test]
+    #[ignore = "red until #216: `number()` reads a branch's id as a pull request's; implement removes this"]
+    fn a_watched_branch_names_no_number_however_its_name_ends() {
+        use serde_json::json;
+        let branch = ci(
+            "github-ci:acme/widget@release/2",
+            json!({ "repo": "acme/widget", "branch": "release/2", "watched_branch": true }),
+        );
+        assert_eq!(branch.number(), None);
+    }
+
+    /// A pull request's row keeps its number though it carries a branch too:
+    /// the mark is what says a row is a branch, not the `branch` field.
+    /// Passes today, and must keep passing.
+    #[test]
+    fn a_pull_request_keeps_its_number_beside_its_branch() {
+        use serde_json::json;
+        let github = ci(
+            "github-prs:acme/widget#42",
+            json!({ "repo": "acme/widget", "number": 42, "branch": "main" }),
+        );
+        assert_eq!(github.number().as_deref(), Some("42"));
+        let forge = ci(
+            "acmeforge:app/101",
+            json!({ "repo": "app", "number": "101", "branch": "fix/7" }),
+        );
+        assert_eq!(forge.number().as_deref(), Some("101"));
+    }
 }

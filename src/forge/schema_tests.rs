@@ -357,6 +357,57 @@ fn every_capability_is_declared_and_every_declared_one_is_read() {
     );
 }
 
+/// The branch-gate question is one an author can find: the capability, the
+/// subcommand and its answer, and the `branch` and `runs` that name a watched
+/// branch's gate where a pull request's carries a number
+/// (§FS-001-forge-interface.1, §FS-001-forge-interface.2).
+#[test]
+#[ignore = "red until #216: the forge schema has no `branch_gate`, `branch-gates` or branch request; implement removes this"]
+fn the_branch_gate_question_is_published() {
+    let mut missing = Vec::new();
+    if !declared(&definition("capabilities_response")).contains("branch_gate") {
+        missing.push("`branch_gate` in `$defs/capabilities_response`".to_string());
+    }
+    if forge()["$defs"].get("branch_gates_response").is_none() {
+        missing.push("`$defs/branch_gates_response`".to_string());
+    }
+    let request = declared(&definition("request"));
+    for key in ["branch", "runs"] {
+        if !request.contains(key) {
+            missing.push(format!("`{key}` in `$defs/request`"));
+        }
+    }
+    if !crate::forge::external::SUBCOMMANDS.contains(&"branch-gates") {
+        missing.push("`branch-gates` among the transport's subcommands".to_string());
+    }
+    assert!(missing.is_empty(), "not published: {missing:?}");
+
+    let answer = json!([{
+        "repo": "acme/widget",
+        "branch": "main",
+        "url": "https://github.com/acme/widget/tree/main",
+        "head_sha": "aa4484657d3fb2c3e8f459ba715f2d0df5d2e3f6",
+        "updated_at": "2026-10-14T15:02:00Z",
+        "workflows": [
+            { "id": "11", "name": "CI", "run": "901",
+              "url": "https://github.com/acme/widget/actions/runs/901", "verdict": "red" },
+            { "id": "12", "name": "Docs", "run": "902", "verdict": "green" }
+        ]
+    }]);
+    assert_eq!(
+        violations(&answer, "branch_gates_response"),
+        Vec::<String>::new()
+    );
+    let unjudged = json!([{
+        "repo": "acme/widget", "branch": "main", "updated_at": "2026-10-14T15:02:00Z",
+        "workflows": [ { "id": "11", "name": "CI", "run": "901", "verdict": "pending" } ]
+    }]);
+    assert!(
+        !violations(&unjudged, "branch_gates_response").is_empty(),
+        "a verdict is red or green; a run without one is passed over before it is reported"
+    );
+}
+
 /// A pull request with every field set says nothing the schema does not, and
 /// the schema promises nothing it never says.
 #[test]

@@ -50,7 +50,8 @@ the same thing and silently dropping either one is the failure that matters.
 
 ## 4. Failing CI answers what failed and why
 
-The quick action on a pull request whose gate is red shows what failed: the
+The quick action on a matter whose gate is red, a pull request's or a watched
+branch's ([§FS-001-forge-interface.1](FS-001-forge-interface.md#1-capabilities)), shows what failed: the
 check list as the forge reports it — which failed, which passed, which are
 still running — and then the failures themselves, each with its log, paged.
 That is the whole question a red gate asks, and reaching it by hand is several
