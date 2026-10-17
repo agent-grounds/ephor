@@ -92,7 +92,6 @@ fn released(world: &MailWorld, note: &str) {
 }
 
 #[test]
-#[ignore = "red until #215: a typed refusal reads as an invalid outcome and the send stays pending; implement removes this"]
 fn a_refused_typed_send_is_released_with_its_note_and_other_words_go_out_once() {
     for machine in [false, true] {
         let world = MailWorld::new(true);
@@ -118,7 +117,6 @@ fn a_refused_typed_send_is_released_with_its_note_and_other_words_go_out_once() 
 }
 
 #[test]
-#[ignore = "red until #215: a typed refusal reads as an invalid outcome and the send stays pending; implement removes this"]
 fn a_refused_drafted_send_keeps_its_draft_unposted_and_its_thread_unadvanced() {
     for machine in [false, true] {
         let world = MailWorld::new(true);
@@ -149,7 +147,6 @@ fn a_refused_drafted_send_keeps_its_draft_unposted_and_its_thread_unadvanced() {
 }
 
 #[test]
-#[ignore = "red until #215: a refused replay reads as an invalid outcome and the send stays pending; implement removes this"]
 fn a_replay_the_upgraded_carrier_refuses_sends_the_saved_bytes_and_ends_the_send() {
     for legacy in [false, true] {
         let world = MailWorld::new(true);
@@ -192,7 +189,6 @@ fn a_replay_the_upgraded_carrier_refuses_sends_the_saved_bytes_and_ends_the_send
 }
 
 #[test]
-#[ignore = "red until #215: a typed refusal reads as an invalid outcome and the send stays pending; implement removes this"]
 fn after_release_a_reply_without_words_never_replays_the_ended_send() {
     // Typed, with no draft: there is nothing to send.
     let world = MailWorld::new(true);
@@ -231,7 +227,6 @@ fn after_release_a_reply_without_words_never_replays_the_ended_send() {
 }
 
 #[test]
-#[ignore = "red until #215: a typed refusal reads as an invalid outcome and the send stays pending; implement removes this"]
 fn a_refused_descriptor_is_not_used_so_words_there_go_out_once() {
     let others = "Yes, €100 works, and I can start on Monday.";
     for words in [FIRST, others] {

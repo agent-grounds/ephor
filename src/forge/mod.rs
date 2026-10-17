@@ -91,13 +91,18 @@ pub struct Capabilities {
 }
 
 /// Both transports distinguish known acceptance from an explicitly unknown
-/// delivery (§FS-001-forge-interface.2). An omitted status is legacy success.
+/// delivery and from a definite refusal, whose note is required
+/// (§FS-001-forge-interface.2, §FS-005-dispatch.13.3). An omitted status is
+/// legacy success.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "status", rename_all = "lowercase")]
 pub enum ReplyOutcome {
     #[default]
     Accepted,
     Unknown {
+        note: String,
+    },
+    Refused {
         note: String,
     },
 }

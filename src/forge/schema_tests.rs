@@ -183,7 +183,6 @@ fn reply_outcomes_validate_and_legacy_empty_object_decodes_as_acceptance() {
 /// note is malformed rather than read as a refusal
 /// (§FS-001-forge-interface.2, §FS-005-dispatch.13.3).
 #[test]
-#[ignore = "red until #215: `refused` is not a reply outcome yet; implement removes this"]
 fn a_refused_reply_outcome_decodes_only_with_a_string_note() {
     use super::ReplyOutcome;
     let wire = json!({"status":"refused","note":"descriptor is no longer fresh"});

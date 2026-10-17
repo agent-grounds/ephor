@@ -320,7 +320,10 @@ impl Session {
 }
 
 /// Carrier errors retain durable pending; explicit unknown becomes held. Known
-/// acceptance is synced before retiring its proposal (§FS-005-dispatch.13).
+/// acceptance is synced before retiring its proposal (§FS-005-dispatch.13). A
+/// definite refusal, to a first call or a replay, is saved as not-sent under
+/// the row lock before release is reported, and the move fails with its note;
+/// no draft is confirmed and no generation advances (§FS-005-dispatch.13.3).
 fn finish(
     outcome: Result<ReplyOutcome>,
     store: &dyn ReplyStorage,
@@ -356,6 +359,21 @@ fn finish(
                 diagnostic.push_str(&format!(". Cannot replace saved outcome: {err}"));
             }
             Err(error(diagnostic))
+        }
+        ReplyOutcome::Refused { note } => {
+            record.refuse(&note)?;
+            // A failed save claims no release: what was retained is read by
+            // the next move (§FS-005-dispatch.13.3).
+            Err(error(match store.save(record) {
+                Ok(()) => format!(
+                    "{}. Nothing was sent; a new send goes through the ordinary checks",
+                    crate::feed::reply::not_sent(&note)
+                ),
+                Err(err) => format!(
+                    "{}. Cannot record that the send ended: {err}; the saved send may still be pending",
+                    crate::feed::reply::not_sent(&note)
+                ),
+            }))
         }
     }
 }

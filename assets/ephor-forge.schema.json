@@ -240,11 +240,12 @@
       "description": "Empty object on success."
     },
     "reply_response": {
-      "description": "Both transports return known acceptance or explicitly unknown delivery (FS-001-forge-interface.2). Legacy empty-object success remains accepted; unknown is held for a checked resolution (FS-005-dispatch.13).",
+      "description": "Both transports return known acceptance, explicitly unknown delivery, or a definite refusal (FS-001-forge-interface.2). Legacy empty-object success remains accepted; unknown is held for a checked resolution (FS-005-dispatch.13); refused ends the send as not sent, with its note (FS-005-dispatch.13.3).",
       "oneOf": [
         { "type": "object", "maxProperties": 0 },
         { "type": "object", "required": ["status"], "properties": { "status": { "const": "accepted" } } },
-        { "type": "object", "required": ["status", "note"], "properties": { "status": { "const": "unknown" }, "note": { "type": "string" } } }
+        { "type": "object", "required": ["status", "note"], "properties": { "status": { "const": "unknown" }, "note": { "type": "string" } } },
+        { "type": "object", "required": ["status", "note"], "properties": { "status": { "const": "refused" }, "note": { "type": "string" } } }
       ]
     },
     "settle_response": {
