@@ -1443,8 +1443,9 @@ ephor tui        # alias: ephor inbox
 ```
 
 Everything is organized per organization → project → category → branch. Items
-nest under the branch they belong to, matched by branch name first and by
-ticket key after, with a *(not linked to a branch)* group for the rest.
+nest under the branch they belong to: the branch the forge recorded for them
+first, then a branch whose ticket key they carry, then a declared branch their
+title names whole, with a *(not linked to a branch)* group for the rest.
 
 A project's branches are the ones its registry row names **and** the ones it
 has a workspace for on disk. You do not have to write a branch down to see its
@@ -1452,7 +1453,11 @@ work gathered under it: check it out — with `ephor checkout` or by hand — an
 the next read picks it up, named for the directory it sits in. A branch the row
 names keeps the row's word on it (its ticket, whether it is `active`); a branch
 only the disk knows is shown as inactive and cannot widen what the project
-claims as its own ([§FS-008-attribution.2](functional-spec/FS-008-attribution.md#2-two-stages-one-engine)).
+claims as its own ([§FS-008-attribution.2](functional-spec/FS-008-attribution.md#2-two-stages-one-engine)). It gathers the pull requests on
+it and the issues carrying its ticket key, but not issues whose title merely
+mentions its name — an old `sweep` worktree does not collect "Nightly link
+sweep: …". Declare it in the row to have titles count
+([§FS-008-attribution.2.1](functional-spec/FS-008-attribution.md#21-a-matters-branch-is-one-it-names-never-one-its-conversation-quotes)).
 
 ### 6.1 The categories
 

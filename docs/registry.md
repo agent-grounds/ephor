@@ -55,7 +55,10 @@ Two branch lists, which the TUI shows separately:
   whether it is `active`, an optional `ticket` key, and a `display_name`. When
   `ticket` is absent it is inferred from the branch name: the first
   `UPPERCASE-digits` pair, so `you/ABC-42-retry` yields `ABC-42`. The ticket is
-  what links a feed item to a branch, alongside the branch name itself.
+  what links a feed item to a branch, alongside the branch name itself. The
+  name only counts for a branch the row lists, or its `main_branch`, and only
+  when an item's title spells it whole: a checkout found on disk that the row
+  does not list gathers items by ticket key and forge-recorded branch alone.
 
 `required_branch_ids` lists branch ids that must exist; `ephor validate` fails
 when one is missing. This is how a project states "these release lines are not

@@ -651,4 +651,44 @@ mod tests {
             }
         );
     }
+
+    /// The branch a title places a matter on, with one branch in the table
+    /// and no ticket key: only the branch-name rule can answer.
+    fn named_by(name: &str, title: &str) -> Option<String> {
+        let said = Evidence {
+            words: title.to_string(),
+            ..Evidence::default()
+        };
+        branch(&said, &[(name.to_string(), None)])
+    }
+
+    /// A title names a branch only where it spells the name whole: neither
+    /// neighbour is a letter, a digit, `-`, `_`, `/`, or a `.` before a letter
+    /// or digit (§FS-008-attribution.2.1, agent-grounds/ephor#217).
+    #[test]
+    #[ignore = "red until #217: a title word that only contains a branch's name places the matter on it; implement removes this"]
+    fn a_title_names_a_branch_only_whole() {
+        let sweep = Some("sweep".to_string());
+        assert_eq!(
+            named_by("sweep", "Nightly link sweep: external links failing"),
+            sweep
+        );
+        assert_eq!(named_by("sweep", "sweep"), sweep);
+        assert_eq!(
+            named_by("sweep", "Cache sweeping drops pinned entries"),
+            None
+        );
+        assert_eq!(named_by("sweep", "re-sweep the cache"), None);
+        assert_eq!(named_by("fix", "Reject the prefix"), None);
+        assert_eq!(named_by("fix", "fix/issue-9 regressed"), None);
+        assert_eq!(named_by("fix", "a fix_up pass"), None);
+        let release = Some("release/1.2".to_string());
+        assert_eq!(named_by("release/1.2", "backport to release/1.2."), release);
+        assert_eq!(named_by("release/1.2", "release/1.2.3 is out"), None);
+        assert_eq!(
+            named_by("main", "Document the main workflow"),
+            Some("main".to_string())
+        );
+        assert_eq!(named_by("main", "Parse the domain twice"), None);
+    }
 }

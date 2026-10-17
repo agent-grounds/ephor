@@ -1793,12 +1793,118 @@ mod tests {
         let keyed = item("Unrelated", said("the same shape as ABC-42".to_string()));
         assert_eq!(placement.own_branch(&keyed), None);
 
-        // The matter's own title naming the branch is the matter's own word.
-        let named = item("Finish fix/issue-274", json!({}));
+        // The matter's own title naming a branch the row declares is the
+        // matter's own word. An undeclared one is not
+        // ([`an_undeclared_branch_a_title_names_is_no_branch`]).
+        placement.branches.push(BranchInfo {
+            branch: "fix/issue-280".to_string(),
+            ticket: None,
+            active: true,
+            is_release: false,
+            declared: true,
+        });
+        let named = item("Finish fix/issue-280", json!({}));
         assert_eq!(
             placement.own_branch(&named),
-            Some("fix/issue-274".to_string())
+            Some("fix/issue-280".to_string())
         );
+    }
+
+    /// A checkout only the disk knows, whose directory name a title spells,
+    /// is not the matter's branch: `place`, `own_branch` and `checkout` all
+    /// say no branch, so a `branch` template mints the matter its own
+    /// (§FS-008-attribution.2.1, the defect `agent-grounds/ephor#217`
+    /// reported).
+    #[test]
+    #[ignore = "red until #217: an undeclared checkout a title names is the matter's branch; implement removes this"]
+    fn an_undeclared_branch_a_title_names_is_no_branch() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut placement = placement(tmp.path(), Some("{project_root}/{branch}"));
+        for name in ["sweep", "fix/issue-274"] {
+            placement.branches.push(BranchInfo {
+                branch: name.to_string(),
+                ticket: None,
+                active: false,
+                is_release: false,
+                declared: false,
+            });
+            std::fs::create_dir_all(tmp.path().join(name)).unwrap();
+        }
+
+        for title in [
+            "Nightly link sweep: external links failing",
+            "Cache sweeping drops pinned entries",
+            "Finish fix/issue-274",
+        ] {
+            let matter = item(title, json!({}));
+            assert_eq!(place(&matter, &placement.branches), None, "{title}");
+            assert!(placement.matched(&matter).is_none(), "{title}");
+            assert_eq!(placement.own_branch(&matter), None, "{title}");
+            assert_eq!(placement.branch_name(&matter), None, "{title}");
+            assert!(placement.checkout(&matter).branch.is_none(), "{title}");
+            let owned = placement.own_checkout(&matter);
+            assert!(owned.branch.is_none(), "{title}");
+            assert!(matches!(owned.state, WorkspaceState::Unmatched), "{title}");
+        }
+    }
+
+    /// An undeclared branch still gathers the matters that carry its ticket
+    /// key: the key is the matter's own word about which work it is, not a
+    /// resemblance to a directory (§FS-008-attribution.2).
+    #[test]
+    fn an_undeclared_branch_is_still_placed_by_its_ticket_key() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut placement = placement(tmp.path(), Some("{project_root}/{branch}"));
+        placement.branches.push(BranchInfo {
+            branch: "you/ABC-7".to_string(),
+            ticket: Some("ABC-7".to_string()),
+            active: false,
+            is_release: false,
+            declared: false,
+        });
+
+        let matter = item("ABC-7 widens the retry window", json!({}));
+        assert_eq!(placement.own_branch(&matter), Some("you/ABC-7".to_string()));
+    }
+
+    /// The row's `main_branch` counts as declared for the title rule even
+    /// where it was only found on disk, so "the main workflow" still reads
+    /// from the main checkout while no matter owns it (§FS-008-attribution.2.1,
+    /// §FS-005-dispatch.25).
+    #[test]
+    fn an_undeclared_main_branch_is_still_named_by_its_title() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut placement = placement(tmp.path(), Some("{project_root}/{branch}"));
+        placement.branches.push(BranchInfo {
+            branch: "main".to_string(),
+            ticket: None,
+            active: false,
+            is_release: false,
+            declared: false,
+        });
+
+        let matter = item("Document the main workflow", json!({}));
+        assert_eq!(placement.branch_name(&matter), Some("main".to_string()));
+        assert_eq!(placement.own_branch(&matter), None);
+    }
+
+    /// The same main branch is not named by a word that only contains it
+    /// (§FS-008-attribution.2.1).
+    #[test]
+    #[ignore = "red until #217: a title word that only contains the main branch's name names it; implement removes this"]
+    fn a_word_that_only_contains_the_main_branch_does_not_name_it() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut placement = placement(tmp.path(), Some("{project_root}/{branch}"));
+        placement.branches.push(BranchInfo {
+            branch: "main".to_string(),
+            ticket: None,
+            active: false,
+            is_release: false,
+            declared: false,
+        });
+
+        let matter = item("Parse the domain twice", json!({}));
+        assert_eq!(placement.branch_name(&matter), None);
     }
 
     #[test]

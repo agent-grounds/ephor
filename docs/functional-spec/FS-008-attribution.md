@@ -109,12 +109,37 @@ word on everything else about a branch — its ticket, whether it is active,
 whether it is a release branch — and on identity, which no checkout may widen
 ([§FS-008-attribution.1](FS-008-attribution.md#1-identity-is-declared-and-the-row-has-the-last-word)).
 
+A discovered branch's name is not identity either. Its directory is a fact
+about the disk, not a statement that some matter's work goes there, so a title
+that happens to spell it places nothing on it. A branch only the disk knows
+gathers the matters the forge recorded on it and the matters that carry its
+ticket key ([§FS-008-attribution.2.1](FS-008-attribution.md#21-a-matters-branch-is-one-it-names-never-one-its-conversation-quotes)); a pull request's checkout keeps its
+forge-recorded branch, and `you/ABC-7` keeps the issues titled `ABC-7`.
+
 ### 2.1 A matter's branch is one it names, never one its conversation quotes
 
 At the second stage a matter is placed on a branch by what it says of itself,
 and by nothing its conversation says about it. The branch the forge recorded
 for it is the firm answer; after that, a branch whose ticket key the matter's
-own id or title carries, and a branch its title names outright. A comment
+own id or title carries; and after that, a branch the row declares, or the
+row's `main_branch`, whose name the title spells whole. The main branch counts
+as declared for this rule whether or not the row lists it, because the row
+names it as `main_branch`: "Document the main workflow" still matches `main`,
+which is what keeps that matter's read-only work answering from the main
+checkout ([§FS-005-dispatch.25](FS-005-dispatch.md#25-work-about-a-matter-with-no-branch-can-mint-the-branch-it-needs)). A branch found only on disk is never
+matched by its name in a title ([§FS-008-attribution.2](FS-008-attribution.md#2-two-stages-one-engine)).
+
+A title spells a name *whole* when the name appears in it exactly as written,
+case and all, and neither neighbour would extend it. A neighbour extends a
+name when it is a letter, a digit, `-`, `_` or `/`, or a `.` followed by a
+letter or a digit. So `sweep` is named by "Nightly link sweep: external links
+failing" but not by "Cache sweeping drops pinned entries" or "re-sweep the
+cache"; `fix` is not named by "prefix" or by "fix/issue-9 regressed";
+`release/1.2` is named by "backport to release/1.2." but not by
+"release/1.2.3 is out". A word that only contains a branch's name places
+nothing on that branch.
+
+A comment
 quoting a branch — a lifecycle record naming the checkout of the run that filed
 the issue, a reviewer pointing at where a neighbour's fix landed — is the
 conversation talking, and it places the matter on no branch: an issue whose
