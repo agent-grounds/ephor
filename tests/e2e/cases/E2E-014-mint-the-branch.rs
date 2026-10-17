@@ -1558,6 +1558,125 @@ fn a_branch_quoted_in_an_issues_comments_is_not_its_own() {
     assert!(!workspace(&world).exists(), "a dry run made the workspace");
 }
 
+/// Three issues, two of whose titles spell or contain the name of a checkout
+/// nobody declared — the layout `agent-grounds/ephor#217` reported.
+const SWEEPING_FORGE: &str = r#"#!/usr/bin/env bash
+set -euo pipefail
+cat > /dev/null
+case "${1:?subcommand}" in
+  capabilities)
+    printf '{"issues":true,"pull_requests":true}'
+    ;;
+  issues)
+    printf '%s' '[
+      { "key": "acme/widget#753", "title": "Release notes omit the previous tag",
+        "url": "https://acme.example/issue/753",
+        "updated_at": "2026-07-30T12:00:00Z", "status": "open" },
+      { "key": "acme/widget#762", "title": "Nightly link sweep: external links failing",
+        "url": "https://acme.example/issue/762",
+        "updated_at": "2026-07-30T12:00:00Z", "status": "open" },
+      { "key": "acme/widget#763", "title": "Cache sweeping drops pinned entries",
+        "url": "https://acme.example/issue/763",
+        "updated_at": "2026-07-30T12:00:00Z", "status": "open" }
+    ]'
+    ;;
+  *)
+    printf '[]'
+    ;;
+esac
+"#;
+
+/// A checkout nobody declared does not take an issue's work because its
+/// directory name is a word of the issue's title. Beside `main` stand an old
+/// worktree at `<root>/sweep` (branch `sweep/retired-words`, in no row) and
+/// issue 762's own `fix/issue-762`. Each issue's work lands in the
+/// `fix/issue-<n>` its template renders — 762's existing checkout used as it
+/// is, 753's and 763's minted — and nothing is written into `sweep`
+/// (§FS-008-attribution.2.1, §FS-005-dispatch.25, the defect
+/// `agent-grounds/ephor#217` reported).
+#[test]
+#[ignore = "red until #217: work lay places an issue in an undeclared checkout its title names; implement removes this"]
+fn an_undeclared_checkout_a_title_names_does_not_take_the_issues_work() {
+    let world = watching(Some("fix/issue-{number}"), true);
+    let main = world.forest().join("main");
+    git(
+        &main,
+        &[
+            "worktree",
+            "add",
+            "-q",
+            "-b",
+            "sweep/retired-words",
+            "../sweep",
+        ],
+    );
+    git(
+        &main,
+        &[
+            "worktree",
+            "add",
+            "-q",
+            "-b",
+            "fix/issue-762",
+            "../fix/issue-762",
+        ],
+    );
+    world.stub("ephor-forge-acmeforge", SWEEPING_FORGE);
+    world.ephor().args(["refresh", PROJECT]).assert().success();
+    let sweep = world.forest().join("sweep");
+
+    // Before anything is laid, the menu does not say the issue is in `sweep`.
+    let menu = world
+        .ephor()
+        .args(["actions", "--item", "acmeforge:acme/widget#762"])
+        .assert()
+        .success();
+    let menu = String::from_utf8_lossy(&menu.get_output().stdout).into_owned();
+    assert!(
+        !menu.contains(&*sweep.to_string_lossy()),
+        "the menu places #762 in the undeclared `sweep` checkout:\n{menu}"
+    );
+
+    let ledger_path = world.path().join("state/ephor/work.json");
+    for number in ["753", "762", "763"] {
+        let item = format!("acmeforge:acme/widget#{number}");
+        world
+            .ephor()
+            .args(["work", "lay", "fix-issue", "--item", &item])
+            .assert()
+            .success();
+
+        let own = world.forest().join(format!("fix/issue-{number}"));
+        let prefix = format!("acmeforge-acme-widget-{number}-");
+        let laid = std::fs::read_dir(own.join("panta"))
+            .map(|entries| {
+                entries
+                    .filter_map(|entry| entry.ok())
+                    .any(|entry| entry.file_name().to_string_lossy().starts_with(&prefix))
+            })
+            .unwrap_or(false);
+        let ledger = read_json(&ledger_path);
+        let entry = &ledger["entries"][item.as_str()];
+        assert!(
+            laid,
+            "#{number}'s plan is not under {}: the ledger says {entry}",
+            own.join("panta").display()
+        );
+        assert_eq!(
+            entry["branch"],
+            json!(format!("fix/issue-{number}")),
+            "#{number}"
+        );
+        assert_eq!(entry["checkout"], json!(own.to_string_lossy()), "#{number}");
+    }
+
+    assert!(
+        !sweep.join("panta").exists(),
+        "work was written into the undeclared checkout {}",
+        sweep.join("panta").display()
+    );
+}
+
 /// A recipe says it the same way, and the ticket it opens lands in the
 /// workspace the template named (§FS-005-dispatch.25). The key is read
 /// wherever an entry hands work over, not only beside a workflow.
