@@ -206,7 +206,6 @@ fn refresh(branches: &[&str], runs: Value, jobs: Value) -> Refreshed {
 /// the branch, waiting on the reader, and naming the run, the commit and the
 /// job that failed (§FS-001-forge-interface.1, §FS-007-matters.1).
 #[test]
-#[ignore = "red until #216: github-ci refuses `branches` and never reads a branch's runs; implement removes this"]
 fn a_red_push_run_on_main_is_one_row_keyed_by_the_branch() {
     let seen = refresh(
         &["main"],
@@ -239,7 +238,6 @@ fn a_red_push_run_on_main_is_one_row_keyed_by_the_branch() {
 /// A second red run updates the row rather than adding one, and the first
 /// green run of that workflow clears it (§FS-001-forge-interface.3).
 #[test]
-#[ignore = "red until #216: github-ci refuses `branches` and never reads a branch's runs; implement removes this"]
 fn a_newer_red_run_is_the_same_row_and_a_newer_green_run_clears_it() {
     let red = run(901, CI, 40, "2026-10-14T15:02:00Z", "failure");
     let redder = run(902, CI, 41, "2026-10-14T16:02:00Z", "failure");
@@ -265,7 +263,6 @@ fn a_newer_red_run_is_the_same_row_and_a_newer_green_run_clears_it() {
 /// a run it triggers; neither is the branch's own run, and a stranger's red
 /// change must not turn the watched branch red (§FS-001-forge-interface.1).
 #[test]
-#[ignore = "red until #216: github-ci refuses `branches` and never reads a branch's runs; implement removes this"]
 fn runs_the_branch_did_not_make_do_not_turn_it_red() {
     let own = run(901, CI, 40, "2026-10-14T15:02:00Z", "success");
     let fork = with(
@@ -305,7 +302,6 @@ fn runs_the_branch_did_not_make_do_not_turn_it_red() {
 /// Newest is by run number or creation time, never by the last update: an old
 /// red run rerun until it went green does not clear a newer red one.
 #[test]
-#[ignore = "red until #216: github-ci refuses `branches` and never reads a branch's runs; implement removes this"]
 fn an_old_run_rerun_to_green_does_not_clear_a_newer_red_one() {
     let rerun = with(
         run(901, CI, 40, "2026-10-14T10:00:00Z", "success"),
@@ -325,7 +321,6 @@ fn an_old_run_rerun_to_green_does_not_clear_a_newer_red_one() {
 /// The verdict is keyed by the workflow's id, not its name: two workflows both
 /// called CI are two verdicts, and the green one does not hide the red one.
 #[test]
-#[ignore = "red until #216: github-ci refuses `branches` and never reads a branch's runs; implement removes this"]
 fn two_workflows_with_one_name_are_two_verdicts() {
     let red = run(901, (11, "CI"), 40, "2026-10-14T10:00:00Z", "failure");
     let green = run(902, (12, "CI"), 41, "2026-10-14T11:00:00Z", "success");
@@ -341,7 +336,6 @@ fn two_workflows_with_one_name_are_two_verdicts() {
 /// A run still going, or one that ended cancelled, has no verdict: it leaves
 /// the one before it standing, red or green.
 #[test]
-#[ignore = "red until #216: github-ci refuses `branches` and never reads a branch's runs; implement removes this"]
 fn a_run_without_a_verdict_leaves_the_earlier_one_standing() {
     let cancelled =
         |id, number, created| with(run(id, CI, number, created, "cancelled"), json!({}));
@@ -387,7 +381,6 @@ fn a_run_without_a_verdict_leaves_the_earlier_one_standing() {
 /// One push ran a red `ci.yml` and a green `docs.yml` that finished later: one
 /// red row, naming the workflow that is red and not the one that is not.
 #[test]
-#[ignore = "red until #216: github-ci refuses `branches` and never reads a branch's runs; implement removes this"]
 fn a_green_workflow_finishing_later_does_not_hide_a_red_one() {
     let red = run(901, CI, 40, "2026-10-14T15:02:00Z", "failure");
     let green = with(
@@ -406,7 +399,6 @@ fn a_green_workflow_finishing_later_does_not_hide_a_red_one() {
 /// A scheduled run on the branch counts like a pushed one, and the row says
 /// which workflow is red, so a weekly Auto bump does not read as CI.
 #[test]
-#[ignore = "red until #216: github-ci refuses `branches` and never reads a branch's runs; implement removes this"]
 fn a_red_scheduled_run_raises_the_row_and_the_row_names_it() {
     let ci = run(901, CI, 40, "2026-10-12T09:00:00Z", "success");
     let bump = with(
@@ -425,7 +417,6 @@ fn a_red_scheduled_run_raises_the_row_and_the_row_names_it() {
 /// a page of a hundred, plus one jobs listing per red run and none for a green
 /// one (§FS-001-forge-interface.8.4).
 #[test]
-#[ignore = "red until #216: github-ci refuses `branches` and never reads a branch's runs; implement removes this"]
 fn a_refresh_asks_one_listing_per_branch_and_one_jobs_list_per_red_run() {
     let red = run(901, CI, 40, "2026-10-14T15:02:00Z", "failure");
     let green = with(

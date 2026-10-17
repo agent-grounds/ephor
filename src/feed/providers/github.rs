@@ -253,6 +253,91 @@ fn restart_checks(host: Option<&str>, scope: Scope) -> ActionConfig {
     }
 }
 
+/// What a watched branch's red gate is asking (§FS-004-quick-actions.4): each
+/// red run as GitHub reports it, then the log of its failed jobs. The runs are
+/// the row's, written in where `@RUNS@` stands, so nothing is looked up again.
+const SHOW_BRANCH_FAILURES: &str = r##"{
+  for run in @RUNS@; do
+    printf '\n===== run %s =====\n\n' "$run"
+    gh run view "$run" --repo "$EPHOR_REPO" || true
+    gh run view "$run" --repo "$EPHOR_REPO" --log-failed
+  done
+} 2>&1 | ${PAGER:-less -R}
+"##;
+
+/// Run a watched branch's red runs again (§FS-004-quick-actions.9): only their
+/// failed jobs, or each of them whole. A branch is not a change with a head to
+/// resolve, so the runs its row carries are the gate, written in where
+/// `@RUNS@` stands.
+const RESTART_BRANCH: &str = r##"{
+  printf 'restarting @WHAT@ on %s@%s\n\n' "$EPHOR_REPO" @BRANCH@
+  asked=0
+  refused=0
+  for run in @RUNS@; do
+    printf '\342\237\263 run %s\n' "$run"
+    if gh run rerun "$run" --repo "$EPHOR_REPO"@FLAG@; then
+      asked=$((asked + 1))
+    else
+      refused=$((refused + 1))
+    fi
+  done
+  printf '\nasked %s run(s) to run again' "$asked"
+  if [ "$refused" -eq 0 ]; then printf '\n'; else printf ', %s refused\n' "$refused"; fi
+} 2>&1
+"##;
+
+/// The three red-gate entries on a watched branch's row
+/// (§FS-004-quick-actions.4, §FS-004-quick-actions.9): what failed, restart
+/// what failed, restart the whole gate. They are the source's own scripts with
+/// the row's red runs written in, and `github-ci` answers neither `ephor
+/// failures` nor `ephor restart` for them (§DF-007-a-red-branch-is-a-row.1).
+/// Nothing is offered on a row that names no red run.
+pub(crate) fn branch_actions(host: Option<&str>, item: &Item) -> Vec<ActionConfig> {
+    let Some(branch) = item.watched_branch() else {
+        return Vec::new();
+    };
+    let runs: Vec<String> = item
+        .raw
+        .get("runs")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(Value::as_str)
+        .map(shell_quote)
+        .collect();
+    if item.repo().is_none() || runs.is_empty() {
+        return Vec::new();
+    }
+    let runs = runs.join(" ");
+    let exported = |script: String| match host {
+        Some(host) => format!("export GH_HOST={}\n{script}", shell_quote(host)),
+        None => script,
+    };
+    let restart = |scope: Scope| {
+        let (what, flag) = match scope {
+            Scope::Failed => ("what failed", " --failed"),
+            Scope::All => ("every red run", ""),
+        };
+        let script = RESTART_BRANCH
+            .replace("@WHAT@", what)
+            .replace("@FLAG@", flag)
+            .replace("@BRANCH@", &shell_quote(&branch))
+            .replace("@RUNS@", &runs);
+        ActionConfig {
+            command: exported(script),
+            ..restart_checks(host, scope)
+        }
+    };
+    vec![
+        ActionConfig {
+            command: exported(SHOW_BRANCH_FAILURES.replace("@RUNS@", &runs)),
+            ..show_failing_checks(host)
+        },
+        restart(Scope::Failed),
+        restart(Scope::All),
+    ]
+}
+
 /// The failing-CI quick action, pointed at the host the checks live on: the
 /// enterprise host is configuration, so it is exported rather than named in
 /// the script. Shared by both GitHub sources — the same red gate reached

@@ -14,7 +14,7 @@ use crate::feed::gate::{Failure, Gate, Scope};
 use crate::feed::model::Item;
 use crate::feed::provider::{Provider, ProviderContext, ProviderError, ProviderResult};
 use crate::forge::external::ExternalForge;
-use crate::forge::{policy, Capabilities, Forge, Request, Restarted};
+use crate::forge::{policy, Capabilities, Forge, GateSubject, Request, Restarted};
 
 pub struct ForgeProvider {
     forge: Box<dyn Forge>,
@@ -74,17 +74,22 @@ impl ForgeProvider {
     /// probe is what makes the third check honest — a forge that answers
     /// nothing here would give the reader a menu entry that prints only its
     /// own refusal.
+    ///
+    /// A watched branch's row is asked by its branch rather than a number,
+    /// which it has none of (§FS-011-command-line.6).
     fn failures_action(&self, item: &Item, capabilities: &Capabilities) -> Vec<ActionConfig> {
         let red = Gate::of(item).is_some_and(|gate| gate.is_red());
-        let identified = item.repo().is_some() && item.number().is_some();
-        if !red || !identified || !capabilities.failures {
+        let Some((_, subject)) = GateSubject::of_item(item) else {
+            return Vec::new();
+        };
+        if !red || !capabilities.failures {
             return Vec::new();
         }
         vec![ActionConfig {
             id: "ci-failures".to_string(),
             icon: "✗".to_string(),
             description: "see the CI failures".to_string(),
-            command: failures_command(),
+            command: failures_command(&subject),
             ..ActionConfig::default()
         }]
     }
@@ -101,15 +106,17 @@ impl ForgeProvider {
         let Some(gate) = Gate::of(item) else {
             return Vec::new();
         };
-        let identified = item.repo().is_some() && item.number().is_some();
-        if !identified || !capabilities.restart {
+        let Some((_, subject)) = GateSubject::of_item(item) else {
+            return Vec::new();
+        };
+        if !capabilities.restart {
             return Vec::new();
         }
         let mut entries = Vec::new();
         if gate.is_red() {
-            entries.push(restart_action(Scope::Failed));
+            entries.push(restart_action(&subject, Scope::Failed));
         }
-        entries.push(restart_action(Scope::All));
+        entries.push(restart_action(&subject, Scope::All));
         entries
     }
 }
@@ -121,21 +128,33 @@ impl ForgeProvider {
 /// §FS-001-forge-interface exists to keep it out of. The binary is named by
 /// its own path, so the ephor the reader is looking at is the one that
 /// answers.
-fn failures_command() -> String {
+fn failures_command(subject: &GateSubject) -> String {
     let exe = std::env::current_exe()
         .map(|path| path.to_string_lossy().into_owned())
         .unwrap_or_else(|_| "ephor".to_string());
     format!(
         "{} failures --project \"$EPHOR_PROJECT\" --source \"$EPHOR_SOURCE\" \
-         --repo \"$EPHOR_REPO\" --number \"$EPHOR_NUMBER\" 2>&1 | ${{PAGER:-less -R}}",
-        super::shell_quote(&exe)
+         --repo \"$EPHOR_REPO\" {} 2>&1 | ${{PAGER:-less -R}}",
+        super::shell_quote(&exe),
+        fourth_coordinate(subject)
     )
+}
+
+/// The fourth coordinate of a gate on the command line
+/// (§FS-011-command-line.6): the pull request's number from the environment
+/// every entry is run in, or the watched branch, written in, since nothing in
+/// that environment names it.
+fn fourth_coordinate(subject: &GateSubject) -> String {
+    match subject {
+        GateSubject::PullRequest { .. } => "--number \"$EPHOR_NUMBER\"".to_string(),
+        GateSubject::Branch { branch, .. } => format!("--branch {}", super::shell_quote(branch)),
+    }
 }
 
 /// One restart entry, run as a job: the gate answers minutes later and asks
 /// nothing meanwhile, so taking the interface for it would be paying the
 /// screen for a command that never needed it (§FS-005-dispatch.17).
-fn restart_action(scope: Scope) -> ActionConfig {
+fn restart_action(subject: &GateSubject, scope: Scope) -> ActionConfig {
     let exe = std::env::current_exe()
         .map(|path| path.to_string_lossy().into_owned())
         .unwrap_or_else(|_| "ephor".to_string());
@@ -160,8 +179,9 @@ fn restart_action(scope: Scope) -> ActionConfig {
         // menu that §FS-001-forge-interface exists to keep out of it.
         command: format!(
             "{} restart --project \"$EPHOR_PROJECT\" --source \"$EPHOR_SOURCE\" \
-             --repo \"$EPHOR_REPO\" --number \"$EPHOR_NUMBER\" --scope {}",
+             --repo \"$EPHOR_REPO\" {} --scope {}",
             super::shell_quote(&exe),
+            fourth_coordinate(subject),
             scope.name()
         ),
         background: true,
@@ -202,14 +222,14 @@ impl Provider for ForgeProvider {
     }
 
     fn failures(&self, ctx: &ProviderContext, item: &Item) -> Result<Vec<Failure>, ProviderError> {
-        let (Some(repo), Some(number)) = (item.repo(), item.number()) else {
+        let Some((repo, subject)) = GateSubject::of_item(item) else {
             return Err(ProviderError(format!(
-                "{} does not name a pull request to ask about",
+                "{} does not name a pull request or a branch to ask about",
                 item.id
             )));
         };
         let request = Request::new(self.config.clone(), ctx);
-        self.forge.failures(&request, &repo, &number)
+        self.forge.failures(&request, &repo, &subject)
     }
 
     fn restart(
@@ -218,9 +238,9 @@ impl Provider for ForgeProvider {
         item: &Item,
         scope: Scope,
     ) -> Result<Restarted, ProviderError> {
-        let (Some(repo), Some(number)) = (item.repo(), item.number()) else {
+        let Some((repo, subject)) = GateSubject::of_item(item) else {
             return Err(ProviderError(format!(
-                "{} does not name a pull request to restart",
+                "{} does not name a pull request or a branch to restart",
                 item.id
             )));
         };
@@ -235,7 +255,7 @@ impl Provider for ForgeProvider {
             )));
         }
         let request = Request::new(self.config.clone(), ctx);
-        self.forge.restart(&request, &repo, &number, scope)
+        self.forge.restart(&request, &repo, &subject, scope)
     }
 
     fn fetch(&self, ctx: &ProviderContext) -> ProviderResult {
@@ -258,6 +278,18 @@ impl Provider for ForgeProvider {
         if capabilities.pull_requests {
             for pr in self.forge.pull_requests(&request)? {
                 items.push(policy::pull_request_item(self.name, &ctx.project_id, &pr));
+            }
+        }
+        // A watched branch is asked only of a forge that declared it can be
+        // (§FS-001-forge-interface.2), and whether it is a row is policy's
+        // (§FS-001-forge-interface.3).
+        if capabilities.branch_gate {
+            for branch in self.forge.branch_gates(&request)? {
+                items.extend(policy::branch_gate_item(
+                    self.name,
+                    &ctx.project_id,
+                    &branch,
+                ));
             }
         }
         if capabilities.issues {
@@ -325,10 +357,10 @@ mod tests {
             &self,
             _request: &Request,
             repo: &str,
-            number: &str,
+            subject: &GateSubject,
         ) -> Result<Vec<Failure>, ProviderError> {
             Ok(vec![Failure {
-                job: format!("{repo}/{number}"),
+                job: subject.named_in(repo),
                 url: None,
                 trace: "error: boom".to_string(),
             }])

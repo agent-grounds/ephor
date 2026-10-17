@@ -475,10 +475,28 @@ impl Item {
         (files > 0).then(|| format!("📎{files}"))
     }
 
+    /// The watched branch this row is the gate of, where its source marked it
+    /// one (§FS-007-matters.1). Read off the explicit `watched_branch` mark and
+    /// never off `branch` alone, which a pull request's report carries too.
+    pub fn watched_branch(&self) -> Option<String> {
+        if self.raw.get("watched_branch").and_then(Value::as_bool) != Some(true) {
+            return None;
+        }
+        self.raw
+            .get("branch")
+            .and_then(Value::as_str)
+            .map(String::from)
+    }
+
     /// The pull request or issue number, best effort: the digits after the
     /// last `#` (`github-prs:acme/widget#42`) or the last `/`
-    /// (`forge-prs:repo/123`) of the id.
+    /// (`forge-prs:repo/123`) of the id. A watched branch has none, whatever
+    /// its name ends in, so `release/2` is never read as pull request 2
+    /// (§FS-007-matters.1).
     pub fn number(&self) -> Option<String> {
+        if self.raw.get("watched_branch").and_then(Value::as_bool) == Some(true) {
+            return None;
+        }
         for separator in ['#', '/'] {
             if let Some((_, tail)) = self.id.rsplit_once(separator) {
                 if !tail.is_empty() && tail.bytes().all(|byte| byte.is_ascii_digit()) {
@@ -772,7 +790,6 @@ mod tests {
     /// it is a branch, so `release/2` is never read as pull request 2
     /// (§FS-007-matters.1, §FS-011-command-line.6).
     #[test]
-    #[ignore = "red until #216: `number()` reads a branch's id as a pull request's; implement removes this"]
     fn a_watched_branch_names_no_number_however_its_name_ends() {
         use serde_json::json;
         let branch = ci(

@@ -108,7 +108,6 @@ fn matters(tmp: &Path) -> Vec<Value> {
 /// none: the extension reports the verdicts and ephor decides which need the
 /// reader, as it does for every forge (§FS-001-forge-interface.3).
 #[test]
-#[ignore = "red until #216: no forge is asked `branch-gates`, so a red branch on an extension is never a row; implement removes this"]
 fn a_red_branch_on_an_extension_is_one_row_and_a_green_one_none() {
     let tmp = tempdir();
     let path = watching(tmp.path());
@@ -179,7 +178,6 @@ fn an_extension_that_does_not_watch_branches_is_never_asked_for_one() {
 /// the red runs its row carries and no number, and either spelling of the
 /// subject asks the same thing (§FS-011-command-line.6, §FS-004-quick-actions.4).
 #[test]
-#[ignore = "red until #216: `ephor failures` has no `--branch` and a branch's row names no gate; implement removes this"]
 fn what_failed_on_a_watched_branch_is_asked_by_its_branch() {
     let tmp = tempdir();
     let path = watching(tmp.path());

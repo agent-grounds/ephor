@@ -225,7 +225,8 @@ pub(crate) fn enabled() -> bool {
 pub(crate) use crate::seams::summons::quote as shell_quote;
 
 pub(crate) use github::{
-    gh_command, github_login, names_under, parse_github_time, restart_actions, show_failing_checks,
+    branch_actions, gh_command, github_login, names_under, parse_github_time, restart_actions,
+    show_failing_checks,
 };
 
 pub(crate) fn parse_config<T: serde::de::DeserializeOwned>(

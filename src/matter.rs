@@ -2012,7 +2012,6 @@ mod tests {
     /// same number: a branch's row is keyed by its repository and branch, and
     /// is never read as a pull request (§FS-007-matters.1).
     #[test]
-    #[ignore = "red until #216: a branch's id is read as a pull request number, so `release/2` and `hotfix/2` merge; implement removes this"]
     fn two_watched_branches_ending_in_the_same_number_stay_two_rows() {
         let branch = |name: &str| {
             let mut item = item(json!({

@@ -628,8 +628,8 @@ pub fn refresh(args: &RefreshArgs, scope: &Projects) -> Result<ExitCode> {
     Ok(ExitCode::SUCCESS)
 }
 
-/// `ephor failures` — what went wrong under one pull request's red gate
-/// (§FS-004-quick-actions.4).
+/// `ephor failures` — what went wrong under one red gate, a pull request's or
+/// a watched branch's (§FS-004-quick-actions.4, §FS-011-command-line.6).
 ///
 /// The pull request is looked up in the cached feed rather than rebuilt from
 /// the arguments: the cached item is the one carrying the gate the reader is
@@ -643,12 +643,19 @@ pub fn refresh(args: &RefreshArgs, scope: &Projects) -> Result<ExitCode> {
 /// is bound (§FS-001-forge-interface.9), the matter comes out of ephor's own
 /// cache rather than a fresh fetch, and the source's own timeout is the
 /// ceiling, because both of these are its slow calls.
+/// The fourth coordinate of a gate (§FS-011-command-line.6): a pull request's
+/// number, or a watched branch, which has none.
+enum Fourth<'a> {
+    Number(&'a str),
+    Branch(&'a str),
+}
+
 fn about_the_gate(
     config: &StatusConfig,
     project: &str,
     source: &str,
     repo: &str,
-    number: &str,
+    fourth: Fourth,
 ) -> Result<(
     Box<dyn crate::feed::provider::Provider>,
     crate::feed::model::Item,
@@ -690,11 +697,18 @@ fn about_the_gate(
         .find(|item| {
             item.source == source
                 && item.repo().as_deref() == Some(repo)
-                && item.number().as_deref() == Some(number)
+                && match fourth {
+                    Fourth::Number(number) => item.number().as_deref() == Some(number),
+                    Fourth::Branch(branch) => item.watched_branch().as_deref() == Some(branch),
+                }
         })
         .ok_or_else(|| {
+            let named = match fourth {
+                Fourth::Number(number) => format!("{repo}#{number}"),
+                Fourth::Branch(branch) => format!("{repo}@{branch}"),
+            };
             registry_error(format!(
-                "{repo}#{number} is not in {project}'s cached feed from '{source}'."
+                "{named} is not in {project}'s cached feed from '{source}'."
             ))
         })?;
 
@@ -716,6 +730,13 @@ fn about_the_gate(
     Ok((provider, item, ctx))
 }
 
+/// A feed id whose row names neither a pull request nor a watched branch.
+fn unnamed(id: &str) -> EphorError {
+    registry_error(format!(
+        "'{id}' does not name a repository and a number or a branch, so its gate cannot be asked about."
+    ))
+}
+
 /// The four coordinates a quick action passes, or the feed id a reader has
 /// (§FS-011-command-line.6). One resolution for both, so the two spellings
 /// cannot answer about different pull requests.
@@ -726,6 +747,7 @@ fn named_gate(
     source: &Option<String>,
     repo: &Option<String>,
     number: &Option<String>,
+    branch: &Option<String>,
 ) -> Result<(
     Box<dyn crate::feed::provider::Provider>,
     crate::feed::model::Item,
@@ -750,26 +772,37 @@ fn named_gate(
                     "'{id}' is not in any cached feed — `ephor feed --kind pr` lists what is."
                 ))
             })?;
-        let (repo, number) = (found.repo(), found.number());
-        let (Some(repo), Some(number)) = (repo, number) else {
-            return Err(registry_error(format!(
-                "'{id}' does not name a repository and a number, so its gate cannot be asked about."
-            )));
+        let Some(repo) = found.repo() else {
+            return Err(unnamed(id));
         };
-        return about_the_gate(config, &project, &found.source, &repo, &number);
+        // A watched branch is named by its mark, never by digits its name
+        // happens to end in (§FS-007-matters.1).
+        let (branch, number) = (found.watched_branch(), found.number());
+        let fourth = match (&branch, &number) {
+            (Some(branch), _) => Fourth::Branch(branch),
+            (None, Some(number)) => Fourth::Number(number),
+            (None, None) => return Err(unnamed(id)),
+        };
+        return about_the_gate(config, &project, &found.source, &repo, fourth);
     }
     let missing = || {
         registry_error(
-            "Name the pull request: --item ID, or --project, --source, --repo and --number."
+            "Name the gate: --item ID, or --project, --source, --repo and --number \
+             (or --branch for a watched branch)."
                 .to_string(),
         )
+    };
+    let fourth = match (number, branch) {
+        (Some(number), _) => Fourth::Number(number),
+        (None, Some(branch)) => Fourth::Branch(branch),
+        (None, None) => return Err(missing()),
     };
     about_the_gate(
         config,
         project.as_deref().ok_or_else(missing)?,
         source.as_deref().ok_or_else(missing)?,
         repo.as_deref().ok_or_else(missing)?,
-        number.as_deref().ok_or_else(missing)?,
+        fourth,
     )
 }
 
@@ -782,6 +815,7 @@ pub fn failures(args: &FailuresArgs) -> Result<ExitCode> {
         &args.source,
         &args.repo,
         &args.number,
+        &args.branch,
     )?;
     let gate = crate::feed::gate::Gate::of(&item);
     let found = provider
@@ -810,8 +844,8 @@ pub fn failures(args: &FailuresArgs) -> Result<ExitCode> {
     Ok(ExitCode::SUCCESS)
 }
 
-/// `ephor restart` (§FS-004-quick-actions.9): ask one pull request's gate to
-/// run again, at the scope stated.
+/// `ephor restart` (§FS-004-quick-actions.9): ask one pull request's or watched
+/// branch's gate to run again, at the scope stated (§FS-011-command-line.6).
 ///
 /// The same shape `failures` has, and for the same reason: the coordinates
 /// come from ephor's own cached feed, the source that reported the item is the
@@ -834,6 +868,7 @@ pub fn restart(args: &crate::cli::RestartArgs) -> Result<ExitCode> {
         &args.source,
         &args.repo,
         &args.number,
+        &args.branch,
     )?;
     // Neutral about how much that is: on a forge with per-job reruns it is the
     // failed jobs, and on one that starts its gate as a whole it is everything
