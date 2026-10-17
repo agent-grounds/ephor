@@ -809,7 +809,11 @@ impl Session {
                 continue;
             };
             for item in feed.items() {
-                let Some(index) = crate::branches::place(&item, &placement.branches) else {
+                let Some(index) = crate::branches::place(
+                    &item,
+                    &placement.branches,
+                    placement.main_branch.as_deref(),
+                ) else {
                     continue;
                 };
                 on_branch.insert((project.clone(), item.id.clone()), index);

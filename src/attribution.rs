@@ -240,24 +240,57 @@ pub fn place(evidence: &Evidence, identities: &[Identity]) -> Placed {
     }
 }
 
+/// One row of the branch-scope identity table: a branch's name, the ticket
+/// key its name carries, and whether a title may name it outright — only a
+/// branch the row declares, or the row's `main_branch`, may
+/// (§FS-008-attribution.2.1).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct BranchKey {
+    pub name: String,
+    pub ticket: Option<String>,
+    pub titled: bool,
+}
+
 /// Which of a project's branches this evidence is work on — the same engine at
 /// the second scope, with the project's branches as the identity table
 /// (§AR-003-attribution.3). The code that matched ticket keys and branch names
 /// is this function's seed, promoted rather than duplicated.
-pub fn branch(evidence: &Evidence, branches: &[(String, Option<String>)]) -> Option<String> {
-    // A ticket the branch's own key names is the firm answer.
-    for (name, ticket) in branches {
-        if let Some(ticket) = ticket {
+pub fn branch(evidence: &Evidence, branches: &[BranchKey]) -> Option<String> {
+    // A ticket the branch's own key names is the firm answer, for every
+    // branch, discovered ones included (§FS-008-attribution.2).
+    for key in branches {
+        if let Some(ticket) = &key.ticket {
             if evidence.tickets.iter().any(|found| found == ticket) {
-                return Some(name.clone());
+                return Some(key.name.clone());
             }
         }
     }
-    // Then the branch named outright in what was said.
+    // Then a declared branch the title spells whole (§FS-008-attribution.2.1).
     branches
         .iter()
-        .find(|(name, _)| !name.is_empty() && evidence.words.contains(name.as_str()))
-        .map(|(name, _)| name.clone())
+        .find(|key| key.titled && spells_whole(&evidence.words, &key.name))
+        .map(|key| key.name.clone())
+}
+
+/// Whether `words` spells `name` whole: exactly, case and all, with neither
+/// neighbour extending it — a letter, a digit, `-`, `_`, `/`, or a `.` followed
+/// by a letter or a digit (§FS-008-attribution.2.1).
+fn spells_whole(words: &str, name: &str) -> bool {
+    fn extends(neighbour: char, then: Option<char>) -> bool {
+        neighbour.is_alphanumeric()
+            || matches!(neighbour, '-' | '_' | '/')
+            || (neighbour == '.' && then.is_some_and(char::is_alphanumeric))
+    }
+    if name.is_empty() {
+        return false;
+    }
+    words.match_indices(name).any(|(at, _)| {
+        let before = words[..at].chars().next_back();
+        let mut after = words[at + name.len()..].chars();
+        let next = after.next();
+        !before.is_some_and(|c| extends(c, name.chars().next()))
+            && !next.is_some_and(|c| extends(c, after.next()))
+    })
 }
 
 #[cfg(test)]
@@ -489,11 +522,16 @@ mod tests {
     #[test]
     fn the_same_engine_places_work_on_a_branch_inside_a_project() {
         let branches = vec![
-            (
-                "you/ABC-42-retry-window".to_string(),
-                Some("ABC-42".to_string()),
-            ),
-            ("main".to_string(), None),
+            BranchKey {
+                name: "you/ABC-42-retry-window".to_string(),
+                ticket: Some("ABC-42".to_string()),
+                titled: true,
+            },
+            BranchKey {
+                name: "main".to_string(),
+                ticket: None,
+                titled: true,
+            },
         ];
         let by_ticket = Evidence {
             tickets: vec!["ABC-42".to_string()],
@@ -659,14 +697,18 @@ mod tests {
             words: title.to_string(),
             ..Evidence::default()
         };
-        branch(&said, &[(name.to_string(), None)])
+        let key = BranchKey {
+            name: name.to_string(),
+            ticket: None,
+            titled: true,
+        };
+        branch(&said, &[key])
     }
 
     /// A title names a branch only where it spells the name whole: neither
     /// neighbour is a letter, a digit, `-`, `_`, `/`, or a `.` before a letter
     /// or digit (§FS-008-attribution.2.1, agent-grounds/ephor#217).
     #[test]
-    #[ignore = "red until #217: a title word that only contains a branch's name places the matter on it; implement removes this"]
     fn a_title_names_a_branch_only_whole() {
         let sweep = Some("sweep".to_string());
         assert_eq!(
@@ -690,5 +732,23 @@ mod tests {
             Some("main".to_string())
         );
         assert_eq!(named_by("main", "Parse the domain twice"), None);
+    }
+
+    /// A branch a title may not name — one found only on disk — is still
+    /// placed by its ticket key, and never by its name (§FS-008-attribution.2).
+    #[test]
+    fn an_untitled_branch_is_placed_by_its_ticket_key_only() {
+        let discovered = [BranchKey {
+            name: "sweep".to_string(),
+            ticket: Some("ABC-7".to_string()),
+            titled: false,
+        }];
+        let named = words("Nightly link sweep: external links failing");
+        assert_eq!(branch(&named, &discovered), None);
+        let keyed = Evidence {
+            tickets: vec!["ABC-7".to_string()],
+            ..Evidence::default()
+        };
+        assert_eq!(branch(&keyed, &discovered).as_deref(), Some("sweep"));
     }
 }
