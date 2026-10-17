@@ -178,6 +178,31 @@ fn reply_outcomes_validate_and_legacy_empty_object_decodes_as_acceptance() {
     }
 }
 
+/// A definite refusal decodes with its required string note, round-trips to
+/// the same wire, and agrees with the published schema; one without a string
+/// note is malformed rather than read as a refusal
+/// (§FS-001-forge-interface.2, §FS-005-dispatch.13.3).
+#[test]
+#[ignore = "red until #215: `refused` is not a reply outcome yet; implement removes this"]
+fn a_refused_reply_outcome_decodes_only_with_a_string_note() {
+    use super::ReplyOutcome;
+    let wire = json!({"status":"refused","note":"descriptor is no longer fresh"});
+    let decoded = ReplyOutcome::from_wire(wire.clone());
+    assert!(decoded.is_ok(), "a refusal must decode: {decoded:?}");
+    let decoded = decoded.unwrap();
+    assert_ne!(decoded, ReplyOutcome::Accepted);
+    assert_eq!(serde_json::to_value(&decoded).unwrap(), wire);
+    assert!(violations(&wire, "reply_response").is_empty());
+    for wire in [
+        json!({"status":"refused"}),
+        json!({"status":"refused","note":null}),
+        json!({"status":"refused","note":7}),
+    ] {
+        assert!(!violations(&wire, "reply_response").is_empty(), "{wire}");
+        assert!(ReplyOutcome::from_wire(wire.clone()).is_err(), "{wire}");
+    }
+}
+
 /// Hold one fully populated report to its definition: it validates, it
 /// carries nothing undeclared, and nothing declared at its top is left out.
 fn holds(value: &Value, name: &str) -> Vec<String> {

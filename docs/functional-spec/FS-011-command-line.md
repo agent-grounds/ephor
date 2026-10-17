@@ -186,7 +186,10 @@ would have printed had it worked, and the exit code is unchanged. A refusal
 narrated only to the error stream leaves standard output empty, which is what a
 move that worked and had nothing to say also looks like — so a program acting
 on the reading alone would act on a move that never happened
-([§GRUND-001-overseer.2](../grund.md#2-what-this-project-does-about-it)).
+([§GRUND-001-overseer.2](../grund.md#2-what-this-project-does-about-it)). A reply the carrier refused
+([§FS-005-dispatch.13.3](FS-005-dispatch.md#133-a-send-the-carrier-refused-is-ended-not-held)) is one of these: its outcome has `ok` false and its
+`says` carries the carrier's note, and the exit code is the nonzero one its
+prose has.
 
 Each shape is declared, and `ephor schema views` prints the document holding
 every one of them ([§FS-006-project-interface.11](FS-006-project-interface.md#11-the-interface-is-versioned)) — every reading, and every

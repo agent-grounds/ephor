@@ -2,6 +2,10 @@
 
 The optional reconciliation ledger implements §FS-001-forge-interface.1 in
 the fixture only: lookup precedes freshness, and changed payload refuses.
+It records accepted sends only, so a refused one leaves its descriptor unused.
+Two opt-in flags answer a definite refusal as the typed outcome rather than an
+exit code (§FS-005-dispatch.13.3): `typed-refusal` refuses every stale
+descriptor, and `refuse-once` refuses the next request at a fresh one.
 Every reply records its wire bytes and site records visible before invocation.
 Every settle records its wire bytes too (§FS-001-forge-interface.1), and a
 case that flags `log-calls` gets every subcommand it is run as, in order.
@@ -14,6 +18,8 @@ import signal
 import sys
 import time
 
+
+REFUSED_AT_FRESH = "the recipient's server rejected the message"
 
 root = Path(os.environ["REPLY_WORLD"])
 mail = root / "mail"
@@ -84,10 +90,19 @@ elif command == "reply":
         print(json.dumps({"status": "accepted"}))
         sys.exit(0)
 
+    # Known non-delivery after the ledger lookup: nothing is delivered and
+    # nothing enters the ledger (§FS-005-dispatch.13.3).
+    if consume("refuse-once"):
+        print(json.dumps({"status": "refused", "note": REFUSED_AT_FRESH}))
+        sys.exit(0)
+
     conversation = read("conversation.json")
     threads = conversation["threads"]
     target = next((t for t in threads if t.get("reply") == request["target"]), None)
     if target is None:
+        if (mail / "typed-refusal").exists():
+            print(json.dumps({"status": "refused", "note": "descriptor is no longer fresh"}))
+            sys.exit(0)
         print("descriptor is no longer fresh", file=sys.stderr)
         sys.exit(1)
     deliveries = read("deliveries.json", [])

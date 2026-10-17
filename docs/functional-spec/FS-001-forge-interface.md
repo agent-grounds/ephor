@@ -91,9 +91,13 @@ ephor degrades to what is answered rather than failing.
 - **Reply reconciliation** — optional `reply_reconciliation`, default false,
   alongside the replies capability. Declaring it promises durable lookup of
   prior operations before checking descriptor freshness. The same descriptor
-  and exact prepared payload recover one operation; known prior acceptance is
-  returned without another delivery, and changed payload on a used descriptor
-  refuses. Only the forge interprets its opaque descriptor. A declaring forge's
+  and exact prepared payload recover one operation; a known earlier acceptance
+  answers `accepted` without another delivery, and changed payload on a used
+  descriptor refuses. An operation whose delivery is unresolved never answers
+  `refused`. A refused operation does not make its descriptor used: nothing
+  was delivered, so other words at that descriptor are not a changed payload
+  on a used descriptor, and a request repeated there is judged again
+  ([§FS-005-dispatch.13.3](FS-005-dispatch.md#133-a-send-the-carrier-refused-is-ended-not-held)). Only the forge interprets its opaque descriptor. A declaring forge's
   acceptance means known remote acceptance, rather than merely queueing. A
   queue-only carrier cannot make this declaration. This lets ephor recover a
   saved uncertain send ([§FS-005-dispatch.13](FS-005-dispatch.md#13-a-communication-is-work-too-and-its-answer-comes-back-as-a-proposal)); it does not promise exactly-once
@@ -299,14 +303,17 @@ source-directed actions
 
 Both transports expose the same default-false `reply_reconciliation`
 declaration and typed reply outcome. Out of process, `{"status":"accepted"}`
-reports known acceptance and `{"status":"unknown","note":"…"}` reports an
-explicitly unresolved outcome; the note is shown to the person. Legacy `{}`
-continues to mean success. Explicit unknown is held even when reconciliation
-is declared; a timeout or interrupted call is eligible for saved replay only
-under the declaration and binding checks of
-[§FS-005-dispatch.13](FS-005-dispatch.md#13-a-communication-is-work-too-and-its-answer-comes-back-as-a-proposal). The in-process outcome expresses these same cases,
-and native carriers receive the same durable-send guard without claiming
-reconciliation. `assets/ephor-forge.schema.json` publishes the capability and
+reports known acceptance, `{"status":"unknown","note":"…"}` reports an
+explicitly unresolved outcome, and `{"status":"refused","note":"…"}` reports
+definite non-delivery; each note is shown to the person. A refusal's note is
+required and is a string, and any carrier may answer `refused`, whether or not
+it declares reconciliation. Legacy `{}` continues to mean success. Explicit
+unknown is held even when reconciliation is declared; a timeout or interrupted
+call is eligible for saved replay only under the declaration and binding checks
+of [§FS-005-dispatch.13](FS-005-dispatch.md#13-a-communication-is-work-too-and-its-answer-comes-back-as-a-proposal). A refusal ends the send instead
+([§FS-005-dispatch.13.3](FS-005-dispatch.md#133-a-send-the-carrier-refused-is-ended-not-held)), and a nonzero exit, a timeout or a malformed answer is
+never a refusal. The in-process outcome expresses these same cases, and native
+carriers receive the same durable-send guard without claiming reconciliation. `assets/ephor-forge.schema.json` publishes the capability and
 outcome. The request remains `target` and `text` with existing source context;
 no new operation field is required, and descriptors are handed back verbatim.
 

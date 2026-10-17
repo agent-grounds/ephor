@@ -1240,7 +1240,9 @@ Repeat reconciliation is the opt-in carrier contract of
 another message. There is no automatic retry loop, gateway implementation or
 ephor-only exactly-once promise. A native or nondeclaring carrier's uncertain
 send is held, as is an explicit `unknown` result even from a declaring carrier.
-A held send cannot be retried by another posting command.
+A held send cannot be retried by another posting command. A send the carrier
+definitely refused is neither pending nor held: it ends
+([§FS-005-dispatch.13.3](FS-005-dispatch.md#133-a-send-the-carrier-refused-is-ended-not-held)).
 
 **A held outcome is resolved after checking the channel.**
 `ephor reply ID --resolve sent|not-sent` and the matching thread-menu choices
@@ -1409,6 +1411,71 @@ in so many words rather than leaving a blank ([§REQ-001-boundary.1](../requirem
 **There is no override.** No flag and no key posts a stale draft as it stands.
 Words the conversation has moved past go out only when the person types them,
 or keeps them in a reply they are typing.
+
+### 13.3 A send the carrier refused is ended, not held
+
+Saved replay ([§FS-005-dispatch.13](FS-005-dispatch.md#13-a-communication-is-work-too-and-its-answer-comes-back-as-a-proposal)) is for a send whose outcome nobody knows:
+a timeout, a lost acknowledgement, a call that was cut off. A send the carrier
+definitely refused is not one of those. A contact asks whether the fence can be
+done for €100, the person types "Yes, €100 works.", and before it goes out the
+contact writes again at the gateway. The gateway sees that the descriptor is no
+longer fresh and delivers nothing. Replaying the same bytes can only be refused
+again, and resolution is held-only, so a refusal that left the send pending
+would leave the conversation unanswerable from ephor for good. So **a carrier
+that knows it delivered nothing says so, and that ends the send.** It says so
+by answering `refused` with a note
+([§FS-001-forge-interface.2](FS-001-forge-interface.md#2-two-transports-one-interface)).
+
+**The refusal ends the intent wherever it arrives.** A `refused` answer to the
+first call, or to a saved replay, durably records the intent as not-sent with
+the carrier's note. It is recorded under the row lock the move already holds,
+and before the move reports the send released. A replayed send that is refused
+leaves recovery exactly as a first call does.
+
+**The answer carries the note on every surface.** The move fails. Its prose
+reads `Reply not sent: <note>` and the command exits nonzero. Under `--json`
+the outcome has `ok` false and its `says` carries the same note
+([§FS-011-command-line.7](FS-011-command-line.md#7---json-is-the-same-answer-not-a-second-one)). The thread screen's message says the same sentence
+([§REQ-002-parity.2](../requirements/REQ-002-parity.md#2-parity-runs-both-ways)). The note is the carrier's words. Ephor shows them and
+never parses them.
+
+**Nothing was sent, so nothing moves as if it had been.** A refusal confirms
+no draft, and neither retires nor suppresses it as posted: the draft stays
+where it was, copyable and, while it is still fresh, sendable. The thread's
+accepted-send generation does not advance. The refused descriptor is not
+recorded as confirmed, so the check that refuses a repeat at an unchanged
+confirmed descriptor ([§FS-005-dispatch.13](FS-005-dispatch.md#13-a-communication-is-work-too-and-its-answer-comes-back-as-a-proposal)) does not count it.
+
+**After release, a send is a new move.** The row reads as it does after
+`--resolve not-sent`: no saved send, and nothing to retry or resolve. No
+posting command replays the ended intent. `ephor reply ID` without words sends
+the available draft as a new intent, or says there is no draft. Typed words
+are a new intent at the newest recorded descriptor. Each one goes through the
+normal binding and freshness checks, and release supplies no override: a draft
+that a refresh shows the conversation moved past is stale like any other. Other
+words at the very descriptor the carrier refused are a new request, not a
+changed payload, because a refused operation does not make its descriptor used
+([§FS-001-forge-interface.1](FS-001-forge-interface.md#1-capabilities)).
+
+**A failed save says so, and claims nothing.** If the not-sent record cannot
+be saved, the answer shows both the carrier's note and the storage failure, and
+does not say the send was released. The next invocation reads the record that
+was actually retained. An unresolved intent keeps its replay-or-hold rules, and
+a retained not-sent record permits a new send.
+
+**Only `refused` proves that nothing was sent.** A nonzero exit, a timeout, an
+interrupted call or a malformed answer is uncertainty, and it stays pending or
+held exactly as [§FS-005-dispatch.13](FS-005-dispatch.md#13-a-communication-is-work-too-and-its-answer-comes-back-as-a-proposal) says. Nothing a note says turns an
+`accepted` or `unknown` answer into a refusal. Manual resolution stays
+held-only: `--resolve not-sent` does not release a pending send on a
+reconciling carrier, because only the carrier knows it delivered nothing. A
+carrier that refuses only with an exit code leaves its sends pending until it
+answers `refused`, and a replay through it once it does is ended like any
+other refusal.
+
+**A rehearsal does not predict it.** A dry run makes the ordinary checks and
+never asks the carrier to send, so it neither sends nor predicts a refusal, and
+it writes nothing.
 
 ## 14. Who does the work is chosen, and defaulted per project
 
