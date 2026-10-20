@@ -632,3 +632,26 @@ for it would open nothing ([§FS-011-command-line.7](FS-011-command-line.md#7---
 [§REQ-002-parity.4](../requirements/REQ-002-parity.md#4-the-machine-form-is-a-contract-not-a-dump)) — so naming is the prose
 form's, and the two forms stay the same answer because the path is still in the
 one that is parsed.
+
+## 12. A feed read from a cache past its TTL says so
+
+`ephor feed` prints from the cache and never fetches, so the rows it prints are
+as old as the last refresh of each project they came from. A cache days old
+reads exactly like a current one, and a matter that arrived since is absent
+from it in the same way a matter that does not exist is — the reader cannot
+tell "nothing new" from "not looked at", and the watch is trusted only while
+that difference shows ([§GOAL-003-nothing-lost](../goals.md#goal-003-nothing-lost-the-watch-is-trusted-enough-to-retire-the-sweep)).
+
+**For every project it selects, `feed` names on the error stream a cache older
+than `defaults.ttl_seconds`, and a project it has no cache for at all.** The
+line names the project, how long ago its cache was fetched, the TTL it is past,
+and the command that cures it — ``demo fetched 5d ago, past its 10m TTL; run
+`ephor refresh demo` `` — or, with no cache, that it was never fetched and the
+same command. The judgement is the one `ephor status` makes when it decides to
+refetch: a cache is past its TTL by the same rule, never a second one.
+
+Every cached row is still printed, standard output does not change — the prose
+rows, and the `feed --json` document a program parses
+([§FS-011-command-line.7](FS-011-command-line.md#7---json-is-the-same-answer-not-a-second-one), [§REQ-002-parity.4](../requirements/REQ-002-parity.md#4-the-machine-form-is-a-contract-not-a-dump)) — the exit code does not change,
+and `feed` still does not refetch. A project whose cache is younger than its
+TTL draws no line.
