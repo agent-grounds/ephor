@@ -332,7 +332,11 @@ impl App {
         // than on a path a keystroke waits on (§FS-005-dispatch.17).
         crate::seams::jobs::sweep();
         app.jobs = crate::seams::jobs::all();
-        app.reload_feeds()?;
+        // Opening the session already loaded feeds, standings and work. Only
+        // the screen's groups and view remain to initialize (§AR-009-surfaces.2);
+        // explicit reloads still take the full path through reload_feeds.
+        app.reload_work_groups();
+        app.rebuild_view();
         // What is on disk now is the baseline the tick moves from: the load
         // just read it, and re-reading it two seconds in would be a glance
         // at nothing (§FS-005-dispatch.15.1).
