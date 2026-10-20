@@ -192,6 +192,42 @@ impl Answered {
     pub fn answer(&self, input: &str) -> Option<&Answer> {
         self.answers.iter().find(|answer| answer.input == input)
     }
+
+    /// Explain what an agent-only choice leaves standing, using the effective
+    /// target answers and their sources rather than assuming defaults won
+    /// (§FS-005-dispatch.14, §FS-005-dispatch.19).
+    pub(crate) fn agent_only_note(&self, workflow: &Workflow, ask: &WorkflowAsk) -> Option<String> {
+        let unchanged: Vec<String> = workflow
+            .inputs
+            .iter()
+            .filter(|input| input.hand || ask.hands.contains(&input.name))
+            .filter_map(|input| {
+                let answer = self.answer(&input.name)?;
+                let source = match answer.from {
+                    From::Hand => return None,
+                    From::Default if input.default.is_some() => "the workflow default",
+                    from => from.label(),
+                };
+                Some(format!(
+                    "input '{}' remains {} ({source})",
+                    input.name,
+                    match answer.shown.is_empty() {
+                        true => "(empty)",
+                        false => &answer.shown,
+                    }
+                ))
+            })
+            .collect();
+        (!unchanged.is_empty()).then(|| {
+            format!(
+                "the accepted agent-only hand supplies no model-carrying selector; {}; {}. \
+                 Choose a model-carrying profile with --hand, or explicitly answer the input \
+                 with roster hand ids using --set or --values",
+                unchanged.join("; "),
+                crate::work::runtime::roster::model_profile_help(None)
+            )
+        })
+    }
 }
 
 /// How a hand named in configuration is turned into what the binding reads.
@@ -352,9 +388,24 @@ fn answer_one(
 }
 
 /// A hand-shaped answer: hand names, one or several, each rendered into what
-/// the binding reads. Configuration names a hand by its id and nothing else
-/// (§FS-005-dispatch.14), so this is the only spelling accepted here.
+/// the binding reads. All answer sources and shapes receive the same recovery
+/// advice for this input, rather than general configuration object-pin advice
+/// (§FS-005-dispatch.19).
 fn hands(written: &Value, input: &Input, named: Rendering<'_>) -> Result<Value, String> {
+    render_hands(written, input, named).map_err(|why| {
+        format!(
+            "input '{}' names who does the work: {why}; answer with roster hand ids \
+             ('<hand>' or '<hand>:<effort>'), one or several as the input requires; {}. \
+             Use that profile's hand id in this input",
+            input.name,
+            crate::work::runtime::roster::model_profile_help(None)
+        )
+    })
+}
+
+/// Preserve the accepted scalar/list forms and empty answers while rendering
+/// each named hand through the roster (§FS-005-dispatch.19).
+fn render_hands(written: &Value, input: &Input, named: Rendering<'_>) -> Result<Value, String> {
     let one = |name: &str| -> Result<Value, String> {
         // An empty answer is nobody choosing, not a hand name: preserve its
         // spelling and do not let the resolved hand below it take its place
@@ -365,9 +416,7 @@ fn hands(written: &Value, input: &Input, named: Rendering<'_>) -> Result<Value, 
         match named(name)? {
             Some(rendered) => Ok(Value::String(rendered)),
             None => Err(format!(
-                "input '{}' names who does the work, and '{name}' is not a hand this runtime \
-                 can be asked for",
-                input.name
+                "'{name}' is not a hand this runtime can be asked for"
             )),
         }
     };
@@ -380,24 +429,19 @@ fn hands(written: &Value, input: &Input, named: Rendering<'_>) -> Result<Value, 
             let mut rendered = Vec::with_capacity(names.len());
             for name in names {
                 let Value::String(name) = name else {
-                    return Err(format!(
-                        "input '{}' names who does the work, so every entry in it is a hand's id",
-                        input.name
-                    ));
+                    return Err("every entry must be a hand's id".to_string());
                 };
                 rendered.push(one(name)?);
             }
             match input.kind {
                 Kind::List => Ok(Value::Array(rendered)),
-                _ => rendered.into_iter().next().ok_or_else(|| {
-                    format!("input '{}' was answered with no hand at all", input.name)
-                }),
+                _ => rendered
+                    .into_iter()
+                    .next()
+                    .ok_or_else(|| "answered with no hand at all".to_string()),
             }
         }
-        _ => Err(format!(
-            "input '{}' names who does the work, so it is answered with a hand's id",
-            input.name
-        )),
+        _ => Err("the answer must be a hand's id".to_string()),
     }
 }
 
