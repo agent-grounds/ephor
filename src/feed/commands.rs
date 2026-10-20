@@ -489,6 +489,7 @@ pub fn feed(args: &FeedArgs, scope: &Projects) -> Result<ExitCode> {
     };
 
     let mut feeds = Vec::new();
+    let mut past_ttl = Vec::new();
     if args.unattributed {
         // The bucket is part of the store rather than a log line
         // (§AR-008-pipeline.2): what nothing claimed is still something
@@ -505,9 +506,15 @@ pub fn feed(args: &FeedArgs, scope: &Projects) -> Result<ExitCode> {
             }
             args.project.iter().collect()
         };
+        let ttl = config.defaults.ttl_seconds;
         for project in selected {
             known_project(&config, project)?;
-            if let Some(feed) = cache::load_feed(project)? {
+            let cached = cache::load_feed(project)?;
+            // The cache `status` would refetch is named, by status's own rule (§FS-011-command-line.12).
+            if !younger_than(cached.as_ref(), ttl) {
+                past_ttl.push(past_its_ttl(project, cached.as_ref(), ttl));
+            }
+            if let Some(feed) = cached {
                 feeds.push(feed);
             }
         }
@@ -573,7 +580,31 @@ pub fn feed(args: &FeedArgs, scope: &Projects) -> Result<ExitCode> {
             println!("{line}");
         }
     }
+    // After the rows, so a long feed does not scroll them away, and never on
+    // standard output, so neither form changes (§FS-011-command-line.12).
+    for notice in &past_ttl {
+        eprintln!("note: {notice}");
+    }
     Ok(ExitCode::SUCCESS)
+}
+
+/// What `feed` says of a project whose cache `status` would refetch: how long
+/// ago it was fetched and the TTL it is past, or that no refresh ever produced
+/// it, and the command that cures either (§FS-011-command-line.12).
+fn past_its_ttl(project: &str, cached: Option<&ProjectFeed>, ttl: u64) -> String {
+    let Some(fetched) = cached.and_then(|feed| feed.fetched_at) else {
+        return format!("{project} never fetched; run `ephor refresh {project}`");
+    };
+    // The age as `status` heads the same cache; "just now" is reachable only
+    // under a TTL shorter than a minute.
+    let ago = match render::age(Utc::now(), fetched).as_str() {
+        "now" => "just now".to_string(),
+        age => format!("{age} ago"),
+    };
+    format!(
+        "{project} fetched {ago}, past its {} TTL; run `ephor refresh {project}`",
+        render::span(ttl as i64)
+    )
 }
 
 /// Exit codes: 3 when nothing could be fetched at all, 4 when some providers
