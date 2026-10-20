@@ -98,7 +98,6 @@ fn text(bytes: &[u8]) -> String {
 }
 
 #[test]
-#[ignore = "red until #225: feed does not say a cache is past its TTL; implement removes this"]
 fn a_cache_past_its_ttl_is_named_and_its_rows_still_printed() {
     let world = refreshed();
     aged(&world);
@@ -138,7 +137,6 @@ fn a_cache_past_its_ttl_is_named_and_its_rows_still_printed() {
 }
 
 #[test]
-#[ignore = "red until #225: feed does not say a project was never fetched; implement removes this"]
 fn a_project_never_fetched_is_named() {
     let world = watching();
 
