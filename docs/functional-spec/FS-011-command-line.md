@@ -50,6 +50,14 @@ and how many of the project's matters are on it. This is the reading behind
 every branch row, and it is what makes `rebase` and `checkout` usable without
 first opening a screen to learn which branch to name.
 
+The first screen and the command's branch table carry complete measured
+readings over their selected scope. A branch's distance from main and from its
+own published copy describe the same local comparison, against the refs last
+fetched; opening either surface does not fetch to make that comparison newer.
+Completing a screen refresh updates its branch readings as well as the view of
+newly cached matters. Unknown, unpublished and missing checkouts keep their distinct
+meanings, and measurement completion order does not reorder the branch table.
+
 ## 3. The board is answerable without the screen
 
 `ephor operations` prints the operations board ([§FS-005-dispatch.15](FS-005-dispatch.md#15-every-operation-is-visible-in-one-place)): every
