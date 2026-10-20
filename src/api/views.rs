@@ -529,8 +529,14 @@ pub struct WorkStatus {
     pub plans: Vec<WorkPlan>,
     /// The item moved since the work was asked for (§FS-005-dispatch.5).
     pub stale: bool,
-    /// The plan the ledger points at is gone.
+    /// A plan the record names could not be read: one it placed that is gone
+    /// or will not read, or a laid plan it could not place at all
+    /// (§FS-005-dispatch.35).
     pub missing: bool,
+    /// How many laid plans the record names that nobody could read — the one
+    /// fact `plans` and `missing` cannot say between them, since such a plan
+    /// is placed nowhere (§FS-005-dispatch.35.1, §REQ-002-parity.3).
+    pub unread: usize,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub changes: Vec<String>,
     /// Minutes of silence on the live run holding this work, where that is

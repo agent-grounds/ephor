@@ -757,7 +757,7 @@
         },
         "status": {
           "type": "object",
-          "required": ["plan", "plan_id", "root", "checkout", "stale", "missing", "tickets"],
+          "required": ["plan", "plan_id", "root", "checkout", "stale", "missing", "unread", "tickets"],
           "properties": {
             "plan": { "type": "string" },
             "plan_id": { "type": "string" },
@@ -779,7 +779,8 @@
               }
             },
             "stale": { "type": "boolean", "description": "The matter moved since its work was asked for (FS-005-dispatch.5)." },
-            "missing": { "type": "boolean", "description": "The plan the ledger points at is gone." },
+            "missing": { "type": "boolean", "description": "A plan the record names could not be read: one it placed that is gone or will not read, or a laid plan it could not place at all (FS-005-dispatch.35)." },
+            "unread": { "type": "integer", "minimum": 0, "description": "How many laid plans the record names that nobody could read. Such a plan is placed nowhere, so neither `plans` nor `missing` can say it; this is what tells a plan that is gone from one that could not be read (FS-005-dispatch.35.1, REQ-002-parity.3)." },
             "changes": {
               "type": "array",
               "items": { "type": "string" }

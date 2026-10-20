@@ -305,8 +305,9 @@ pub struct RecordedWork {
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub struct LeftPlan {
     pub plan: PathBuf,
-    /// Not on disk, or a laid plan nobody could read: the word `work list
-    /// --json` uses for the same fact.
+    /// Nothing is on disk at that path. A laid workspace that is still there
+    /// but holds no plan anybody could read is not missing in this sense:
+    /// forget leaves it where it is, so it stays.
     pub missing: bool,
 }
 
@@ -315,18 +316,17 @@ impl RecordedWork {
     /// on disk (§FS-005-dispatch.35.1): the plans this reading placed, then the
     /// laid plans nobody could read, by the record's own name. Never the
     /// entry's own path in their place, which for a matter a workflow laid is
-    /// a file ephor never wrote (§FS-005-dispatch.19).
+    /// a file ephor never wrote (§FS-005-dispatch.19). The disk is asked of
+    /// every one of them, the unread names included.
     pub fn left(&self) -> Vec<LeftPlan> {
         self.plans
             .iter()
+            .map(|plan| &plan.path)
+            .chain(&self.unread)
             .map(|plan| LeftPlan {
-                missing: !plan.path.exists(),
-                plan: plan.path.clone(),
+                missing: !plan.exists(),
+                plan: plan.clone(),
             })
-            .chain(self.unread.iter().map(|name| LeftPlan {
-                plan: name.clone(),
-                missing: true,
-            }))
             .collect()
     }
 }
@@ -336,35 +336,59 @@ impl RecordedWork {
 pub struct PlanHeading<'a> {
     /// The plans to name: the ones the reading placed, or the entry's own path
     /// where it placed nothing and found nothing unreadable.
-    pub plans: Vec<&'a std::path::Path>,
-    /// What is wrong with them, where the reading says something is.
+    pub plans: Vec<HeadedPlan<'a>>,
+    /// What the record holds that no named plan says, where it holds it.
     pub note: Option<&'static str>,
+}
+
+/// One plan the work view names, and whether it is on disk
+/// (§FS-005-dispatch.35.1).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HeadedPlan<'a> {
+    pub path: &'a std::path::Path,
+    pub gone: bool,
+}
+
+impl HeadedPlan<'_> {
+    /// What follows the path on its line: said of that plan alone, so a matter
+    /// with several says which one went (§FS-005-dispatch.35.1).
+    pub fn mark(&self) -> Option<&'static str> {
+        self.gone.then_some("(gone)")
+    }
 }
 
 /// The work view's heading, one answer for `work offers` and the work screen
 /// (§FS-005-dispatch.35.1): the plans the reading placed, and never the
 /// entry's own path in their place.
 ///
-/// Nothing placed and something missing has one cause, since a placed plan
-/// that will not read is still placed: a laid plan the record names that
-/// nobody could read. That is said as the record's fact and names no file,
-/// because the entry's own path beside it is one ephor never wrote
-/// (§FS-005-dispatch.19). Where a plan that is named is not on disk, it is
-/// that file that went. The disk is asked only when the reading already said
-/// something is missing.
+/// Each named plan is asked of the disk, the entry's own path included where
+/// it is the one named, and one that is not there is marked gone on its own
+/// line. `unread` is the caller's fact, read from the record, that a laid plan
+/// it names could not be placed at all; it is said whenever it holds, beside
+/// any plan marked gone, and names no file, because the entry's own path is
+/// one ephor never wrote for such a matter (§FS-005-dispatch.19). `missing`
+/// with nothing gone and nothing unread is a placed plan on disk that will not
+/// read, and gets the same note.
 pub fn plan_heading<'a>(
     own: &'a std::path::Path,
     placed: impl IntoIterator<Item = &'a std::path::Path>,
     missing: bool,
+    unread: bool,
 ) -> PlanHeading<'a> {
-    let mut plans: Vec<&std::path::Path> = placed.into_iter().collect();
-    if plans.is_empty() && !missing {
-        plans.push(own);
+    let mut named: Vec<&std::path::Path> = placed.into_iter().collect();
+    if named.is_empty() && !unread {
+        named.push(own);
     }
-    let note = missing.then(|| match plans.iter().any(|plan| !plan.exists()) {
-        true => "the plan this points at is gone",
-        false => "a plan this matter's record names could not be read",
-    });
+    let plans: Vec<HeadedPlan> = named
+        .into_iter()
+        .map(|path| HeadedPlan {
+            path,
+            gone: !path.exists(),
+        })
+        .collect();
+    let unexplained = missing && !plans.iter().any(|plan| plan.gone);
+    let note =
+        (unread || unexplained).then_some("a plan this matter's record names could not be read");
     PlanHeading { plans, note }
 }
 
@@ -375,6 +399,25 @@ impl WorkStatus {
 
     pub fn open_tickets(&self) -> usize {
         self.tickets.iter().filter(|t| !t.finished).count()
+    }
+
+    /// The file to open as this matter's plan, read from the plans its heading
+    /// names (§FS-005-dispatch.35.1): the one holding its open task, or else
+    /// the first plan the reading placed that is on disk, or else, in a ledger
+    /// that named no plan, the entry's own path where it is on disk. Never the
+    /// entry's own path in their place, which for a matter a workflow laid is
+    /// a file ephor never wrote (§FS-005-dispatch.19). None where none of them
+    /// is on disk, which is said rather than handed to an editor.
+    pub fn plan_to_read(&self) -> Option<&std::path::Path> {
+        let own =
+            (self.plans.is_empty() && self.unread_workflows == 0).then_some(self.plan.as_path());
+        self.open_at
+            .as_ref()
+            .map(|open| open.plan.as_path())
+            .into_iter()
+            .chain(self.plans.iter().map(|plan| plan.path.as_path()))
+            .chain(own)
+            .find(|plan| plan.is_file())
     }
 
     /// Work that has stopped and is waiting on a person. The one thing in here
