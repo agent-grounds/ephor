@@ -1625,6 +1625,15 @@ model profile declared in the runtime's own settings turns an agent-only
 hand into a model hand, and the ticket line then carries it everywhere,
 with no flags involved at all.
 
+Accepting an agent-only pick does not give it a model-carrying workflow
+selector. When such a pick leaves a workflow target answer at its displayed
+default, the human account must explain that effect at the input, rather than
+only saying that the agent rides a later run. It names the unchanged input
+and its answer source, says why the pick supplies no model selector, and
+points to a model-carrying roster profile or an explicit answer with roster
+ids. This explanation changes neither binding nor answer precedence
+([§FS-005-dispatch.19](FS-005-dispatch.md#19-a-workflow-the-runtime-offers-is-an-action-and-its-inputs-are-answered-here)).
+
 **A run started from the interface is the same run.** The key that hands
 one item's plan to the runtime resolves the hand exactly as the command
 line does and carries the same flags — which surface a reader started a
@@ -2270,6 +2279,25 @@ so **which pools a laying needs is a fact about the laying** — computed from
 the answers rather than declared anywhere, recorded with the laying, and read
 back from that record by whatever decides later
 ([§FS-005-dispatch.33](FS-005-dispatch.md#33-work-that-needs-several-pools-at-once-is-admitted-whole)).
+
+**Recovery advice must fit the input being answered.** Inputs recognized as
+hands, whether by a workflow manifest mark or the entry's `hands` list,
+accept roster hand ids (`<hand>` or `<hand>:<effort>`), one or several as the
+input requires. A malformed runtime selector and a submitted object both
+remain refusals. Each refusal names the input, explains that hand-id syntax,
+and directs the reader to a declared model profile with an agent carrier in
+the binding's `models` settings registry for a nameable model-carrying hand.
+It must not recommend putting an `{agent, model}` object into that input,
+including an entry's literal answer to the same hand-marked input: all of
+those answers undergo the same hand validation. General configuration pins
+that already accept an explicit object continue to do so. The human account
+of an accepted agent-only pick that leaves a target at its workflow default
+names that input and source, explains the missing model selector, and shows
+how to choose a model profile with `--hand` or answer the input with roster
+ids using `--set` or `--values`. Manifest recognition and entry listing have
+the same explanation; adding an entry listing does not give an agent-only
+pick a model. Accepted forms, defaults, precedence, narrowing, and the
+machine-readable answer fields and their meaning are unchanged.
 
 **What it writes is a plan beside the item's, not a ticket inside it.** A
 workflow lays down a plan of its own; it cannot be appended to the item's
