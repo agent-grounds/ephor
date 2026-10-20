@@ -24,10 +24,21 @@
 //! plan the prose names (§REQ-002-parity.3). And the work view's heading names
 //! the same plans rather than the entry's own path in their place.
 //!
+//! A second site holds the forms the first has no case for, each of them one
+//! matter: #121 and #122 dispatched by the recipe *and* laid by the action, with
+//! #121's recipe plan and checkout both gone and only #122's recipe plan gone;
+//! #123 a ledger written before the record named its plans, its own plan gone;
+//! and #124 laid, with its `index.rhei.md` removed and its workspace left. The
+//! report names each plan on its own line, says nothing stays where the reading
+//! holds none, and says a workspace still on disk stays; the heading marks each
+//! gone plan on its own line and says a laid plan nobody could read beside it,
+//! and `work offers --json` carries that as `unread`.
+//!
 //! The reproduction behind the ticket built this site in a shell script with a
 //! stub forge and a stub runtime; this is that site in the project's own frame,
 //! laid through the real `work lay` and `work dispatch` so that the ledger holds
-//! exactly what ephor writes.
+//! exactly what ephor writes. The one exception is #123, whose ledger entry is
+//! rewritten to name no dispatch, because no writer today makes such an entry.
 
 #[path = "../support.rs"]
 mod support;
@@ -55,7 +66,20 @@ const RECIPE_KEPT: &str = "acmeforge:app#115";
 const LAID: [&str; 3] = [LAID_GONE, LAID_SWEPT, LAID_KEPT];
 const RECIPE: [&str; 2] = [RECIPE_GONE, RECIPE_KEPT];
 
-/// A forge with five open issues and nothing else.
+/// Dispatched by the recipe and laid by the action; the recipe plan deleted and
+/// the checkout removed, so one plan is gone and the other nobody can read.
+const BOTH_GONE: &str = "acmeforge:app#121";
+/// Dispatched by the recipe and laid by the action; only the recipe plan deleted.
+const ONE_GONE: &str = "acmeforge:app#122";
+/// Dispatched by the recipe, then rewritten to a ledger that named no plan, and
+/// its plan deleted.
+const NO_PLAN: &str = "acmeforge:app#123";
+/// Laid by the action; its `index.rhei.md` removed and its workspace left.
+const LAID_EMPTIED: &str = "acmeforge:app#124";
+
+const MIXED: [&str; 4] = [BOTH_GONE, ONE_GONE, NO_PLAN, LAID_EMPTIED];
+
+/// A forge with nine open issues and nothing else.
 const ACME_FORGE: &str = r#"#!/usr/bin/env bash
 set -euo pipefail
 cat > /dev/null
@@ -70,7 +94,11 @@ case "${1:?subcommand}" in
     issue 112 "Changelog drops the last entry"; printf ','
     issue 113 "Version banner is stale"; printf ','
     issue 114 "Docs index lists a removed page"; printf ','
-    issue 115 "Footer year is hard-coded"
+    issue 115 "Footer year is hard-coded"; printf ','
+    issue 121 "Install guide names an old flag"; printf ','
+    issue 122 "Search box ignores accents"; printf ','
+    issue 123 "Sitemap omits the archive"; printf ','
+    issue 124 "Logo is blurry on retina"
     printf ']' ;;
   *) printf '[]' ;;
 esac
@@ -182,11 +210,9 @@ fn path_of(value: &Value) -> PathBuf {
     PathBuf::from(value.as_str().expect("a path"))
 }
 
-/// The site the report describes, built through ephor's own verbs: three
-/// matters laid by the action and two dispatched by the recipe, then #111's and
-/// #112's checkouts removed and #114's plan deleted. Returns what the record
-/// said about each before anything was removed.
-fn site() -> (World, BTreeMap<&'static str, Recorded>) {
+/// A project whose `implement` action lays an issue into its own checkout and
+/// whose `note` recipe writes a plan into the project's work root, refreshed.
+fn acme_world() -> World {
     let world = World::new();
     world.stub("ephor-forge-acmeforge", ACME_FORGE);
     world.stub("acme-runtime", ACME_RUNTIME);
@@ -216,47 +242,88 @@ fn site() -> (World, BTreeMap<&'static str, Recorded>) {
         "work": { "runner": "acme-runtime" }
     }));
     world.ephor().args(["refresh", PROJECT]).assert().success();
+    world
+}
+
+fn lay(world: &World, id: &str) {
+    world
+        .ephor()
+        .args(["work", "lay", "implement", "--item", id])
+        .assert()
+        .success();
+    assert!(
+        issue_checkout(world, id).is_dir(),
+        "work lay minted no checkout for {id}"
+    );
+}
+
+fn dispatch(world: &World, id: &str) {
+    world
+        .ephor()
+        .args(["work", "dispatch", "--item", id, "--recipe", "note"])
+        .assert()
+        .success();
+}
+
+fn remove_checkout(world: &World, id: &str) {
+    let checkout = issue_checkout(world, id);
+    git(
+        &main_checkout(world),
+        &["worktree", "remove", "--force", &checkout.to_string_lossy()],
+    );
+    assert!(
+        !checkout.exists(),
+        "{} is still on disk",
+        checkout.display()
+    );
+}
+
+/// The plans `work list --json` says the reading holds for one entry.
+fn held(row: &Value) -> Vec<PathBuf> {
+    row["plans"]
+        .as_array()
+        .expect("the plans the reading holds")
+        .iter()
+        .map(|plan| path_of(&plan["plan"]))
+        .collect()
+}
+
+/// The record's own name of what the action laid: the dispatch's root joined
+/// to the name it recorded.
+fn laid_name(row: &Value) -> Option<PathBuf> {
+    row["workflows"]
+        .as_array()
+        .and_then(|laid| laid.first())
+        .map(|laid| {
+            path_of(&laid["root"]).join(laid["plan"].as_str().expect("the laid plan's name"))
+        })
+}
+
+/// The site the report describes, built through ephor's own verbs: three
+/// matters laid by the action and two dispatched by the recipe, then #111's and
+/// #112's checkouts removed and #114's plan deleted. Returns what the record
+/// said about each before anything was removed.
+fn site() -> (World, BTreeMap<&'static str, Recorded>) {
+    let world = acme_world();
 
     for id in LAID {
-        world
-            .ephor()
-            .args(["work", "lay", "implement", "--item", id])
-            .assert()
-            .success();
-        assert!(
-            issue_checkout(&world, id).is_dir(),
-            "work lay minted no checkout for {id}"
-        );
+        lay(&world, id);
     }
     for id in RECIPE {
-        world
-            .ephor()
-            .args(["work", "dispatch", "--item", id, "--recipe", "note"])
-            .assert()
-            .success();
+        dispatch(&world, id);
     }
 
     let list = work_list(&world);
     let mut recorded = BTreeMap::new();
     for id in LAID.into_iter().chain(RECIPE) {
         let row = row(&list, id);
-        let held: Vec<PathBuf> = row["plans"]
-            .as_array()
-            .expect("the plans the reading holds")
-            .iter()
-            .map(|plan| path_of(&plan["plan"]))
-            .collect();
+        let held = held(row);
         assert_eq!(held.len(), 1, "{id} should hold exactly one plan: {row}");
         assert!(
             held[0].is_file(),
             "{id}'s plan is not on disk even before removal"
         );
-        let laid = row["workflows"]
-            .as_array()
-            .and_then(|laid| laid.first())
-            .map(|laid| {
-                path_of(&laid["root"]).join(laid["plan"].as_str().expect("the laid plan's name"))
-            });
+        let laid = laid_name(row);
         recorded.insert(
             id,
             Recorded {
@@ -293,16 +360,7 @@ fn site() -> (World, BTreeMap<&'static str, Recorded>) {
     }
 
     for id in [LAID_GONE, LAID_SWEPT] {
-        let checkout = issue_checkout(&world, id);
-        git(
-            &main_checkout(&world),
-            &["worktree", "remove", "--force", &checkout.to_string_lossy()],
-        );
-        assert!(
-            !checkout.exists(),
-            "{} is still on disk",
-            checkout.display()
-        );
+        remove_checkout(&world, id);
     }
     fs::remove_file(&recorded[RECIPE_GONE].own).expect("delete #114's plan");
 
@@ -553,8 +611,9 @@ fn the_forget_json_carries_the_plans_and_whether_each_is_still_there() {
 
 /// The work view's heading is the same naming (§FS-005-dispatch.35.1): it names
 /// the plans the reading placed, says so where one is gone or could not be
-/// read, and never names the entry's own path in their place. Its JSON already
-/// carries `plans` and `missing` and does not change.
+/// read, and never names the entry's own path in their place. Its JSON keeps
+/// what it carried and gains `unread`, the count of laid plans nobody could
+/// read.
 #[test]
 fn the_work_view_names_the_plans_its_reading_holds() {
     let (world, recorded) = site();
@@ -617,7 +676,8 @@ fn the_work_view_names_the_plans_its_reading_holds() {
                 shown(&entry.own)
             ));
         }
-        // The view's machine-readable form is not what changes.
+        // The view's machine-readable form keeps what it carried, and says
+        // the unread plan the prose says (§REQ-002-parity.3).
         let reading = shaped(
             "work",
             &world
@@ -627,12 +687,303 @@ fn the_work_view_names_the_plans_its_reading_holds() {
                 .expect("work offers --json runs"),
         );
         assert_eq!(reading["status"]["plan"], json!(shown(&entry.own)), "{id}");
+        let unread = usize::from([LAID_GONE, LAID_SWEPT].contains(&id));
+        assert_eq!(
+            reading["status"]["unread"],
+            json!(unread),
+            "{id}: {reading}"
+        );
         outputs.push(out);
     }
 
     assert!(
         wrong.is_empty(),
         "the work view names something other than the plans its reading holds:\n{}\n\nwhat it printed:\n{}",
+        wrong.join("\n"),
+        outputs.join("\n")
+    );
+}
+
+/// What the record said about one matter of the second site before anything
+/// was removed, read from `work list --json`.
+#[derive(Debug, Clone)]
+struct Mixed {
+    /// The ledger entry's own `plan`.
+    own: PathBuf,
+    /// The plan the recipe wrote, where it dispatched one.
+    recipe: Option<PathBuf>,
+    /// The record's own name of what the action laid, and the `index.rhei.md`
+    /// inside it, where it laid one.
+    laid: Option<(PathBuf, PathBuf)>,
+}
+
+impl Mixed {
+    fn recipe(&self) -> &Path {
+        self.recipe.as_deref().expect("a recipe plan")
+    }
+
+    fn laid_name(&self) -> &Path {
+        &self.laid.as_ref().expect("a laid plan").0
+    }
+
+    fn laid_index(&self) -> &Path {
+        &self.laid.as_ref().expect("a laid plan").1
+    }
+}
+
+/// The second site: #121 and #122 dispatched by the recipe and laid by the
+/// action, #123 dispatched by the recipe, #124 laid by the action. Then #121's
+/// recipe plan deleted and its checkout removed, #122's recipe plan deleted,
+/// #123's entry rewritten to name no dispatch and its plan deleted, and #124's
+/// `index.rhei.md` removed with its workspace left in place.
+fn mixed_site() -> (World, BTreeMap<&'static str, Mixed>) {
+    let world = acme_world();
+    for id in [BOTH_GONE, ONE_GONE, NO_PLAN] {
+        dispatch(&world, id);
+    }
+    for id in [BOTH_GONE, ONE_GONE, LAID_EMPTIED] {
+        lay(&world, id);
+    }
+
+    let list = work_list(&world);
+    let mut recorded = BTreeMap::new();
+    for id in MIXED {
+        let row = row(&list, id);
+        let held = held(row);
+        assert!(
+            held.iter().all(|plan| plan.is_file()),
+            "{id}'s plans are not on disk even before removal: {row}"
+        );
+        let laid = laid_name(row).map(|name| {
+            let index = held
+                .iter()
+                .find(|plan| plan.starts_with(&name))
+                .unwrap_or_else(|| panic!("{id} holds nothing inside {}: {row}", name.display()))
+                .clone();
+            (name, index)
+        });
+        let recipe = held
+            .iter()
+            .find(|plan| {
+                laid.as_ref()
+                    .is_none_or(|(name, _)| !plan.starts_with(name))
+            })
+            .cloned();
+        let expected = usize::from(recipe.is_some()) + usize::from(laid.is_some());
+        assert_eq!(held.len(), expected, "{id} holds {held:?}");
+        recorded.insert(
+            id,
+            Mixed {
+                own: path_of(&row["plan"]),
+                recipe,
+                laid,
+            },
+        );
+    }
+    for id in [BOTH_GONE, ONE_GONE, NO_PLAN] {
+        assert!(recorded[id].recipe.is_some(), "{id} has no recipe plan");
+    }
+    for id in [BOTH_GONE, ONE_GONE, LAID_EMPTIED] {
+        assert!(recorded[id].laid.is_some(), "{id} has no laid plan");
+    }
+
+    fs::remove_file(recorded[BOTH_GONE].recipe()).expect("delete #121's recipe plan");
+    remove_checkout(&world, BOTH_GONE);
+    fs::remove_file(recorded[ONE_GONE].recipe()).expect("delete #122's recipe plan");
+    // No writer today makes an entry that names no dispatch; one written before
+    // the record named its plans looks like this.
+    let mut ledger = read_json(&ledger_path(&world));
+    ledger["entries"][NO_PLAN]["dispatches"] = json!([]);
+    write_json(&ledger_path(&world), &ledger);
+    fs::remove_file(recorded[NO_PLAN].recipe()).expect("delete #123's plan");
+    fs::remove_file(recorded[LAID_EMPTIED].laid_index()).expect("empty #124's workspace");
+    assert!(
+        recorded[LAID_EMPTIED].laid_name().is_dir(),
+        "#124's workspace must stay on disk, or this case pins nothing"
+    );
+    (world, recorded)
+}
+
+/// What forget must say of each plan of a second-site matter, in the order the
+/// record holds them, and whether each is gone.
+fn left_of(id: &str, entry: &Mixed) -> Vec<(PathBuf, bool)> {
+    match id {
+        BOTH_GONE => vec![
+            (entry.recipe().to_path_buf(), true),
+            (entry.laid_name().to_path_buf(), true),
+        ],
+        ONE_GONE => vec![
+            (entry.recipe().to_path_buf(), true),
+            (entry.laid_index().to_path_buf(), false),
+        ],
+        NO_PLAN => Vec::new(),
+        LAID_EMPTIED => vec![(entry.laid_name().to_path_buf(), false)],
+        _ => unreachable!("{id} is not of the second site"),
+    }
+}
+
+/// The prose forget owes one entry, whole: one line where the matter had one
+/// plan, a line per plan under `its plans:` where it had several, and a line
+/// naming no path where the reading holds none (§FS-005-dispatch.35.1).
+fn forgot_prose(id: &str, left: &[(PathBuf, bool)]) -> String {
+    let said = |(plan, gone): &(PathBuf, bool)| match gone {
+        false => format!("stays at {}", shown(plan)),
+        true => format!("was already gone ({})", shown(plan)),
+    };
+    match left {
+        [] => format!("forgot {id} — nothing of it stays: no plan of it is on disk"),
+        [plan] => format!("forgot {id} — its plan {}", said(plan)),
+        plans => std::iter::once(format!("forgot {id} — its plans:"))
+            .chain(plans.iter().map(|plan| format!("  {}", said(plan))))
+            .collect::<Vec<_>>()
+            .join("\n"),
+    }
+}
+
+/// A matter with a recipe plan and a laid plan is reported plan by plan, each
+/// on its own line, whichever of them went; a matter whose reading holds no
+/// plan is told that nothing of it stays; and a laid workspace still on disk
+/// stays at its directory, though nobody could read a plan in it — forget
+/// leaves it where it is (§FS-005-dispatch.35.1). `--json` says the same, plan
+/// for plan, and keeps `item` and `plan` as they were (§REQ-002-parity.3).
+#[test]
+fn a_matter_with_several_plans_or_none_is_reported_plan_by_plan() {
+    let (world, recorded) = mixed_site();
+    let mut wrong = Vec::new();
+    let mut outputs = Vec::new();
+
+    for id in MIXED {
+        let entry = &recorded[id];
+        let left = left_of(id, entry);
+        for (plan, gone) in &left {
+            assert_eq!(
+                !plan.exists(),
+                *gone,
+                "{id}: the fixture is not what it means to be"
+            );
+        }
+        let (reading, prose) = forget_both(&world, &["--item", id]);
+        let expected = forgot_prose(id, &left);
+        if said_about(&prose, id).as_deref() != Some(expected.as_str()) {
+            wrong.push(format!(
+                "{id}: forget printed\n{prose}\n  expected\n{expected}"
+            ));
+        }
+        let item = &reading["forgot"][0];
+        if item["item"] != json!(id) || item["plan"] != json!(shown(&entry.own)) {
+            wrong.push(format!("{id}: `item` or `plan` is not what it was: {item}"));
+        }
+        let plans: Vec<Value> = left
+            .iter()
+            .map(|(plan, gone)| json!({ "plan": shown(plan), "missing": gone }))
+            .collect();
+        if item["plans"] != json!(plans) {
+            wrong.push(format!(
+                "{id}: `plans` is {}, expected {}",
+                item["plans"],
+                json!(plans)
+            ));
+        }
+        outputs.push(prose);
+    }
+
+    assert!(
+        wrong.is_empty(),
+        "work forget does not report each plan as the disk has it:\n{}\n\nwhat it printed:\n{}",
+        wrong.join("\n"),
+        outputs.concat()
+    );
+}
+
+/// The heading marks each plan it names that is not on disk, on that plan's own
+/// line, and says a laid plan nobody could read beside whatever it marks; the
+/// entry's own path, where a ledger that named no plan leaves it the one to
+/// name, is asked of the disk the same way (§FS-005-dispatch.35.1). `work
+/// offers --json` carries the unread plan as `unread` (§REQ-002-parity.3).
+#[test]
+fn the_work_view_marks_each_gone_plan_and_says_an_unread_one_beside_it() {
+    const UNREAD: &str = "a plan this matter's record names could not be read";
+    let (world, recorded) = mixed_site();
+    let mut wrong = Vec::new();
+    let mut outputs = Vec::new();
+
+    for id in MIXED {
+        let entry = &recorded[id];
+        let output = world
+            .ephor()
+            .args(["work", "offers", "--item", id])
+            .output()
+            .expect("work offers runs");
+        assert!(output.status.success(), "work offers --item {id} failed");
+        let out = String::from_utf8_lossy(&output.stdout).into_owned();
+        let heading = out
+            .split("what could be asked for")
+            .next()
+            .unwrap_or_default()
+            .to_string();
+        let lines: Vec<&str> = heading.lines().map(str::trim).collect();
+        let has = |line: String| lines.contains(&line.as_str());
+        let unread = heading.contains(UNREAD);
+        let (marked, kept, says_unread): (Vec<&Path>, Vec<&Path>, bool) = match id {
+            BOTH_GONE => (vec![entry.recipe()], Vec::new(), true),
+            ONE_GONE => (vec![entry.recipe()], vec![entry.laid_index()], false),
+            NO_PLAN => (vec![entry.own.as_path()], Vec::new(), false),
+            LAID_EMPTIED => (Vec::new(), Vec::new(), true),
+            _ => unreachable!(),
+        };
+        for plan in &marked {
+            if !has(format!("{} (gone)", shown(plan))) {
+                wrong.push(format!(
+                    "{id}: {} is not marked gone on its own line",
+                    shown(plan)
+                ));
+            }
+        }
+        for plan in &kept {
+            if !has(shown(plan)) {
+                wrong.push(format!("{id}: {} is not named as there", shown(plan)));
+            }
+        }
+        if heading.matches("(gone)").count() != marked.len() {
+            wrong.push(format!(
+                "{id}: the heading marks something other than {marked:?}"
+            ));
+        }
+        if unread != says_unread {
+            wrong.push(format!(
+                "{id}: the heading says the unread note: {unread}, expected {says_unread}"
+            ));
+        }
+        // A laid plan nobody could read names no file in its place.
+        if let Some((name, _)) = entry.laid.as_ref().filter(|_| says_unread) {
+            if heading.contains(&shown(name)) {
+                wrong.push(format!(
+                    "{id}: the heading names {}, which nobody could read",
+                    shown(name)
+                ));
+            }
+        }
+        let reading = shaped(
+            "work",
+            &world
+                .ephor()
+                .args(["work", "offers", "--item", id, "--json"])
+                .output()
+                .expect("work offers --json runs"),
+        );
+        if reading["status"]["unread"] != json!(usize::from(says_unread)) {
+            wrong.push(format!(
+                "{id}: `status.unread` is {}, expected {}",
+                reading["status"]["unread"],
+                usize::from(says_unread)
+            ));
+        }
+        outputs.push(out);
+    }
+
+    assert!(
+        wrong.is_empty(),
+        "the work view does not say which plan went and which could not be read:\n{}\n\nwhat it printed:\n{}",
         wrong.join("\n"),
         outputs.join("\n")
     );

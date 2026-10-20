@@ -902,6 +902,7 @@ impl Session {
                     .collect(),
                 stale: status.stale(),
                 missing: status.missing,
+                unread: status.unread_workflows,
                 changes: status.changes.clone(),
                 quiet: status.quiet,
                 tickets: status

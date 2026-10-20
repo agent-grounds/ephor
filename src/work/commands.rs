@@ -413,14 +413,21 @@ fn work_offers(config: &StatusConfig, args: &crate::cli::WorkOffersArgs) -> Resu
         // The plans the reading placed, said as the work screen says them
         // (§FS-005-dispatch.35.1): the entry's own path is not one of them for
         // a matter a workflow laid, and naming it here pointed at a file ephor
-        // never wrote while the plan that holds the work went unnamed.
+        // never wrote while the plan that holds the work went unnamed. Read
+        // from the facts `--json` carries, `unread` among them, so the prose
+        // says nothing a program cannot (§REQ-002-parity.3).
         let heading = crate::work::plan_heading(
             &status.plan,
             status.plans.iter().map(|plan| plan.plan.as_path()),
             status.missing,
+            status.unread > 0,
         );
         for plan in &heading.plans {
-            println!("  {}", style.dim(&plan.display().to_string()));
+            let mark = plan
+                .mark()
+                .map(|mark| format!(" {mark}"))
+                .unwrap_or_default();
+            println!("  {}{mark}", style.dim(&plan.path.display().to_string()));
         }
         if let Some(note) = heading.note {
             println!("  {note}");

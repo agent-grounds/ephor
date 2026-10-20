@@ -989,12 +989,17 @@ impl App {
                 self.reload_work();
                 self.reload_operations();
             }
+            // A plan the reading placed, the one the work screen's `e` opens,
+            // and never the entry's own path in its place (§FS-005-dispatch.35.1).
             Action::OpenWorkPlan(item) => match self.work_status(&item) {
-                Some(status) => {
-                    self.edit_file(terminal, &status.plan)?;
-                    self.reload_work();
-                    self.reload_operations();
-                }
+                Some(status) => match status.plan_to_read() {
+                    Some(plan) => {
+                        self.edit_file(terminal, plan)?;
+                        self.reload_work();
+                        self.reload_operations();
+                    }
+                    None => self.message = work::NO_PLAN_ON_DISK.to_string(),
+                },
                 None => self.message = "There is no plan here yet".to_string(),
             },
             // Read from the lock now, never remembered: a run that died is not

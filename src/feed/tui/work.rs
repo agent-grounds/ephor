@@ -7,8 +7,6 @@
 //! it will ask for, which is the difference between handing work over and
 //! hoping.
 
-use std::path::PathBuf;
-
 use ratatui::crossterm::event::KeyCode;
 use ratatui::layout::Rect;
 use ratatui::style::{Color, Modifier, Style};
@@ -23,6 +21,11 @@ use crate::feed::render::{age, span};
 use crate::work::WorkStatus;
 
 use super::Action;
+
+/// What `e` says, on this screen and on a work row, where the matter has plans
+/// and none of them is on disk: no editor is started on a path that is not
+/// there (§FS-005-dispatch.35.1).
+pub(super) const NO_PLAN_ON_DISK: &str = "No plan of this matter is on disk";
 
 pub(crate) struct WorkScreen {
     pub item: Item,
@@ -211,8 +214,17 @@ impl WorkScreen {
         format!("{keys}{fold}  H human review  o browser  ; ops  esc back")
     }
 
-    fn plan(&self) -> Option<PathBuf> {
-        self.status.as_ref().map(|status| status.plan.clone())
+    /// What `e` opens: a plan the reading placed, never the entry's own path
+    /// in its place, and a sentence where none of them is on disk
+    /// (§FS-005-dispatch.35.1).
+    fn read_plan(&self) -> Action {
+        match &self.status {
+            Some(status) => match status.plan_to_read() {
+                Some(plan) => Action::ReadPlan(plan.to_path_buf()),
+                None => Action::SetMessage(NO_PLAN_ON_DISK.to_string()),
+            },
+            None => Action::SetMessage("No plan yet".to_string()),
+        }
     }
 
     pub fn handle_key(&mut self, code: KeyCode) -> Action {
@@ -286,10 +298,7 @@ impl WorkScreen {
                 },
                 (None, None, None) => Action::SetMessage("No work to run yet".to_string()),
             },
-            KeyCode::Char('e') => match self.plan() {
-                Some(plan) => Action::ReadPlan(plan),
-                None => Action::SetMessage("No plan yet".to_string()),
-            },
+            KeyCode::Char('e') => self.read_plan(),
             // What ephor last ran here itself (§FS-005-dispatch.17). The
             // newest, because that is the one a reader who just pressed a key
             // is asking about; the rest are listed above with what they came
@@ -416,17 +425,24 @@ impl WorkScreen {
                 // never wrote at (§FS-005-dispatch.19). The entry's own path
                 // is read only where nothing was placed and nothing the
                 // record names went unread, and `work offers` heads the same
-                // matter with the same answer (§FS-005-dispatch.35.1).
+                // matter with the same answer (§FS-005-dispatch.35.1). A plan
+                // named here that is not on disk is marked gone on its own
+                // line, so of several the reader sees which one went.
                 let said = crate::work::plan_heading(
                     &status.plan,
                     status.plans.iter().map(|plan| plan.path.as_path()),
                     status.missing,
+                    status.unread_workflows > 0,
                 );
                 for plan in &said.plans {
-                    lines.push(Line::from(Span::styled(
-                        format!("    {}", plan.display()),
-                        dim,
-                    )));
+                    let mut line = vec![Span::styled(format!("    {}", plan.path.display()), dim)];
+                    if let Some(mark) = plan.mark() {
+                        line.push(Span::styled(
+                            format!(" {mark}"),
+                            Style::default().fg(Color::Red),
+                        ));
+                    }
+                    lines.push(Line::from(line));
                 }
                 // An id is how the reader and the runtime agree on which run
                 // they mean, so the operation says it here as the board says it
@@ -439,14 +455,14 @@ impl WorkScreen {
                 }
                 // A plan the record named that nobody could read is said here
                 // as the row says it, so the two readings cannot name
-                // different facts (§REQ-002-parity.3). Where a plan this
-                // screen names is not on disk, it is that file that is gone.
-                // Where the record named a laid plan this reading could not
-                // place at all, the fact is about the record and names no
-                // file: for an entry that is nothing but workflows the entry's
-                // own path is a file ephor never wrote there, and no reader
-                // may be pointed at it (§FS-005-dispatch.19,
-                // §FS-005-dispatch.35.1).
+                // different facts (§REQ-002-parity.3). Where the record named
+                // a laid plan this reading could not place at all, the fact is
+                // about the record and names no file: for an entry that is
+                // nothing but workflows the entry's own path is a file ephor
+                // never wrote there, and no reader may be pointed at it
+                // (§FS-005-dispatch.19). It is said whether or not a plan
+                // above is marked gone, since the two are different files
+                // (§FS-005-dispatch.35.1).
                 if let Some(note) = said.note {
                     lines.push(Line::from(Span::styled(
                         format!("    {note}"),
@@ -743,6 +759,8 @@ fn shorten(title: &str, item: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::path::PathBuf;
+
     use crate::feed::model::ItemKind;
     use crate::work::TicketStatus;
 
@@ -985,10 +1003,11 @@ mod tests {
         let screen = WorkScreen::new(item(), Some(unread), offers(), None, None, Vec::new(), None);
         let said = text(&screen);
         assert!(said.contains("could not be read"), "{said}");
-        assert!(!said.contains("the plan this points at is gone"), "{said}");
+        assert!(!said.contains("gone"), "{said}");
 
         // The plan ephor wrote itself and lost is still said as what it is:
-        // this reading placed it, so the path above is the file that went.
+        // this reading placed it, so the path above is the file that went,
+        // and the mark is on that path's own line (§FS-005-dispatch.35.1).
         let mut lost = status(false);
         lost.tickets = Vec::new();
         lost.missing = true;
@@ -1000,9 +1019,11 @@ mod tests {
             path: lost.plan.clone(),
             laid: None,
         }];
+        let gone = format!("{} (gone)", lost.plan.display());
         let screen = WorkScreen::new(item(), Some(lost), offers(), None, None, Vec::new(), None);
         let said = text(&screen);
-        assert!(said.contains("the plan this points at is gone"), "{said}");
+        assert!(said.lines().any(|line| line.trim() == gone), "{said}");
+        assert!(!said.contains("could not be read"), "{said}");
     }
 
     /// The heading names the plans the reading placed and never the entry's
@@ -1026,6 +1047,181 @@ mod tests {
             !said.contains(&own),
             "the heading names {own}, a file ephor never wrote:\n{said}"
         );
+    }
+
+    /// A placed plan for a test: a recipe plan where `laid` is None, a plan a
+    /// workflow laid otherwise.
+    fn placed(path: &std::path::Path, laid: Option<&str>) -> crate::work::RecordedPlan {
+        crate::work::RecordedPlan {
+            root: PathBuf::from("/w/demo/panta"),
+            checkout: PathBuf::from("/w/demo"),
+            branch: None,
+            plan_id: "forge-demo-17".to_string(),
+            path: path.to_path_buf(),
+            laid: laid.map(str::to_string),
+        }
+    }
+
+    /// Each plan the heading names is asked of the disk on its own line, and
+    /// a laid plan nobody could read is said beside them whatever they say
+    /// (§FS-005-dispatch.35.1). Of a recipe plan gone and a laid plan kept,
+    /// only the gone one is marked; of a recipe plan gone beside a laid plan
+    /// nobody could read, both facts are said.
+    #[test]
+    fn the_heading_marks_each_gone_plan_and_says_an_unread_one_beside_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let recipe = dir.path().join("forge-demo-17.rhei.md");
+        let laid = dir.path().join("forge-demo-17-implement-1/index.rhei.md");
+        std::fs::create_dir_all(laid.parent().unwrap()).unwrap();
+        std::fs::write(&laid, "# Rhei: wf\n").unwrap();
+
+        let mut several = status(false);
+        several.tickets = Vec::new();
+        several.missing = true;
+        several.plans = vec![
+            placed(&recipe, None),
+            placed(&laid, Some("forge-demo-17-implement-1")),
+        ];
+        let said = text(&WorkScreen::new(
+            item(),
+            Some(several),
+            offers(),
+            None,
+            None,
+            Vec::new(),
+            None,
+        ));
+        let line = |path: &std::path::Path| {
+            said.lines()
+                .find(|line| line.contains(&path.display().to_string()))
+                .unwrap_or_else(|| panic!("{} is not named:\n{said}", path.display()))
+                .to_string()
+        };
+        assert!(line(&recipe).ends_with("(gone)"), "{said}");
+        assert!(!line(&laid).contains("gone"), "{said}");
+        assert!(!said.contains("could not be read"), "{said}");
+
+        let mut both = status(false);
+        both.tickets = Vec::new();
+        both.missing = true;
+        both.workflows = 1;
+        both.unread_workflows = 1;
+        both.plans = vec![placed(&recipe, None)];
+        let said = text(&WorkScreen::new(
+            item(),
+            Some(both),
+            offers(),
+            None,
+            None,
+            Vec::new(),
+            None,
+        ));
+        assert!(
+            said.lines()
+                .any(|line| line.trim() == format!("{} (gone)", recipe.display())),
+            "{said}"
+        );
+        assert!(
+            said.contains("a plan this matter's record names could not be read"),
+            "{said}"
+        );
+    }
+
+    /// A ledger written before the record named its plans is headed by the
+    /// entry's own path, and that path is asked of the disk like any named
+    /// plan: one that is not there is marked gone, though nothing reads the
+    /// entry as missing (§FS-005-dispatch.35.1).
+    #[test]
+    fn an_entrys_own_path_named_in_the_heading_is_marked_gone_where_it_is_not_on_disk() {
+        let legacy = status(false);
+        assert!(legacy.plans.is_empty() && !legacy.missing && !legacy.plan.exists());
+        let gone = format!("{} (gone)", legacy.plan.display());
+        let said = text(&WorkScreen::new(
+            item(),
+            Some(legacy),
+            offers(),
+            None,
+            None,
+            Vec::new(),
+            None,
+        ));
+        assert!(said.lines().any(|line| line.trim() == gone), "{said}");
+
+        let dir = tempfile::tempdir().unwrap();
+        let kept = written(status(false), &dir);
+        let there = kept.plan.display().to_string();
+        let said = text(&WorkScreen::new(
+            item(),
+            Some(kept),
+            offers(),
+            None,
+            None,
+            Vec::new(),
+            None,
+        ));
+        assert!(said.lines().any(|line| line.trim() == there), "{said}");
+        assert!(!said.contains("gone"), "{said}");
+    }
+
+    /// What `e` opens is a plan the reading placed (§FS-005-dispatch.35.1). A
+    /// matter a workflow laid has an own path ephor never wrote, and the plan
+    /// the work is in is the laid `index.rhei.md`; where no plan of the
+    /// matter is on disk the key says so rather than starting an editor on a
+    /// file that is not there.
+    #[test]
+    fn e_opens_the_plan_the_workflow_laid_and_never_the_entrys_own_path() {
+        let dir = tempfile::tempdir().unwrap();
+        let laid = dir.path().join("forge-demo-17-implement-1/index.rhei.md");
+        std::fs::create_dir_all(laid.parent().unwrap()).unwrap();
+        std::fs::write(&laid, "# Rhei: wf\n").unwrap();
+
+        let mut status = status(false);
+        status.plan = dir.path().join("forge-demo-17.rhei.md");
+        status.workflows = 1;
+        status.plans = vec![placed(&laid, Some("forge-demo-17-implement-1"))];
+        assert!(
+            !status.plan.exists(),
+            "the own path must be one ephor never wrote"
+        );
+        let mut screen = WorkScreen::new(
+            item(),
+            Some(status.clone()),
+            offers(),
+            None,
+            None,
+            Vec::new(),
+            None,
+        );
+        match screen.handle_key(KeyCode::Char('e')) {
+            Action::ReadPlan(plan) => assert_eq!(plan, laid),
+            _ => panic!("e opens the plan the workflow laid"),
+        }
+
+        // Of several plans on disk, the one holding the open task is the one
+        // the reader is after.
+        let recipe = written(status.clone(), &dir).plan;
+        let mut open = status.clone();
+        open.plans.insert(0, placed(&recipe, None));
+        open.open_at = Some(crate::work::OpenWork {
+            plan: laid.clone(),
+            ticket: "implement-1".to_string(),
+            state: "implement".to_string(),
+        });
+        let mut screen =
+            WorkScreen::new(item(), Some(open), offers(), None, None, Vec::new(), None);
+        match screen.handle_key(KeyCode::Char('e')) {
+            Action::ReadPlan(plan) => assert_eq!(plan, laid),
+            _ => panic!("e opens the plan holding the open task"),
+        }
+        std::fs::remove_file(&recipe).unwrap();
+
+        std::fs::remove_dir_all(laid.parent().unwrap()).unwrap();
+        let mut screen =
+            WorkScreen::new(item(), Some(status), offers(), None, None, Vec::new(), None);
+        match screen.handle_key(KeyCode::Char('e')) {
+            Action::SetMessage(said) => assert_eq!(said, NO_PLAN_ON_DISK),
+            _ => panic!("no plan of the matter is on disk, so no editor is started"),
+        }
     }
 
     /// Nothing to offer *at all* is a different answer from nothing matching,
@@ -1105,6 +1301,16 @@ mod tests {
             }
             _ => panic!("expected a run"),
         }
+    }
+
+    /// `status` with its plan written to disk, for a test about something
+    /// other than what `e` finds: `e` opens only a plan that is there
+    /// (§FS-005-dispatch.35.1), and the fixture's own path is not.
+    fn written(mut status: WorkStatus, dir: &tempfile::TempDir) -> WorkStatus {
+        let plan = dir.path().join("forge-demo-17.rhei.md");
+        std::fs::write(&plan, "# Rhei: demo\n").unwrap();
+        status.plan = plan;
+        status
     }
 
     /// A status with two open tickets and one taken back, as the plan would
@@ -1275,9 +1481,10 @@ mod tests {
         })
         .expect("a runner that is not on PATH is refused");
 
+        let dir = tempfile::tempdir().unwrap();
         let mut screen = WorkScreen::new(
             item(),
-            Some(status(false)),
+            Some(written(status(false), &dir)),
             offers(),
             None,
             Some(unbound.clone()),
@@ -1325,9 +1532,10 @@ mod tests {
     #[test]
     fn the_run_key_is_refused_by_name_while_a_run_holds_this_working_tree() {
         let held = "a run is live in this checkout: live-run".to_string();
+        let dir = tempfile::tempdir().unwrap();
         let mut screen = WorkScreen::new(
             item(),
-            Some(status_with_open_tickets()),
+            Some(written(status_with_open_tickets(), &dir)),
             offers(),
             None,
             None,
