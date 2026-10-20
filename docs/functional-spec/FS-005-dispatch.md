@@ -4856,3 +4856,55 @@ whether a dispatch was a workflow, so a *recipe* entry with open tickets stops
 being offered the same wrong hint by the same sentence. What is not fixed here
 is that such a report is made again on every turn: no snapshot is acknowledged
 where nothing is written, so the words change and their repetition does not.
+
+### 35.1 What forget says it left is read from the same plans
+
+`work forget` says something about each entry it drops, and **what it says
+about that entry's plans is read from the plans `--done` and `--missing` read**
+— every plan the record says is the matter's
+([§FS-005-dispatch.35](FS-005-dispatch.md#35-what-a-ledger-entry-may-be-forgotten-for-is-read-from-the-plans))
+— and from the disk, never from the entry's own `plan` path. That path is where
+ephor's own recipe plan goes. An entry whose work a workflow laid never had a
+file there
+([§FS-005-dispatch.19](FS-005-dispatch.md#19-a-workflow-the-runtime-offers-is-an-action-and-its-inputs-are-answered-here)),
+and a plan that was there may have gone with the checkout it sat in. Naming that
+path as where the plan stays told a reader that a file existed which did not,
+and it did so on the very path ephor recommends for a plan that is missing.
+
+So the report names **each plan the matter had, and says of each whether it is
+still on disk**. One that is there *stays at* its path, which is the case the
+sentence was written for, since ephor never deletes a plan. One that is not
+*was already gone*, and the report names the path it was at. `--item` is read
+exactly as the sweeps are, although it selects without reading the plans. A
+laid plan nobody could read is named by the record's own name, the dispatch's
+root joined to the name it recorded, as the `work list` row names it, because
+forget is the last reading of that record: once the entry is dropped nothing
+names that plan again. The entry's own path is named only where it is one of
+the matter's plans. Where the reading holds no plan at all, the report says
+that nothing of the entry stays and names no path.
+
+**The machine-readable report carries the same facts**
+([§REQ-002-parity.3](../requirements/REQ-002-parity.md#3-every-reading-answers-a-program)).
+Each `forgot` item keeps `item` and `plan` as they were: `plan` is still the
+entry's own path, for the readers that took it
+([§REQ-002-parity.4](../requirements/REQ-002-parity.md#4-the-machine-form-is-a-contract-not-a-dump)).
+Each item gains `plans`, one object per plan the prose names, carrying its
+`plan` path and `missing`, which is `true` exactly where the prose says that
+plan was already gone. `missing` is the word `work list --json` already uses
+for a plan nobody can read. An entry whose reading holds no plan has `plans`
+empty.
+
+**The work view's heading is the same naming.** `work offers`
+([§FS-011-command-line.5](FS-011-command-line.md#5-what-can-be-done-about-a-matter-before-anything-has-been))
+and the work screen name, under the matter's title, the plans the reading
+placed, and never the entry's own path in their place. Where a plan they name
+is not on disk they say so. Where a laid plan could not be read at all they say
+that a plan the record names could not be read, and name no file in its place.
+The entry's own path is named there only where the reading placed nothing and
+found nothing unreadable, which is a ledger written before the record named its
+plans. The view's machine-readable form already carries `plans` and `missing`,
+and does not change.
+
+**Nothing else changes.** Which entries `--done`, `--missing` and `--item` drop
+is the point above and is read as it was. Ephor still deletes no plan, and the
+line about a recipe plan that is on disk reads as it always did.

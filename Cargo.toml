@@ -266,6 +266,10 @@ name = "e2e_059_a_red_branch_is_a_row"
 path = "tests/e2e/cases/E2E-059-a-red-branch-is-a-row.rs"
 
 [[test]]
+name = "e2e_060_what_forget_says_it_left"
+path = "tests/e2e/cases/E2E-060-what-forget-says-it-left.rs"
+
+[[test]]
 name = "checkout_test"
 path = "tests/integration/checkout_test.rs"
 

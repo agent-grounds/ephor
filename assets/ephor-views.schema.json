@@ -1363,7 +1363,7 @@
       "items": { "$ref": "#/$defs/workflow" }
     },
     "work-forget": {
-      "description": "`ephor work forget --json` — ledger entries dropped. The plans stay on disk: they are the record of what was done, and ephor deleting a reader's work would be the one irreversible thing in here.",
+      "description": "`ephor work forget --json` — ledger entries dropped. Ephor deletes no plan: they are the record of what was done, and ephor deleting a reader's work would be the one irreversible thing in here. Which of an entry's plans were still on disk, and which were already gone, is read from the plans and said per entry in `plans` (FS-005-dispatch.35.1).",
       "type": "object",
       "required": ["forgot"],
       "properties": {
@@ -1374,7 +1374,25 @@
             "required": ["item", "plan"],
             "properties": {
               "item": { "type": "string" },
-              "plan": { "type": "string" }
+              "plan": {
+                "type": "string",
+                "description": "The ledger entry's own plan path, as it always was (REQ-002-parity.4). Not a claim that a plan is there: an entry whose work a workflow laid never had a file at this path, and `plans` is what says where the plans were."
+              },
+              "plans": {
+                "type": "array",
+                "description": "Every plan the record says was this matter's, read as `--done` and `--missing` read them (FS-005-dispatch.35.1): the ones on disk, which stay, and the ones already gone. A laid plan nobody could read is named by the record's own name, the dispatch's root joined to the name it recorded. The prose line names the same plans with the same words; empty where the reading holds no plan.",
+                "items": {
+                  "type": "object",
+                  "required": ["plan", "missing"],
+                  "properties": {
+                    "plan": { "type": "string" },
+                    "missing": {
+                      "type": "boolean",
+                      "description": "The plan was not on disk when the entry was dropped: the prose says it was already gone. The word `work list --json` uses for a plan nobody can read."
+                    }
+                  }
+                }
+              }
             }
           }
         }
