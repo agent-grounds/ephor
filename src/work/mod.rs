@@ -3089,6 +3089,13 @@ impl Dispatcher {
                     .unwrap_or_else(|| Err(format!("'{name}' is not a hand this runtime knows")))
             },
         );
+        // An accepted agent-only hand has no selector to supply. Explain the
+        // answers it actually leaves standing (§FS-005-dispatch.14, §FS-005-dispatch.19).
+        if hand.is_none() && matches!(choice, runtime::roster::Choice::Chosen { .. }) {
+            if let Some(note) = answered.agent_only_note(&workflow, &ask) {
+                self.note_once(&note);
+            }
+        }
         Ok(Laying {
             entry: entry.id.clone(),
             workflow,
@@ -3200,7 +3207,9 @@ impl Dispatcher {
                 // target is one line and a workflow's input has no place to
                 // put an alternate (§DA-006-hands-fill-a-workflows-targets).
                 let (target, pool) = match recipe::HandPin::parse(&name) {
-                    Err(why) => (Err(why), None),
+                    // The input boundary supplies workflow recovery; a general
+                    // pin parser's object remedy cannot apply here (§FS-005-dispatch.19).
+                    Err(_) => (Err(format!("'{name}' is not a roster hand id")), None),
                     Ok(pin) => {
                         let pin = HandList::one(pin);
                         let choice = self.hand(&item.project, &entry.id, None, Some(&pin), root);

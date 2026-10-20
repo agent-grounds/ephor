@@ -177,37 +177,31 @@ fn agent_pick(marked: bool) {
 }
 
 #[test]
-#[ignore = "red until #226: malformed manifest target offers usable recovery; implement removes this"]
 fn malformed_manifest_target_advice() {
     recovery(true, false);
 }
 
 #[test]
-#[ignore = "red until #226: malformed entry target offers usable recovery; implement removes this"]
 fn malformed_entry_target_advice() {
     recovery(false, false);
 }
 
 #[test]
-#[ignore = "red until #226: object manifest target offers usable recovery; implement removes this"]
 fn object_manifest_target_advice() {
     recovery(true, true);
 }
 
 #[test]
-#[ignore = "red until #226: object entry target offers usable recovery; implement removes this"]
 fn object_entry_target_advice() {
     recovery(false, true);
 }
 
 #[test]
-#[ignore = "red until #226: agent-only manifest pick explains unchanged default; implement removes this"]
 fn agent_only_manifest_pick_advice() {
     agent_pick(true);
 }
 
 #[test]
-#[ignore = "red until #226: agent-only entry pick explains unchanged default; implement removes this"]
 fn agent_only_entry_pick_advice() {
     agent_pick(false);
 }

@@ -4611,10 +4611,30 @@ be running. An input the workflow declares an execution target for — or one
 your entry lists under `hands` — resolves through the seven steps of §8.4
 instead, so `work.hands`, your pick at the moment of asking and
 `work.permitted_hands` all mean here what they mean everywhere. Configuration
-names a hand by its id: `"inputs": { "review_targets": ["luna", "sol"] }` is
-two hands, resolved and rendered into whatever the runtime spells them as. A
+names a hand by its roster id, as `<hand>` or `<hand>:<effort>`:
+`"inputs": { "review_targets": ["luna", "sol"] }` is two hands, resolved and
+rendered into whatever the runtime spells them as. A
 hand a narrowing does not permit is refused with that reason — the workflow's
 own default included, since a default is a naming.
+
+For a particular model, declare a model profile with an agent carrier in the
+runtime's `models` settings registry, then use the profile's roster id in the
+input. With the shipped binding, that registry is normally in
+`~/.config/rhei/settings.json`. A raw runtime selector or an `{agent, model}`
+object in a hand input is refused with the input's name and this recovery.
+This applies to `--set`, `--values`, and the entry's literal `inputs` alike;
+the configuration pins elsewhere that accept an explicit object still do
+([§FS-005-dispatch.19](functional-spec/FS-005-dispatch.md#19-a-workflow-the-runtime-offers-is-an-action-and-its-inputs-are-answered-here)).
+
+An accepted agent-only pick such as `--hand codex:xhigh` supplies no
+model-carrying selector. Where a target answer stays at the workflow default,
+the human account names that input, its unchanged value and its source, and
+explains why. An explicit answer from you, a values file or the entry keeps
+its precedence and is reported with that source instead. Choose a model-carrying
+profile with `--hand` to supply a target, or answer the input explicitly with
+roster ids using `--set` or `--values`. Listing the input under entry `hands`
+does not give an agent-only pick a model
+([§FS-005-dispatch.14](functional-spec/FS-005-dispatch.md#14-who-does-the-work-is-chosen-and-defaulted-per-project)).
 
 **Laying one down.**
 
