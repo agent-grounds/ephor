@@ -419,6 +419,10 @@ ephor doctor [--project P] [--skip-self|--self-only] [--json]
   It refetches anything staler than the TTL — pass `--cached` when you want
   the cache and nothing else, which is also much faster.
 - **`feed`** is the flat cross-project stream, newest first, from the cache.
+  It never refetches; a project whose cache is older than the TTL, or that was
+  never fetched, is named on the error stream with its age and the
+  `ephor refresh` that cures it, and its rows are still printed
+  ([§FS-011-command-line.12](functional-spec/FS-011-command-line.md#12-a-feed-read-from-a-cache-past-its-ttl-says-so)).
 - **`mark-read`** marks items read. An item is unread until then, and
   **resurfaces when it changes again** — reading is per version, not per item.
   `--all` is `mark-read`'s own flag and means every watched project; narrow it
