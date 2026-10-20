@@ -9,6 +9,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use chrono::Utc;
 use serde_json::Value;
@@ -703,10 +704,11 @@ impl Session {
     /// workspace's forest, per repository and then summed (§AR-004-forest.1),
     /// with the behind-main half derived from the standing so the two counts
     /// on a row cannot come from different measurements. Local refs only (no
-    /// fetch), so counts are relative to what was last fetched.
+    /// fetch), so counts are relative to what was last fetched. Independent
+    /// branch measurements use at most eight workers, then fold in the original
+    /// project/branch order, at startup and on reload (§AR-004-forest.2).
     pub fn recompute_behind(&mut self) {
-        let mut behind = BTreeMap::new();
-        let mut standing = BTreeMap::new();
+        let mut measurements = Vec::new();
         for project in &self.projects {
             let Some(placement) = self.placements.get(project) else {
                 continue;
@@ -718,24 +720,62 @@ impl Session {
                 let workspace = placement
                     .workspace_for(&branch.branch)
                     .unwrap_or_else(|| placement.root.clone());
-                let stand = placement.forest(&workspace).standing();
-                let staleness = stand.staleness();
-                // The two facts are gated apart, the same way the two offers
-                // are: the distance to main is only a distance to something a
-                // project named, while the distance to the branch's own copy
-                // is answered inside each repository and needs no such name
-                // (§FS-004-quick-actions.6). A project that declares no main
-                // branch shows, and is offered, the second alone.
-                if placement.main_branch.is_some() && staleness.total().is_some() {
-                    behind.insert((project.clone(), branch.branch.clone()), staleness);
-                }
-                if stand
-                    .repos
-                    .iter()
-                    .any(|repo| repo.upstream != Upstream::Unknown)
-                {
-                    standing.insert((project.clone(), branch.branch.clone()), stand);
-                }
+                measurements.push((
+                    (project.clone(), branch.branch.clone()),
+                    placement,
+                    workspace,
+                ));
+            }
+        }
+        // Bound the whole forest resolution too: it probes repository remotes
+        // before measuring standings (§AR-004-forest.2). A shared cursor lets
+        // each worker take the next branch as soon as its current one finishes.
+        let next = AtomicUsize::new(0);
+        let mut measured = std::thread::scope(|scope| {
+            let workers: Vec<_> = (0..measurements.len().min(8))
+                .map(|_| {
+                    scope.spawn(|| {
+                        let mut completed = Vec::new();
+                        loop {
+                            let index = next.fetch_add(1, Ordering::Relaxed);
+                            let Some((_, placement, workspace)) = measurements.get(index) else {
+                                break;
+                            };
+                            completed.push((index, placement.forest(workspace).standing()));
+                        }
+                        completed
+                    })
+                })
+                .collect();
+            workers
+                .into_iter()
+                .flat_map(|worker| worker.join().expect("standing worker panicked"))
+                .collect::<Vec<_>>()
+        });
+        // Completion order must not decide which reading wins, even if the
+        // registry repeats a branch key (§AR-004-forest.2). Repository order
+        // remains the forest fold's own order within each Standing.
+        measured.sort_by_key(|(index, _)| *index);
+        let mut behind = BTreeMap::new();
+        let mut standing = BTreeMap::new();
+        for (index, stand) in measured {
+            let (key, placement, _) = &measurements[index];
+            let staleness = stand.staleness();
+            // The two facts are gated apart, the same way the two offers
+            // are: the distance to main is only a distance to something a
+            // project named, while the distance to the branch's own copy
+            // is answered inside each repository and needs no such name
+            // (§FS-004-quick-actions.6). A project that declares no main
+            // branch shows, and is offered, the second alone.
+            if placement.main_branch.is_some() && staleness.total().is_some() {
+                behind.insert(key.clone(), staleness);
+            }
+            if stand
+                .repos
+                .iter()
+                .any(|repo| repo.upstream != Upstream::Unknown)
+            {
+                standing.insert(key.clone(), stand);
             }
         }
         self.behind = behind;

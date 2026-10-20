@@ -161,7 +161,6 @@ fn assert_readings(rows: &[Value]) {
 }
 
 #[test]
-#[ignore = "red until #223: independent standing probes overlap; implement removes this"]
 fn issue_223_independent_standing_probes_overlap() {
     let world = fixture();
     let output = world
@@ -191,7 +190,6 @@ fn issue_223_independent_standing_probes_overlap() {
 }
 
 #[test]
-#[ignore = "red until #223: the first screen reuses one session load; implement removes this"]
 fn issue_223_first_screen_uses_one_sweep_and_refresh_still_reloads() {
     let world = fixture();
     let mut driver = Command::new("python3");
