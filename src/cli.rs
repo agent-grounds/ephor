@@ -251,7 +251,8 @@ pub enum WorkCommand {
     /// Lay one of the runtime's workflows down about an item: a plan of its
     /// own, beside the item's, ready for the board to run.
     Lay(WorkLayArgs),
-    /// Drop ledger entries; the plans they point at stay on disk.
+    /// Drop ledger entries. Ephor deletes no plan; the report says which of
+    /// each entry's plans stay on disk and which were already gone.
     Forget(WorkForgetArgs),
     /// Print the state machine ephor's tickets run under, for editing or for
     /// installing into a runtime project it did not create.

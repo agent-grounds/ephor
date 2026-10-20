@@ -4507,7 +4507,7 @@ fn recorded_plans_resolves_the_laid_plan_at_the_dispatchs_root_under_its_own_id(
     entry.dispatches = vec![laying_dispatch("widget-10-implement", &root)];
 
     let work = recorded_plans(&entry);
-    assert_eq!(work.unread, 0);
+    assert_eq!(work.unread.len(), 0);
     assert_eq!(work.plans.len(), 1, "the laid plan was not found");
     assert_eq!(work.plans[0].path, index);
     assert_eq!(work.plans[0].plan_id, "widget-10-implement");
@@ -4632,7 +4632,7 @@ fn an_absent_laid_plan_is_unread_and_reports_the_entry_as_missing() {
 
     let work = recorded_plans(&entry);
     assert!(work.plans.is_empty());
-    assert_eq!(work.unread, 1);
+    assert_eq!(work.unread.len(), 1);
 
     let status = status_of_entry(&work_config(), &entry, None);
     assert_eq!(status.open_tickets(), 0);
@@ -4802,7 +4802,7 @@ fn the_legacy_fallback_does_not_fire_beside_a_plan_a_workflow_laid() {
         work.plans.is_empty(),
         "the fallback fired beside a laid plan the record named but nobody could read"
     );
-    assert_eq!(work.unread, 1);
+    assert_eq!(work.unread.len(), 1);
 
     let status = status_of_entry(&work_config(), &unread, None);
     assert!(

@@ -441,7 +441,6 @@ fn judge(wrong: &mut Vec<String>, out: &str, id: &str, entry: &Recorded, present
 /// gone plan, the `--missing` sweep ephor recommends for exactly these entries,
 /// and `--item` on the two whose plans are on disk (§FS-005-dispatch.35.1).
 #[test]
-#[ignore = "red until #221: forget names the entry's own path as where every plan stays; implement removes this"]
 fn the_forget_report_says_which_plans_stay_and_which_were_already_gone() {
     let (world, recorded) = site();
     let mut wrong = Vec::new();
@@ -481,7 +480,6 @@ fn the_forget_report_says_which_plans_stay_and_which_were_already_gone() {
 /// one `{plan, missing}` per plan the prose names, `missing` true exactly where
 /// the prose says the plan was already gone (§FS-005-dispatch.35.1).
 #[test]
-#[ignore = "red until #221: forget --json carries no plans and no word on whether they exist; implement removes this"]
 fn the_forget_json_carries_the_plans_and_whether_each_is_still_there() {
     let (world, recorded) = site();
     let mut wrong = Vec::new();
@@ -558,7 +556,6 @@ fn the_forget_json_carries_the_plans_and_whether_each_is_still_there() {
 /// read, and never names the entry's own path in their place. Its JSON already
 /// carries `plans` and `missing` and does not change.
 #[test]
-#[ignore = "red until #221: work offers heads every matter with the entry's own path; implement removes this"]
 fn the_work_view_names_the_plans_its_reading_holds() {
     let (world, recorded) = site();
     let mut wrong = Vec::new();
