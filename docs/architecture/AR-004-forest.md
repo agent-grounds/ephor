@@ -73,6 +73,16 @@ is in the answer, by name, per repository, every time it is folded over.
 
 ## 2. Probes, not declarations
 
+The shared session measures independent checked-out branch forests concurrently,
+with a bounded number of measurements in flight, on initial load and on later
+reloads. Completion order does not determine the order of branch readings or
+their repository breakdowns. Each branch's distance from main and from its own
+published copy comes from the same `Standing` measurement. Scheduling preserves
+scope, the main-branch gate, unknown and unpublished readings, and the named
+missing repositories of the fold above. These measurements read local refs;
+they do not fetch or change the freshness of the comparison
+([§FS-011-command-line.2](../functional-spec/FS-011-command-line.md#2-branches-and-where-each-one-stands)).
+
 Because git is assumed, facts are derived rather than configured: which
 branches exist, which branch workspaces are on disk, what ticket key a
 branch name carries, how far a checkout trails, which remote each

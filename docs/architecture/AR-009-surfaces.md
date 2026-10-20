@@ -51,6 +51,15 @@ disagree about what a workflow was answered with.
 
 ## 2. The session is built once and shared
 
+Opening the screen reuses the session's initial feed, standing and work load;
+it does not repeat that load before drawing. Screen-specific initialization
+still enumerates work groups, builds the view, records the initial work
+baseline and discovers job news. Later explicit reloads and completed refreshes
+continue to reload the session and rebuild all dependent screen state. The
+initial reading remains complete: concurrent standing measurements
+([§AR-004-forest.2](AR-004-forest.md#2-probes-not-declarations)) finish before it is presented,
+serving the first glance ([§GOAL-002-glance](../goals.md#goal-002-glance-one-glance-answers-what-needs-me-now)).
+
 Both surfaces open the same `Session`: the feeds, what is seen, where each
 project is placed ([§AR-004-forest.3](AR-004-forest.md#3-workspace-resolution)), what each project can do
 ([§AR-005-capabilities](AR-005-capabilities.md#ar-005-capabilities-availability-is-computed-once-and-consulted-everywhere)), the branch standings, the configured entries, the
