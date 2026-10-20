@@ -270,6 +270,10 @@ name = "e2e_060_what_forget_says_it_left"
 path = "tests/e2e/cases/E2E-060-what-forget-says-it-left.rs"
 
 [[test]]
+name = "e2e_061_workflow_hand_advice"
+path = "tests/e2e/cases/E2E-061-workflow-hand-advice.rs"
+
+[[test]]
 name = "checkout_test"
 path = "tests/integration/checkout_test.rs"
 
