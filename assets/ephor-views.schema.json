@@ -1371,7 +1371,7 @@
           "type": "array",
           "items": {
             "type": "object",
-            "required": ["item", "plan"],
+            "required": ["item", "plan", "plans"],
             "properties": {
               "item": { "type": "string" },
               "plan": {

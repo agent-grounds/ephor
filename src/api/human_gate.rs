@@ -31,10 +31,10 @@ impl Session {
             .and_then(|dispatcher| dispatcher.ledger.entries.get(&item.id))
         {
             let recorded = crate::work::recorded_plans(entry);
-            if recorded.unread > 0 {
+            if !recorded.unread.is_empty() {
                 return Err(EphorError::Command(format!(
                     "{} recorded plan(s) could not be read",
-                    recorded.unread
+                    recorded.unread.len()
                 )));
             }
             for plan in recorded.plans {

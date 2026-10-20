@@ -410,7 +410,21 @@ fn work_offers(config: &StatusConfig, args: &crate::cli::WorkOffersArgs) -> Resu
     let style = Style::detect();
     println!("{}\n", style.bold(&view.title));
     if let Some(status) = &view.status {
-        println!("  {}", style.dim(&status.plan.display().to_string()));
+        // The plans the reading placed, said as the work screen says them
+        // (§FS-005-dispatch.35.1): the entry's own path is not one of them for
+        // a matter a workflow laid, and naming it here pointed at a file ephor
+        // never wrote while the plan that holds the work went unnamed.
+        let heading = crate::work::plan_heading(
+            &status.plan,
+            status.plans.iter().map(|plan| plan.plan.as_path()),
+            status.missing,
+        );
+        for plan in &heading.plans {
+            println!("  {}", style.dim(&plan.display().to_string()));
+        }
+        if let Some(note) = heading.note {
+            println!("  {note}");
+        }
         if status.stale {
             println!("  it has moved since: {}", status.changes.join("; "));
         }
@@ -2762,9 +2776,12 @@ fn missing_enough_to_forget(status: &crate::work::WorkStatus) -> bool {
     status.missing && status.open_tickets() == 0
 }
 
-/// Drop ledger entries. The plans stay on disk: they are the record of what
-/// was done, and ephor deleting a reader's work would be the one irreversible
-/// thing in here.
+/// Drop ledger entries. Ephor deletes no plan: they are the record of what was
+/// done, and ephor deleting a reader's work would be the one irreversible thing
+/// in here. What the report says of each entry's plans is read from the plans
+/// the record says are the matter's and from the disk (§FS-005-dispatch.35.1):
+/// the ones on disk stay, and the ones something else removed were already
+/// gone.
 fn forget_work(config: &StatusConfig, args: &crate::cli::WorkForgetArgs) -> Result<ExitCode> {
     let mut dispatcher = Dispatcher::load(config)?;
     let ids: Vec<String> = dispatcher
@@ -2792,10 +2809,15 @@ fn forget_work(config: &StatusConfig, args: &crate::cli::WorkForgetArgs) -> Resu
     let mut forgot: Vec<serde_json::Value> = Vec::new();
     for id in &ids {
         if let Some(entry) = dispatcher.ledger.entries.remove(id) {
-            forgot.push(serde_json::json!({ "item": id, "plan": entry.plan }));
+            // The plans `--done` and `--missing` read, read for `--item` too,
+            // and never the entry's own path in their place
+            // (§FS-005-dispatch.35.1). `plan` stays what it always was
+            // (§REQ-002-parity.4).
+            let left = crate::work::recorded_plans(&entry).left();
             if !args.json {
-                println!("forgot {id} — its plan stays at {}", entry.plan.display());
+                println!("{}", forgot_line(id, &left));
             }
+            forgot.push(serde_json::json!({ "item": id, "plan": entry.plan, "plans": left }));
         }
     }
     dispatcher.save()?;
@@ -2807,4 +2829,23 @@ fn forget_work(config: &StatusConfig, args: &crate::cli::WorkForgetArgs) -> Resu
         );
     }
     Ok(ExitCode::SUCCESS)
+}
+
+/// The prose for one dropped entry, saying of each plan what `plans` says of it
+/// in `--json` (§FS-005-dispatch.35.1, §REQ-002-parity.3): one on disk stays at
+/// its path, one that is not was already gone, and an entry the reading holds
+/// no plan for names no path at all.
+fn forgot_line(id: &str, left: &[crate::work::LeftPlan]) -> String {
+    let said = |plan: &crate::work::LeftPlan| match plan.missing {
+        false => format!("stays at {}", plan.plan.display()),
+        true => format!("was already gone ({})", plan.plan.display()),
+    };
+    match left {
+        [] => format!("forgot {id} — nothing of it stays: no plan of it is on disk"),
+        [plan] => format!("forgot {id} — its plan {}", said(plan)),
+        plans => std::iter::once(format!("forgot {id} — its plans:"))
+            .chain(plans.iter().map(|plan| format!("  {}", said(plan))))
+            .collect::<Vec<_>>()
+            .join("\n"),
+    }
 }

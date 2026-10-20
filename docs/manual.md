@@ -3725,9 +3725,15 @@ ephor work states
   entry says which branch its work belongs on (§8.18) and that workspace is not
   there, `lay` makes it before writing — and `--dry-run` makes nothing at all
   and names the workspace it would have made.
-- **`forget`** drops ledger entries only. The plans stay on disk: they are the
-  record of what was done. `--done` drops entries whose plans are all
-  finished, the matter's own and every one a workflow laid beside it; a plan it
+- **`forget`** drops ledger entries only. Ephor deletes no plan: they are the
+  record of what was done. What it prints about each entry is read from that
+  entry's plans and from the disk, not from the entry's own path: a plan still
+  on disk *stays at* its path, and one something else removed — with the
+  checkout it sat in, say — *was already gone*, named by the path it was at
+  ([§FS-005-dispatch.35.1](functional-spec/FS-005-dispatch.md#351-what-forget-says-it-left-is-read-from-the-same-plans)).
+  `--json` keeps `item` and `plan` and says the same per plan in `plans`.
+  `--done` drops entries whose plans are all finished, the matter's own and
+  every one a workflow laid beside it; a plan it
   cannot read is not a finished one, so `--missing` is the verb for an entry
   whose plan is gone, and `--item` names one entry whatever its plans say
   ([§FS-005-dispatch.35](functional-spec/FS-005-dispatch.md#35-what-a-ledger-entry-may-be-forgotten-for-is-read-from-the-plans)).

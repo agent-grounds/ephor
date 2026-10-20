@@ -414,21 +414,19 @@ impl WorkScreen {
                 // matter's — so a matter whose work a workflow laid is named
                 // by the file that work is in rather than by a path ephor
                 // never wrote at (§FS-005-dispatch.19). The entry's own path
-                // is read only where nothing was placed, which is what this
-                // screen always showed.
-                match status.plans.as_slice() {
-                    [] => lines.push(Line::from(Span::styled(
-                        format!("    {}", status.plan.display()),
+                // is read only where nothing was placed and nothing the
+                // record names went unread, and `work offers` heads the same
+                // matter with the same answer (§FS-005-dispatch.35.1).
+                let said = crate::work::plan_heading(
+                    &status.plan,
+                    status.plans.iter().map(|plan| plan.path.as_path()),
+                    status.missing,
+                );
+                for plan in &said.plans {
+                    lines.push(Line::from(Span::styled(
+                        format!("    {}", plan.display()),
                         dim,
-                    ))),
-                    placed => {
-                        for plan in placed {
-                            lines.push(Line::from(Span::styled(
-                                format!("    {}", plan.path.display()),
-                                dim,
-                            )));
-                        }
-                    }
+                    )));
                 }
                 // An id is how the reader and the runtime agree on which run
                 // they mean, so the operation says it here as the board says it
@@ -441,21 +439,17 @@ impl WorkScreen {
                 }
                 // A plan the record named that nobody could read is said here
                 // as the row says it, so the two readings cannot name
-                // different facts (§REQ-002-parity.3). Where the plan that
-                // could not be read is one this screen placed, it is that
-                // file that is gone. Where the record named a laid plan this
-                // reading could not place at all, the fact is about the
-                // record and never about the path above: for an entry that is
-                // nothing but workflows that path is a file ephor never wrote
-                // there, and no reader may be told it was deleted
-                // (§FS-005-dispatch.19, §FS-005-dispatch.35).
-                if status.missing {
+                // different facts (§REQ-002-parity.3). Where a plan this
+                // screen names is not on disk, it is that file that is gone.
+                // Where the record named a laid plan this reading could not
+                // place at all, the fact is about the record and names no
+                // file: for an entry that is nothing but workflows the entry's
+                // own path is a file ephor never wrote there, and no reader
+                // may be pointed at it (§FS-005-dispatch.19,
+                // §FS-005-dispatch.35.1).
+                if let Some(note) = said.note {
                     lines.push(Line::from(Span::styled(
-                        match status.unread_workflows > 0 {
-                            true => "    a plan this matter's record names could not be read"
-                                .to_string(),
-                            false => "    the plan this points at is gone".to_string(),
-                        },
+                        format!("    {note}"),
                         Style::default().fg(Color::Red),
                     )));
                 }
@@ -1018,7 +1012,6 @@ mod tests {
     /// never wrote: naming it under "the plan" points the reader at a file
     /// that was never there.
     #[test]
-    #[ignore = "red until #221: the work screen heads an unread laid plan with the entry's own path; implement removes this"]
     fn a_laid_plan_nobody_could_read_is_not_headed_by_the_entrys_own_path() {
         let mut unread = status(false);
         unread.tickets = Vec::new();

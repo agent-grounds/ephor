@@ -289,11 +289,83 @@ pub struct RecordedWork {
     /// The plans that could be read, in the record's own order: the recipe
     /// placements first, then what the workflows laid.
     pub plans: Vec<RecordedPlan>,
-    /// How many laid plans the record named that nobody could read. Counted
-    /// rather than listed because the only question asked of them is whether
-    /// there are any: an entry with one of these is not an entry whose work
-    /// is over, it is an entry whose work cannot be found.
-    pub unread: usize,
+    /// The laid plans the record named that nobody could read, each by the
+    /// record's own name: the dispatch's root joined to the name it recorded.
+    /// Most readers ask only whether there are any, since an entry with one of
+    /// these is not an entry whose work is over but one whose work cannot be
+    /// found. `work forget` names them, because it is the last reading of the
+    /// record (§FS-005-dispatch.35.1).
+    pub unread: Vec<PathBuf>,
+}
+
+/// One plan a matter had, as `work forget` leaves it (§FS-005-dispatch.35.1):
+/// where it is or was, and whether it was already gone. The prose line and the
+/// `--json` item are both read from this, so they cannot say different things
+/// (§REQ-002-parity.3).
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub struct LeftPlan {
+    pub plan: PathBuf,
+    /// Not on disk, or a laid plan nobody could read: the word `work list
+    /// --json` uses for the same fact.
+    pub missing: bool,
+}
+
+impl RecordedWork {
+    /// Every plan the record says is this matter's, and whether each is still
+    /// on disk (§FS-005-dispatch.35.1): the plans this reading placed, then the
+    /// laid plans nobody could read, by the record's own name. Never the
+    /// entry's own path in their place, which for a matter a workflow laid is
+    /// a file ephor never wrote (§FS-005-dispatch.19).
+    pub fn left(&self) -> Vec<LeftPlan> {
+        self.plans
+            .iter()
+            .map(|plan| LeftPlan {
+                missing: !plan.path.exists(),
+                plan: plan.path.clone(),
+            })
+            .chain(self.unread.iter().map(|name| LeftPlan {
+                plan: name.clone(),
+                missing: true,
+            }))
+            .collect()
+    }
+}
+
+/// What the work view heads a matter's work with (§FS-005-dispatch.35.1).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PlanHeading<'a> {
+    /// The plans to name: the ones the reading placed, or the entry's own path
+    /// where it placed nothing and found nothing unreadable.
+    pub plans: Vec<&'a std::path::Path>,
+    /// What is wrong with them, where the reading says something is.
+    pub note: Option<&'static str>,
+}
+
+/// The work view's heading, one answer for `work offers` and the work screen
+/// (§FS-005-dispatch.35.1): the plans the reading placed, and never the
+/// entry's own path in their place.
+///
+/// Nothing placed and something missing has one cause, since a placed plan
+/// that will not read is still placed: a laid plan the record names that
+/// nobody could read. That is said as the record's fact and names no file,
+/// because the entry's own path beside it is one ephor never wrote
+/// (§FS-005-dispatch.19). Where a plan that is named is not on disk, it is
+/// that file that went. The disk is asked only when the reading already said
+/// something is missing.
+pub fn plan_heading<'a>(
+    own: &'a std::path::Path,
+    placed: impl IntoIterator<Item = &'a std::path::Path>,
+    missing: bool,
+) -> PlanHeading<'a> {
+    let mut plans: Vec<&std::path::Path> = placed.into_iter().collect();
+    if plans.is_empty() && !missing {
+        plans.push(own);
+    }
+    let note = missing.then(|| match plans.iter().any(|plan| !plan.exists()) {
+        true => "the plan this points at is gone",
+        false => "a plan this matter's record names could not be read",
+    });
+    PlanHeading { plans, note }
 }
 
 impl WorkStatus {
@@ -6465,7 +6537,7 @@ pub fn recorded_workflow_plans(entry: &Entry) -> RecordedWork {
             continue;
         }
         let Some(found) = runtime::workflow::laid(&output) else {
-            work.unread += 1;
+            work.unread.push(output);
             continue;
         };
         work.plans.push(RecordedPlan {
@@ -6505,7 +6577,7 @@ pub fn recorded_plans(entry: &Entry) -> RecordedWork {
     // name a plan, so this is not the provenance-less ledger the fallback is
     // for, and a stray file at the entry's own path would otherwise answer
     // for the laid plan that is gone.
-    if plans.is_empty() && work.plans.is_empty() && work.unread == 0 {
+    if plans.is_empty() && work.plans.is_empty() && work.unread.is_empty() {
         plans.extend(legacy_placement(entry));
     }
     plans.extend(work.plans);
@@ -6583,10 +6655,8 @@ pub fn status_of_entry_seen(
     // the recipe plans alone reports no open tickets while a laid plan on
     // disk says otherwise, which is the watch reporting on itself
     // (§FS-005-dispatch.4).
-    let RecordedWork {
-        plans,
-        unread: unread_workflows,
-    } = recorded_plans(entry);
+    let RecordedWork { plans, unread } = recorded_plans(entry);
+    let unread_workflows = unread.len();
     let mut tickets: Vec<TicketStatus> = Vec::new();
     // The plan each ticket was read out of, kept beside them so a report with
     // room for one line can name it (§FS-005-dispatch.35).
