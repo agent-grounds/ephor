@@ -1011,6 +1011,30 @@ mod tests {
         assert!(said.contains("the plan this points at is gone"), "{said}");
     }
 
+    /// The heading names the plans the reading placed and never the entry's
+    /// own path in their place (§FS-005-dispatch.35.1). Where the only plan
+    /// the record names is a laid one nobody could read, the reading placed
+    /// nothing, and the path this screen used to fall back to is one ephor
+    /// never wrote: naming it under "the plan" points the reader at a file
+    /// that was never there.
+    #[test]
+    #[ignore = "red until #221: the work screen heads an unread laid plan with the entry's own path; implement removes this"]
+    fn a_laid_plan_nobody_could_read_is_not_headed_by_the_entrys_own_path() {
+        let mut unread = status(false);
+        unread.tickets = Vec::new();
+        unread.workflows = 1;
+        unread.unread_workflows = 1;
+        unread.missing = true;
+        let own = unread.plan.display().to_string();
+        let screen = WorkScreen::new(item(), Some(unread), offers(), None, None, Vec::new(), None);
+        let said = text(&screen);
+        assert!(said.contains("could not be read"), "{said}");
+        assert!(
+            !said.contains(&own),
+            "the heading names {own}, a file ephor never wrote:\n{said}"
+        );
+    }
+
     /// Nothing to offer *at all* is a different answer from nothing matching,
     /// and the screen says which (§REQ-001-boundary.1). An empty list under a
     /// heading reads as an oversight, which is the one thing a refusal must
