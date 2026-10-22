@@ -85,6 +85,7 @@ fn assert_delayed_cleanup_observation(automatic: bool) {
         b"jo",
         &[("DISPLAY", ":1")],
         Some(Duration::from_secs(7)),
+        ProcessObservation::AwaitStop,
         |pid| fixture.probe(pid, Some(Duration::from_secs(8))),
     );
     // All evidence precedes Drop: teardown cannot make cleanup pass.
@@ -119,14 +120,12 @@ fn assert_delayed_cleanup_observation(automatic: bool) {
 
 /// The exited-shell timeout path observes eventual stop (§FS-016-browser-opening.2).
 #[test]
-#[ignore = "red until #235: inherited-pipe cleanup observes eventual stop before Enter; implement removes this"]
 fn cleanup_observation_waits_for_inherited_pipes_without_spending_notice_budget() {
     assert_delayed_cleanup_observation(false);
 }
 
 /// The automatic-opener timeout path uses the same observation (§FS-016-browser-opening.2).
 #[test]
-#[ignore = "red until #235: automatic-opener cleanup observes eventual stop before Enter; implement removes this"]
 fn cleanup_observation_waits_for_automatic_opener_without_spending_notice_budget() {
     assert_delayed_cleanup_observation(true);
 }
@@ -135,7 +134,6 @@ fn cleanup_observation_waits_for_automatic_opener_without_spending_notice_budget
 /// than reporting a quick snapshot as proof of bounded cleanup observation
 /// (§FS-016-browser-opening.2).
 #[test]
-#[ignore = "red until #235: persistent live process exhausts bounded cleanup observation; implement removes this"]
 fn cleanup_observation_rejects_a_persistent_live_process_at_the_bound() {
     let mut fixture = ObservedProcess::new();
     let world = fixture.world(false);
@@ -144,6 +142,7 @@ fn cleanup_observation_rejects_a_persistent_live_process_at_the_bound() {
         b"jo",
         &[("DISPLAY", ":1")],
         Some(Duration::from_secs(7)),
+        ProcessObservation::AwaitStop,
         |pid| fixture.probe(pid, None),
     );
     let observation_after = fixture
