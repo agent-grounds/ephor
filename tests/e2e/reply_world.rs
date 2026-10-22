@@ -13,6 +13,9 @@ pub const H: &str = "<h@dana.example>";
 pub const M: &str = "<m@dana.example>";
 pub const NEW_WORDS: &str = "It is €150 now. Still interested?";
 
+/// Allow healthy carrier startup latency in the evidence for §FS-005-dispatch.13.
+pub const HEALTHY_CARRIER_TIMEOUT_SECONDS: u64 = 5;
+
 pub struct MailWorld {
     pub world: World,
 }
@@ -28,7 +31,7 @@ impl MailWorld {
             &format!("#!/bin/sh\nexec python3 '{}' \"$@\"\n", fixture.display()),
         );
         world.configure(json!({
-            "defaults": {"provider_timeout_seconds": 1},
+            "defaults": {"provider_timeout_seconds": HEALTHY_CARRIER_TIMEOUT_SECONDS},
             "projects": {"demo": {"providers": [{"provider": "mail-me", "user": "me"}]}}
         }));
         let this = Self { world };

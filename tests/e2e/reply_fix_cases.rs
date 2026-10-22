@@ -3,6 +3,7 @@
 //! §FS-011-command-line.4, §FS-011-command-line.7).
 
 use super::*;
+use reply_world::HEALTHY_CARRIER_TIMEOUT_SECONDS;
 use support::shaped;
 
 fn saved(world: &MailWorld) -> (std::path::PathBuf, Value) {
@@ -193,7 +194,7 @@ fn original_site_context_survives_new_project_precedence_placement_replay_and_re
 pub(super) fn site_context_with_startup_delay(command: Option<&str>) {
     for choice in ["replay", "sent", "not-sent"] {
         let world = MailWorld::new(true);
-        world.world.configure(json!({"defaults":{"provider_timeout_seconds":1},"sources":[{"provider":"mail-me","user":"me"}],"projects":{"demo":{"providers":[]}}}));
+        world.world.configure(json!({"defaults":{"provider_timeout_seconds":HEALTHY_CARRIER_TIMEOUT_SECONDS},"sources":[{"provider":"mail-me","user":"me"}],"projects":{"demo":{"providers":[]}}}));
         if command == Some("reply") {
             world.delay_startup("reply");
         }
@@ -201,7 +202,7 @@ pub(super) fn site_context_with_startup_delay(command: Option<&str>) {
         // independent of the binding chosen for the write.
         held(&world, false, choice != "replay");
         assert_eq!(world.requests()[0]["project"], "");
-        world.world.configure(json!({"defaults":{"provider_timeout_seconds":1},"sources":[{"provider":"mail-me","user":"me"}],"projects":{"demo":{"providers":[{"provider":"mail-me","user":"other-account"}]}}}));
+        world.world.configure(json!({"defaults":{"provider_timeout_seconds":HEALTHY_CARRIER_TIMEOUT_SECONDS},"sources":[{"provider":"mail-me","user":"me"}],"projects":{"demo":{"providers":[{"provider":"mail-me","user":"other-account"}]}}}));
         if command == Some("messages") {
             world.delay_startup("messages");
         }
@@ -613,7 +614,7 @@ fn saved_site_context_is_used_when_feed_placement_moves_to_a_different_project()
 pub(super) fn moved_placement_with_startup_delay(delayed: bool) {
     for choice in ["replay", "sent", "not-sent"] {
         let world = MailWorld::new(true);
-        world.world.configure(json!({"defaults":{"provider_timeout_seconds":1},"sources":[{"provider":"mail-me","user":"me"}],"projects":{"demo":{"providers":[]},"other":{"providers":[{"provider":"mail-me","user":"another-account"}]}}}));
+        world.world.configure(json!({"defaults":{"provider_timeout_seconds":HEALTHY_CARRIER_TIMEOUT_SECONDS},"sources":[{"provider":"mail-me","user":"me"}],"projects":{"demo":{"providers":[]},"other":{"providers":[{"provider":"mail-me","user":"another-account"}]}}}));
         if delayed {
             world.delay_startup("reply");
         }
