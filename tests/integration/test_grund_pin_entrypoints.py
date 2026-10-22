@@ -15,6 +15,8 @@ import subprocess
 import tempfile
 import unittest
 
+from git_env import environ
+
 
 ROOT = Path(__file__).resolve().parents[2]
 CI = ROOT / ".github" / "workflows" / "ci.yml"
@@ -120,7 +122,7 @@ def block_version(region: str) -> str:
 def binary_version(binary: Path) -> str:
     try:
         reported = subprocess.run(
-            [str(binary), "--version"], capture_output=True, text=True, check=True
+            [str(binary), "--version"], capture_output=True, text=True, check=True, env=environ()
         ).stdout.strip()
     except (OSError, subprocess.CalledProcessError) as error:
         raise HarnessError(f"{binary} does not answer `--version`: {error}") from error
@@ -179,6 +181,7 @@ def regenerate(binary: Path, sources: dict[str, str], config: str) -> dict[str, 
             [str(binary), "init", "--claude", "--no-vcs", str(root)],
             capture_output=True,
             text=True,
+            env=environ(),
         )
         if result.returncode != 0:
             raise HarnessError(

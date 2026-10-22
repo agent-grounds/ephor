@@ -30,7 +30,7 @@
 mod support;
 
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
+use std::process::Stdio;
 
 use predicates::prelude::*;
 use serde_json::json;
@@ -130,7 +130,7 @@ exit 1
 "#;
 
 fn git(dir: &Path, args: &[&str]) {
-    let status = Command::new("git")
+    let status = git_command()
         .arg("-C")
         .arg(dir)
         .args(args)
@@ -158,7 +158,7 @@ fn project_with_main_checked_out(world: &World) {
 
     let main = world.forest().join("main");
     std::fs::create_dir_all(main.parent().expect("a parent")).expect("the project root");
-    let status = Command::new("git")
+    let status = git_command()
         .args(["clone", "-q"])
         .arg(&origin)
         .arg(&main)
@@ -383,7 +383,7 @@ fn the_dispatch_makes_the_workspace_and_lays_the_plan_inside_it() {
     // project's main branch.
     let workspace = workspace(&world);
     assert!(workspace.join(".git").exists(), "no working tree");
-    let head = Command::new("git")
+    let head = git_command()
         .args(["rev-parse", "--abbrev-ref", "HEAD"])
         .current_dir(&workspace)
         .output()
@@ -3094,7 +3094,7 @@ fn each_task_of_the_project_gets_the_checkout_its_work_needs() {
         (&second, "task/rhei-window-2-dba9cc21"),
     ] {
         assert!(workspace.join(".git").exists(), "{branch}: no working tree");
-        let head = Command::new("git")
+        let head = git_command()
             .args(["rev-parse", "--abbrev-ref", "HEAD"])
             .current_dir(workspace)
             .output()

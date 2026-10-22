@@ -23,6 +23,14 @@ use std::path::{Path, PathBuf};
 
 use serde_json::{json, Value};
 
+// The one helper under `tests/` that builds `git` and `ephor` without git's
+// repository variables (§REQ-003-test-isolation.3.4). A binary that uses only
+// part of it would warn about the rest.
+#[path = "../shared/git_env.rs"]
+mod git_env;
+#[allow(unused_imports)]
+pub use git_env::{ephor_command, git_command, remove_git_variables};
+
 /// The project every case watches. One id, so a case reads as a story about a
 /// project rather than as a fixture with names in it.
 pub const PROJECT: &str = "demo";
@@ -191,7 +199,7 @@ impl World {
     /// has to point its streams somewhere, the way ephor points a job
     /// supervisor's at the job's log (§FS-005-dispatch.17).
     pub fn ephor_raw(&self) -> std::process::Command {
-        let mut command = std::process::Command::new(assert_cmd::cargo::cargo_bin("ephor"));
+        let mut command = ephor_command();
         command
             .env(
                 "PATH",
@@ -445,10 +453,7 @@ pub fn holds_under_a_worktree_hook(tests: &[&str]) {
     // What git exports to a hook run from a linked worktree: both absolute.
     let git_dir = main.join(".git").join("worktrees").join("wt");
     let mut child = std::process::Command::new(std::env::current_exe().expect("this binary"));
-    for key in inherited_git_vars() {
-        child.env_remove(key);
-    }
-    let output = child
+    let output = remove_git_variables(&mut child)
         .arg("--exact")
         .args(tests)
         .env("GIT_DIR", &git_dir)
@@ -477,22 +482,9 @@ pub fn holds_under_a_worktree_hook(tests: &[&str]) {
     );
 }
 
-/// Every `GIT_*` this process holds, so the decoy is read, and the child is
-/// handed it, with nothing inherited on top.
-fn inherited_git_vars() -> Vec<std::ffi::OsString> {
-    std::env::vars_os()
-        .map(|(key, _)| key)
-        .filter(|key| key.to_string_lossy().starts_with("GIT_"))
-        .collect()
-}
-
 /// A `git` run on the decoy on purpose, aimed by `-C` with nothing inherited.
 fn decoy_git(dir: &Path, args: &[&str]) -> String {
-    let mut cmd = std::process::Command::new("git");
-    for key in inherited_git_vars() {
-        cmd.env_remove(key);
-    }
-    let output = cmd
+    let output = git_command()
         .arg("-C")
         .arg(dir)
         .args(args)

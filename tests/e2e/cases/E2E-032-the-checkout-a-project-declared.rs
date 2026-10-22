@@ -29,7 +29,7 @@
 mod support;
 
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
+use std::process::Stdio;
 
 use predicates::prelude::*;
 use serde_json::json;
@@ -68,7 +68,7 @@ const MINTED: &str = "fix/issue-95";
 const ITEM: &str = "acmeforge:acme/widget#95";
 
 fn git(dir: &Path, args: &[&str]) {
-    let status = Command::new("git")
+    let status = git_command()
         .arg("-C")
         .arg(dir)
         .args(args)
@@ -100,7 +100,7 @@ fn project() -> World {
 
     let main = world.forest().join("main");
     std::fs::create_dir_all(main.parent().expect("a parent")).expect("the project root");
-    let status = Command::new("git")
+    let status = git_command()
         .args(["clone", "-q"])
         .arg(&origin)
         .arg(&main)

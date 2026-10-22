@@ -48,7 +48,7 @@ impl World {
     }
 
     pub fn ephor_raw(&self) -> Command {
-        let mut command = Command::new(assert_cmd::cargo::cargo_bin("ephor"));
+        let mut command = common::ephor_command();
         command
             .current_dir(self.path())
             .env("HOME", self.path())

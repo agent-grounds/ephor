@@ -16,7 +16,7 @@ const RAW: &str = "codex[xhigh]:openai:gpt-5.6-luna";
 /// by entry listing, never by a guess about its name.
 fn watching(marked: bool, with_model: bool, inputs: Value, pin: Value) -> World {
     let world = World::new();
-    assert!(std::process::Command::new("git")
+    assert!(git_command()
         .current_dir(world.forest())
         .args(["init", "-q"])
         .status()

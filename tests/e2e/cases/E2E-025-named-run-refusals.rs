@@ -543,10 +543,13 @@ fn issue_210_the_pty_driver_keeps_a_clean_exit_that_closes_its_terminal_first() 
 fn screen(world: &World) -> Output {
     let ephor = world.ephor_raw();
     let mut command = Command::new("python3");
+    // The removals too, so the `ephor` the driver starts inherits no `GIT_*`
+    // (§REQ-003-test-isolation.3.3).
     for (key, value) in ephor.get_envs() {
-        if let Some(value) = value {
-            command.env(key, value);
-        }
+        match value {
+            Some(value) => command.env(key, value),
+            None => command.env_remove(key),
+        };
     }
     command
         .env("NO_COLOR", "1")

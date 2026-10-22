@@ -20,7 +20,7 @@
 mod support;
 
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
+use std::process::Stdio;
 
 use serde_json::json;
 
@@ -42,7 +42,7 @@ hook: restore it, then try again.
 ";
 
 fn git(dir: &Path, args: &[&str]) {
-    let status = Command::new("git")
+    let status = git_command()
         .arg("-C")
         .arg(dir)
         .args(args)
@@ -74,7 +74,7 @@ fn origin(world: &World) -> PathBuf {
 
 fn clone(origin: &Path, into: &Path) {
     std::fs::create_dir_all(into.parent().expect("a parent")).expect("the parent directory");
-    let status = Command::new("git")
+    let status = git_command()
         .args(["clone", "-q"])
         .arg(origin)
         .arg(into)

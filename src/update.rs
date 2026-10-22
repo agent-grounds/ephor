@@ -1,7 +1,7 @@
 //! Workspace update orchestration: per-repo git fetch/checkout/pull plus hooks.
 
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
+use std::process::Stdio;
 
 use serde_json::{Map, Value};
 
@@ -104,14 +104,14 @@ fn update_repo(root: &Path, repo: &Map<String, Value>) -> Result<()> {
     }
 
     let repo_path_str = repo_path.to_string_lossy();
-    run_command(&["git", "-C", &repo_path_str, "fetch", "origin", branch])?;
-    run_command(&["git", "-C", &repo_path_str, "checkout", branch])?;
-    run_command(&["git", "-C", &repo_path_str, "pull", "origin", branch])?;
+    run_git(&["-C", &repo_path_str, "fetch", "origin", branch])?;
+    run_git(&["-C", &repo_path_str, "checkout", branch])?;
+    run_git(&["-C", &repo_path_str, "pull", "origin", branch])?;
     Ok(())
 }
 
 pub fn is_git_work_tree(path: &Path) -> bool {
-    Command::new("git")
+    crate::git::command()
         .args(["-C"])
         .arg(path)
         .args(["rev-parse", "--is-inside-work-tree"])
@@ -122,16 +122,17 @@ pub fn is_git_work_tree(path: &Path) -> bool {
         .unwrap_or(false)
 }
 
-pub fn run_command(cmd: &[&str]) -> Result<()> {
-    let status = Command::new(cmd[0])
-        .args(&cmd[1..])
+/// `git` with `args`, run for what it does, through the library's one git
+/// constructor (§REQ-003-test-isolation.3.4).
+pub fn run_git(args: &[&str]) -> Result<()> {
+    let line = format!("git {}", args.join(" "));
+    let status = crate::git::command()
+        .args(args)
         .status()
-        .map_err(|err| EphorError::Command(format!("Failed to run {}: {err}", cmd.join(" "))))?;
+        .map_err(|err| EphorError::Command(format!("Failed to run {line}: {err}")))?;
     if !status.success() {
         return Err(EphorError::Command(format!(
-            "Command failed with {}: {}",
-            status,
-            cmd.join(" ")
+            "Command failed with {status}: {line}"
         )));
     }
     Ok(())

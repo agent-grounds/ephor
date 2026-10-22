@@ -980,8 +980,7 @@ fn terminal_stub(world: &World, name: &str, handle: &str) {
 }
 
 fn action(world: &World, id: &str, environment: &[(&str, &str)]) -> Output {
-    let binary = assert_cmd::cargo::cargo_bin("ephor");
-    let mut command = Command::new(binary);
+    let mut command = ephor_command();
     command.args(["actions", "run", "--item", ITEM, id, "--json"]);
     isolated(&mut command, world, environment);
     command.output().expect("run the action")

@@ -14,7 +14,10 @@ unit test beside it; black-box proof of a spec point is an e2e case under
 `cargo test --all-targets`, declared by path in `Cargo.toml` because Cargo does
 not auto-discover tests in a subdirectory. `common/` is the shared harness
 (`mod common;`); `golden/` holds recorded provider responses fixtures compare
-against.
+against. A test runs `git` through `git_command()` and `ephor` through
+`ephor_cmd()`, which `common/` takes from `tests/shared/git_env.rs`: the one
+place under `tests/` that takes git's repository variables off what the suite
+spawns ([§REQ-003-test-isolation.3.4](../../docs/requirements/REQ-003-test-isolation.md#34-one-place-per-tree-applies-it)).
 
 - `check_test.rs` — `ephor check` end to end ([§FS-006-project-interface.5](../../docs/functional-spec/FS-006-project-interface.md#5-checks-are-verbs-and-every-script-is-self-contained)).
 - `checkout_test.rs` — `ephor checkout` end to end ([§FS-004-quick-actions.7](../../docs/functional-spec/FS-004-quick-actions.md#7-a-workspace-that-is-not-there-is-offered-the-checkout)).
@@ -58,6 +61,13 @@ line CI and the pre-commit hook run.
   or held on, the shared path predicate behind the schedule's gate, and no hook
   or step that asks a change for a changelog entry ([§FS-002-release.2](../../docs/functional-spec/FS-002-release.md#2-cutting-a-release),
   [§FS-002-release.6](../../docs/functional-spec/FS-002-release.md#6-no-change-is-gated-on-the-changelog)).
+- `test_suite_isolation.py` — the fixtures re-run with a worktree hook's
+  `GIT_DIR` and `GIT_INDEX_FILE` pointed at a decoy, which must come back
+  untouched ([§REQ-003-test-isolation.2](../../docs/requirements/REQ-003-test-isolation.md#2-under-a-git-hook-exactly-as-under-a-plain-run)), and every subprocess a fixture starts
+  handed an environment from `git_env.py` ([§REQ-003-test-isolation.3.4](../../docs/requirements/REQ-003-test-isolation.md#34-one-place-per-tree-applies-it)).
+- `git_env.py` — not a test: `environ()`, this process's environment with
+  every `GIT_*` taken off, the base of every environment a fixture hands a
+  subprocess ([§REQ-003-test-isolation.3](../../docs/requirements/REQ-003-test-isolation.md#3-every-git-the-suite-causes-runs-without-gits-repository-variables)).
 - `release_forge.py` — not a test, and not collected as one: the throwaway git
   repository, with a `gh` stand-in on `PATH` that answers as GitHub's REST API
   does, those three share. The release reads first-parent history and the pull

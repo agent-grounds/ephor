@@ -1775,9 +1775,43 @@ fn unmerged(repo: &Path) -> Option<Vec<String>> {
     })
 }
 
+/// Every `git` the library runs, and every `git` its unit tests run: the one
+/// place in `src/` that names git as a program (§REQ-003-test-isolation.3.4).
+///
+/// In the shipped build this is exactly `Command::new("git")`. What ephor does
+/// with the environment it is given is a behaviour, and REQ-003 does not reach
+/// it. In a test build it also takes off every `GIT_*` the test process
+/// inherited (§REQ-003-test-isolation.3.1). A hook hands the suite a `GIT_DIR`
+/// naming the repository being committed to, and without this a fixture's
+/// `git init`, or the `git worktree add` of [`create`] under test, would act on
+/// that repository rather than the one its `-C` names
+/// (§REQ-003-test-isolation.3.3). A value the caller sets on the returned
+/// command comes after the removal and is kept (§REQ-003-test-isolation.3.2).
+pub fn command() -> Command {
+    let command = Command::new("git");
+    #[cfg(test)]
+    let command = without_inherited_git_variables(command);
+    command
+}
+
+/// The removal [`command`] applies in a test build. It goes by prefix, so it
+/// also covers `GIT_CONFIG_PARAMETERS`, which carries an outer `git -c` down
+/// the same inheritance (§REQ-003-test-isolation.3.1). It goes on the child
+/// alone and never on the process, because a process-wide `remove_var` races
+/// every other test thread (§REQ-003-test-isolation.3.4).
+#[cfg(test)]
+fn without_inherited_git_variables(mut command: Command) -> Command {
+    for (key, _) in std::env::vars_os() {
+        if key.as_encoded_bytes().starts_with(b"GIT_") {
+            command.env_remove(key);
+        }
+    }
+    command
+}
+
 /// A git command whose output is the answer; None when it fails.
 fn git(repo: &Path, args: &[&str]) -> Option<String> {
-    let output = Command::new("git")
+    let output = command()
         .arg("-C")
         .arg(repo)
         .args(args)
@@ -1793,7 +1827,7 @@ fn git(repo: &Path, args: &[&str]) -> Option<String> {
 /// A git command run for what it does. The error carries what git said,
 /// because a refusal the reader cannot read is a refusal they cannot act on.
 fn run(repo: &Path, args: &[&str]) -> Result<String, String> {
-    let output = Command::new("git")
+    let output = command()
         .arg("-C")
         .arg(repo)
         .args(args)
@@ -1821,7 +1855,7 @@ mod tests {
     }
 
     fn run_in(dir: &Path, args: &[&str]) {
-        let status = Command::new("git")
+        let status = command()
             .arg("-C")
             .arg(dir)
             .args(args)
@@ -1850,7 +1884,7 @@ mod tests {
 
         let clone = root.join("work").join(name);
         std::fs::create_dir_all(clone.parent().unwrap()).unwrap();
-        let status = Command::new("git")
+        let status = command()
             .args(["clone", "-q"])
             .arg(&origin)
             .arg(&clone)
@@ -1903,7 +1937,7 @@ mod tests {
     fn checkout_with_fork(root: &Path, name: &str, push: PushTo) -> PathBuf {
         let clone = checkout_with_origin(root, name);
         let fork = root.join(format!("{name}-fork.git"));
-        let status = Command::new("git")
+        let status = command()
             .args(["clone", "-q"])
             .arg(root.join(format!("{name}.git")))
             .arg(&fork)

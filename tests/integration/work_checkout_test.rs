@@ -395,7 +395,7 @@ esac
 const MINTED: &str = "fix/issue-95";
 
 fn git_in(dir: &Path, args: &[&str]) {
-    let status = std::process::Command::new("git")
+    let status = git_command()
         .arg("-C")
         .arg(dir)
         .args(args)
@@ -422,7 +422,7 @@ fn minting_fixture(tmp: &Path) -> std::path::PathBuf {
     git_in(&origin, &["add", "-A"]);
     git_in(&origin, &["commit", "-q", "-m", "the project"]);
     fs::create_dir_all(&root).unwrap();
-    let status = std::process::Command::new("git")
+    let status = git_command()
         .args(["clone", "-q"])
         .arg(&origin)
         .arg(root.join("main"))
@@ -826,7 +826,7 @@ fn a_single_checkout_project_is_never_judged_by_the_half_made_question() {
     git_in(&origin, &["add", "-A"]);
     git_in(&origin, &["commit", "-q", "-m", "the project"]);
     fs::create_dir_all(&root).unwrap();
-    let cloned = std::process::Command::new("git")
+    let cloned = git_command()
         .args(["clone", "-q"])
         .arg(&origin)
         .arg(root.join("app"))

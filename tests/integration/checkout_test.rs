@@ -6,7 +6,7 @@ mod common;
 
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
+use std::process::Stdio;
 
 use predicates::prelude::*;
 use serde_json::json;
@@ -14,7 +14,7 @@ use serde_json::json;
 use common::*;
 
 fn git(dir: &Path, args: &[&str]) {
-    let status = Command::new("git")
+    let status = git_command()
         .arg("-C")
         .arg(dir)
         .args(args)
@@ -43,7 +43,7 @@ fn repo(root: &Path, name: &str) -> PathBuf {
 
     let clone = root.join("proj").join("main").join(name);
     fs::create_dir_all(clone.parent().unwrap()).unwrap();
-    let status = Command::new("git")
+    let status = git_command()
         .args(["clone", "-q"])
         .arg(&origin)
         .arg(&clone)
@@ -275,7 +275,7 @@ fn a_branch_that_tracks_the_base_is_reported_published_nowhere() {
     // pushed: `ce`'s own config is unchanged, and `origin` still has no
     // `feature` of its own.
     assert_eq!(fs::read_to_string(ce.join(".git/config")).unwrap(), before);
-    let ls_remote = Command::new("git")
+    let ls_remote = git_command()
         .args(["ls-remote", "--heads", "origin", "feature"])
         .current_dir(&ce)
         .output()
@@ -291,7 +291,7 @@ fn a_branch_that_tracks_the_base_is_reported_published_nowhere() {
 
     // The new working tree still answers `origin/master` for its upstream —
     // the fact the checkout named, not one it changed.
-    let upstream = Command::new("git")
+    let upstream = git_command()
         .args([
             "rev-parse",
             "--abbrev-ref",

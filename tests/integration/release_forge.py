@@ -35,6 +35,8 @@ import unittest
 from pathlib import Path
 from typing import NamedTuple
 
+from git_env import environ
+
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = REPOSITORY_ROOT / "scripts" / "prepare_changelog_release.py"
@@ -249,7 +251,7 @@ class ReleaseRepo:
         stub = self.bin / "gh"
         stub.write_text(f"#!{sys.executable}\n{GH_STUB}", encoding="utf-8")
         stub.chmod(0o755)
-        base = {key: value for key, value in os.environ.items() if key not in SCRUBBED}
+        base = {key: value for key, value in environ().items() if key not in SCRUBBED}
         self.env = {
             **base,
             **GIT_ENV,

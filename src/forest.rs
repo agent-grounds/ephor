@@ -582,7 +582,7 @@ mod tests {
 
     fn work_tree(path: &Path) {
         std::fs::create_dir_all(path).unwrap();
-        assert!(std::process::Command::new("git")
+        assert!(crate::git::command()
             .args(["init", "--quiet"])
             .current_dir(path)
             .status()
@@ -591,7 +591,7 @@ mod tests {
     }
 
     fn git_in(path: &Path, args: &[&str]) {
-        let status = std::process::Command::new("git")
+        let status = crate::git::command()
             .arg("-C")
             .arg(path)
             .args(args)

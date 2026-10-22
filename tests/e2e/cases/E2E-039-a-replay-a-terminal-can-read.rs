@@ -31,7 +31,7 @@
 mod support;
 
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
+use std::process::Stdio;
 
 use serde_json::json;
 
@@ -43,7 +43,7 @@ use support::*;
 const ROLE: &str = "the project";
 
 fn git(dir: &Path, args: &[&str]) {
-    let status = Command::new("git")
+    let status = git_command()
         .arg("-C")
         .arg(dir)
         .args(args)
@@ -69,7 +69,7 @@ fn commit(dir: &Path, file: &str, contents: &str, message: &str) {
 fn checkout_of(world: &World, origin: &Path, at: &str, branch: &str) -> PathBuf {
     let path = world.forest().join(at);
     std::fs::create_dir_all(path.parent().expect("a parent")).expect("the workspace area");
-    let status = Command::new("git")
+    let status = git_command()
         .args(["clone", "-q", "--branch", branch])
         .arg(origin)
         .arg(&path)
@@ -346,7 +346,6 @@ fn a_replay_nested_in_a_sweep_follows_the_document_carrying_it() {
 /// `git init --bare` and the `ephor rebase` it spawns both act on whatever
 /// `GIT_DIR` they inherit.
 #[test]
-#[ignore = "red until #233: a hook's GIT_DIR sends the case's git and ephor into the decoy; implement removes this"]
 fn the_case_holds_under_a_worktree_hook_and_leaves_its_repository_alone() {
     holds_under_a_worktree_hook(&[
         "a_replay_reaches_a_terminal_as_prose_and_a_file_as_the_document",

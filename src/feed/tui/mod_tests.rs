@@ -360,7 +360,7 @@ fn checkout_resolves_existing_branch_workspace() {
 }
 
 fn git(dir: &Path, args: &[&str]) {
-    let status = std::process::Command::new("git")
+    let status = crate::git::command()
         .arg("-C")
         .arg(dir)
         .args(args)
