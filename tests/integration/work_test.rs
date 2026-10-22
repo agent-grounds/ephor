@@ -809,6 +809,262 @@ fn a_replay_handed_over_from_the_command_line_names_the_repository_too() {
     );
 }
 
+/// The machine agent-grounds/ephor#245's reporter had in the work root: it
+/// declares `fix`, so the shipped `rebase` recipe would be taken, and not
+/// `rebase`, which is the state the configured recipe below starts in.
+fn a_root_whose_machine_lacks_rebase(checkout: &Path) {
+    fs::create_dir_all(checkout.join("panta")).unwrap();
+    let mut machine = String::from("name: ephor-work\nversion: 1.0\n\nstates:\n");
+    for state in ["collect", "fix", "review", "gate-green"] {
+        machine.push_str(&format!(
+            "  {state}:\n    description: {state}\n    agent: claude-code\n    instructions: do {state}\n"
+        ));
+    }
+    machine.push_str(
+        "  gave-up:\n    description: gave up\n    final: true\n\
+         \x20 done:\n    description: done\n    final: true\n\
+         \ntransitions:\n  - from: collect\n    to: fix\n  - from: fix\n    to: review\n\
+         \x20 - from: review\n    to: gate-green\n  - from: gate-green\n    to: done\n\
+         \x20 - from: fix\n    to: gave-up\n",
+    );
+    fs::write(checkout.join("panta/states.yaml"), machine).unwrap();
+}
+
+fn head_of(checkout: &Path) -> String {
+    let out = git_command()
+        .args(["rev-parse", "HEAD"])
+        .current_dir(checkout)
+        .output()
+        .unwrap();
+    String::from_utf8(out.stdout).unwrap().trim().to_string()
+}
+
+fn mid_rebase(checkout: &Path) -> bool {
+    checkout.join(".git/rebase-merge").exists() || checkout.join(".git/rebase-apply").exists()
+}
+
+/// The control for agent-grounds/ephor#245: the machine was never stale. A
+/// fresh root receives the shipped machine, the shipped `rebase` recipe starts
+/// in a state it declares, and the hand-over is taken — so the conflict is
+/// left standing for the ticket it wrote (§FS-005-dispatch.12).
+#[test]
+fn a_fresh_root_takes_the_shipped_rebase_recipe_and_the_conflict_stands_for_it() {
+    let tmp = tempdir();
+    let checkout = trailing_checkout(tmp.path(), true);
+    fixture_on(tmp.path(), &checkout, "master");
+    ephor(tmp.path())
+        .args(["refresh", "demo"])
+        .assert()
+        .success();
+
+    ephor(tmp.path())
+        .args([
+            "rebase",
+            "--project",
+            "demo",
+            "--checkout",
+            checkout.to_str().unwrap(),
+            "--item",
+            "github-prs:acme/widget#42",
+            "--dispatch",
+        ])
+        .assert()
+        .code(3)
+        .stdout(predicate::str::contains("handed over: rebase"));
+
+    let states = fs::read_to_string(checkout.join("panta/states.yaml")).unwrap();
+    assert!(states.contains("name: ephor-work"), "{states}");
+    assert!(checkout
+        .join("panta/github-prs-acme-widget-42-922ddbdc.rhei.md")
+        .exists());
+    assert!(
+        mid_rebase(&checkout),
+        "the ticket's successor needs the conflict"
+    );
+}
+
+/// agent-grounds/ephor#245: whether anybody is coming is asked before the
+/// replay (§FS-005-dispatch.12). The root's machine does not declare the state
+/// the configured `rebase` recipe starts in, so the hand-over is refused
+/// (§FS-005-dispatch.6) and nobody is coming: the replay puts the tree back
+/// on the commit it started from, the conflict is still reported and written
+/// to REPORT, and the refusal is the exit — never a conflict left standing
+/// for a ticket that was not written.
+#[test]
+#[ignore = "red until #245: a refused hand-over leaves the tree mid-rebase; implement removes this"]
+fn a_rebase_whose_hand_over_would_be_refused_puts_the_tree_back() {
+    let tmp = tempdir();
+    let checkout = trailing_checkout(tmp.path(), true);
+    fixture_with(
+        tmp.path(),
+        &checkout,
+        "master",
+        json!({ "recipes": [{
+            "id": "rebase", "icon": "⤴", "description": "rebase onto main",
+            "state": "rebase", "when": { "behind": true }, "brief": "resolve it"
+        }]}),
+    );
+    a_root_whose_machine_lacks_rebase(&checkout);
+    let before = head_of(&checkout);
+    ephor(tmp.path())
+        .args(["refresh", "demo"])
+        .assert()
+        .success();
+    let report = tmp.path().join("rebase-report.md");
+
+    let out = ephor(tmp.path())
+        .args([
+            "rebase",
+            "--project",
+            "demo",
+            "--checkout",
+            checkout.to_str().unwrap(),
+            "--item",
+            "github-prs:acme/widget#42",
+            "--dispatch",
+            "--report",
+            report.to_str().unwrap(),
+        ])
+        .output()
+        .unwrap();
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        stderr.contains("does not declare"),
+        "the hand-over was not refused, so there is nothing to judge:\n{stderr}"
+    );
+    assert!(!out.status.success(), "the refusal is the exit");
+    assert!(
+        !checkout
+            .join("panta/github-prs-acme-widget-42-922ddbdc.rhei.md")
+            .exists(),
+        "a refused hand-over writes no ticket"
+    );
+    assert!(
+        !mid_rebase(&checkout),
+        "the hand-over was refused, so nobody is coming, yet the tree is left \
+         mid-rebase:\n{stderr}"
+    );
+    assert_eq!(
+        head_of(&checkout),
+        before,
+        "the tree is back on its starting commit"
+    );
+    // The conflict is still reported, and says the tree was put back.
+    let written = fs::read_to_string(&report).expect("REPORT is written on a refusal");
+    assert!(written.contains("shared.txt"), "{written}");
+    assert!(written.contains("was put back"), "{written}");
+}
+
+/// agent-grounds/ephor#245: a refusal for a state the machine does not
+/// declare says what to change, not only what does not match
+/// (§FS-005-dispatch.6). The root's machine stays as it is.
+#[test]
+#[ignore = "red until #245: the undeclared-state refusal names no next step; implement removes this"]
+fn a_refusal_for_an_undeclared_state_names_what_to_change() {
+    let tmp = tempdir();
+    let checkout = trailing_checkout(tmp.path(), true);
+    fixture_with(
+        tmp.path(),
+        &checkout,
+        "master",
+        json!({ "recipes": [{
+            "id": "rebase", "icon": "⤴", "description": "rebase onto main",
+            "state": "rebase", "when": { "behind": true }, "brief": "resolve it"
+        }]}),
+    );
+    a_root_whose_machine_lacks_rebase(&checkout);
+    let machine = fs::read_to_string(checkout.join("panta/states.yaml")).unwrap();
+    ephor(tmp.path())
+        .args(["refresh", "demo"])
+        .assert()
+        .success();
+
+    let out = ephor(tmp.path())
+        .args([
+            "rebase",
+            "--project",
+            "demo",
+            "--checkout",
+            checkout.to_str().unwrap(),
+            "--item",
+            "github-prs:acme/widget#42",
+            "--dispatch",
+        ])
+        .output()
+        .unwrap();
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        stderr.contains("does not declare"),
+        "the hand-over was not refused, so there is nothing to judge:\n{stderr}"
+    );
+    assert!(
+        stderr.contains("Give the recipe a 'state' the machine declares"),
+        "the refusal names no next step on the recipe's side:\n{stderr}"
+    );
+    assert!(
+        stderr.contains("states.yaml"),
+        "the refusal names no next step on the machine's side:\n{stderr}"
+    );
+    assert_eq!(
+        fs::read_to_string(checkout.join("panta/states.yaml")).unwrap(),
+        machine,
+        "an existing root keeps its machine unchanged"
+    );
+}
+
+/// The recipe-driven path of agent-grounds/ephor#245: a recipe whose opening
+/// move is the replay asks the machine before it makes the move
+/// (§FS-005-dispatch.12), so a dispatch the machine refuses has not touched
+/// the tree at all.
+#[test]
+#[ignore = "red until #245: a refused recipe dispatch replays before it is refused; implement removes this"]
+fn a_recipe_dispatch_the_machine_refuses_makes_no_opening_move() {
+    let tmp = tempdir();
+    let checkout = trailing_checkout(tmp.path(), true);
+    fixture_with(
+        tmp.path(),
+        &checkout,
+        "master",
+        json!({ "recipes": [{
+            "id": "rebase", "icon": "⤴", "description": "rebase onto main",
+            "state": "rebase", "when": { "behind": true }, "brief": "resolve it",
+            "opens_with": "rebase"
+        }]}),
+    );
+    a_root_whose_machine_lacks_rebase(&checkout);
+    let before = head_of(&checkout);
+    ephor(tmp.path())
+        .args(["refresh", "demo"])
+        .assert()
+        .success();
+
+    let out = ephor(tmp.path())
+        .args(["work", "dispatch", "--recipe", "rebase"])
+        .output()
+        .unwrap();
+    let said = format!(
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert!(
+        said.contains("does not declare"),
+        "the dispatch was not refused, so there is nothing to judge:\n{said}"
+    );
+    assert!(
+        !checkout
+            .join("panta/github-prs-acme-widget-42-922ddbdc.rhei.md")
+            .exists(),
+        "a refused dispatch writes no ticket"
+    );
+    assert!(
+        !mid_rebase(&checkout),
+        "the machine refused the dispatch only after its opening move replayed \
+         the branch:\n{said}"
+    );
+    assert_eq!(head_of(&checkout), before, "the tree was not touched");
+}
+
 /// §FS-005-dispatch.13: work about a conversation needs no checkout — the
 /// plan is written at the branch workspace where one resolves and at the
 /// forest root where none does, so the checkout-able rung
