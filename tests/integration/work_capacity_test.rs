@@ -597,7 +597,6 @@ fn poll_on_a_machine(root: &Path) -> fs::File {
 /// it, so it holds no `max_active` one; the refusal and the reading say how
 /// many roots are polling, and none of them is called a person.
 #[test]
-#[ignore = "red until #229: a root polling a machine frees its agent slot; implement removes this"]
 fn a_root_polling_a_machine_costs_a_flight_slot_and_no_agent_slot() {
     let tmp = tempdir();
     fixture(

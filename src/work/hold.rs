@@ -86,9 +86,11 @@ pub enum Hold {
 pub enum Flight {
     /// `max_concurrent`, over every live root.
     Concurrent,
-    /// `max_active`, over the working ones; `parked` is the live roots
-    /// waiting on a person, which the sentence names beside the count.
-    Active { parked: usize },
+    /// `max_active`, over the ones something runs in; `parked` is the live
+    /// roots waiting on a person and `polling` the ones only polling a
+    /// machine, which the sentence names beside the count
+    /// (§FS-005-dispatch.24.4).
+    Active { parked: usize, polling: usize },
 }
 
 /// A budget figure in the denomination its key is written in: dollars under
@@ -178,12 +180,13 @@ impl Hold {
             ),
             Hold::Concurrency {
                 scope,
-                key: Flight::Active { parked },
+                key: Flight::Active { parked, polling },
                 limit,
                 count,
             } => format!(
-                "{}.max_active {limit} is full ({count} active run(s), {parked} parked)",
-                scope.key()
+                "{}.max_active {limit} is full ({count} active run(s), {parked} parked{})",
+                scope.key(),
+                self::polling(*polling),
             ),
             Hold::Budget { says, .. } => says.clone(),
         }
@@ -276,6 +279,17 @@ impl Hold {
             }
         }
         Value::Object(object)
+    }
+}
+
+/// The live roots only polling a machine, as the clause a sentence about
+/// capacity appends after its parked count: said where there are some and
+/// nothing where there are none, so a site with no machine waits reads word
+/// for word as it did before they were counted (§FS-005-dispatch.24.4).
+pub fn polling(count: usize) -> String {
+    match count {
+        0 => String::new(),
+        count => format!(", {count} polling"),
     }
 }
 

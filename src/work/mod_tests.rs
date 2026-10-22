@@ -1773,7 +1773,12 @@ fn flight_ceilings(projects: BTreeMap<String, usize>) -> BTreeMap<String, Limits
 /// Live roots that are all being worked, which is what a capacity test about
 /// the flight ceilings alone assumes of them (§FS-005-dispatch.24).
 fn working(live: usize) -> Counts {
-    Counts { live, active: live }
+    Counts {
+        live,
+        active: live,
+        parked: 0,
+        polling: 0,
+    }
 }
 
 fn working_each(projects: BTreeMap<String, usize>) -> BTreeMap<String, Counts> {
@@ -2128,11 +2133,24 @@ fn a_root_parked_on_a_person_holds_its_flight_slot_and_frees_its_agent_slot() {
     let held = [hold(&waiting.root), hold(&working.root)];
 
     let live = LiveRuns::read(&work_config(), &[waiting, working], &BTreeMap::new());
-    assert_eq!(live.global, Counts { live: 2, active: 1 });
-    assert_eq!(live.global.parked(), 1);
+    assert_eq!(
+        live.global,
+        Counts {
+            live: 2,
+            active: 1,
+            parked: 1,
+            polling: 0
+        }
+    );
+    assert_eq!(live.global.parked, 1);
     assert_eq!(
         live.projects.get("widget"),
-        Some(&Counts { live: 2, active: 1 })
+        Some(&Counts {
+            live: 2,
+            active: 1,
+            parked: 1,
+            polling: 0
+        })
     );
 
     // Two ceilings of one, and they answer differently: the flight ceiling
@@ -2227,7 +2245,6 @@ fn working_root(root: &Path) -> runtime::watch::RootPlans {
 /// reading and a refusal under `max_active` both say so — at the site and at
 /// the project alike (§FS-005-dispatch.24.4).
 #[test]
-#[ignore = "red until #229: a root polling a machine is counted as polling; implement removes this"]
 fn a_root_polling_a_machine_is_counted_beside_the_active_and_the_parked() {
     let tmp = tempfile::tempdir().unwrap();
     let roots = [
@@ -2358,8 +2375,21 @@ fn a_site_with_no_machine_poll_reads_word_for_word_as_before() {
 #[test]
 fn a_refusal_names_the_ceiling_it_refused_on() {
     let live = LiveRuns {
-        global: Counts { live: 3, active: 1 },
-        projects: BTreeMap::from([("widget".to_string(), Counts { live: 2, active: 2 })]),
+        global: Counts {
+            live: 3,
+            active: 1,
+            parked: 2,
+            polling: 0,
+        },
+        projects: BTreeMap::from([(
+            "widget".to_string(),
+            Counts {
+                live: 2,
+                active: 2,
+                parked: 0,
+                polling: 0,
+            },
+        )]),
         ..LiveRuns::default()
     };
     let capacity = Capacity::new(
@@ -2391,8 +2421,21 @@ fn a_refusal_names_the_ceiling_it_refused_on() {
             ..Ceilings::default()
         },
         LiveRuns {
-            global: Counts { live: 2, active: 2 },
-            projects: BTreeMap::from([("widget".to_string(), Counts { live: 2, active: 2 })]),
+            global: Counts {
+                live: 2,
+                active: 2,
+                parked: 0,
+                polling: 0,
+            },
+            projects: BTreeMap::from([(
+                "widget".to_string(),
+                Counts {
+                    live: 2,
+                    active: 2,
+                    parked: 0,
+                    polling: 0,
+                },
+            )]),
             ..LiveRuns::default()
         },
     );
@@ -6273,7 +6316,12 @@ fn a_full_ceiling_is_held_as_data_and_says_what_it_always_said() {
             ..Ceilings::default()
         },
         LiveRuns {
-            global: Counts { live: 3, active: 1 },
+            global: Counts {
+                live: 3,
+                active: 1,
+                parked: 2,
+                polling: 0,
+            },
             ..LiveRuns::default()
         },
     );
@@ -6303,8 +6351,21 @@ fn a_full_ceiling_is_held_as_data_and_says_what_it_always_said() {
             ..Ceilings::default()
         },
         LiveRuns {
-            global: Counts { live: 2, active: 2 },
-            projects: BTreeMap::from([("widget".to_string(), Counts { live: 2, active: 2 })]),
+            global: Counts {
+                live: 2,
+                active: 2,
+                parked: 0,
+                polling: 0,
+            },
+            projects: BTreeMap::from([(
+                "widget".to_string(),
+                Counts {
+                    live: 2,
+                    active: 2,
+                    parked: 0,
+                    polling: 0,
+                },
+            )]),
             ..LiveRuns::default()
         },
     );

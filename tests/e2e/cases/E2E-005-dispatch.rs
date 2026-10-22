@@ -851,7 +851,6 @@ fn row_of<'a>(reading: &'a serde_json::Value, project: &str) -> &'a serde_json::
 /// about to run again, the slot stays where it is, in the words it always
 /// had.
 #[test]
-#[ignore = "red until #229: a root polling a machine gives its agent slot to the next due root; implement removes this"]
 fn a_root_polling_a_machine_gives_its_agent_slot_to_the_next_due_root() {
     let world = two_projects();
     world.configure(two_projects_configured(true, json!(1)));

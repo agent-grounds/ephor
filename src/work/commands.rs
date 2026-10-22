@@ -2525,9 +2525,9 @@ fn swept(
     )?;
     let launched = &swept.runs;
     let failed = launched.iter().filter(|run| run.failed.is_some()).count();
-    // What the ceilings are holding, split into work being done and work
-    // waiting on a person: a full ceiling must not be the whole story
-    // (§FS-005-dispatch.24).
+    // What the ceilings are holding, split into work being done, work
+    // waiting on a person and work only polling a machine: a full ceiling
+    // must not be the whole story (§FS-005-dispatch.24.4).
     let standing = &swept.capacity;
     if args.json {
         let rows: Vec<serde_json::Value> = launched
@@ -2562,6 +2562,7 @@ fn swept(
                     "live": standing.live,
                     "active": standing.active,
                     "parked": standing.parked,
+                    "polling": standing.polling,
                     "max_concurrent": standing.max_concurrent,
                     "max_active": standing.max_active,
                 },
