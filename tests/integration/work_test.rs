@@ -524,7 +524,7 @@ fn an_item_can_be_asked_for_anything_including_what_no_recipe_matches() {
 }
 
 fn git(dir: &Path, args: &[&str]) {
-    let status = std::process::Command::new("git")
+    let status = git_command()
         .arg("-C")
         .arg(dir)
         .args(args)
@@ -553,7 +553,7 @@ fn trailing_checkout(tmp: &Path, conflicting: bool) -> std::path::PathBuf {
     commit(&origin, "shared.txt", "one\n", "one");
 
     let checkout = tmp.join("demo");
-    let status = std::process::Command::new("git")
+    let status = git_command()
         .args(["clone", "-q"])
         .arg(&origin)
         .arg(&checkout)

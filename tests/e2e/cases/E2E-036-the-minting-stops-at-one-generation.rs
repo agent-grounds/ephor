@@ -25,7 +25,7 @@
 mod support;
 
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
+use std::process::Stdio;
 
 use serde_json::json;
 
@@ -59,7 +59,7 @@ esac
 "#;
 
 fn git(dir: &Path, args: &[&str]) {
-    let status = Command::new("git")
+    let status = git_command()
         .arg("-C")
         .arg(dir)
         .args(args)
@@ -87,7 +87,7 @@ fn project_with_its_own_tasks(world: &World) {
 
     let main = world.forest().join("main");
     std::fs::create_dir_all(main.parent().expect("a parent")).expect("the project root");
-    let status = Command::new("git")
+    let status = git_command()
         .args(["clone", "-q"])
         .arg(&origin)
         .arg(&main)

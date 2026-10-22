@@ -6859,7 +6859,7 @@ fn issue_191_a_sweep_passes_a_private_matter_over_naming_its_source() {
 
 /// Git at `dir`, quietly, with an identity of its own.
 fn issue_191_git(dir: &Path, args: &[&str]) -> String {
-    let out = std::process::Command::new("git")
+    let out = crate::git::command()
         .args(["-c", "user.name=t", "-c", "user.email=t@t", "-C"])
         .arg(dir)
         .args(args)

@@ -15,7 +15,7 @@ use std::process::Command;
 const BRANCHES: [&str; 4] = ["main", "feature-1", "feature-2", "feature-3"];
 
 fn git(dir: &Path, args: &[&str]) {
-    let output = Command::new("git")
+    let output = common::git_command()
         .arg("-C")
         .arg(dir)
         .args(args)
@@ -197,11 +197,14 @@ fn issue_223_first_screen_uses_one_sweep_and_refresh_still_reloads() {
     driver
         .arg(assert_cmd::cargo::cargo_bin("ephor"))
         .arg(world.path());
-    // Apply the same isolated child environment the CLI cases use.
+    // Apply the same isolated child environment the CLI cases use, removals
+    // included, so the `ephor` the driver starts inherits no `GIT_*`
+    // (§REQ-003-test-isolation.3.3).
     for (key, value) in world.ephor_raw().get_envs() {
-        if let Some(value) = value {
-            driver.env(key, value);
-        }
+        match value {
+            Some(value) => driver.env(key, value),
+            None => driver.env_remove(key),
+        };
     }
     let output = driver.output().expect("the PTY driver runs");
     save_artifacts(&world, "startup");

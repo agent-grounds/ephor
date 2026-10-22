@@ -28,7 +28,6 @@ mod support;
 
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::Command;
 
 use predicates::prelude::*;
 use serde_json::json;
@@ -138,7 +137,7 @@ const SWEEP_INSTRUCTION_SHA256: &str =
     "8bbca019ee72181d0bcba9a92babef25c54f32679246a6232ac2e5ec7bec4e13";
 
 fn git(dir: &Path, args: &[&str]) {
-    let status = Command::new("git")
+    let status = git_command()
         .arg("-C")
         .arg(dir)
         .args(args)
@@ -166,7 +165,7 @@ fn workspace(world: &World, branch: &str) -> PathBuf {
 }
 
 fn head(dir: &Path) -> String {
-    let out = Command::new("git")
+    let out = git_command()
         .arg("-C")
         .arg(dir)
         .args(["rev-parse", "HEAD"])
@@ -202,7 +201,7 @@ fn a_machine_left_alone() -> World {
 
     let main = world.forest().join("main");
     fs::create_dir_all(main.parent().expect("a parent")).expect("the project root");
-    let status = Command::new("git")
+    let status = git_command()
         .args(["clone", "-q"])
         .arg(&origin)
         .arg(&main)
@@ -356,7 +355,7 @@ fn the_sweep_reports_first_and_replays_only_what_nobody_is_holding() {
         !clash.join(".git/rebase-merge").exists() && !clash.join(".git/rebase-apply").exists(),
         "a timer left a tree standing mid-rebase"
     );
-    let porcelain = Command::new("git")
+    let porcelain = git_command()
         .arg("-C")
         .arg(&clash)
         .args(["status", "--porcelain", "--untracked-files=no"])
@@ -516,7 +515,7 @@ fn the_replay_a_reader_is_waiting_on_still_leaves_the_conflict_standing() {
         ])
         .assert()
         .code(3);
-    let porcelain = Command::new("git")
+    let porcelain = git_command()
         .arg("-C")
         .arg(&clash)
         .args(["status", "--porcelain", "--untracked-files=no"])
@@ -724,7 +723,7 @@ fn a_tree_already_stopped_in_a_rebase_is_reported_as_found() {
         "README.md",
         "my own edit, over the same lines",
     );
-    let halted = Command::new("git")
+    let halted = git_command()
         .arg("-C")
         .arg(&stopped_here)
         .args(["rebase", "origin/main"])
@@ -780,7 +779,7 @@ fn a_tree_already_stopped_in_a_rebase_is_reported_as_found() {
     );
 
     // And the fact behind all of it: the conflict is where it was.
-    let porcelain = Command::new("git")
+    let porcelain = git_command()
         .arg("-C")
         .arg(&stopped_here)
         .args(["status", "--porcelain", "--untracked-files=no"])
@@ -831,7 +830,7 @@ fn a_checkout_with_uncommitted_work_is_a_row_and_a_good_end() {
     );
     assert_eq!(
         String::from_utf8_lossy(
-            &Command::new("git")
+            &git_command()
                 .arg("-C")
                 .arg(&mine)
                 .args(["status", "--porcelain", "--untracked-files=no"])

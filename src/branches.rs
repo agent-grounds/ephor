@@ -1601,7 +1601,7 @@ mod tests {
         for repo in ["ce", "ee"] {
             let path = tmp.path().join("main").join(repo);
             std::fs::create_dir_all(&path).unwrap();
-            assert!(std::process::Command::new("git")
+            assert!(crate::git::command()
                 .args(["init", "--quiet"])
                 .current_dir(&path)
                 .status()

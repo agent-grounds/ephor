@@ -42,6 +42,13 @@ A case drives `ephor` the way a person does. Where a seam has no command line of
 its own yet, it drives the seam directly from the library and says so in the
 declaration, rather than pretending a surface exists.
 
+A case runs `git` through `git_command()` and `ephor` through `World::ephor()`
+or `ephor_command()`, all from `tests/shared/git_env.rs`. Each takes off the
+`GIT_*` a git hook hands the suite, so a case acts on the repositories it made
+and on nothing else ([§REQ-003-test-isolation.3](../../docs/requirements/REQ-003-test-isolation.md#3-every-git-the-suite-causes-runs-without-gits-repository-variables)). The library a case links is
+not a test build, so nothing takes them off there: a case calls it directly only
+for what runs no `git`.
+
 ## Adding one
 
 1. Write `cases/E2E-NNN-<slug>.rs`, opening with a doc-comment naming the

@@ -1371,7 +1371,7 @@ fn a_flag_that_cannot_apply_is_refused_rather_than_dropped() {
 
 /// A git command that has to work for the world to be the world.
 fn git(dir: &std::path::Path, args: &[&str]) {
-    let status = std::process::Command::new("git")
+    let status = git_command()
         .arg("-C")
         .arg(dir)
         .args(args)
@@ -1418,7 +1418,7 @@ fn a_conflict_handed_over_is_part_of_the_reading() {
     git(&origin, &["init", "-q", "--initial-branch=main"]);
     commit(&origin, "f.txt", "base\n", "base");
     let checkout = world.forest();
-    let cloned = std::process::Command::new("git")
+    let cloned = git_command()
         .args(["clone", "-q"])
         .arg(&origin)
         .arg(&checkout)
@@ -1609,7 +1609,7 @@ fn the_report_lands_even_when_the_dispatch_beside_it_does_not() {
     git(&origin, &["init", "-q", "--initial-branch=main"]);
     commit(&origin, "f.txt", "base\n", "base");
     let checkout = world.forest();
-    let cloned = std::process::Command::new("git")
+    let cloned = git_command()
         .args(["clone", "-q"])
         .arg(&origin)
         .arg(&checkout)
@@ -1808,7 +1808,7 @@ fn a_checkout_answers_in_the_shape_it_publishes() {
     git(&origin, &["init", "-q", "--initial-branch=main"]);
     commit(&origin, "f.txt", "base\n", "base");
     let checkout = world.forest();
-    let cloned = std::process::Command::new("git")
+    let cloned = git_command()
         .args(["clone", "-q"])
         .arg(&origin)
         .arg(&checkout)

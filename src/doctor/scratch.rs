@@ -624,7 +624,7 @@ fn executable(path: &Path, body: &str) -> Result<(), String> {
 }
 
 fn git(dir: &Path, args: &[&str]) -> Result<(), String> {
-    let out = Command::new("git")
+    let out = crate::git::command()
         .arg("-C")
         .arg(dir)
         .args(args)

@@ -27,7 +27,6 @@
 mod support;
 
 use std::path::{Path, PathBuf};
-use std::process::Command;
 
 use predicates::prelude::*;
 
@@ -35,7 +34,7 @@ use support::*;
 
 /// A git command that has to work for the world to be the world.
 fn git(dir: &Path, args: &[&str]) {
-    let status = Command::new("git")
+    let status = git_command()
         .arg("-C")
         .arg(dir)
         .args(args)
@@ -67,7 +66,7 @@ fn workspace_pushed_and_left_behind(world: &World) -> PathBuf {
 
     let workspace = world.path().join("work/ABC-42-retry-window");
     std::fs::create_dir_all(workspace.parent().expect("a parent")).expect("the work directory");
-    let status = Command::new("git")
+    let status = git_command()
         .args(["clone", "-q"])
         .arg(&origin)
         .arg(&workspace)
@@ -102,7 +101,7 @@ fn a_branch_with_no_tracking_config_is_replayed_onto_the_copy_it_does_have() {
 
     // What git says when asked to do this itself: the branch records no
     // upstream, so the replay never starts.
-    let refused = Command::new("git")
+    let refused = git_command()
         .arg("-C")
         .arg(&workspace)
         .arg("rebase")

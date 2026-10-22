@@ -5,12 +5,12 @@
 mod common;
 
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
+use std::process::Stdio;
 
 use common::*;
 
 fn git(dir: &Path, args: &[&str]) {
-    let status = Command::new("git")
+    let status = git_command()
         .arg("-C")
         .arg(dir)
         .args(args)
@@ -37,7 +37,7 @@ fn workspace(root: &Path) -> PathBuf {
     commit(&origin, "shared.txt", "one\n", "one");
 
     let checkout = root.join("checkout");
-    let status = Command::new("git")
+    let status = git_command()
         .args(["clone", "-q"])
         .arg(&origin)
         .arg(&checkout)
@@ -53,7 +53,7 @@ fn workspace(root: &Path) -> PathBuf {
 
 /// Where the branch stands, so a run that must not move it can be held to it.
 fn head(dir: &Path) -> String {
-    let out = Command::new("git")
+    let out = git_command()
         .arg("-C")
         .arg(dir)
         .args(["rev-parse", "HEAD"])
@@ -190,7 +190,7 @@ fn a_declared_repository_that_is_not_on_disk_does_not_fail_the_rebase() {
     git(&origin, &["config", "user.name", "t"]);
     commit(&origin, "shared.txt", "one\n", "one");
     let app = ws.join("app");
-    let status = Command::new("git")
+    let status = git_command()
         .args(["clone", "-q"])
         .arg(&origin)
         .arg(&app)

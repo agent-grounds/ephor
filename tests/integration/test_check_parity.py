@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 import shutil
 import stat
 import subprocess
@@ -10,6 +9,8 @@ import tempfile
 import textwrap
 import unittest
 from pathlib import Path
+
+from git_env import environ
 
 
 REPOSITORY = Path(__file__).resolve().parents[2]
@@ -85,7 +86,7 @@ class CheckParityCargoTargetTests(unittest.TestCase):
         (self.root / "src" / "main.rs").write_text(RUST_MAIN, encoding="utf-8")
         self.cargo_home = Path(self.temporary.name) / "cargo-home"
         self.cargo_home.mkdir()
-        self.environment = os.environ.copy()
+        self.environment = environ()
         self.environment["CARGO_HOME"] = str(self.cargo_home)
         self.environment.pop("CARGO_TARGET_DIR", None)
         self.environment.pop("CARGO_BUILD_TARGET_DIR", None)

@@ -23,8 +23,8 @@ const FIXTURES: &[&str] = &[
     "feed::tui::tests::behind_sums_across_workspace_repos",
 ];
 
-/// Every `GIT_*` this process holds, so a `git` the test itself runs on the
-/// decoy, and the child it hands the decoy to, start from nothing inherited.
+/// Every `GIT_*` this process holds, so the child the test hands the decoy to
+/// starts from nothing inherited.
 fn inherited_git_vars() -> Vec<OsString> {
     std::env::vars_os()
         .map(|(key, _)| key)
@@ -33,13 +33,10 @@ fn inherited_git_vars() -> Vec<OsString> {
 }
 
 /// A `git` the test runs on the decoy on purpose, aimed by `-C` with nothing
-/// inherited to override it.
+/// inherited to override it: the library's own constructor takes that off
+/// (§REQ-003-test-isolation.3.4).
 fn decoy_git(dir: &Path, args: &[&str]) -> String {
-    let mut cmd = Command::new("git");
-    for key in inherited_git_vars() {
-        cmd.env_remove(key);
-    }
-    let output = cmd
+    let output = crate::git::command()
         .arg("-C")
         .arg(dir)
         .args(args)
@@ -96,7 +93,6 @@ fn decoy_state(main: &Path, wt: &Path) -> Vec<String> {
 /// §REQ-003-test-isolation.2: the fixtures pass under a hook's variables, and
 /// the repository those variables name is left as it was.
 #[test]
-#[ignore = "red until #233: a hook's GIT_DIR sends the fixtures' git into the decoy; implement removes this"]
 fn unit_fixtures_under_a_worktree_hook_pass_and_leave_its_repository_alone() {
     let temp = tempfile::tempdir().unwrap();
     let (main, wt) = build_decoy(temp.path());
@@ -134,4 +130,59 @@ fn unit_fixtures_under_a_worktree_hook_pass_and_leave_its_repository_alone() {
         "the fixtures fail under a worktree hook's GIT_DIR and GIT_INDEX_FILE, and pass \
          without them (§REQ-003-test-isolation.2):\n{stdout}"
     );
+}
+
+/// §REQ-003-test-isolation.3.4: no file in `src/` or `tests/` names git as a
+/// program except the two places that apply the removal: the library's
+/// constructor, and the one helper under `tests/`. A call site corrected in
+/// place leaves the next caller the same mistake to make.
+#[test]
+fn only_the_constructor_and_the_test_helper_name_git_as_a_program() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let allowed = [
+        root.join("src").join("git.rs"),
+        root.join("tests").join("shared").join("git_env.rs"),
+    ];
+    // Spelled rather than written, so that this file does not count itself.
+    let needle = format!("Command::new({:?})", "git");
+    let mut offenders: Vec<String> = Vec::new();
+    for path in rust_sources_under(&root.join("src"))
+        .into_iter()
+        .chain(rust_sources_under(&root.join("tests")))
+    {
+        if allowed.contains(&path) {
+            continue;
+        }
+        let text = std::fs::read_to_string(&path).expect("a source is readable");
+        let count = text.matches(needle.as_str()).count();
+        if count > 0 {
+            let shown = path.strip_prefix(root).unwrap_or(&path).display();
+            offenders.push(format!("{shown} ({count})"));
+        }
+    }
+    offenders.sort();
+    assert!(
+        offenders.is_empty(),
+        "these files spawn `git` without the removal, so each inherits whatever repository a \
+         hook's `GIT_DIR` names (§REQ-003-test-isolation.3): {offenders:?}. Build the command \
+         with `crate::git::command()` in `src/`, or `git_command()` under `tests/`."
+    );
+}
+
+/// Every `.rs` file under `dir`, so the guard reads the tree rather than a list
+/// someone has to keep up to date.
+fn rust_sources_under(dir: &Path) -> Vec<PathBuf> {
+    let mut found = Vec::new();
+    let mut pending = vec![dir.to_path_buf()];
+    while let Some(next) = pending.pop() {
+        for entry in std::fs::read_dir(&next).into_iter().flatten().flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                pending.push(path);
+            } else if path.extension().is_some_and(|ext| ext == "rs") {
+                found.push(path);
+            }
+        }
+    }
+    found
 }
