@@ -282,6 +282,10 @@ name = "e2e_063_a_finished_blocked_verdict_is_read_not_gated"
 path = "tests/e2e/cases/E2E-063-a-finished-blocked-verdict-is-read-not-gated.rs"
 
 [[test]]
+name = "e2e_063_a_display_older_than_its_cache_says_so"
+path = "tests/e2e/cases/E2E-063-a-display-older-than-its-cache-says-so.rs"
+
+[[test]]
 name = "checkout_test"
 path = "tests/integration/checkout_test.rs"
 

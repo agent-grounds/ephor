@@ -60,6 +60,13 @@ initial reading remains complete: concurrent standing measurements
 ([§AR-004-forest.2](AR-004-forest.md#2-probes-not-declarations)) finish before it is presented,
 serving the first glance ([§GOAL-002-glance](../goals.md#goal-002-glance-one-glance-answers-what-needs-me-now)).
 
+The interactive screen also observes known feed-cache files locally, without
+reloading the session or fetching from a forge. Its freshness baseline is the
+displayed feed's reading, not a later metadata probe. A newer valid cache makes
+the screen identify its older snapshot and offer `r`; normal feed loads and
+per-project absorption retire that indication only for snapshots that caught
+up ([§FS-001-forge-interface.7.1](../functional-spec/FS-001-forge-interface.md#71-a-displayed-snapshot-older-than-the-cache-says-so)).
+
 Both surfaces open the same `Session`: the feeds, what is seen, where each
 project is placed ([§AR-004-forest.3](AR-004-forest.md#3-workspace-resolution)), what each project can do
 ([§AR-005-capabilities](AR-005-capabilities.md#ar-005-capabilities-availability-is-computed-once-and-consulted-everywhere)), the branch standings, the configured entries, the
