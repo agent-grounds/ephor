@@ -891,7 +891,6 @@ fn a_fresh_root_takes_the_shipped_rebase_recipe_and_the_conflict_stands_for_it()
 /// to REPORT, and the refusal is the exit — never a conflict left standing
 /// for a ticket that was not written.
 #[test]
-#[ignore = "red until #245: a refused hand-over leaves the tree mid-rebase; implement removes this"]
 fn a_rebase_whose_hand_over_would_be_refused_puts_the_tree_back() {
     let tmp = tempdir();
     let checkout = trailing_checkout(tmp.path(), true);
@@ -959,7 +958,6 @@ fn a_rebase_whose_hand_over_would_be_refused_puts_the_tree_back() {
 /// declare says what to change, not only what does not match
 /// (§FS-005-dispatch.6). The root's machine stays as it is.
 #[test]
-#[ignore = "red until #245: the undeclared-state refusal names no next step; implement removes this"]
 fn a_refusal_for_an_undeclared_state_names_what_to_change() {
     let tmp = tempdir();
     let checkout = trailing_checkout(tmp.path(), true);
@@ -1017,7 +1015,6 @@ fn a_refusal_for_an_undeclared_state_names_what_to_change() {
 /// (§FS-005-dispatch.12), so a dispatch the machine refuses has not touched
 /// the tree at all.
 #[test]
-#[ignore = "red until #245: a refused recipe dispatch replays before it is refused; implement removes this"]
 fn a_recipe_dispatch_the_machine_refuses_makes_no_opening_move() {
     let tmp = tempdir();
     let checkout = trailing_checkout(tmp.path(), true);

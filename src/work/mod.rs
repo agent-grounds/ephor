@@ -2437,17 +2437,8 @@ impl Dispatcher {
 
         // Where a machine is already in force, it answers before anything is
         // written: a recipe naming a state it does not have is refused, and a
-        // refusal should leave nothing behind.
-        let undeclared = |root: &WorkRoot| {
-            EphorError::Command(format!(
-                "recipe '{}' starts in state '{}', which the machine '{}' in {} does not declare (it has: {}).",
-                recipe.id,
-                recipe.state,
-                root.machine,
-                root.dir.display(),
-                root.state_names().join(", ")
-            ))
-        };
+        // refusal should leave nothing behind (§FS-005-dispatch.6).
+        let undeclared = |root: &WorkRoot| root.undeclared(&recipe.id, &recipe.state);
         // A state that waits on files an earlier state writes is not one a
         // fresh ticket can start in: there is no earlier state, so the work
         // would be written and then sit there unrunnable — which is the thing
@@ -2572,8 +2563,22 @@ impl Dispatcher {
         if let Some(why) = self.half_made(item, &site) {
             return Err(EphorError::Command(why));
         }
+        // The machine answers before the workspace is made, not after. Where
+        // the work root is already there it is the machine that root declares;
+        // where a `branch` template would mint the workspace there is no root
+        // to open — the directory does not exist yet — so what is vetted is
+        // the machine `ensure` installs below. Either way the refusal lands on
+        // the same side of the mint as the hand and the inputs
+        // (§FS-005-dispatch.25). And before the opening move: a replay whose
+        // hand-over the machine refuses has nobody coming, so it is not made
+        // at all (§FS-005-dispatch.12). Reading the machine writes nothing.
+        match WorkRoot::open(&site.dir)? {
+            Some(existing) => vet(&existing)?,
+            None => vet(&WorkRoot::proposed(&site.dir, &states)?)?,
+        }
+
         // The deterministic move first, and the work starts where it stopped
-        // (§FS-005-dispatch.12). Before the machine is consulted and before
+        // (§FS-005-dispatch.12). After the machine has answered and before
         // anything is written, so a clean move leaves no plan behind either.
         let opening = self.opening(item, recipe)?;
         if matches!(opening, Opening::Finished) {
@@ -2583,18 +2588,6 @@ impl Dispatcher {
                     .clone()
                     .unwrap_or_else(|| recipe.id.clone()),
             });
-        }
-
-        // The machine answers before the workspace is made, not after. Where
-        // the work root is already there it is the machine that root declares;
-        // where a `branch` template would mint the workspace there is no root
-        // to open — the directory does not exist yet — so what is vetted is
-        // the machine `ensure` installs below. Either way the refusal lands on
-        // the same side of the mint as the hand and the inputs
-        // (§FS-005-dispatch.25).
-        match WorkRoot::open(&site.dir)? {
-            Some(existing) => vet(&existing)?,
-            None => vet(&WorkRoot::proposed(&site.dir, &states)?)?,
         }
 
         // The workspace a `branch` template named, made now: after the hand,

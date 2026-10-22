@@ -623,14 +623,8 @@ fn write_up(
     )?;
     let root = work::runtime::plan::WorkRoot::in_force(&store.dir)?;
     if !root.declares(&recipe.state) {
-        return Err(EphorError::Command(format!(
-            "recipe '{RECIPE}' starts in state '{}', which the machine '{}' in {} does not \
-             declare (it has: {}).",
-            recipe.state,
-            root.machine,
-            root.dir.display(),
-            root.state_names().join(", ")
-        )));
+        // The dispatch's own refusal, naming what to change (§FS-005-dispatch.6).
+        return Err(root.undeclared(RECIPE, &recipe.state));
     }
     let path = root.plan_path(RECIPE);
     let existing = work::runtime::plan::Plan::read(&path)?;

@@ -300,6 +300,23 @@ impl WorkRoot {
         self.states.iter().any(|info| info.name == state)
     }
 
+    /// The refusal for a recipe that starts in a state this machine does not
+    /// declare: it names both, and which side may move — the recipe's `state`
+    /// or this root's `states.yaml` — because the root's machine is never
+    /// moved for the reader (§FS-005-dispatch.6). One wording for every writer
+    /// of a ticket that asks.
+    pub fn undeclared(&self, recipe: &str, state: &str) -> EphorError {
+        EphorError::Command(format!(
+            "recipe '{recipe}' starts in state '{state}', which the machine '{}' in {} does not \
+             declare (it has: {}). Give the recipe a 'state' the machine declares in the work \
+             configuration, or declare '{state}' in {}.",
+            self.machine,
+            self.dir.display(),
+            self.state_names().join(", "),
+            self.dir.join("states.yaml").display(),
+        ))
+    }
+
     /// Whether a state is one the work does not leave.
     pub fn is_final(&self, state: &str) -> bool {
         self.flag(state, |info| info.is_final)
