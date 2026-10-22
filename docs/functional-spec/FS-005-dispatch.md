@@ -670,7 +670,11 @@ than reading it, only when that change is actually on the machine. Where the
 runtime's setup in that checkout cannot run what ephor would write — a state
 machine already there that does not declare the state a recipe starts in —
 dispatch refuses and names both, rather than writing a ticket that will sit
-there unrunnable. It refuses the mirror image too: where the reader's own plans
+there unrunnable. The refusal also names what to change — give the recipe a
+`state` the machine declares in the work configuration, or declare that state
+in the root's `states.yaml` — because one that only names the mismatch leaves
+its reader to work out which side moves, and the root's machine is never
+changed for them. It refuses the mirror image too: where the reader's own plans
 are already in that directory under no declared machine, ephor does not install
 one, because a state machine governs every plan in a project and theirs were
 there first.
@@ -1162,6 +1166,20 @@ tree, and a replay nobody is waiting on puts the tree back on the commit it
 started from and reports the conflict instead. Where that report becomes a
 ticket, the ticket says the tree was restored — otherwise it sends its reader
 to look for a conflict that is not there, which is worse than saying nothing.
+
+**Whether anybody is coming is asked before the replay, not learned after
+it.** The successor of a replay that hands over its stopping point is the
+ticket, and a ticket the hand-over would refuse — a recipe that is not
+configured, a state the root's machine does not declare
+([§FS-005-dispatch.6](FS-005-dispatch.md#6-dispatch-is-offered-where-it-would-work-and-refuses-where-it-would-not)) — is
+nobody. So the hand-over is vetted first, with the same answer a dry run
+gives, and the answer chooses the disposition: where it would be taken the
+conflict is left standing for it, and where it would be refused the replay
+puts the tree back, the conflict is reported (and written where a report was
+asked for), and the refusal is the exit. A refusal never arrives after a
+conflict was left standing for a ticket that was not written. Where the replay
+is a recipe's opening move, the machine answers before the move is made, so
+a refused dispatch has not touched the tree at all.
 
 **The one-implementation clause is what makes that safe, and it is
 strengthened rather than loosened.** The disposition is an argument to the
