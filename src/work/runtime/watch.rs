@@ -1353,6 +1353,12 @@ mod tests {
         "  review-30s:\n    poll:\n      interval: 30s\n      waiting_on: reviewer\n",
         "  answer-0s:\n    poll:\n      interval: 0s\n      waiting_on: author\n",
         "  odd-wait:\n    poll:\n      interval: 1.5h\n",
+        // The same release-tag poll with a note in a trailing comment, in
+        // the flow form and the block form.
+        "  holding-flow-noted:\n    program: [\"bash\", \"ship-pr.sh\", \"hold\"]\n",
+        "    poll: { interval: 30m, max_attempts: 672 }  # waiting_on: nobody, CI\n",
+        "  holding-block-noted:\n    program: [\"bash\", \"ship-pr.sh\", \"hold\"]\n",
+        "    poll:\n      interval: 30m  # waiting_on: nobody, CI\n      max_attempts: 672\n",
         "  done:\n    final: true\n",
     );
 
@@ -1568,6 +1574,29 @@ mod tests {
                 &journal
             ),
             Verdict::Polling
+        );
+    }
+
+    /// A note in a trailing comment declares nobody, so a machine poll that
+    /// carries one is polling, not parked (§FS-005-dispatch.24.4).
+    #[test]
+    #[ignore = "red until #236: a machine poll noted `# waiting_on: nobody, CI` parks its root; implement removes this"]
+    fn a_machine_poll_with_a_noted_comment_is_polling() {
+        let tmp = tempfile::tempdir().unwrap();
+        let at = |name: &str| tmp.path().join(name);
+        let verdicts: Vec<(&str, Verdict)> = ["holding-flow-noted", "holding-block-noted"]
+            .into_iter()
+            .map(|state| {
+                let journal = format!("{}{}", took("fix-1", state), waited("fix-1", state));
+                (state, judged(&at(state), &[("fix-1", state)], &journal))
+            })
+            .collect();
+        assert_eq!(
+            verdicts,
+            [
+                ("holding-flow-noted", Verdict::Polling),
+                ("holding-block-noted", Verdict::Polling),
+            ]
         );
     }
 

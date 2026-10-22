@@ -3385,8 +3385,12 @@ refuse, cannot be read.
 **A free root is parked or polling, never both.** A free root is **parked**
 where one of the tickets that freed it is a person's turn — a gate, or a poll
 that declares whose answer it waits for — and **polling** where every one of
-them is a poll on a machine. A person holding a slot is the fact a full ceiling
-must never hide, so a root freed by both is parked. Every live root is
+them is a poll on a machine. Whose answer a poll waits for is declared by its
+`waiting_on:` key alone: a comment on one of the poll's lines is no part of any
+value, so it declares nobody, and a machine poll annotated
+`# waiting_on: nobody, CI` is still a poll on a machine. A person holding a
+slot is the fact a full ceiling must never hide, so a root freed by both is
+parked. Every live root is
 therefore exactly one of active, parked or polling, and the reading's three
 counts add up to its live one. A refusal under `max_active` names the same
 split beside its count, naming the polling roots only where there are some,

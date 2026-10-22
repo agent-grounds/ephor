@@ -2244,6 +2244,19 @@ mod tests {
                 "      interval: 30m\n",
                 "\n",
                 "      waiting_on: author\n",
+                // A machine poll as the ticket writes it, and a declaration
+                // that carries a note of its own after its value, in each form.
+                "  flow-machine:\n",
+                "    program: [\"bash\", \"ship-pr.sh\", \"hold\"]\n",
+                "    poll: { interval: 30m, max_attempts: 672 }\n",
+                "  block-person-noted:\n",
+                "    program: [\"bash\", \"await.sh\"]\n",
+                "    poll:\n",
+                "      interval: 30m\n",
+                "      max_attempts: 672\n",
+                "      waiting_on: author  # note\n",
+                "  flow-person-noted:\n",
+                "    poll: { interval: 30m, waiting_on: author }  # note\n",
                 "  done:\n    final: true\n",
             ),
         )
@@ -2279,7 +2292,82 @@ mod tests {
         assert_eq!(root.poll_interval("blank-before"), every(30 * 60));
         assert_eq!(root.poll_interval("blank-between"), every(30 * 60));
         assert!(root.waits_on_person("blank-between"));
+        // A note after a declaration's value leaves the declaration standing
+        // (§FS-005-dispatch.24.4).
+        assert_eq!(root.poll_interval("flow-machine"), every(30 * 60));
+        assert!(!root.waits_on_person("flow-machine"));
+        assert_eq!(root.poll_interval("block-person-noted"), every(30 * 60));
+        assert!(root.waits_on_person("block-person-noted"));
+        assert_eq!(root.poll_interval("flow-person-noted"), every(30 * 60));
+        assert!(root.waits_on_person("flow-person-noted"));
         assert_eq!(root.poll_interval("done"), None);
+    }
+
+    /// A trailing comment is no part of any value, so a `waiting_on:` written
+    /// in one declares nobody: a machine poll annotated with one is still a
+    /// poll on a machine, on the flow line and on every line of a block
+    /// alike, and a blank label does not take the comment after it for a
+    /// name (§FS-005-dispatch.24.4).
+    #[test]
+    #[ignore = "red until #236: a waiting_on: in a poll line's trailing comment reads as a person wait; implement removes this"]
+    fn a_comment_on_a_polls_line_declares_nobody() {
+        let tmp = tempfile::tempdir().unwrap();
+        fs::write(
+            tmp.path().join("states.yaml"),
+            concat!(
+                "name: m\n",
+                "states:\n",
+                // The ticket's two shapes: a flow poll and a block `interval:`.
+                "  flow-noted:\n",
+                "    program: [\"bash\", \"ship-pr.sh\", \"hold\"]\n",
+                "    poll: { interval: 30m, max_attempts: 672 }  # waiting_on: nobody, CI\n",
+                "  block-noted-interval:\n",
+                "    program: [\"bash\", \"ship-pr.sh\", \"hold\"]\n",
+                "    poll:\n",
+                "      interval: 30m  # waiting_on: nobody, CI\n",
+                "      max_attempts: 672\n",
+                // Any other line of the block, its opener included.
+                "  block-noted-attempts:\n",
+                "    poll:\n",
+                "      interval: 30m\n",
+                "      max_attempts: 672  # waiting_on: nobody, CI\n",
+                "  block-noted-opener:\n",
+                "    poll:  # waiting_on: nobody, CI\n",
+                "      interval: 30m\n",
+                "      max_attempts: 672\n",
+                // A blank label with a note after it is still blank.
+                "  blank-noted:\n",
+                "    poll:\n",
+                "      interval: 30m\n",
+                "      waiting_on:  # nobody yet\n",
+                "  done:\n    final: true\n",
+            ),
+        )
+        .unwrap();
+        let root = WorkRoot::open(tmp.path()).unwrap().unwrap();
+        let noted = [
+            "flow-noted",
+            "block-noted-interval",
+            "block-noted-attempts",
+            "block-noted-opener",
+            "blank-noted",
+        ];
+        // The comment moves nothing else: each one still polls half-hourly.
+        for state in noted {
+            assert_eq!(
+                root.poll_interval(state),
+                Some(Interval::Every(std::time::Duration::from_secs(30 * 60))),
+                "{state}"
+            );
+        }
+        let misread: Vec<&str> = noted
+            .into_iter()
+            .filter(|state| root.waits_on_person(state))
+            .collect();
+        assert!(
+            misread.is_empty(),
+            "a comment declared a person wait in {misread:?}"
+        );
     }
 
     /// The machine in force is the declared one where there is one and the
