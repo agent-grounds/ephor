@@ -640,6 +640,280 @@ fn the_agent_ceiling_refuses_under_its_own_name_and_the_reading_splits_what_is_l
     );
 }
 
+/// The second project a sweep over two is about: it reports one status line,
+/// which a second recipe hands over, so its ticket lies in a root of its own
+/// (§FS-005-dispatch.24).
+const OTHER: &str = "far";
+
+/// A runtime that detaches and, like a real detached run, holds the root it
+/// was started on: a backgrounded `python3` takes `$root/.rhei/run.lock` and
+/// keeps it for twenty seconds, long enough for the sweep that started it to
+/// count it as live. The holder closes every descriptor it inherited before it
+/// takes the lock, so no pipe of the sweep's outlives the launch
+/// (agent-grounds/ephor#203). Each start appends its root to `$HOME/starts`.
+const HOLDING_RUNTIME: &str = r#"#!/usr/bin/env bash
+set -euo pipefail
+verb="$1"; shift
+[ "$verb" = run ] || exit 0
+if [ "${1:-}" = --help ]; then
+  printf '%s\n' '      --headless  Detach the run'
+  exit 0
+fi
+while [ "${1:-}" = --headless ] || [ "${1:-}" = --json ]; do
+  shift
+done
+root="$1"
+printf '%s\n' "$root" >> "$HOME/starts"
+mkdir -p "$root/.rhei"
+ready="$root/.rhei/run-lock-ready"
+rm -f "$ready"
+python3 -c '
+import fcntl, os, pathlib, sys, time
+for fd in map(int, os.listdir("/dev/fd")):
+    if fd > 2:
+        os.closerange(fd, fd + 1)
+lock = open(sys.argv[1], "w")
+fcntl.flock(lock, fcntl.LOCK_EX)
+pathlib.Path(sys.argv[2]).touch()
+time.sleep(20)
+' "$root/.rhei/run.lock" "$ready" >/dev/null 2>&1 &
+for _ in $(seq 1 500); do
+  [ -e "$ready" ] && break
+  sleep 0.01
+done
+[ -e "$ready" ] || exit 1
+printf '%s\n' '{"id":"holding-run","status":"running","exit_code":null}'
+"#;
+
+/// The site both projects are swept under: the forge-watching project and the
+/// status-reporting one, a recipe for each, the detaching runtime, and a
+/// working ceiling of `max_active`.
+fn two_projects_configured(autorun: bool, max_active: serde_json::Value) -> serde_json::Value {
+    json!({
+        "projects": {
+            PROJECT: { "providers": [
+                { "provider": "acmeforge", "user": "you", "repos": ["app"] }
+            ] },
+            OTHER: { "providers": [
+                { "provider": "custom-status", "command": "cat status.txt" }
+            ] }
+        },
+        "work": {
+            "runner": "holding-runtime",
+            "max_active": max_active,
+            "recipes": [{
+                "id": "fix-gate",
+                "icon": "🛠",
+                "description": "fix the red gate",
+                "state": "fix",
+                "needs_checkout": false,
+                "autorun": autorun,
+                "when": { "kinds": ["pr"], "roles": ["author"], "gate": "failing" },
+                "brief": "Fix the gate on {title}."
+            }, {
+                "id": "look",
+                "description": "look at it",
+                "state": "fix",
+                "needs_checkout": false,
+                "autorun": autorun,
+                "when": { "kinds": ["status"] },
+                "brief": "Look at {title}."
+            }]
+        }
+    })
+}
+
+/// Two watched projects, each with one ticket laid in a root of its own and
+/// nothing run yet: the tickets are written with autorun off, and the sweep
+/// over two acts only under `--act` (§FS-011-command-line.10).
+fn two_projects() -> World {
+    let world = World::new();
+    world.stub("ephor-forge-acmeforge", ACME_FORGE);
+    world.stub("holding-runtime", HOLDING_RUNTIME);
+    let far = world.path().join(OTHER);
+    std::fs::create_dir_all(&far).expect("the other forest");
+    std::fs::write(far.join("status.txt"), "far needs a look\n").expect("its status");
+    let mut registry = world.registry_doc();
+    let mut row = registry["projects"][0].clone();
+    row["id"] = json!(OTHER);
+    row["display_name"] = json!("Far");
+    row["root"] = json!(far.to_string_lossy());
+    registry["projects"]
+        .as_array_mut()
+        .expect("projects")
+        .push(row);
+    write_json(&world.registry_path(), &registry);
+
+    world.configure(two_projects_configured(false, json!(0)));
+    world.ephor().args(["refresh"]).assert().success();
+    world
+        .ephor()
+        .args(["work", "dispatch", "--act"])
+        .assert()
+        .success();
+    assert_eq!(
+        held_starts(&world),
+        0,
+        "the tickets are written before any run"
+    );
+    world
+}
+
+/// How many runs the detaching runtime was asked to start.
+fn held_starts(world: &World) -> usize {
+    std::fs::read_to_string(world.path().join("starts"))
+        .unwrap_or_default()
+        .lines()
+        .filter(|line| !line.trim().is_empty())
+        .count()
+}
+
+/// Put the root's one ticket in a poll on a machine — a release tag, asked
+/// for every `interval`, naming nobody it waits on — under the machine the
+/// root was laid with, and say in the run's own stream how its attempts
+/// stand: the last one let go, and, where `attempt` is true, the next one
+/// under way (§FS-005-dispatch.15.2).
+fn poll_on_a_machine(root: &std::path::Path, laid: &str, interval: &str, attempt: bool) {
+    assert!(laid.contains("\n  done:\n"), "{laid}");
+    std::fs::write(
+        root.join("states.yaml"),
+        laid.replace(
+            "\n  done:\n",
+            &format!(
+                "\n  holding:\n    program: [\"bash\", \"ship-pr.sh\", \"hold\"]\n    \
+                 poll:\n      interval: {interval}\n      max_attempts: 672\n\n  done:\n"
+            ),
+        ),
+    )
+    .expect("the machine learns the poll");
+    let plan = std::fs::read_dir(root)
+        .expect("the root")
+        .flatten()
+        .map(|entry| entry.path())
+        .find(|path| path.to_string_lossy().ends_with(".rhei.md"))
+        .expect("the root holds the laid plan");
+    let text = std::fs::read_to_string(&plan).expect("the plan");
+    std::fs::write(&plan, text.replace("**State:** fix", "**State:** holding"))
+        .expect("the ticket moves into the poll");
+    let stem = plan
+        .file_name()
+        .and_then(|name| name.to_str())
+        .and_then(|name| name.strip_suffix(".rhei.md"))
+        .expect("a plan stem")
+        .to_string();
+    let ticket = text
+        .lines()
+        .find_map(|line| line.strip_prefix("### Task "))
+        .and_then(|rest| rest.split(':').next())
+        .expect("the plan holds a ticket");
+    let task = format!("{stem}.{ticket}");
+    let log = format!("runtime/logs/task-{task}-holding.log");
+    let mut stream = vec![
+        json!({ "seq": 1, "event": "run_started", "schema": 1, "run_id": "far-run",
+                "parallel": 1, "total_tasks": 1 }),
+        json!({ "seq": 2, "event": "slot_assigned", "slot": 0, "task": task,
+                "from": "holding", "to": "holding", "log_path": log }),
+        json!({ "seq": 3, "event": "slot_released", "slot": 0, "task": task,
+                "from": "holding", "to": "holding", "log_path": log,
+                "outcome": "waiting", "exit_code": 1 }),
+    ];
+    if attempt {
+        stream.push(
+            json!({ "seq": 4, "event": "slot_assigned", "slot": 0, "task": task,
+                            "from": "holding", "to": "holding", "log_path": log }),
+        );
+    }
+    std::fs::create_dir_all(root.join("runtime")).expect("the runtime directory");
+    std::fs::write(
+        root.join("runtime/events.jsonl"),
+        stream
+            .iter()
+            .map(|record| format!("{record}\n"))
+            .collect::<String>(),
+    )
+    .expect("the run's own stream");
+}
+
+/// The one row of a sweep's reading about this project's root.
+fn row_of<'a>(reading: &'a serde_json::Value, project: &str) -> &'a serde_json::Value {
+    reading["runs"]
+        .as_array()
+        .and_then(|runs| runs.iter().find(|run| run["project"] == project))
+        .unwrap_or_else(|| panic!("no row about {project}: {reading:#}"))
+}
+
+/// The ticket's own failure, from the outside (§FS-005-dispatch.24.4). A site
+/// pays for one agent at a time. One root is live and only waiting on a
+/// release tag every half hour; the other is due. Nothing runs in the first
+/// between its attempts, so its agent slot is the second root's — and the
+/// reading says the room came from a root polling a machine, not from a
+/// person. While an attempt runs, or where the poll is a minute or less and
+/// about to run again, the slot stays where it is, in the words it always
+/// had.
+#[test]
+#[ignore = "red until #229: a root polling a machine gives its agent slot to the next due root; implement removes this"]
+fn a_root_polling_a_machine_gives_its_agent_slot_to_the_next_due_root() {
+    let world = two_projects();
+    world.configure(two_projects_configured(true, json!(1)));
+    let far = world.path().join(OTHER).join("panta");
+    let laid = std::fs::read_to_string(far.join("states.yaml")).expect("the laid machine");
+    std::fs::create_dir_all(far.join(".rhei")).expect("the runtime's directory");
+    std::fs::write(far.join(".rhei/run.lock"), "").expect("the run lock");
+    let holder = std::fs::File::open(far.join(".rhei/run.lock")).expect("open the run lock");
+    holder.lock().expect("hold the run lock");
+    let sweep = |world: &World| {
+        let output = world
+            .ephor()
+            .args(["work", "run", "--due", "--act", "--json"])
+            .output()
+            .expect("the sweep runs");
+        assert!(output.status.success(), "{output:?}");
+        shaped("work-run", &output)
+    };
+
+    // An attempt is running: a program runs in the root, and it holds its slot.
+    poll_on_a_machine(&far, &laid, "30m", true);
+    let running = sweep(&world);
+    let row = row_of(&running, PROJECT);
+    assert_eq!(row["outcome"], "passed-over", "{running:#}");
+    assert_eq!(
+        row["reason"], "global work.max_active 1 is full (1 active run(s), 0 parked)",
+        "{running:#}"
+    );
+    assert_eq!(held_starts(&world), 0);
+
+    // A poll of a minute is about to run again, so between its attempts it
+    // holds its slot too.
+    poll_on_a_machine(&far, &laid, "1m", false);
+    let short = sweep(&world);
+    let row = row_of(&short, PROJECT);
+    assert_eq!(row["outcome"], "passed-over", "{short:#}");
+    assert_eq!(
+        row["reason"], "global work.max_active 1 is full (1 active run(s), 0 parked)",
+        "{short:#}"
+    );
+    assert_eq!(held_starts(&world), 0);
+
+    // Half an hour between attempts, and none running: nothing runs in the
+    // root, so the due root starts in the slot it gave back.
+    poll_on_a_machine(&far, &laid, "30m", false);
+    let freed = sweep(&world);
+    assert_eq!(row_of(&freed, PROJECT)["outcome"], "started", "{freed:#}");
+    assert_eq!(freed["failed"], 0, "{freed:#}");
+    assert_eq!(held_starts(&world), 1);
+    assert_eq!(
+        (
+            &freed["capacity"]["live"],
+            &freed["capacity"]["active"],
+            &freed["capacity"]["parked"],
+            &freed["capacity"]["polling"],
+        ),
+        (&json!(2), &json!(1), &json!(0), &json!(1)),
+        "the room came from a root polling a machine, and no person holds it: {freed:#}"
+    );
+    drop(holder);
+}
+
 /// Tickets are written whether or not anything can run them, and the run says
 /// so in the one sentence the whole of ephor refuses with
 /// (§AR-005-capabilities.2).

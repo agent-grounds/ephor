@@ -6116,6 +6116,7 @@ impl Capacity {
             live: self.global_live.live,
             active: self.global_live.active,
             parked: self.global_live.parked(),
+            polling: 0,
             max_concurrent: self.ceilings.site.concurrent,
             max_active: self.ceilings.site.active,
         }
@@ -6132,6 +6133,10 @@ pub struct Standing {
     pub live: usize,
     pub active: usize,
     pub parked: usize,
+    /// Live roots freed only by polls on a machine (§FS-005-dispatch.24.4).
+    /// Scaffold until agent-grounds/ephor#229 is implemented: always 0, and
+    /// neither said nor published yet.
+    pub polling: usize,
     pub max_concurrent: Option<usize>,
     pub max_active: Option<usize>,
 }

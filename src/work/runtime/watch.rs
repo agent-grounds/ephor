@@ -153,6 +153,32 @@ pub fn parked(config: &WorkConfig, group: &RootPlans) -> bool {
     waits
 }
 
+/// What a live root costs under `work.max_active` (§FS-005-dispatch.24.4):
+/// a slot while something in it runs or is about to, and none while it is
+/// only waiting — on a person, or on a machine it will not ask again for more
+/// than a minute.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Verdict {
+    /// Something in it runs, or is about to: it holds an active slot.
+    Active,
+    /// Free, and a person's turn is among what freed it.
+    Parked,
+    /// Free, and only polls on a machine freed it.
+    Polling,
+}
+
+/// The verdict on one live root (§FS-005-dispatch.24.4).
+///
+/// Scaffold until agent-grounds/ephor#229 is implemented: today's
+/// [`parked`] reading, said three ways, so nothing is ever [`Verdict::Polling`]
+/// yet.
+pub fn verdict(config: &WorkConfig, group: &RootPlans) -> Verdict {
+    match parked(config, group) {
+        true => Verdict::Parked,
+        false => Verdict::Active,
+    }
+}
+
 /// One slot assignment the journal never released: a task some run took up
 /// and, as far as the journal alone can say, never let go of.
 ///
@@ -1287,15 +1313,28 @@ mod tests {
         assert_released(&config(), root);
     }
 
-    /// A machine with both ways work stops for a person and one way it does
-    /// not, so the parked reading has all three to tell apart.
-    const PERSON_WAITS: &str = concat!(
+    /// A machine with every kind of wait the verdict has to tell apart: a
+    /// gate, polls on a machine and on a person on either side of the minute
+    /// line, a poll whose interval cannot be read, and the agent and program
+    /// steps a run works (§FS-005-dispatch.24.4).
+    const WAITS: &str = concat!(
         "name: m\n",
         "states:\n",
         "  implement:\n    agent: x\n",
-        "  plan-approval:\n    poll:\n      interval: 15m\n      waiting_on: author\n",
-        "  ci-wait:\n    poll:\n      interval: 5m\n      max_attempts: 12\n",
+        "  collect:\n    program: [\"bash\", \"collect.sh\"]\n",
         "  needs-human:\n    gating: true\n",
+        // The ticket's own shape: a release tag, asked for every half hour.
+        "  holding:\n    program: [\"bash\", \"ship-pr.sh\", \"hold\"]\n",
+        "    poll:\n      interval: 30m\n      max_attempts: 672\n",
+        "  plan-approval:\n    program: [\"bash\", \"await.sh\"]\n",
+        "    poll:\n      interval: 30m\n      waiting_on: author\n",
+        "  checks-1m:\n    poll: { interval: 1m, max_attempts: 60 }\n",
+        "  checks-60s:\n    poll:\n      interval: 60s\n",
+        "  checks-61s:\n    poll:\n      interval: 61s\n",
+        "  checks-0s:\n    poll:\n      interval: 0s\n",
+        "  review-30s:\n    poll:\n      interval: 30s\n      waiting_on: reviewer\n",
+        "  answer-0s:\n    poll:\n      interval: 0s\n      waiting_on: author\n",
+        "  odd-wait:\n    poll:\n      interval: 1.5h\n",
         "  done:\n    final: true\n",
     );
 
@@ -1327,69 +1366,271 @@ mod tests {
         format!("### Task {id}: do it\n**State:** {state}\n\nwork\n\n")
     }
 
-    /// What a live root is doing decides whether it costs an agent slot, and
-    /// the reading fails closed everywhere it cannot tell
-    /// (§FS-005-dispatch.24).
+    /// One row of the matrix: the verdict on a root holding these tickets
+    /// under [`WAITS`], with as much of the run's journal as the row needs.
+    fn judged(root: &Path, tickets: &[(&str, &str)], journal: &str) -> Verdict {
+        let tickets: String = tickets.iter().map(|(id, state)| task(id, state)).collect();
+        let group = root_with_tickets(root, WAITS, &tickets);
+        if !journal.is_empty() {
+            write(&root.join(JOURNAL), journal);
+        }
+        verdict(&config(), &group)
+    }
+
+    /// The journal line a run writes as it takes a ticket up in a state.
+    fn took(ticket: &str, state: &str) -> String {
+        format!("2026-10-21T10:00:00Z  {ticket}  start@{state}  runtime/logs/task-{ticket}-{state}.log\n")
+    }
+
+    /// And the one it writes as that invocation ends — for a poll, the
+    /// attempt ending with the poll waiting for its next.
+    fn waited(ticket: &str, state: &str) -> String {
+        format!(
+            "2026-10-21T10:00:05Z  {ticket}  end@{state}  runtime/logs/task-{ticket}-{state}.log  \
+             exit=1,duration=5s,outcome=waiting\n"
+        )
+    }
+
+    /// A second plan on the same root, at `path`, whatever is or is not
+    /// there.
+    fn beside(group: &mut RootPlans, path: PathBuf) {
+        group.plans.push(PlanRef {
+            project: "widget".to_string(),
+            plan_id: "widget-43".to_string(),
+            path,
+            item: Some("forge:widget/43".to_string()),
+            title: "Tighten the retry window".to_string(),
+        });
+    }
+
+    /// The rows of the matrix whose verdict the minute line did not move: a
+    /// root waiting on a person stays parked, a root something runs in, or
+    /// is about to, stays active, and the reading fails closed wherever it
+    /// cannot tell (§FS-005-dispatch.24.4).
     #[test]
-    fn a_root_is_parked_only_where_a_person_is_what_it_waits_for() {
+    fn a_root_keeps_its_verdict_where_the_minute_line_does_not_reach() {
         let tmp = tempfile::tempdir().unwrap();
         let at = |name: &str| tmp.path().join(name);
+        let between =
+            |ticket: &str, state: &str| format!("{}{}", took(ticket, state), waited(ticket, state));
 
-        // A poll that says it waits on the author, with the rest of the plan
-        // finished or waiting behind it: the measured case, in miniature.
-        let approval = root_with_tickets(
-            &at("approval"),
-            PERSON_WAITS,
-            &format!(
-                "{}{}",
-                task("fix-1", "done"),
-                task("fix-2", "plan-approval")
+        // A gate, with the rest of the plan finished: a person's turn
+        // (§FS-005-dispatch.9).
+        assert_eq!(
+            judged(
+                &at("gate"),
+                &[("fix-1", "done"), ("fix-2", "needs-human")],
+                ""
             ),
+            Verdict::Parked
         );
-        assert!(parked(&config(), &approval));
-
-        // The gate the machine already had is the same fact: work stopped
-        // until somebody answers (§FS-005-dispatch.9).
-        let gated = root_with_tickets(&at("gated"), PERSON_WAITS, &task("fix-1", "needs-human"));
-        assert!(parked(&config(), &gated));
-
-        // A poll waiting on a build is not waiting on anybody: machine
-        // backoff is work in progress and holds its slot.
-        let ci = root_with_tickets(&at("ci"), PERSON_WAITS, &task("fix-1", "ci-wait"));
-        assert!(!parked(&config(), &ci));
-
-        // Nothing waiting on a person at all: parked is a positive finding,
-        // never the absence of one.
-        let working = root_with_tickets(&at("working"), PERSON_WAITS, &task("fix-1", "implement"));
-        assert!(!parked(&config(), &working));
-
-        // One ticket witnessed held makes the root active however much of
-        // the rest of it waits on a person (§FS-005-dispatch.15.2).
+        // A half-hour poll that says it waits on the author, between attempts.
+        assert_eq!(
+            judged(
+                &at("approval"),
+                &[("fix-1", "plan-approval")],
+                &between("fix-1", "plan-approval")
+            ),
+            Verdict::Parked
+        );
+        // A half-hour machine poll whose attempt is running: a program runs
+        // in it (§FS-005-dispatch.15.2).
+        assert_eq!(
+            judged(
+                &at("attempt"),
+                &[("fix-1", "holding")],
+                &format!(
+                    "{}{}",
+                    between("fix-1", "holding"),
+                    took("fix-1", "holding")
+                )
+            ),
+            Verdict::Active
+        );
+        // Polls of a minute or less are about to run again, `0s` included.
+        for (row, state) in [
+            ("one-m", "checks-1m"),
+            ("sixty-s", "checks-60s"),
+            ("zero-s", "checks-0s"),
+        ] {
+            assert_eq!(
+                judged(&at(row), &[("fix-1", state)], ""),
+                Verdict::Active,
+                "{state}"
+            );
+        }
+        // A poll whose interval cannot be read holds its slot.
+        assert_eq!(
+            judged(&at("odd"), &[("fix-1", "odd-wait")], ""),
+            Verdict::Active
+        );
+        // An agent or a program step the run has not taken up, and nothing
+        // else: the gap between a run starting and taking up its first ticket.
+        for (row, state) in [("agent", "implement"), ("program", "collect")] {
+            assert_eq!(
+                judged(&at(row), &[("fix-1", state)], ""),
+                Verdict::Active,
+                "{state}"
+            );
+        }
+        // A gate, and an agent step running: one held ticket makes the root
+        // active, whatever the rest of it waits on.
+        assert_eq!(
+            judged(
+                &at("gate-and-agent"),
+                &[("fix-1", "needs-human"), ("fix-2", "implement")],
+                &took("fix-2", "implement")
+            ),
+            Verdict::Active
+        );
+        // A person's wait beside work not yet taken up is parked, and stops
+        // being so the moment the run takes that work up.
+        assert_eq!(
+            judged(
+                &at("mixed"),
+                &[("fix-1", "plan-approval"), ("fix-2", "implement")],
+                ""
+            ),
+            Verdict::Parked,
+            "nothing is held yet"
+        );
+        write(&at("mixed").join(JOURNAL), &took("fix-2", "implement"));
         let mixed = root_with_tickets(
             &at("mixed"),
-            PERSON_WAITS,
+            WAITS,
             &format!(
                 "{}{}",
                 task("fix-1", "plan-approval"),
                 task("fix-2", "implement")
             ),
         );
-        assert!(parked(&config(), &mixed), "nothing is held yet");
-        write(
-            &at("mixed").join(JOURNAL),
-            "2026-08-14T10:00:00Z  fix-2  start@implement  runtime/logs/task-fix-2-implement.log\n",
+        assert_eq!(verdict(&config(), &mixed), Verdict::Active);
+        // A gate beside a half-hour machine poll: a person holds the slot,
+        // and that is the fact a full ceiling never hides.
+        assert_eq!(
+            judged(
+                &at("gate-and-poll"),
+                &[("fix-1", "needs-human"), ("fix-2", "holding")],
+                ""
+            ),
+            Verdict::Parked
         );
-        assert!(!parked(&config(), &mixed));
+        // A half-hour machine poll beside a one-minute one: the short one is
+        // about to run again.
+        assert_eq!(
+            judged(
+                &at("long-and-short"),
+                &[("fix-1", "holding"), ("fix-2", "checks-1m")],
+                ""
+            ),
+            Verdict::Active
+        );
 
         // A root that declares no machine is active: with gating and finality
-        // unreadable, calling it parked would hand out a slot on a guess.
+        // unreadable, calling it free would hand out a slot on a guess.
         let unjudged = root_with_tickets(&at("unjudged"), "", &task("fix-1", "needs-human"));
-        assert!(!parked(&config(), &unjudged));
-
+        assert_eq!(verdict(&config(), &unjudged), Verdict::Active);
         // And so is one whose machine will not read at all.
         let broken = root_with_tickets(&at("broken"), "name: m\nstates:\n", &task("fix-1", "x"));
         write(&at("broken").join("states.yaml"), ": not: yaml\n");
-        assert!(!parked(&config(), &broken));
+        assert_eq!(verdict(&config(), &broken), Verdict::Active);
+    }
+
+    /// The ticket's measured case: a release-tag poll every half hour, between
+    /// its attempts, is a root nothing runs in, and frees its agent slot
+    /// without claiming a person holds it (§FS-005-dispatch.24.4).
+    #[test]
+    #[ignore = "red until #229: a machine poll longer than a minute frees its root; implement removes this"]
+    fn a_machine_poll_longer_than_a_minute_frees_its_root_between_attempts() {
+        let tmp = tempfile::tempdir().unwrap();
+        let journal = format!("{}{}", took("fix-2", "holding"), waited("fix-2", "holding"));
+        assert_eq!(
+            judged(
+                tmp.path(),
+                &[("fix-1", "done"), ("fix-2", "holding")],
+                &journal
+            ),
+            Verdict::Polling
+        );
+    }
+
+    /// Longer than one minute is more than sixty seconds (§FS-005-dispatch.24.4).
+    #[test]
+    #[ignore = "red until #229: a 61s poll is past the minute line; implement removes this"]
+    fn a_poll_of_sixty_one_seconds_is_past_the_minute_line() {
+        let tmp = tempfile::tempdir().unwrap();
+        assert_eq!(
+            judged(tmp.path(), &[("fix-1", "checks-61s")], ""),
+            Verdict::Polling
+        );
+    }
+
+    /// The minute line holds whoever the poll waits on: a poll that says it
+    /// waits on a person and is about to run again holds its slot, `0s`
+    /// included (§FS-005-dispatch.24.4).
+    #[test]
+    #[ignore = "red until #229: a person poll of a minute or less is active; implement removes this"]
+    fn a_person_poll_of_a_minute_or_less_holds_its_slot() {
+        let tmp = tempfile::tempdir().unwrap();
+        let at = |name: &str| tmp.path().join(name);
+        assert_eq!(
+            judged(&at("review"), &[("fix-1", "review-30s")], ""),
+            Verdict::Active
+        );
+        assert_eq!(
+            judged(&at("answer"), &[("fix-1", "answer-0s")], ""),
+            Verdict::Active
+        );
+    }
+
+    /// Work the run has not taken up neither holds the slot nor gives it
+    /// back, so beside a long machine poll it leaves the root polling
+    /// (§FS-005-dispatch.24.4).
+    #[test]
+    #[ignore = "red until #229: a machine poll beside work not yet taken up is polling; implement removes this"]
+    fn a_machine_poll_beside_work_not_yet_taken_up_is_polling() {
+        let tmp = tempfile::tempdir().unwrap();
+        assert_eq!(
+            judged(
+                tmp.path(),
+                &[("fix-1", "holding"), ("fix-2", "implement")],
+                ""
+            ),
+            Verdict::Polling
+        );
+    }
+
+    /// A plan that cannot be read fails closed the way an unreadable machine
+    /// does: whatever the rest of the root waits on, it is active
+    /// (§FS-005-dispatch.24.4).
+    #[test]
+    #[ignore = "red until #229: a plan that cannot be read makes its root active; implement removes this"]
+    fn a_plan_that_cannot_be_read_makes_its_root_active() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut group = root_with_tickets(tmp.path(), WAITS, &task("fix-1", "needs-human"));
+        // Not UTF-8, so the plan reads as an error rather than as nothing.
+        let unreadable = tmp.path().join("widget-43.rhei.md");
+        fs::write(
+            &unreadable,
+            b"# Rhei: t\n**States:** m\n\n## Tasks\n\n### Task fix-1: \xff\n**State:** implement\n",
+        )
+        .unwrap();
+        assert!(Plan::read(&unreadable).is_err());
+        beside(&mut group, unreadable);
+        assert_eq!(verdict(&config(), &group), Verdict::Active);
+    }
+
+    /// A plan that is no longer there is not read at all, so the root is
+    /// judged by the plans that are (§FS-005-dispatch.24.4).
+    #[test]
+    #[ignore = "red until #229: a gone plan is skipped and the poll beside it frees the root; implement removes this"]
+    fn a_plan_that_is_gone_is_not_read() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut group = root_with_tickets(tmp.path(), WAITS, &task("fix-1", "holding"));
+        let gone = tmp.path().join("widget-43.rhei.md");
+        assert!(Plan::read(&gone).unwrap().is_none());
+        beside(&mut group, gone);
+        assert_eq!(verdict(&config(), &group), Verdict::Polling);
     }
 
     #[test]

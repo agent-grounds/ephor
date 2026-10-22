@@ -544,6 +544,146 @@ fn a_root_parked_on_a_person_costs_a_flight_slot_and_no_agent_slot() {
     drop((working, parked));
 }
 
+/// Put a duplicated work root on a machine wait: teach its machine a poll on
+/// a release tag every half hour that names nobody it waits on, move its only
+/// ticket into that state, record its last attempt as one the run let go of,
+/// and hold the root's run lock. What is left is a live root nothing runs in —
+/// the shape agent-grounds/ephor#229 measured for days.
+fn poll_on_a_machine(root: &Path) -> fs::File {
+    let states = root.join("states.yaml");
+    let machine = fs::read_to_string(&states).unwrap();
+    assert!(machine.contains("\n  done:\n"), "{machine}");
+    fs::write(
+        &states,
+        machine.replace(
+            "\n  done:\n",
+            "\n  holding:\n    program: [\"bash\", \"ship-pr.sh\", \"hold\"]\n    \
+             poll:\n      interval: 30m\n      max_attempts: 672\n\n  done:\n",
+        ),
+    )
+    .unwrap();
+    let mut ticket = None;
+    for plan in fs::read_dir(root).unwrap().flatten() {
+        let path = plan.path();
+        if path.extension().is_some_and(|ext| ext == "md") {
+            let text = fs::read_to_string(&path).unwrap();
+            if let Some(line) = text.lines().find(|line| line.starts_with("### Task ")) {
+                ticket = line
+                    .trim_start_matches("### Task ")
+                    .split(':')
+                    .next()
+                    .map(str::to_string);
+            }
+            fs::write(&path, text.replace("**State:** fix", "**State:** holding")).unwrap();
+        }
+    }
+    let ticket = ticket.expect("the duplicated plan holds a ticket");
+    let log = format!("runtime/logs/task-{ticket}-holding.log");
+    fs::create_dir_all(root.join("runtime")).unwrap();
+    fs::write(
+        root.join("runtime/transitions.log"),
+        format!(
+            "2026-10-21T10:00:00Z  {ticket}  start@holding  {log}\n\
+             2026-10-21T10:00:05Z  {ticket}  end@holding  {log}  \
+             exit=1,duration=5s,outcome=waiting\n"
+        ),
+    )
+    .unwrap();
+    hold_the_run_lock(root)
+}
+
+/// §FS-005-dispatch.24.4, §AR-007-runtime.1: a root polling a machine between
+/// attempts is live — it holds a `max_concurrent` slot — and nothing runs in
+/// it, so it holds no `max_active` one; the refusal and the reading say how
+/// many roots are polling, and none of them is called a person.
+#[test]
+#[ignore = "red until #229: a root polling a machine frees its agent slot; implement removes this"]
+fn a_root_polling_a_machine_costs_a_flight_slot_and_no_agent_slot() {
+    let tmp = tempdir();
+    fixture(
+        tmp.path(),
+        json!({
+            // Zero while the tickets are written, so dispatch starts nothing
+            // and every start below is this test's own.
+            "max_concurrent": 0,
+            "recipes": [{
+                "id": "fix-gate",
+                "icon": "🔧",
+                "description": "fix the red gate",
+                "brief": "fix {title}",
+                "autorun": true,
+                "when": { "kinds": ["pr"], "gate": "red" }
+            }]
+        }),
+    );
+    let log = tmp.path().join("runner.log");
+    detaching_runner(tmp.path(), &log);
+    ephor(tmp.path())
+        .args(["refresh", "demo"])
+        .assert()
+        .success();
+    ephor(tmp.path())
+        .args(["work", "dispatch"])
+        .assert()
+        .success();
+    assert_eq!(starts(&log), 0);
+    duplicate_work_root(tmp.path(), "github-prs:acme/widget#second", "demo-second");
+    duplicate_work_root(tmp.path(), "github-prs:acme/widget#third", "demo-third");
+
+    let sweep = |tmp: &Path| -> Value {
+        let output = ephor(tmp)
+            .args(["work", "run", "--due", "--json"])
+            .output()
+            .unwrap();
+        let reading: Value = serde_json::from_slice(&output.stdout).unwrap();
+        let problems = ephor::api::schema::holds("work-run", &reading);
+        assert!(problems.is_empty(), "{problems:?}\n{reading}");
+        reading
+    };
+
+    // One root working, one polling a release tag. Both are live; only one
+    // of them has anything running in it.
+    let working = hold_the_run_lock(&tmp.path().join("demo-second/panta"));
+    let polling = poll_on_a_machine(&tmp.path().join("demo-third/panta"));
+
+    set_ceilings(tmp.path(), json!(9), json!(1));
+    let full = sweep(tmp.path());
+    assert_eq!(full["runs"][0]["outcome"], "passed-over", "{full}");
+    assert_eq!(full["failed"], 0, "{full}");
+    assert_eq!(
+        full["runs"][0]["reason"],
+        "global work.max_active 1 is full (1 active run(s), 0 parked, 1 polling)",
+        "the refusal names its key and says what the other slot is doing: {full}"
+    );
+    assert_eq!(full["capacity"]["live"], 2, "{full}");
+    assert_eq!(full["capacity"]["active"], 1, "{full}");
+    assert_eq!(
+        full["capacity"]["parked"], 0,
+        "a machine is not a person: {full}"
+    );
+    assert_eq!(full["capacity"]["polling"], 1, "{full}");
+    assert_eq!(starts(&log), 0);
+
+    // The polling root still holds a roots-in-flight slot: it exists, and that
+    // is what the older key counts. Its wording is untouched.
+    set_ceilings(tmp.path(), json!(2), json!(9));
+    let flight = sweep(tmp.path());
+    assert_eq!(
+        flight["runs"][0]["reason"], "global work.max_concurrent 2 is full (2 live run(s))",
+        "{flight}"
+    );
+    assert_eq!(starts(&log), 0);
+
+    // And with room for two agents, the slot the polling root gave back is
+    // what the remaining root starts in.
+    set_ceilings(tmp.path(), json!(9), json!(2));
+    let started = sweep(tmp.path());
+    assert_eq!(started["runs"][0]["outcome"], "started", "{started}");
+    assert_eq!(started["failed"], 0, "{started}");
+    assert_eq!(starts(&log), 1);
+    drop((working, polling));
+}
+
 /// §FS-005-dispatch.24: a site that never names the second key behaves as it
 /// did before there was one — same starts, same wording — and its reading
 /// still says how much of what is live is a person rather than an agent.

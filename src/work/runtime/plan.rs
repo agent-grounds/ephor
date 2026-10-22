@@ -158,6 +158,24 @@ pub struct StateInfo {
     /// half of [`StateInfo::is_gating`]: both are work stopped until somebody
     /// answers, and they differ only in who resumes it.
     pub waits_on_person: bool,
+    /// How long the state's `poll:` waits between its attempts, where the
+    /// state declares one (§FS-005-dispatch.24.4). `None` is a state that does
+    /// not poll at all.
+    pub poll: Option<Interval>,
+}
+
+/// How long a poll waits between its attempts, as the machine declares it
+/// (§FS-005-dispatch.24.4).
+///
+/// Scaffold until agent-grounds/ephor#229 is implemented: the line scan reads
+/// no interval yet, so every poll reads [`Interval::Unknown`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Interval {
+    /// Written in the runtime's own duration grammar.
+    Every(std::time::Duration),
+    /// Missing, or written in a way the runtime would refuse or a line scan
+    /// cannot follow.
+    Unknown,
 }
 
 impl WorkRoot {
@@ -312,6 +330,15 @@ impl WorkRoot {
     /// six hours of waiting on an author live work.
     pub fn waits_on_person(&self, state: &str) -> bool {
         self.flag(state, |info| info.waits_on_person)
+    }
+
+    /// How long a state's poll waits between attempts: `None` where the state
+    /// declares no poll, or is not declared at all (§FS-005-dispatch.24.4).
+    pub fn poll_interval(&self, state: &str) -> Option<Interval> {
+        self.states
+            .iter()
+            .find(|info| info.name == state)
+            .and_then(|info| info.poll)
     }
 
     fn flag(&self, state: &str, of: impl Fn(&StateInfo) -> bool) -> bool {
@@ -820,6 +847,7 @@ fn state_infos(yaml: &str) -> Vec<StateInfo> {
                 is_gating: false,
                 needs_input: false,
                 waits_on_person: false,
+                poll: None,
             });
         } else if indent > 2 {
             let flag = |prefix: &str| {
@@ -855,6 +883,11 @@ fn state_infos(yaml: &str) -> Vec<StateInfo> {
                 }
                 if person_wait {
                     last.waits_on_person = true;
+                }
+                // Scaffold until agent-grounds/ephor#229: a poll is seen, and
+                // its interval is not read yet (§FS-005-dispatch.24.4).
+                if indent == 4 && trimmed.starts_with("poll:") {
+                    last.poll = Some(Interval::Unknown);
                 }
             }
         }
@@ -1957,6 +1990,164 @@ mod tests {
             .state_names()
             .iter()
             .all(|state| !shipped.waits_on_person(state)));
+    }
+
+    /// What a machine says about how long a poll waits, wherever the runtime
+    /// would refuse to read it or a line scan cannot follow it, is unknown —
+    /// and an unknown interval holds its root's slot rather than freeing it
+    /// (§FS-005-dispatch.24.4). A state that polls nothing has no interval at
+    /// all, whatever else it calls `interval`.
+    #[test]
+    fn a_poll_interval_the_runtime_would_refuse_reads_as_unknown() {
+        let tmp = tempfile::tempdir().unwrap();
+        fs::write(
+            tmp.path().join("states.yaml"),
+            concat!(
+                "name: m\n",
+                "defaults:\n",
+                "  half-hour: &every-half-hour\n",
+                "    interval: 30m\n",
+                "states:\n",
+                // A number with no unit, a fraction, a unit the runtime has
+                // not got, and a space inside the duration.
+                "  bare:\n",
+                "    program: [\"bash\", \"x.sh\"]\n",
+                "    poll:\n",
+                "      interval: 30\n",
+                "  fractional:\n",
+                "    poll:\n",
+                "      interval: 1.5h\n",
+                "  days:\n",
+                "    poll:\n",
+                "      interval: 1d\n",
+                "  spaced:\n",
+                "    poll:\n",
+                "      interval: 1h 30m\n",
+                "  flow-bare:\n",
+                "    poll: { interval: 90, max_attempts: 4 }\n",
+                // No interval at all.
+                "  missing:\n",
+                "    poll:\n",
+                "      max_attempts: 12\n",
+                // The runtime follows an alias; the line scan cannot.
+                "  anchored:\n",
+                "    poll: *every-half-hour\n",
+                // An `interval:` that is not a poll's, and a poll in prose.
+                "  implement:\n",
+                "    agent: x\n",
+                "    retry:\n",
+                "      interval: 5m\n",
+                "    instructions: |\n",
+                "      poll:\n",
+                "        interval: 30m\n",
+                "  done:\n    final: true\n",
+            ),
+        )
+        .unwrap();
+        let root = WorkRoot::open(tmp.path()).unwrap().unwrap();
+        for state in [
+            "bare",
+            "fractional",
+            "days",
+            "spaced",
+            "flow-bare",
+            "missing",
+            "anchored",
+        ] {
+            assert_eq!(
+                root.poll_interval(state),
+                Some(Interval::Unknown),
+                "{state}"
+            );
+        }
+        assert_eq!(root.poll_interval("implement"), None);
+        assert_eq!(root.poll_interval("done"), None);
+        assert_eq!(root.poll_interval("nonexistent"), None);
+        // The shipped machine polls nothing.
+        let shipped = WorkRoot::ensure(&tmp.path().join("shipped"), SHIPPED_STATES).unwrap();
+        assert!(shipped
+            .state_names()
+            .iter()
+            .all(|state| shipped.poll_interval(state).is_none()));
+    }
+
+    /// A poll's interval is read the way the runtime reads it — digits and a
+    /// unit of `h`, `m` or `s`, repeated — from the block form and the flow
+    /// form alike, quoted or not, with a trailing comment left out of it
+    /// (§FS-005-dispatch.24.4). The minute line is drawn above this, so the
+    /// reading itself keeps `1m`, `60s` and `0s` exactly as written.
+    #[test]
+    #[ignore = "red until #229: a poll's interval is read out of its machine; implement removes this"]
+    fn a_poll_interval_is_read_in_the_runtimes_own_grammar() {
+        let tmp = tempfile::tempdir().unwrap();
+        fs::write(
+            tmp.path().join("states.yaml"),
+            concat!(
+                "name: m\n",
+                "states:\n",
+                // The ticket's own shape: a release-tag poll every half hour.
+                "  holding:\n",
+                "    program: [\"bash\", \"scripts/ship-pr.sh\", \"hold\"]\n",
+                "    poll:\n",
+                "      interval: 30m\n",
+                "      max_attempts: 672\n",
+                "  checks:\n",
+                "    poll: { interval: 5m, max_attempts: 24 }\n",
+                "  quoted:\n",
+                "    poll:\n",
+                "      interval: \"30m\"\n",
+                "  single-quoted:\n",
+                "    poll: { max_attempts: 4, interval: '1h' }\n",
+                "  commented:\n",
+                "    poll:\n",
+                "      interval: 30m  # half an hour\n",
+                "  flow-commented:\n",
+                "    poll: { interval: 5m }  # five minutes\n",
+                "  seconds:\n",
+                "    poll:\n",
+                "      interval: 30s\n",
+                "  hour:\n",
+                "    poll:\n",
+                "      interval: 1h\n",
+                "  compound:\n",
+                "    poll:\n",
+                "      interval: 1h30m\n",
+                "  minute:\n",
+                "    poll:\n",
+                "      interval: 1m\n",
+                "  sixty:\n",
+                "    poll:\n",
+                "      interval: 60s\n",
+                "  sixty-one:\n",
+                "    poll:\n",
+                "      interval: 61s\n",
+                "  immediate:\n",
+                "    poll:\n",
+                "      interval: 0s\n",
+                "      waiting_on: author\n",
+                "  done:\n    final: true\n",
+            ),
+        )
+        .unwrap();
+        let root = WorkRoot::open(tmp.path()).unwrap().unwrap();
+        let every = |seconds: u64| Some(Interval::Every(std::time::Duration::from_secs(seconds)));
+        assert_eq!(root.poll_interval("holding"), every(30 * 60));
+        assert_eq!(root.poll_interval("checks"), every(5 * 60));
+        assert_eq!(root.poll_interval("quoted"), every(30 * 60));
+        assert_eq!(root.poll_interval("single-quoted"), every(60 * 60));
+        assert_eq!(root.poll_interval("commented"), every(30 * 60));
+        assert_eq!(root.poll_interval("flow-commented"), every(5 * 60));
+        assert_eq!(root.poll_interval("seconds"), every(30));
+        assert_eq!(root.poll_interval("hour"), every(60 * 60));
+        assert_eq!(root.poll_interval("compound"), every(90 * 60));
+        assert_eq!(root.poll_interval("minute"), every(60));
+        assert_eq!(root.poll_interval("sixty"), every(60));
+        assert_eq!(root.poll_interval("sixty-one"), every(61));
+        // `0s` is an interval, not a missing one, and who the poll waits on
+        // is read beside it as before.
+        assert_eq!(root.poll_interval("immediate"), every(0));
+        assert!(root.waits_on_person("immediate"));
+        assert_eq!(root.poll_interval("done"), None);
     }
 
     /// The machine in force is the declared one where there is one and the

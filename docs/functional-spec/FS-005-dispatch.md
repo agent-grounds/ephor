@@ -2920,20 +2920,12 @@ site's roots-in-flight ceiling alone.
 of its own, written at these same three scopes and evaluated in this same
 order ([§FS-015-spend-ceiling](FS-015-spend-ceiling.md#fs-015-spend-ceiling-what-unattended-work-may-spend-is-the-persons-number-and-the-sweep-stops-at-it)).
 
-**A live root is parked when what it waits for is a person.** Every live root
+**A live root that is only waiting holds no agent slot.** Every live root
 counts toward the flight ceilings — it exists, and that is what those numbers
-count — and toward `max_active` too *unless* nothing in it is being worked and
-something in it is somebody's turn: no open ticket witnessed held by the run,
-and at least one open ticket in a state the machine in force calls gating
-([§FS-005-dispatch.9](FS-005-dispatch.md#9-work-that-stops-for-a-person-says-so-where-the-person-is-looking)) or
-whose poll declares whose answer it waits for — one fact, differing only in who
-resumes it. It is judged per plan by the machine answering for that plan, as
-every reading of what a ticket is doing is
-([§FS-005-dispatch.15](FS-005-dispatch.md#15-every-operation-is-visible-in-one-place)); a plan whose machine
-cannot be read makes its root active, because a misreading must cost a slot
-rather than hand one out. And the ceilings gate starts, not what is under way
-already: parked roots resuming together can carry active work above
-`max_active` until one finishes, capacity here being live work, not attempts.
+count — and toward `max_active` too *unless* it is free: **parked** on a
+person's turn, or **polling** a machine it will not ask again for more than a
+minute. What holds an active slot, where that line falls, and every way the
+reading fails closed is [§FS-005-dispatch.24.4](FS-005-dispatch.md#244-a-live-root-holds-an-agent-slot-while-something-in-it-runs-or-is-about-to).
 
 **Capacity is live work, not attempts.** One root snapshot supplies both the
 due candidates and the live counts. Every already-live root consumes one
@@ -2955,10 +2947,10 @@ the deterministic root-path order the sweep already had. The ranking orders
 and never filters. Every otherwise eligible root not started solely because
 an aggregate, organization, or project ceiling is full is returned as one
 `passed-over` outcome whose reason names the key it refused on, in prose and
-`--json`; and the reading says how many roots are live and how many of those
-are parked, so a full ceiling never hides that a person holds one of the
-slots. Passing a root over is not a failed launch and does not increase the
-reading's `failed` count.
+`--json`; and the reading says how many roots are live, how many of those are
+parked and how many polling, so a full ceiling never hides that a person holds
+one of the slots. Passing a root over is not a failed launch and does not
+increase the reading's `failed` count.
 
 **The sweep is safe where the key was.** Everything dispatch refuses before
 writing a ticket, starting refuses before running one
@@ -3350,6 +3342,53 @@ ticket and is gone with the first verdict after it, so the ledger caches no work
 A run asked for by name is blind to all of this, as to every guard the sweep
 has because nobody is present
 ([§FS-005-dispatch.30](FS-005-dispatch.md#30-a-run-asked-for-by-name-reaches-the-whole-of-that-matters-work)).
+
+### 24.4 A live root holds an agent slot while something in it runs, or is about to
+
+`max_active` answers *how much may be spent at once*
+([§FS-005-dispatch.24](FS-005-dispatch.md#24-work-nobody-has-to-start-starts-itself)), and a root whose open work is only waiting — at a gate,
+or between a poll's attempts — spends nothing while it waits: no agent is
+running there, and no program either.
+
+**A live root holds an active slot while something in it runs, or is about
+to.** Every live root counts toward the flight ceilings — it exists, and that
+is what those numbers count — and toward `max_active` too *unless* it is free.
+A root is free when three things hold. No open ticket is witnessed held by the
+run, whether an agent, a program or a poll's attempt holds it
+([§FS-005-dispatch.15.2](FS-005-dispatch.md#152-what-a-run-is-doing-is-read-from-the-runs-own-stream)). No open ticket sits in a poll of one minute or less,
+which is about to run again, or in a poll whose interval cannot be read. And at
+least one open ticket sits in a state the machine in force calls gating
+([§FS-005-dispatch.9](FS-005-dispatch.md#9-work-that-stops-for-a-person-says-so-where-the-person-is-looking)) or in a poll whose interval is longer than one minute.
+Tickets in any other state are work the run has not taken up: they neither
+hold the slot nor give it back, so a root holding nothing but such tickets — a
+run between starting and taking up its first — stays active.
+
+**The line is one minute, and it is fixed.** Longer than one minute is more
+than sixty seconds: `61s` and `30m` free their root between attempts, while
+`1m`, `60s`, `30s` and `0s` hold it, whoever the poll waits on. An interval is
+read as the runtime writes one — digits and a unit of `h`, `m` or `s`, repeated,
+as in `1h30m` — and one that is missing, or written any way the runtime would
+refuse, cannot be read.
+
+**A free root is parked or polling, never both.** A free root is **parked**
+where one of the tickets that freed it is a person's turn — a gate, or a poll
+that declares whose answer it waits for — and **polling** where every one of
+them is a poll on a machine. A person holding a slot is the fact a full ceiling
+must never hide, so a root freed by both is parked. Every live root is
+therefore exactly one of active, parked or polling, and the reading's three
+counts add up to its live one. A refusal under `max_active` names the same
+split beside its count, naming the polling roots only where there are some,
+so a site with no machine waits reads exactly as it did before.
+
+**The reading fails closed.** It is judged per plan by the machine answering
+for that plan, as every reading of what a ticket is doing is
+([§FS-005-dispatch.15](FS-005-dispatch.md#15-every-operation-is-visible-in-one-place)). A plan whose machine cannot be read, or that cannot be
+read itself, makes its root active, because a misreading must cost a slot
+rather than hand one out; a plan that is no longer there is not read at all.
+A poll whose interval cannot be read holds its slot for the same reason. And
+the ceilings gate starts, not what is under way already: free roots resuming
+together — an author answering, a build finishing — can carry active work above
+`max_active` until one finishes, capacity here being live work, not attempts.
 
 ## 25. Work about a matter with no branch can mint the branch it needs
 
