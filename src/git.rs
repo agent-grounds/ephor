@@ -1809,6 +1809,51 @@ fn without_inherited_git_variables(mut command: Command) -> Command {
     command
 }
 
+/// The variables git calls repository-local: what `git rev-parse
+/// --local-env-vars` prints. git exports them to a hook "so that Git commands
+/// run by the hook can correctly locate the repository", and githooks(5) asks
+/// anything that runs git in a foreign repository to clear them, because an
+/// inherited `GIT_DIR` wins over `-C`. A list rather than a spawn of git to ask,
+/// and a list rather than the `GIT_*` prefix, so that `GIT_SSH_COMMAND`,
+/// `GIT_ASKPASS`, `GIT_CONFIG_GLOBAL` and the rest of git's environment still
+/// reach what is started (§FS-010-doctor.4.1).
+const REPOSITORY_VARIABLES: &[&str] = &[
+    "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+    "GIT_CONFIG",
+    "GIT_CONFIG_PARAMETERS",
+    "GIT_CONFIG_COUNT",
+    "GIT_OBJECT_DIRECTORY",
+    "GIT_DIR",
+    "GIT_WORK_TREE",
+    "GIT_IMPLICIT_WORK_TREE",
+    "GIT_GRAFT_FILE",
+    "GIT_INDEX_FILE",
+    "GIT_NO_REPLACE_OBJECTS",
+    "GIT_REPLACE_REF_BASE",
+    "GIT_PREFIX",
+    "GIT_SHALLOW_FILE",
+    "GIT_COMMON_DIR",
+];
+
+/// Take git's repository-local variables off `command`, for a child that acts
+/// only on repositories ephor made itself and so never means the one a hook's
+/// environment names (§FS-010-doctor.4.1). The `GIT_CONFIG_KEY_<n>` and
+/// `GIT_CONFIG_VALUE_<n>` pairs go with the `GIT_CONFIG_COUNT` that numbers
+/// them. Like the test build's removal in [`command`], it goes on the child
+/// alone, never on the process.
+pub fn without_repository_variables(command: &mut Command) -> &mut Command {
+    for key in REPOSITORY_VARIABLES {
+        command.env_remove(key);
+    }
+    for (key, _) in std::env::vars_os() {
+        let bytes = key.as_encoded_bytes();
+        if bytes.starts_with(b"GIT_CONFIG_KEY_") || bytes.starts_with(b"GIT_CONFIG_VALUE_") {
+            command.env_remove(key);
+        }
+    }
+    command
+}
+
 /// A git command whose output is the answer; None when it fails.
 fn git(repo: &Path, args: &[&str]) -> Option<String> {
     let output = command()
@@ -3680,5 +3725,32 @@ mod tests {
             "{}",
             made.report()
         );
+    }
+
+    /// The removal takes git's repository-local set off the child and leaves the
+    /// rest of git's environment on it (§FS-010-doctor.4.1).
+    #[test]
+    fn repository_variables_are_removed_and_the_rest_of_gits_environment_kept() {
+        let mut command = Command::new("git");
+        for key in REPOSITORY_VARIABLES {
+            command.env(key, "/the/readers/repository");
+        }
+        command.env("GIT_SSH_COMMAND", "ssh -i key");
+        command.env("GIT_CONFIG_GLOBAL", "/home/reader/.gitconfig");
+        without_repository_variables(&mut command);
+        let envs: Vec<_> = command.get_envs().collect();
+        for key in REPOSITORY_VARIABLES {
+            assert!(
+                envs.contains(&(std::ffi::OsStr::new(key), None)),
+                "{key} still reaches the child"
+            );
+        }
+        for key in ["GIT_SSH_COMMAND", "GIT_CONFIG_GLOBAL"] {
+            assert!(
+                envs.iter()
+                    .any(|(name, value)| *name == key && value.is_some()),
+                "{key} no longer reaches the child"
+            );
+        }
     }
 }
