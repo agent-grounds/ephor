@@ -104,6 +104,27 @@ dispatches nothing, and changes no checkout of the reader's — a diagnostic
 that repaired things as it went would be a second thing to debug, and one
 that could not be run while unsure is one nobody runs.
 
+### 4.1 Not even when a git hook runs it
+
+The self pass hands none of the reader's repository-local git variables to
+anything it starts: not to the `git` that builds its scratch repositories,
+and not to the `ephor` it walks through the scratch site, whose own `git`
+would follow them too. Those are the variables git itself calls
+repository-local, the set `git rev-parse --local-env-vars` prints — `GIT_DIR`,
+`GIT_INDEX_FILE`, `GIT_WORK_TREE`, `GIT_COMMON_DIR`, `GIT_CONFIG_PARAMETERS`
+and the rest. The rest of git's environment is the reader's on purpose, an
+`ssh` command or a global configuration, and reaches the scratch as it does
+outside a hook.
+
+Git exports those variables to every hook so that the hook's own `git` finds
+the repository being committed to, and an explicit `GIT_DIR` wins over
+`git -C`: a scratch repository named only by its path would be the hook's
+repository instead. Every repository the self pass touches is one it made,
+so an inherited one is never the one it means. Run from a git hook, `doctor`
+therefore answers as it does from a shell, and the repository the hook names
+— a plain one, or the shared repository behind a linked worktree — keeps its
+configuration, its branches, its index and its worktrees.
+
 ## 5. The answer is in the exit code
 
 A timer reads exit codes, not screens. `0` is well. `4` is degraded — a rung
