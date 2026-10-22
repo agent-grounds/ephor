@@ -68,6 +68,17 @@ join proves none of those events. The successful path separately retains both
 late stdout and late stderr when the descendant releases them before the
 deadline.
 
+The terminal proof uses that same separate observation bound for timeout
+cleanup before Enter and after Enter. It returns early on absence or zombie
+state, rejects a process still live at the bound, and requires a recorded PID;
+missing identity is not evidence of termination. Only cleanup expectations
+wait: a fixture intended to survive a group signal is observed live immediately.
+Notice timeliness is measured before cleanup observation, so the observation
+bound cannot enlarge the capture deadline. A controlled delayed-stop fixture
+and a persistent live fixture check this observation mechanism independently
+of the Linux scheduler reproduction; neither teardown nor a cleanup signal
+from teardown may supply the evidence an assertion accepts.
+
 Every automatic bypass, explicit `false`, start failure, nonzero exit,
 execution failure, or timeout restores the terminal and prints its reason
 followed by the complete URL on its own line. It then waits for Enter before
