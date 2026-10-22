@@ -913,6 +913,46 @@ fn a_root_polling_a_machine_gives_its_agent_slot_to_the_next_due_root() {
     drop(holder);
 }
 
+/// A site that annotates its machine polls is reported the same as one that
+/// does not (§FS-005-dispatch.24.4). The release-tag poll carries a note after
+/// its interval, `# waiting_on: nobody, CI`; a comment declares nobody, so the
+/// root that gave its slot back is counted polling, and no person is said to
+/// owe an answer.
+#[test]
+#[ignore = "red until #236: a waiting_on: in a poll line's trailing comment counts the root parked; implement removes this"]
+fn a_root_whose_machine_poll_carries_a_noted_comment_is_counted_polling() {
+    let world = two_projects();
+    world.configure(two_projects_configured(true, json!(1)));
+    let far = world.path().join(OTHER).join("panta");
+    let laid = std::fs::read_to_string(far.join("states.yaml")).expect("the laid machine");
+    std::fs::create_dir_all(far.join(".rhei")).expect("the runtime's directory");
+    std::fs::write(far.join(".rhei/run.lock"), "").expect("the run lock");
+    let holder = std::fs::File::open(far.join(".rhei/run.lock")).expect("open the run lock");
+    holder.lock().expect("hold the run lock");
+
+    // The note rides on the poll's `interval:` line, after its value.
+    poll_on_a_machine(&far, &laid, "30m  # waiting_on: nobody, CI", false);
+    let output = world
+        .ephor()
+        .args(["work", "run", "--due", "--act", "--json"])
+        .output()
+        .expect("the sweep runs");
+    assert!(output.status.success(), "{output:?}");
+    let freed = shaped("work-run", &output);
+    assert_eq!(row_of(&freed, PROJECT)["outcome"], "started", "{freed:#}");
+    assert_eq!(
+        (
+            &freed["capacity"]["live"],
+            &freed["capacity"]["active"],
+            &freed["capacity"]["parked"],
+            &freed["capacity"]["polling"],
+        ),
+        (&json!(2), &json!(1), &json!(0), &json!(1)),
+        "a comment on the poll's line names nobody: {freed:#}"
+    );
+    drop(holder);
+}
+
 /// Tickets are written whether or not anything can run them, and the run says
 /// so in the one sentence the whole of ephor refuses with
 /// (§AR-005-capabilities.2).
