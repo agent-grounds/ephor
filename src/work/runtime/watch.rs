@@ -24,6 +24,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime};
 
+use super::plan::Interval;
 use super::plan::Plan;
 use super::plan::WorkRoot;
 use super::runner;
@@ -88,36 +89,59 @@ pub fn live(_config: &WorkConfig, root: &Path) -> bool {
     }
 }
 
-/// Whether a live root is **parked**: nothing in it is being worked, and
-/// something in it is a person's turn (§FS-005-dispatch.24).
+/// What a live root costs under `work.max_active` (§FS-005-dispatch.24.4):
+/// a slot while something in it runs or is about to, and none while it is
+/// only waiting — on a person, or on a machine it will not ask again for more
+/// than a minute.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Verdict {
+    /// Something in it runs, or is about to: it holds an active slot.
+    Active,
+    /// Free, and a person's turn is among what freed it.
+    Parked,
+    /// Free, and only polls on a machine freed it.
+    Polling,
+}
+
+/// How long a poll may wait between attempts and still hold its root's slot:
+/// a minute, and not a second more (§FS-005-dispatch.24.4).
+const ABOUT_TO_RUN: Duration = Duration::from_secs(60);
+
+/// The verdict on one live root: whether it holds an active slot, and if it
+/// does not, whether a person or only a machine is what freed it
+/// (§FS-005-dispatch.24.4).
 ///
 /// The reading the second autorun ceiling is counted from, and the one place
 /// the difference between "two runs are live" and "one of them is a bash
-/// script waiting on an author" is decided. It is the board's judgment
-/// narrowed to a verdict about the root: the same machine in force per plan,
-/// the same witness for what a run holds (§FS-005-dispatch.15.2), and the
-/// same two ways work stops for a person — a `gating` state, or a poll that
-/// declares who it waits on.
+/// script waiting on a release tag" is decided. It is the board's judgment
+/// narrowed to a verdict about the root: the same machine in force per plan
+/// (§FS-005-dispatch.28), the same witness for what a run holds
+/// (§FS-005-dispatch.15.2), and the same two ways work stops for a person — a
+/// `gating` state, or a poll that declares who it waits on — beside the one
+/// way it stops for a machine, a poll that names nobody.
 ///
-/// It fails closed in every direction. A plan whose machine cannot be read,
-/// or a root that declares none, is **not** parked: with finality and gating
-/// unreadable, calling the root parked would hand out a slot on a guess. So
-/// is a root where any open ticket is witnessed held — one working ticket
-/// makes the root working, whatever the rest of it waits on. And a root
-/// nothing waits on is not parked either: parked is a positive finding, never
+/// It fails closed in every direction, each of which answers
+/// [`Verdict::Active`] whatever the rest of the root waits on: a plan whose
+/// machine cannot be read or that declares none, a plan that cannot be read
+/// itself, an open ticket witnessed held, and an open ticket in a poll of a
+/// minute or less or in one whose interval cannot be read. A plan that is no
+/// longer there is not read at all. Tickets in any other open state are work
+/// the run has not taken up: they neither hold the slot nor free it, so a root
+/// with nothing but those is active too — free is a positive finding, never
 /// the absence of one.
 ///
 /// The runner's own listing is deliberately not asked for here, unlike the
 /// board's (§FS-005-dispatch.15.1): a sweep would fork it once per live root
 /// on every pass, and the plans on disk are the store those rows are read
 /// back out of anyway.
-pub fn parked(config: &WorkConfig, group: &RootPlans) -> bool {
+pub fn verdict(config: &WorkConfig, group: &RootPlans) -> Verdict {
     let witness = witness(config, &group.root);
     let born = lock_born(&group.root);
     // The root's own machine, for every plan that declares none of its own
     // (§FS-005-dispatch.28).
     let root_machine = WorkRoot::open(&group.root).ok().flatten();
-    let mut waits = false;
+    // What freed the root so far: a person's turn, and a poll on a machine.
+    let (mut person, mut machine) = (false, false);
     for plan_ref in &group.plans {
         let own = super::plan::own_machine(&plan_ref.path);
         let judge: Option<&WorkRoot> = match &own {
@@ -126,10 +150,12 @@ pub fn parked(config: &WorkConfig, group: &RootPlans) -> bool {
             Err(_) => None,
         };
         let Some(judge) = judge else {
-            return false;
+            return Verdict::Active;
         };
-        let Some(plan) = Plan::read(&plan_ref.path).ok().flatten() else {
-            continue;
+        let plan = match Plan::read(&plan_ref.path) {
+            Ok(Some(plan)) => plan,
+            Ok(None) => continue,
+            Err(_) => return Verdict::Active,
         };
         for ticket in plan.tickets() {
             let Some(state) = ticket.state.as_deref() else {
@@ -145,37 +171,27 @@ pub fn parked(config: &WorkConfig, group: &RootPlans) -> bool {
                 &ticket.id,
                 Some(state),
             ) {
-                return false;
+                return Verdict::Active;
             }
-            waits |= judge.is_gating(state) || judge.waits_on_person(state);
+            let turn = judge.is_gating(state) || judge.waits_on_person(state);
+            match judge.poll_interval(state) {
+                None => person |= turn,
+                Some(Interval::Every(wait)) if wait > ABOUT_TO_RUN => {
+                    if turn {
+                        person = true;
+                    } else {
+                        machine = true;
+                    }
+                }
+                // About to run again, or nobody can say when.
+                Some(_) => return Verdict::Active,
+            }
         }
     }
-    waits
-}
-
-/// What a live root costs under `work.max_active` (§FS-005-dispatch.24.4):
-/// a slot while something in it runs or is about to, and none while it is
-/// only waiting — on a person, or on a machine it will not ask again for more
-/// than a minute.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Verdict {
-    /// Something in it runs, or is about to: it holds an active slot.
-    Active,
-    /// Free, and a person's turn is among what freed it.
-    Parked,
-    /// Free, and only polls on a machine freed it.
-    Polling,
-}
-
-/// The verdict on one live root (§FS-005-dispatch.24.4).
-///
-/// Scaffold until agent-grounds/ephor#229 is implemented: today's
-/// [`parked`] reading, said three ways, so nothing is ever [`Verdict::Polling`]
-/// yet.
-pub fn verdict(config: &WorkConfig, group: &RootPlans) -> Verdict {
-    match parked(config, group) {
-        true => Verdict::Parked,
-        false => Verdict::Active,
+    match (person, machine) {
+        (true, _) => Verdict::Parked,
+        (false, true) => Verdict::Polling,
+        (false, false) => Verdict::Active,
     }
 }
 
@@ -1540,7 +1556,6 @@ mod tests {
     /// its attempts, is a root nothing runs in, and frees its agent slot
     /// without claiming a person holds it (§FS-005-dispatch.24.4).
     #[test]
-    #[ignore = "red until #229: a machine poll longer than a minute frees its root; implement removes this"]
     fn a_machine_poll_longer_than_a_minute_frees_its_root_between_attempts() {
         let tmp = tempfile::tempdir().unwrap();
         let journal = format!("{}{}", took("fix-2", "holding"), waited("fix-2", "holding"));
@@ -1556,7 +1571,6 @@ mod tests {
 
     /// Longer than one minute is more than sixty seconds (§FS-005-dispatch.24.4).
     #[test]
-    #[ignore = "red until #229: a 61s poll is past the minute line; implement removes this"]
     fn a_poll_of_sixty_one_seconds_is_past_the_minute_line() {
         let tmp = tempfile::tempdir().unwrap();
         assert_eq!(
@@ -1569,7 +1583,6 @@ mod tests {
     /// waits on a person and is about to run again holds its slot, `0s`
     /// included (§FS-005-dispatch.24.4).
     #[test]
-    #[ignore = "red until #229: a person poll of a minute or less is active; implement removes this"]
     fn a_person_poll_of_a_minute_or_less_holds_its_slot() {
         let tmp = tempfile::tempdir().unwrap();
         let at = |name: &str| tmp.path().join(name);
@@ -1587,7 +1600,6 @@ mod tests {
     /// back, so beside a long machine poll it leaves the root polling
     /// (§FS-005-dispatch.24.4).
     #[test]
-    #[ignore = "red until #229: a machine poll beside work not yet taken up is polling; implement removes this"]
     fn a_machine_poll_beside_work_not_yet_taken_up_is_polling() {
         let tmp = tempfile::tempdir().unwrap();
         assert_eq!(
@@ -1604,7 +1616,6 @@ mod tests {
     /// does: whatever the rest of the root waits on, it is active
     /// (§FS-005-dispatch.24.4).
     #[test]
-    #[ignore = "red until #229: a plan that cannot be read makes its root active; implement removes this"]
     fn a_plan_that_cannot_be_read_makes_its_root_active() {
         let tmp = tempfile::tempdir().unwrap();
         let mut group = root_with_tickets(tmp.path(), WAITS, &task("fix-1", "needs-human"));
@@ -1623,7 +1634,6 @@ mod tests {
     /// A plan that is no longer there is not read at all, so the root is
     /// judged by the plans that are (§FS-005-dispatch.24.4).
     #[test]
-    #[ignore = "red until #229: a gone plan is skipped and the poll beside it frees the root; implement removes this"]
     fn a_plan_that_is_gone_is_not_read() {
         let tmp = tempfile::tempdir().unwrap();
         let mut group = root_with_tickets(tmp.path(), WAITS, &task("fix-1", "holding"));

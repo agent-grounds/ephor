@@ -165,10 +165,9 @@ pub struct StateInfo {
 }
 
 /// How long a poll waits between its attempts, as the machine declares it
-/// (§FS-005-dispatch.24.4).
-///
-/// Scaffold until agent-grounds/ephor#229 is implemented: the line scan reads
-/// no interval yet, so every poll reads [`Interval::Unknown`].
+/// (§FS-005-dispatch.24.4): read in the runtime's own duration grammar, from
+/// the block form and the flow form of `poll:` alike, and unknown wherever
+/// the runtime would refuse what is written or the line scan cannot follow it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Interval {
     /// Written in the runtime's own duration grammar.
@@ -857,11 +856,15 @@ fn state_infos(yaml: &str) -> Vec<StateInfo> {
             };
             // `poll:` written as a block opens on its own line and is read on
             // the ones beneath it; written as a flow mapping it says
-            // everything on this one.
-            if indent == 4 {
-                if let Some(rest) = trimmed.strip_prefix("poll:") {
-                    in_poll = rest.trim().is_empty();
-                }
+            // everything on this one. A trailing comment is neither.
+            let opens_poll = match indent {
+                4 => trimmed
+                    .strip_prefix("poll:")
+                    .map(|rest| uncommented(rest).trim()),
+                _ => None,
+            };
+            if let Some(rest) = opens_poll {
+                in_poll = rest.is_empty();
             }
             let person_wait = waits_on_someone(trimmed)
                 && match indent {
@@ -884,10 +887,19 @@ fn state_infos(yaml: &str) -> Vec<StateInfo> {
                 if person_wait {
                     last.waits_on_person = true;
                 }
-                // Scaffold until agent-grounds/ephor#229: a poll is seen, and
-                // its interval is not read yet (§FS-005-dispatch.24.4).
-                if indent == 4 && trimmed.starts_with("poll:") {
-                    last.poll = Some(Interval::Unknown);
+                // How long the poll waits, read where the poll says it and
+                // unknown until it does (§FS-005-dispatch.24.4): an anchor, a
+                // block with no `interval:` and a flow mapping without one
+                // all stay unknown.
+                if let Some(rest) = opens_poll {
+                    last.poll = Some(match rest.strip_prefix('{') {
+                        Some(flow) => flow_interval(flow),
+                        None => Interval::Unknown,
+                    });
+                } else if in_poll {
+                    if let Some(value) = trimmed.strip_prefix("interval:") {
+                        last.poll = Some(interval(uncommented(value)));
+                    }
                 }
             }
         }
@@ -912,6 +924,71 @@ fn waits_on_someone(line: &str) -> bool {
         .trim_matches(['"', '\''].as_slice())
         .trim()
         .is_empty()
+}
+
+/// A value with its trailing YAML comment left out: a `#` that opens the text
+/// or follows whitespace starts a comment, and one inside a word does not.
+fn uncommented(text: &str) -> &str {
+    text.char_indices()
+        .find(|&(at, ch)| ch == '#' && (at == 0 || text[..at].ends_with([' ', '\t'])))
+        .map_or(text, |(at, _)| &text[..at])
+}
+
+/// The `interval:` of a poll written as a flow mapping, `flow` being what
+/// follows its opening brace (§FS-005-dispatch.24.4). A mapping that names
+/// no interval, or one that does not close on this line, is unknown.
+fn flow_interval(flow: &str) -> Interval {
+    let Some((entries, _)) = uncommented(flow).split_once('}') else {
+        return Interval::Unknown;
+    };
+    entries
+        .split(',')
+        .filter_map(|entry| entry.split_once(':'))
+        .find(|(key, _)| key.trim() == "interval")
+        .map_or(Interval::Unknown, |(_, value)| interval(value))
+}
+
+/// One poll interval's value, unquoted and read as the runtime reads it
+/// (§FS-005-dispatch.24.4).
+fn interval(value: &str) -> Interval {
+    let value = value.trim();
+    let unquoted = match value.chars().next() {
+        Some(quote @ ('"' | '\'')) => value[1..].strip_suffix(quote),
+        _ => Some(value),
+    };
+    unquoted
+        .and_then(duration)
+        .map_or(Interval::Unknown, Interval::Every)
+}
+
+/// The runtime's duration grammar (§FS-005-dispatch.24.4, §REQ-001-boundary.5):
+/// digits and a unit of `h`, `m` or `s`, repeated, as in `30m` or `1h30m`.
+/// Anything else — a bare number, a fraction, another unit, a space inside,
+/// nothing at all — is not a duration, exactly where the runtime refuses it.
+fn duration(text: &str) -> Option<std::time::Duration> {
+    let text = text.trim();
+    let mut seconds: u64 = 0;
+    let mut number: Option<u64> = None;
+    for ch in text.chars() {
+        if let Some(digit) = ch.to_digit(10) {
+            number = Some(
+                number
+                    .unwrap_or(0)
+                    .checked_mul(10)?
+                    .checked_add(u64::from(digit))?,
+            );
+            continue;
+        }
+        let unit = match ch {
+            'h' => 3600,
+            'm' => 60,
+            's' => 1,
+            _ => return None,
+        };
+        seconds = seconds.checked_add(number.take()?.checked_mul(unit)?)?;
+    }
+    // Digits with no unit after them, or no text at all, are not one.
+    (number.is_none() && !text.is_empty()).then(|| std::time::Duration::from_secs(seconds))
 }
 
 /// One ticket, as it is written into a plan.
@@ -2077,7 +2154,6 @@ mod tests {
     /// (§FS-005-dispatch.24.4). The minute line is drawn above this, so the
     /// reading itself keeps `1m`, `60s` and `0s` exactly as written.
     #[test]
-    #[ignore = "red until #229: a poll's interval is read out of its machine; implement removes this"]
     fn a_poll_interval_is_read_in_the_runtimes_own_grammar() {
         let tmp = tempfile::tempdir().unwrap();
         fs::write(

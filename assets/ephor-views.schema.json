@@ -1316,12 +1316,13 @@
         },
         "capacity": {
           "type": "object",
-          "description": "How capacity stood when the sweep was over, so a ceiling reported full never hides that a person is holding one of the slots (FS-005-dispatch.24). Present under `--due`, which is the only form that reads capacity.",
+          "description": "How capacity stood when the sweep was over, so a ceiling reported full never hides that a person is holding one of the slots (FS-005-dispatch.24.4). Every live root is exactly one of active, parked or polling, so those three add up to `live`. Present under `--due`, which is the only form that reads capacity.",
           "required": ["live", "active", "parked"],
           "properties": {
             "live": { "type": "integer", "description": "Work roots a run holds, whatever that run is doing \u2014 what `max_concurrent` counts." },
-            "active": { "type": "integer", "description": "Of those, the ones being worked \u2014 what `max_active` counts." },
-            "parked": { "type": "integer", "description": "Of those, the ones whose open work waits on a person: gating, or a poll declaring `waiting_on`." },
+            "active": { "type": "integer", "description": "Of those, the ones something runs in, or is about to \u2014 what `max_active` counts (FS-005-dispatch.24.4): an agent, a program or a poll attempt the run holds, an open poll of a minute or less or one whose interval cannot be read, or nothing open but work the run has not taken up. A root whose machine or plan cannot be read counts here too." },
+            "parked": { "type": "integer", "description": "Of those, the ones free because a person's turn freed them: a gating state, or a poll declaring `waiting_on` that waits more than a minute between attempts. A root freed by both a person and a machine counts here (FS-005-dispatch.24.4)." },
+            "polling": { "type": "integer", "description": "Of those, the ones free only because polls on a machine freed them: polls naming nobody they wait on, each waiting more than a minute between attempts, with no attempt under way (FS-005-dispatch.24.4). Absent from an ephor that did not count them." },
             "max_concurrent": { "type": ["integer", "null"], "description": "The aggregate roots-in-flight ceiling in force, or null where none is." },
             "max_active": { "type": ["integer", "null"], "description": "The aggregate working ceiling in force, or null where none is." }
           }

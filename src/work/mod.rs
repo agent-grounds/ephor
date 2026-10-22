@@ -5761,25 +5761,29 @@ impl Launched {
 }
 
 /// Live roots in one scope — the site, or one project — split by what they
-/// are doing (§FS-005-dispatch.24). `live` is every root in flight and
-/// answers for `max_concurrent`; `active` is the ones being worked and
-/// answers for `max_active`. The difference is the roots parked on a
-/// person's answer, which is the count a reader is owed.
+/// are doing (§FS-005-dispatch.24.4). `live` is every root in flight and
+/// answers for `max_concurrent`; `active` is the ones something runs in, or
+/// is about to, and answers for `max_active`. The rest are free, each counted
+/// once: `parked` where a person's turn freed it — the count a reader is owed
+/// — and `polling` where only a poll on a machine did.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 struct Counts {
     live: usize,
     active: usize,
+    parked: usize,
+    polling: usize,
 }
 
 impl Counts {
-    fn took(&mut self, active: bool) {
+    /// One more live root, under the verdict on it, so the three counts
+    /// always add up to `live` (§FS-005-dispatch.24.4).
+    fn took(&mut self, verdict: runtime::watch::Verdict) {
         self.live += 1;
-        self.active += usize::from(active);
-    }
-
-    /// Live but not working: the roots waiting on a person.
-    fn parked(self) -> usize {
-        self.live - self.active
+        match verdict {
+            runtime::watch::Verdict::Active => self.active += 1,
+            runtime::watch::Verdict::Parked => self.parked += 1,
+            runtime::watch::Verdict::Polling => self.polling += 1,
+        }
     }
 }
 
@@ -5807,9 +5811,9 @@ impl LiveRuns {
             }
             // What the root is doing is asked only of a root that is live:
             // the reading costs the plans and the machine, and an idle root
-            // has no slot to be spending (§FS-005-dispatch.24).
-            let active = !runtime::watch::parked(global, root);
-            live.global.took(active);
+            // has no slot to be spending (§FS-005-dispatch.24.4).
+            let verdict = runtime::watch::verdict(global, root);
+            live.global.took(verdict);
             let projects: BTreeSet<&str> = root
                 .plans
                 .iter()
@@ -5826,7 +5830,7 @@ impl LiveRuns {
                 live.projects
                     .entry(project.to_string())
                     .or_default()
-                    .took(active);
+                    .took(verdict);
             }
             for organization in organizations {
                 *live
@@ -5869,7 +5873,8 @@ impl Limits {
             return Some(Hold::Concurrency {
                 scope: scope.clone(),
                 key: Flight::Active {
-                    parked: live.parked(),
+                    parked: live.parked,
+                    polling: live.polling,
                 },
                 limit,
                 count: live.active,
@@ -6089,9 +6094,9 @@ impl Capacity {
             return;
         }
         // A run that has just begun is working: it takes a slot under both
-        // ceilings, and only parking on a person's answer gives the second
-        // one back (§FS-005-dispatch.24).
-        self.global_live.took(true);
+        // ceilings, and only waiting — on a person, or on a machine for more
+        // than a minute — gives the second one back (§FS-005-dispatch.24.4).
+        self.global_live.took(runtime::watch::Verdict::Active);
         let organizations: Vec<String> = self
             .organizations_of(projects)
             .into_iter()
@@ -6104,7 +6109,7 @@ impl Capacity {
             self.project_live
                 .entry(project.clone())
                 .or_default()
-                .took(true);
+                .took(runtime::watch::Verdict::Active);
         }
     }
 
@@ -6115,8 +6120,8 @@ impl Capacity {
         Standing {
             live: self.global_live.live,
             active: self.global_live.active,
-            parked: self.global_live.parked(),
-            polling: 0,
+            parked: self.global_live.parked,
+            polling: self.global_live.polling,
             max_concurrent: self.ceilings.site.concurrent,
             max_active: self.ceilings.site.active,
         }
@@ -6124,8 +6129,9 @@ impl Capacity {
 }
 
 /// What the sweep saw of the site's capacity when it was done
-/// (§FS-005-dispatch.24): the live roots split into the ones being worked and
-/// the ones parked on a person, beside the two ceilings that were in force.
+/// (§FS-005-dispatch.24.4): the live roots split into the ones something runs
+/// in, the ones parked on a person and the ones polling a machine, beside the
+/// two ceilings that were in force.
 /// The counts include what this sweep started, so it reads as the world the
 /// sweep left behind rather than the one it found.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -6134,8 +6140,6 @@ pub struct Standing {
     pub active: usize,
     pub parked: usize,
     /// Live roots freed only by polls on a machine (§FS-005-dispatch.24.4).
-    /// Scaffold until agent-grounds/ephor#229 is implemented: always 0, and
-    /// neither said nor published yet.
     pub polling: usize,
     pub max_concurrent: Option<usize>,
     pub max_active: Option<usize>,
@@ -6143,17 +6147,20 @@ pub struct Standing {
 
 impl Standing {
     /// The one line a reader gets: what is live, and how much of it is a
-    /// person's turn rather than work being done.
+    /// person's turn or a machine's poll rather than work being done — the
+    /// polling roots named only where there are some, so a site with no
+    /// machine waits reads as it always did (§FS-005-dispatch.24.4).
     pub fn says(&self) -> String {
         let ceiling = |key: &str, limit: Option<usize>| match limit {
             Some(limit) => format!("work.{key} {limit}"),
             None => format!("work.{key} unlimited"),
         };
         format!(
-            "capacity: {} live root(s) — {} active, {} parked ({}, {})",
+            "capacity: {} live root(s) — {} active, {} parked{} ({}, {})",
             self.live,
             self.active,
             self.parked,
+            hold::polling(self.polling),
             ceiling("max_concurrent", self.max_concurrent),
             ceiling("max_active", self.max_active),
         )

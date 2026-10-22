@@ -2392,10 +2392,14 @@ one's priority (§8.15.1). A project's `root` displaces its organization's, and 
 organization's displaces the site's (§8.4). A project ceiling is additional to the site's aggregate ceiling of
 the same name, not a replacement for it. The two ceilings count different
 things: `max_concurrent` counts every live root, and `max_active` counts only
-the live roots that are working — a root is *parked*, and outside `max_active`,
-when nothing in it is being worked and an open ticket in it waits on a person,
-either gating or a poll declaring `waiting_on` (§8.9). Omitting `max_active` is
-unlimited, so a configuration that never names it is bounded exactly as before.
+the live roots something runs in, or is about to — an agent, a program, or a
+poll's attempt. A root is free, and outside `max_active`, when nothing in it is
+running, none of its open tickets sits in a poll of a minute or less, and one
+of them waits: at a gate, or in a poll that waits more than a minute between
+attempts. A free root is *parked* when a person is what it waits on, either
+gating or a poll declaring `waiting_on`, and *polling* when only a machine is
+(§8.9). Omitting `max_active` is unlimited, so a configuration that never
+names it is bounded exactly as before.
 `ranking` is read only from the site's own `work` block — the sweep it orders
 already spans every configured project.
 
@@ -3661,11 +3665,20 @@ ephor work states
   whatever is written there reaches nobody, and a ceiling may not quietly be
   nothing. Beside those,
   `work.max_active` and `projects.<id>.work.max_active` bound only the live
-  roots that are *working*: a root whose only open tickets wait on a person —
-  gating, or a poll declaring `waiting_on` — is parked and costs a
-  `max_concurrent` slot but no `max_active` one, while a root whose machine
-  cannot be read counts as working, since a misreading must not hand out
-  capacity. They read exactly as the ceilings above: omitted is unlimited and
+  roots something runs in, or is about to
+  ([§FS-005-dispatch.24.4](functional-spec/FS-005-dispatch.md#244-a-live-root-holds-an-agent-slot-while-something-in-it-runs-or-is-about-to)). A root costs a `max_concurrent` slot but no
+  `max_active` one while it is only waiting: no agent, program or poll attempt
+  of its run holds a ticket, no open ticket sits in a poll of a minute or less,
+  and at least one sits at a gate or in a poll that waits more than a minute
+  between attempts. The line is fixed: `61s` and `30m` free their root
+  between attempts, while `1m`, `60s` and `0s` hold it, whoever the poll
+  waits on. Such a root is *parked* where a person is what it waits on —
+  gating, or a poll declaring `waiting_on` — and *polling* where only a
+  machine is: a poll on CI, the merge queue or a release tag. A ticket the run
+  has not taken up yet neither holds the slot nor gives it back, so a root
+  holding nothing but such tickets counts as active, and so does a root whose
+  machine, plan or poll interval cannot be read, since a misreading must not
+  hand out capacity. They read exactly as the ceilings above: omitted is unlimited and
   zero starts no new runs. On this command, `--max-concurrent N` replaces the
   configured aggregate roots-in-flight ceiling for this one sweep while
   organization and project ceilings remain in force; a project ceiling above
@@ -3686,10 +3699,13 @@ ephor work states
   leaves its gate
   ([§FS-005-dispatch.24.3](functional-spec/FS-005-dispatch.md#243-a-root-waiting-on-a-person-is-passed-over-not-started)).
   The reading says how many roots are live and how
-  many of those are parked, in prose and under `--json`, so a full ceiling never
-  hides that a person is holding one of the slots. Ceilings gate starts, not
-  runs already under way: several parked roots resuming at once can carry
-  working roots above `max_active` until one finishes. Beside all four,
+  many of those are parked and how many polling, in prose and under `--json`,
+  so a full ceiling never hides that a person is holding one of the slots; the
+  prose line and a `max_active` refusal name the polling roots only where there
+  are some, so a site with no machine waits reads as it always did. Ceilings
+  gate starts, not runs already under way: several free roots resuming at once
+  — an author answering, a build finishing — can carry active roots above
+  `max_active` until one finishes. Beside all four,
   `max_spend` and `max_tokens` bound what this sweep and the one at the end of
   `work sync` may *spend* in a trailing window, at the same three scopes and
   asked after the two above them (§8.3).
