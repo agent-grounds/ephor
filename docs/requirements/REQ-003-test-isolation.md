@@ -83,3 +83,68 @@ the Python fixtures — and every caller goes through it. A call site corrected
 in place leaves the next caller the same mistake to make. The removal is never
 done with a process-wide `std::env::remove_var`, which races every other test
 thread in the binary.
+
+## 4. Every ephor the suite causes runs without ephor's own flag spellings
+
+`ephor checkout`, `ephor rebase` and the rebase sweep read each value a reader
+types as a flag from an environment variable when the flag is absent —
+`--report` from `REPORT`, `--upstream` from `UPSTREAM`, and the rest — because
+that is how a program state hands a program its values
+([§FS-011-command-line.9](../functional-spec/FS-011-command-line.md#9-a-scope-selector-is-honoured-or-refused)). That is the shipped tool's behaviour, and this point
+leaves it as it is. What it rules out is the suite handing those names on: an
+`ephor` a test starts inherits whatever the suite's caller exported unless the
+suite takes it off. A rhei agent exports a relative `REPORT` naming its own
+result to everything it runs, so the suite run under one wrote a test's rebase
+report into the checkout it was run from — over the agent's result, where the
+two paths met — and passed. An inherited `PROJECT`, `ITEM` or `UPSTREAM` turned
+a sweep a case runs into a refusal and failed a case that passes clean, and the
+failure pointed its reader at the sweep rather than at the environment. The
+first writes outside what the suite made; the second makes the verdict depend
+on who ran the suite, which is what [§REQ-003-test-isolation.2](REQ-003-test-isolation.md#2-under-a-git-hook-exactly-as-under-a-plain-run) rules out for a
+hook. So every `ephor` the suite causes starts with these names removed from
+the child's environment.
+
+### 4.1 The names are written down once
+
+What is removed is every name ephor reads as a flag's environment spelling —
+today `BRANCH`, `CHECKOUT`, `FROM`, `HAND`, `ITEM`, `ONTO`, `PROJECT`, `REPORT`
+and `UPSTREAM` — and the list the removal takes them from is held to what
+`src/` reads: a check fails when ephor reads a spelling the removal lacks,
+whether it reads it through `given` or around it with `std::env::var`. A list
+kept by hand is what the next spelling is left off; the first one written for
+this point named seven and left `BRANCH` and `FROM` out.
+
+### 4.2 Only what a test sets on the spawn survives
+
+A spelling a test sets deliberately on a spawn — `CHECKOUT`, `ONTO` and
+`REPORT` where `rebase_test` reads a program state's handover, `PROJECT` and
+`BRANCH` where `checkout_test` and E2E-016 do — is set after the removal and is
+kept, as [§REQ-003-test-isolation.3.2](REQ-003-test-isolation.md#32-only-what-a-test-sets-on-the-spawn-survives) keeps a fixture's identity. Nothing the
+suite inherited is kept by accident.
+
+### 4.3 Every ephor the suite causes
+
+The removal reaches every `ephor` a test causes: the one an end-to-end case
+starts through its world, the one an integration test starts through its
+helpers, the one a driver program starts with a copy of such a command's
+environment, removals included, and the one a case binary re-run as a child
+starts through those same helpers. A driver that starts `ephor` from an empty
+environment has nothing left to remove.
+
+A library call made in-process is out of a spawn's reach: it reads the test
+process's own environment, whatever any spawn removes. Nothing in the suite
+makes one today — no unit test in `src/` and no case under `tests/` calls
+`checkout`, `rebase` or the sweep in-process, and only `main` reaches them —
+and a test that needs one of those paths starts the binary rather than calling
+it.
+
+### 4.4 One place applies it
+
+Only `tests/` starts the `ephor` binary — no unit test does, and the Python
+fixtures start it only as a Rust driver hands them that command's environment —
+so the one place is the constructor [§REQ-003-test-isolation.3.4](REQ-003-test-isolation.md#34-one-place-per-tree-applies-it) already names
+there for `ephor`. It removes the names when it builds the command, before any
+caller's own value is set, and every spawn of `ephor` goes through it. Neither
+the removal nor a test that exercises a spelling changes the test process's own
+environment with `std::env::remove_var` or `set_var`: that races every other
+test thread in the binary, and an in-process read would see it.

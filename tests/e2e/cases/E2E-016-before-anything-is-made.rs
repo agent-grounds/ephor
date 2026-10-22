@@ -215,3 +215,20 @@ fn the_shipped_work_root_and_an_empty_value_are_left_alone() {
         .failure()
         .stderr(predicate::str::contains("Nothing says which branch"));
 }
+
+/// The four cases above, run as a caller that exported every one of ephor's
+/// flag spellings runs them (§REQ-003-test-isolation.4): they pass, and
+/// `ephor checkout` writes nothing at the caller's relative `REPORT`. Two of
+/// them set `PROJECT` and `BRANCH` on the spawn on purpose, and those are the
+/// values their `ephor` must still read (§REQ-003-test-isolation.4.2); an
+/// inherited `FROM` fails a checkout the case grows from main.
+#[test]
+#[ignore = "red until #237: an inherited REPORT receives the checkout's report and an inherited FROM fails it; implement removes this"]
+fn the_case_holds_with_the_callers_flag_spellings_and_writes_no_report_of_theirs() {
+    holds_with_the_callers_flag_spellings(&[
+        "a_value_that_is_there_is_never_answered_as_no_value",
+        "a_name_that_climbs_out_of_the_project_leaves_no_directory_behind",
+        "the_work_root_is_not_a_branch",
+        "the_shipped_work_root_and_an_empty_value_are_left_alone",
+    ]);
+}

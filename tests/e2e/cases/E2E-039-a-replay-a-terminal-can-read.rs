@@ -354,3 +354,21 @@ fn the_case_holds_under_a_worktree_hook_and_leaves_its_repository_alone() {
         "a_replay_nested_in_a_sweep_follows_the_document_carrying_it",
     ]);
 }
+
+/// The four cases above, run as a caller that exported every one of ephor's
+/// flag spellings runs them, a relative `REPORT` among them: they pass, and the
+/// caller's `REPORT` is not where any rebase or sweep they run writes its
+/// report (§REQ-003-test-isolation.4). #237 named this case: two of its cases
+/// wrote a relative `REPORT` into the checkout the suite was run from, and an
+/// inherited `UPSTREAM`, `PROJECT`, `CHECKOUT`, `ITEM`, `HAND` or `ONTO` turned
+/// a sweep into a refusal.
+#[test]
+#[ignore = "red until #237: an inherited REPORT receives the sweep's report and the other spellings fail the sweep; implement removes this"]
+fn the_case_holds_with_the_callers_flag_spellings_and_writes_no_report_of_theirs() {
+    holds_with_the_callers_flag_spellings(&[
+        "a_replay_reaches_a_terminal_as_prose_and_a_file_as_the_document",
+        "the_machine_form_of_a_replay_keeps_the_document_and_the_path",
+        "the_sweeps_own_report_reaches_a_terminal_as_prose",
+        "a_replay_nested_in_a_sweep_follows_the_document_carrying_it",
+    ]);
+}

@@ -29,6 +29,9 @@ spawns ([§REQ-003-test-isolation.3.4](../../docs/requirements/REQ-003-test-isol
   ([§FS-011-command-line.9](../../docs/functional-spec/FS-011-command-line.md#9-a-scope-selector-is-honoured-or-refused), [§AR-009-surfaces.2](../../docs/architecture/AR-009-surfaces.md#2-the-session-is-built-once-and-shared)).
 - `forge_extension_test.rs` — an out-of-process forge extension, a real shell
   script and nothing else ([§FS-001-forge-interface.2](../../docs/functional-spec/FS-001-forge-interface.md#2-two-transports-one-interface)).
+- `suite_isolation_test.rs` — the suite held to its own law: every flag
+  spelling `src/` reads is one the `ephor` the suite spawns is built without
+  ([§REQ-003-test-isolation.4.1](../../docs/requirements/REQ-003-test-isolation.md#41-the-names-are-written-down-once)).
 - `agents_test.rs`, `feed_test.rs`, `registry_test.rs`, `update_test.rs` — the
   registry and feed engine driven through the CLI: project registration,
   fetch/refresh, and the AGENTS.md rendering path.

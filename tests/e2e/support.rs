@@ -31,6 +31,12 @@ mod git_env;
 #[allow(unused_imports)]
 pub use git_env::{ephor_command, git_command, remove_git_variables};
 
+// A case re-run with the caller's flag spellings exported (§REQ-003-test-isolation.4).
+#[path = "../shared/flag_spellings.rs"]
+mod flag_spellings;
+#[allow(unused_imports)]
+pub use flag_spellings::holds_with_the_callers_flag_spellings;
+
 /// The project every case watches. One id, so a case reads as a story about a
 /// project rather than as a fixture with names in it.
 pub const PROJECT: &str = "demo";
