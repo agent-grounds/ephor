@@ -236,6 +236,17 @@ fn an_undeclared_settle_is_refused_by_name_and_reaches_nothing() {
 
 #[test]
 fn a_site_bound_carrier_is_asked_with_no_project() {
+    site_bound_settlement_with_startup_delay(false);
+}
+
+#[test]
+fn healthy_startup_site_bound_settlement_keeps_no_project_routing() {
+    site_bound_settlement_with_startup_delay(true);
+}
+
+/// Healthy startup evidence for §FS-005-dispatch.13 retains site routing
+/// through refresh and settlement (§FS-001-forge-interface.9).
+fn site_bound_settlement_with_startup_delay(delayed: bool) {
     let world = MailWorld::new(false);
     world.put(
         "capabilities.json",
@@ -243,7 +254,7 @@ fn a_site_bound_carrier_is_asked_with_no_project() {
     );
     // Bound once for the site; the project claims the list the mail is on.
     world.world.configure(json!({
-        "defaults": {"provider_timeout_seconds": 1},
+        "defaults": {"provider_timeout_seconds": reply_world::HEALTHY_CARRIER_TIMEOUT_SECONDS},
         "sources": [{"provider": "mail-me", "user": "me"}],
         "projects": {"demo": {"providers": []}}
     }));
@@ -252,7 +263,19 @@ fn a_site_bound_carrier_is_asked_with_no_project() {
     row["room"] = json!(LIST);
     world.put("conversation.json", row);
     world.flag("log-calls");
+    if delayed {
+        world.delay_startup("messages");
+    }
     world.ok(&["refresh"]);
+    if delayed {
+        assert_eq!(
+            world.lines("startup.jsonl"),
+            vec![
+                json!({"command": "messages", "phase": "started"}),
+                json!({"command": "messages", "phase": "ready"}),
+            ]
+        );
+    }
     let placement = world.world.matter(ITEM)["placement"].clone();
     assert_eq!(
         placement["on"]["how"], "venue",
