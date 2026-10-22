@@ -11,6 +11,9 @@
 #[path = "../support.rs"]
 mod support;
 
+#[path = "../cleanup_observation_cases.rs"]
+mod cleanup_observation_cases;
+
 use std::fs;
 use std::io::{Read, Write};
 use std::path::Path;
@@ -185,6 +188,19 @@ fn tui(
     environment: &[(&str, &str)],
     notice_timeout: Option<Duration>,
 ) -> TuiRun {
+    tui_with_process_probe(world, keys, environment, notice_timeout, process_alive)
+}
+
+/// A controllable process-state probe lets the PTY regression exercise the
+/// observation race without starving a CPU (§FS-016-browser-opening.2).
+/// The default probe and the single-sample behavior are unchanged here.
+fn tui_with_process_probe(
+    world: &World,
+    keys: &[u8],
+    environment: &[(&str, &str)],
+    notice_timeout: Option<Duration>,
+    mut process_probe: impl FnMut(&str) -> bool,
+) -> TuiRun {
     let binary = assert_cmd::cargo::cargo_bin("ephor");
     let script_command = format!(
         "/bin/stty rows 16 cols 48; printf '%s' \"$$\" > {}; exec {} tui",
@@ -270,7 +286,7 @@ fn tui(
             );
             let pid = read_or_empty(world, "opener.pid").trim().to_string();
             if !pid.is_empty() {
-                opener_alive_before_enter = Some(process_alive(&pid));
+                opener_alive_before_enter = Some(process_probe(&pid));
             }
             #[cfg(target_os = "linux")]
             if world.path().join("escaped.pid").exists() {
