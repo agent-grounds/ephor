@@ -78,8 +78,9 @@ pub struct WorkConfig {
     #[serde(default)]
     pub max_concurrent: Option<usize>,
     /// The most autorun roots that may be *working* across the site — the
-    /// live ones, less those parked on a person's answer
-    /// (§FS-005-dispatch.24). Read exactly as [`WorkConfig::max_concurrent`]
+    /// live ones something runs in, or is about to; a root parked on a
+    /// person or polling a machine between attempts holds no slot
+    /// (§FS-005-dispatch.24.4). Read exactly as [`WorkConfig::max_concurrent`]
     /// is: omitted is unlimited, zero pauses new autorun starts. Omitting it
     /// is the default, so a site that names only the other key is bounded
     /// exactly as it was.

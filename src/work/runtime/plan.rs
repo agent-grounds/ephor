@@ -818,6 +818,9 @@ fn state_infos(yaml: &str) -> Vec<StateInfo> {
     // Whether the lines being read hang under the current state's `poll:`.
     // Only they may say who the poll waits on (§FS-005-dispatch.24).
     let mut in_poll = false;
+    // The indent of the block poll's own keys, taken from its first one: an
+    // `interval:` deeper than that belongs to some other key (§FS-005-dispatch.24.4).
+    let mut poll_keys: Option<usize> = None;
     for line in yaml.lines() {
         if line.starts_with("states:") {
             inside = true;
@@ -831,7 +834,8 @@ fn state_infos(yaml: &str) -> Vec<StateInfo> {
         }
         let indent = line.len() - line.trim_start().len();
         let trimmed = line.trim();
-        if trimmed.starts_with('#') {
+        // A blank line closes nothing: YAML gives it no indent of its own.
+        if trimmed.is_empty() || trimmed.starts_with('#') {
             continue;
         }
         // Anything at the state's own key level or above has closed the poll
@@ -865,6 +869,9 @@ fn state_infos(yaml: &str) -> Vec<StateInfo> {
             };
             if let Some(rest) = opens_poll {
                 in_poll = rest.is_empty();
+                poll_keys = None;
+            } else if in_poll && poll_keys.is_none() {
+                poll_keys = Some(indent);
             }
             let person_wait = waits_on_someone(trimmed)
                 && match indent {
@@ -896,7 +903,7 @@ fn state_infos(yaml: &str) -> Vec<StateInfo> {
                         Some(flow) => flow_interval(flow),
                         None => Interval::Unknown,
                     });
-                } else if in_poll {
+                } else if in_poll && poll_keys == Some(indent) {
                     if let Some(value) = trimmed.strip_prefix("interval:") {
                         last.poll = Some(interval(uncommented(value)));
                     }
@@ -2201,6 +2208,42 @@ mod tests {
                 "    poll:\n",
                 "      interval: 0s\n",
                 "      waiting_on: author\n",
+                // A key of its own under the poll may hold an `interval:`;
+                // only the poll's own is the one the runtime waits.
+                "  nested-flow:\n",
+                "    poll:\n",
+                "      interval: 30s\n",
+                "      note: { interval: 30m }\n",
+                "  nested-block:\n",
+                "    poll:\n",
+                "      interval: 30s\n",
+                "      max_attempts: 5\n",
+                "      note:\n",
+                "        interval: 30m\n",
+                "  nested-first:\n",
+                "    poll:\n",
+                "      note:\n",
+                "        interval: 30m\n",
+                "      interval: 30s\n",
+                // A comment after `poll:` still opens the block.
+                "  block-commented-person:\n",
+                "    poll:   # half-hourly\n",
+                "      interval: 30m\n",
+                "      waiting_on: author\n",
+                "  block-commented-machine:\n",
+                "    poll:   # half-hourly\n",
+                "      interval: 30m\n",
+                "      max_attempts: 5\n",
+                // A blank line inside the block closes nothing.
+                "  blank-before:\n",
+                "    poll:\n",
+                "\n",
+                "      interval: 30m\n",
+                "  blank-between:\n",
+                "    poll:\n",
+                "      interval: 30m\n",
+                "\n",
+                "      waiting_on: author\n",
                 "  done:\n    final: true\n",
             ),
         )
@@ -2223,6 +2266,19 @@ mod tests {
         // is read beside it as before.
         assert_eq!(root.poll_interval("immediate"), every(0));
         assert!(root.waits_on_person("immediate"));
+        assert_eq!(root.poll_interval("nested-flow"), every(30));
+        assert_eq!(root.poll_interval("nested-block"), every(30));
+        assert_eq!(root.poll_interval("nested-first"), every(30));
+        assert_eq!(root.poll_interval("block-commented-person"), every(30 * 60));
+        assert!(root.waits_on_person("block-commented-person"));
+        assert_eq!(
+            root.poll_interval("block-commented-machine"),
+            every(30 * 60)
+        );
+        assert!(!root.waits_on_person("block-commented-machine"));
+        assert_eq!(root.poll_interval("blank-before"), every(30 * 60));
+        assert_eq!(root.poll_interval("blank-between"), every(30 * 60));
+        assert!(root.waits_on_person("blank-between"));
         assert_eq!(root.poll_interval("done"), None);
     }
 
