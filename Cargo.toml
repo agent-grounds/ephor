@@ -278,6 +278,10 @@ name = "e2e_062_a_cache_past_its_ttl_is_named"
 path = "tests/e2e/cases/E2E-062-a-cache-past-its-ttl-is-named.rs"
 
 [[test]]
+name = "e2e_063_a_finished_blocked_verdict_is_read_not_gated"
+path = "tests/e2e/cases/E2E-063-a-finished-blocked-verdict-is-read-not-gated.rs"
+
+[[test]]
 name = "checkout_test"
 path = "tests/integration/checkout_test.rs"
 
