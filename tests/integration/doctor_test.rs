@@ -768,8 +768,6 @@ fn assert_untouched(what: &str, before: &str, after: &str, doctor: &std::process
 /// repository: no `[user]`, no commit on its branch, nothing staged, and no
 /// worktree added by the `ephor checkout` it walks (§FS-010-doctor.4.1).
 #[test]
-#[ignore = "red until #238: the self pass hands an inherited GIT_DIR to the git it starts, \
-            which commits into that repository, and exits 1; implement removes this"]
 fn issue_238_the_self_pass_writes_nothing_into_the_repository_git_dir_names() {
     let tmp = tempdir();
     let plain = tmp.path().join("plain");
@@ -798,9 +796,6 @@ fn issue_238_the_self_pass_writes_nothing_into_the_repository_git_dir_names() {
 /// `core.bare` false and adds no `[user]` there, moves no branch — the one being
 /// committed to included — and adds no worktree (§FS-010-doctor.4.1).
 #[test]
-#[ignore = "red until #238: the self pass hands a linked worktree's GIT_DIR to the git it \
-            starts, which sets core.bare and a [user] in the shared .git, and exits 1; \
-            implement removes this"]
 fn issue_238_the_self_pass_from_a_linked_worktrees_hook_leaves_the_shared_repository_alone() {
     let tmp = tempdir();
     let main = tmp.path().join("main");

@@ -64,7 +64,10 @@ impl Site {
     }
 
     /// Run ephor with nothing of the reader's environment that would change
-    /// what it reads. Every path is inside the scratch site.
+    /// what it reads. Every path is inside the scratch site, and none of the
+    /// reader's repository-local git variables reaches the child, so a `GIT_DIR`
+    /// a hook exported cannot point its git at the reader's repository
+    /// (§FS-010-doctor.4.1).
     fn ephor(&self, args: &[&str]) -> Result<std::process::Output, String> {
         let exe = std::env::current_exe()
             .map_err(|err| format!("cannot find the running ephor: {err}"))?;
@@ -76,7 +79,8 @@ impl Site {
             ),
             None => self.dir.join("bin").display().to_string(),
         };
-        Command::new(exe)
+        let mut command = Command::new(exe);
+        crate::git::without_repository_variables(&mut command)
             .args(args)
             .current_dir(&self.dir)
             .env("PATH", path)
@@ -623,8 +627,12 @@ fn executable(path: &Path, body: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// Run git on a scratch repository. Every repository the site touches is one
+/// it made, so an inherited `GIT_DIR` is never meant: it would win over `-C`
+/// and send the scratch `init`, identity and commit into the reader's
+/// repository (§FS-010-doctor.4.1).
 fn git(dir: &Path, args: &[&str]) -> Result<(), String> {
-    let out = crate::git::command()
+    let out = crate::git::without_repository_variables(&mut crate::git::command())
         .arg("-C")
         .arg(dir)
         .args(args)
