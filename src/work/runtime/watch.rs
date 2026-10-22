@@ -143,6 +143,13 @@ pub fn verdict(config: &WorkConfig, group: &RootPlans) -> Verdict {
     // What freed the root so far: a person's turn, and a poll on a machine.
     let (mut person, mut machine) = (false, false);
     for plan_ref in &group.plans {
+        // A plan that is gone is not read at all, whether or not a machine
+        // could have judged it (§FS-005-dispatch.24.4).
+        let plan = match Plan::read(&plan_ref.path) {
+            Ok(Some(plan)) => plan,
+            Ok(None) => continue,
+            Err(_) => return Verdict::Active,
+        };
         let own = super::plan::own_machine(&plan_ref.path);
         let judge: Option<&WorkRoot> = match &own {
             Ok(Some(store)) => Some(store),
@@ -151,11 +158,6 @@ pub fn verdict(config: &WorkConfig, group: &RootPlans) -> Verdict {
         };
         let Some(judge) = judge else {
             return Verdict::Active;
-        };
-        let plan = match Plan::read(&plan_ref.path) {
-            Ok(Some(plan)) => plan,
-            Ok(None) => continue,
-            Err(_) => return Verdict::Active,
         };
         for ticket in plan.tickets() {
             let Some(state) = ticket.state.as_deref() else {
@@ -1638,6 +1640,39 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let mut group = root_with_tickets(tmp.path(), WAITS, &task("fix-1", "holding"));
         let gone = tmp.path().join("widget-43.rhei.md");
+        assert!(Plan::read(&gone).unwrap().is_none());
+        beside(&mut group, gone);
+        assert_eq!(verdict(&config(), &group), Verdict::Polling);
+    }
+
+    /// Nor where the root declares no machine to judge it by: a gone plan is
+    /// skipped before a judge is looked for (§FS-005-dispatch.24.4).
+    #[test]
+    fn a_plan_that_is_gone_is_not_read_where_the_root_has_no_machine() {
+        let tmp = tempfile::tempdir().unwrap();
+        let store = tmp.path().join("widget-42");
+        fs::create_dir_all(&store).unwrap();
+        write(&store.join("states.yaml"), WAITS);
+        let plan = store.join("index.rhei.md");
+        write(
+            &plan,
+            &format!(
+                "# Rhei: t\n**States:** m\n\n## Tasks\n\n{}",
+                task("fix-1", "holding")
+            ),
+        );
+        let mut group = RootPlans {
+            root: tmp.path().to_path_buf(),
+            plans: vec![PlanRef {
+                project: "widget".to_string(),
+                plan_id: "widget-42".to_string(),
+                path: plan,
+                item: Some("forge:widget/42".to_string()),
+                title: "Widen the retry window".to_string(),
+            }],
+        };
+        assert!(WorkRoot::open(tmp.path()).unwrap().is_none());
+        let gone = tmp.path().join("widget-43").join("index.rhei.md");
         assert!(Plan::read(&gone).unwrap().is_none());
         beside(&mut group, gone);
         assert_eq!(verdict(&config(), &group), Verdict::Polling);
