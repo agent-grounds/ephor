@@ -1580,7 +1580,6 @@ mod tests {
     /// A note in a trailing comment declares nobody, so a machine poll that
     /// carries one is polling, not parked (§FS-005-dispatch.24.4).
     #[test]
-    #[ignore = "red until #236: a machine poll noted `# waiting_on: nobody, CI` parks its root; implement removes this"]
     fn a_machine_poll_with_a_noted_comment_is_polling() {
         let tmp = tempfile::tempdir().unwrap();
         let at = |name: &str| tmp.path().join(name);

@@ -919,7 +919,6 @@ fn a_root_polling_a_machine_gives_its_agent_slot_to_the_next_due_root() {
 /// root that gave its slot back is counted polling, and no person is said to
 /// owe an answer.
 #[test]
-#[ignore = "red until #236: a waiting_on: in a poll line's trailing comment counts the root parked; implement removes this"]
 fn a_root_whose_machine_poll_carries_a_noted_comment_is_counted_polling() {
     let world = two_projects();
     world.configure(two_projects_configured(true, json!(1)));

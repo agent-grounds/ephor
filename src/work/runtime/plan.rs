@@ -873,10 +873,12 @@ fn state_infos(yaml: &str) -> Vec<StateInfo> {
             } else if in_poll && poll_keys.is_none() {
                 poll_keys = Some(indent);
             }
+            // Only the poll's own key says who it waits on, the same key an
+            // `interval:` is read from (§FS-005-dispatch.24.4).
             let person_wait = waits_on_someone(trimmed)
                 && match indent {
                     4 => trimmed.starts_with("poll:"),
-                    _ => in_poll,
+                    _ => in_poll && poll_keys == Some(indent),
                 };
             if let Some(last) = states.last_mut() {
                 if let Some(value) = flag("final:") {
@@ -914,23 +916,31 @@ fn state_infos(yaml: &str) -> Vec<StateInfo> {
     states
 }
 
-/// Whether a line declaring `waiting_on:` names somebody: the label after
-/// the key, cut where a flow mapping ends the value and unquoted
-/// (§FS-005-dispatch.24). A blank label is not a declaration — the runtime
-/// refuses one, and reading it as a person wait would hand out capacity on a
-/// machine that will not run at all.
+/// Whether a line of a poll declares that it waits on somebody: the label its
+/// `waiting_on:` key gives, as an entry of the flow mapping a `poll:` line
+/// opens or as the key a block poll's line starts with, unquoted
+/// (§FS-005-dispatch.24). The key alone declares it (§FS-005-dispatch.24.4):
+/// a comment is no part of the line's value, so a `waiting_on:` written in
+/// one declares nobody, and neither does one inside another key's value. A
+/// blank label is not a declaration — the runtime refuses one, and reading it
+/// as a person wait would hand out capacity on a machine that will not run at
+/// all.
 fn waits_on_someone(line: &str) -> bool {
-    let Some((_, after)) = line.split_once("waiting_on:") else {
-        return false;
+    let line = uncommented(line);
+    let label = match line.strip_prefix("poll:") {
+        Some(rest) => rest
+            .trim_start()
+            .strip_prefix('{')
+            .and_then(|flow| flow_value(flow, "waiting_on")),
+        None => line.strip_prefix("waiting_on:"),
     };
-    !after
-        .split([',', '}'])
-        .next()
-        .unwrap_or(after)
-        .trim()
-        .trim_matches(['"', '\''].as_slice())
-        .trim()
-        .is_empty()
+    label.is_some_and(|label| {
+        !label
+            .trim()
+            .trim_matches(['"', '\''].as_slice())
+            .trim()
+            .is_empty()
+    })
 }
 
 /// A value with its trailing YAML comment left out: a `#` that opens the text
@@ -945,14 +955,23 @@ fn uncommented(text: &str) -> &str {
 /// follows its opening brace (§FS-005-dispatch.24.4). A mapping that names
 /// no interval, or one that does not close on this line, is unknown.
 fn flow_interval(flow: &str) -> Interval {
-    let Some((entries, _)) = uncommented(flow).split_once('}') else {
+    if !uncommented(flow).contains('}') {
         return Interval::Unknown;
-    };
-    entries
+    }
+    flow_value(flow, "interval").map_or(Interval::Unknown, interval)
+}
+
+/// The value a flow mapping gives `key`, `flow` being what follows its
+/// opening brace: its entries as far as it goes on this line, comment left
+/// out (§FS-005-dispatch.24.4).
+fn flow_value<'a>(flow: &'a str, key: &str) -> Option<&'a str> {
+    let flow = uncommented(flow);
+    flow.split_once('}')
+        .map_or(flow, |(entries, _)| entries)
         .split(',')
         .filter_map(|entry| entry.split_once(':'))
-        .find(|(key, _)| key.trim() == "interval")
-        .map_or(Interval::Unknown, |(_, value)| interval(value))
+        .find(|(name, _)| name.trim() == key)
+        .map(|(_, value)| value)
 }
 
 /// One poll interval's value, unquoted and read as the runtime reads it
@@ -2049,11 +2068,23 @@ mod tests {
                 "  reviewed:\n",
                 "    # waiting_on: author\n",
                 "    agent: x\n",
+                // Nor is the key's name inside another key's value, or a key
+                // that hangs under one of the poll's own (§FS-005-dispatch.24.4).
+                "  noted-elsewhere:\n",
+                "    poll:\n",
+                "      interval: 5m\n",
+                "      note: \"waiting_on: author\"\n",
+                "      notes:\n",
+                "        waiting_on: author\n",
+                "  flow-noted-elsewhere:\n",
+                "    poll: { interval: 5m, note: \"waiting_on: author\" }\n",
                 "  done:\n    final: true\n",
             ),
         )
         .unwrap();
         let root = WorkRoot::open(tmp.path()).unwrap().unwrap();
+        assert!(!root.waits_on_person("noted-elsewhere"));
+        assert!(!root.waits_on_person("flow-noted-elsewhere"));
         assert!(root.waits_on_person("plan-approval"));
         assert!(root.waits_on_person("review-wait"));
         assert!(!root.waits_on_person("ci-wait"));
@@ -2309,7 +2340,6 @@ mod tests {
     /// alike, and a blank label does not take the comment after it for a
     /// name (§FS-005-dispatch.24.4).
     #[test]
-    #[ignore = "red until #236: a waiting_on: in a poll line's trailing comment reads as a person wait; implement removes this"]
     fn a_comment_on_a_polls_line_declares_nobody() {
         let tmp = tempfile::tempdir().unwrap();
         fs::write(
