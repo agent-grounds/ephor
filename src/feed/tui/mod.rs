@@ -15,6 +15,7 @@
 mod actions;
 mod answers;
 mod burn;
+mod cache_freshness;
 mod gate;
 mod human_gate;
 mod navigator;
@@ -50,6 +51,7 @@ pub(crate) use crate::branches::WorkspaceState;
 use actions::{ActionMenu, MenuOutcome};
 use answers::{AnswerOutcome, AnswerScreen};
 use burn::BurnScreen;
+use cache_freshness::CacheFreshness;
 use gate::GateScreen;
 use human_gate::HumanGateScreen;
 use navigator::NavigatorState;
@@ -248,6 +250,8 @@ const BURN_TICK: Duration = Duration::from_secs(10);
 
 struct App {
     ctx: Ctx,
+    /// Newer local caches compared with displayed feeds (§FS-001-forge-interface.7.1).
+    cache_freshness: CacheFreshness,
     navigator: NavigatorState,
     screen: Screen,
     /// The screen the reader was on when the operations board opened over
@@ -306,12 +310,23 @@ pub(crate) fn highlight_style() -> Style {
 
 impl App {
     fn load(config: &StatusConfig, scope: &crate::scope::Projects) -> Result<Self> {
+        // The same scope as the session below, captured before it reads any
+        // feed: a later stat could conceal a replacement during initial load
+        // (§FS-001-forge-interface.7.1).
+        let mut cache_freshness = CacheFreshness::default();
+        cache_freshness.before_read(
+            scope
+                .over(config.projects.keys())?
+                .into_iter()
+                .map(String::as_str),
+        );
         // The same session a command opens (§AR-009-surfaces.2): the screen
         // reads exactly the data `ephor actions` and `ephor branches` do —
         // over the same scope, so the screen and the table agree about which
         // projects a selector left (§FS-011-command-line.9).
         let mut app = App {
             ctx: Ctx::open_over(config, scope)?,
+            cache_freshness,
             navigator: NavigatorState::new(),
             screen: Screen::Navigator,
             saved: None,
@@ -350,6 +365,10 @@ impl App {
     }
 
     fn reload_feeds(&mut self) -> Result<()> {
+        // Keep metadata tied to the read, while the actual loaded fetch time
+        // determines which warnings have caught up (§FS-001-forge-interface.7.1).
+        self.cache_freshness
+            .before_read(self.ctx.projects.iter().map(String::as_str));
         self.ctx.reload_feeds()?;
         self.reload_work_groups();
         self.reload_work();
@@ -2069,6 +2088,13 @@ impl App {
     /// half of [`App::reload_feeds`], and the rest waits for the end of the
     /// run (§FS-001-forge-interface.7).
     fn absorb(&mut self, project: &str) -> Result<()> {
+        // Unknown arrivals cannot expand the local cache watch. Advance the
+        // observation baseline before reading this displayed snapshot
+        // (§FS-001-forge-interface.7.1).
+        if !self.ctx.projects.iter().any(|known| known == project) {
+            return Ok(());
+        }
+        self.cache_freshness.before_read([project]);
         let landed = cache::load_feed(project)?.unwrap_or_else(|| ProjectFeed {
             project: project.to_string(),
             ..ProjectFeed::default()
@@ -2201,9 +2227,12 @@ impl App {
             return false;
         }
         self.ticked_at = std::time::Instant::now();
-        // The burn store, where the page that reads it is open
-        // (§FS-013-burn.8). First, and on its own clock, because it is the
-        // only thing here that reads outside the work roots.
+        // External refreshes have no arrival on our channel. Observe only
+        // known local caches, asking for a frame only when the displayed
+        // warning changes (§FS-001-forge-interface.7.1).
+        let cache_moved = self.cache_freshness.observe(&self.ctx.feeds);
+        // The burn store, where the page that reads it is open, stays on its
+        // own slower clock (§FS-013-burn.8).
         let burned = self.tick_burn();
         // Jobs first, and whatever screen the reader is on: a job ending is
         // news exactly as a ticket parking is (§FS-005-dispatch.17), and the
@@ -2235,7 +2264,7 @@ impl App {
             // The board is closed, so nothing below it can change the screen —
             // but a job that ended already has (§FS-005-dispatch.17), and so
             // has a burn page that took a fresh reading.
-            _ => return jobs_moved || burned,
+            _ => return jobs_moved || burned || cache_moved,
         };
         // A run *starting* on a root the board has no row for writes nothing
         // the timestamp above watches — the OS takes its lock, and that is the
@@ -2260,7 +2289,7 @@ impl App {
         // Only where something actually moved: a board that redrew itself
         // every couple of seconds regardless would be paying for a frame to
         // show the reader what they are already looking at.
-        found.changed
+        found.changed || burned || cache_moved
     }
 
     /// Probe every job ephor knows of, and answer whether the screen moved
@@ -2369,9 +2398,18 @@ impl App {
         // away the title or refresh progress (§FS-016-browser-opening.2).
         let browser_success =
             self.message == crate::seams::browser::Outcome::ExitedSuccessfully.message();
-        let [header_area, message_area, body_area, footer_area] = Layout::vertical([
+        // Give the warning its own wrapped space so messages/progress cannot
+        // hide it, and multiple affected projects remain named
+        // (§FS-001-forge-interface.7.1).
+        let warning = self
+            .cache_freshness
+            .warning(&self.ctx.feeds)
+            .map(|warning| thread::wrap_line(&warning, usize::from(frame.area().width.max(1))))
+            .unwrap_or_default();
+        let [header_area, message_area, warning_area, body_area, footer_area] = Layout::vertical([
             Constraint::Length(1),
             Constraint::Length(u16::from(browser_success)),
+            Constraint::Length(warning.len().min(usize::from(u16::MAX)) as u16),
             Constraint::Min(1),
             Constraint::Length(1),
         ])
@@ -2417,6 +2455,15 @@ impl App {
                 message_area,
             );
         }
+
+        frame.render_widget(
+            Paragraph::new(warning.join("\n")).style(
+                Style::default()
+                    .fg(Color::Yellow)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            warning_area,
+        );
 
         match &mut self.screen {
             Screen::Navigator => self.navigator.draw(&self.ctx, frame, body_area),
