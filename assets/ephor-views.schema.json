@@ -224,7 +224,20 @@
         "state": { "type": "string" },
         "finished": { "type": "boolean" },
         "cancelled": { "type": "boolean", "description": "Taken back through the runtime's own transition (FS-005-dispatch.16) — a different kind of over from finished." },
-        "verdict": { "type": "string" }
+        "verdict": { "type": "string" },
+        "outcome_files": {
+          "type": "array",
+          "description": "Where a finished, non-cancelled ticket's readable verdict is explicitly `blocked`: its verdict artifact, then its runtime result, as the review lists them (FS-005-dispatch.9.2, FS-005-dispatch.23). Absent for every other ticket. Read-only history: it is never a gate and nothing is waiting on it.",
+          "items": {
+            "type": "object",
+            "required": ["name", "path", "problem"],
+            "properties": {
+              "name": { "type": "string", "description": "`<ticket> · finished blocked · verdict` or `<ticket> · finished blocked · result`." },
+              "path": { "type": "string" },
+              "problem": { "type": ["string", "null"], "description": "Why the file cannot be read, where it cannot." }
+            }
+          }
+        }
       }
     },
     "step": {
@@ -1465,7 +1478,7 @@
       }
     },
     "work-review": {
-      "description": "`ephor work review --json` — current human gates, declared destinations, and local review files for one matter (FS-005-dispatch.9.1). Reading this view does not advance work.",
+      "description": "`ephor work review --json` — current human gates, declared destinations, and local review files for one matter (FS-005-dispatch.9.1). `gates` comes from current state alone; `files` also lists, after every gate's materials, the verdict and result of each finished ticket whose verdict is `blocked`, labelled `finished blocked`, and does so even where `gates` is empty (FS-005-dispatch.9.2). Reading this view does not advance work.",
       "type": "object",
       "required": ["gates", "files"],
       "properties": {

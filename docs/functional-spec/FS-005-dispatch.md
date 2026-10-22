@@ -1022,6 +1022,45 @@ never copied into a reply, dossier or provider call by reviewing or deciding.
 The command line exposes the same reading and transition as the interface,
 including a JSON reading of destinations, conditions and file availability.
 
+Gates come from current state alone: a ticket is a gate because the state it
+sits in now is a gating one, never because of a verdict it wrote earlier.
+
+### 9.2 A finished blocked verdict is read beside the gates, never as one
+
+A ticket can finish by saying that a person has to do something first: its
+verdict is `blocked`, and the reason is in what it wrote. That is an outcome,
+not a gate. The ticket is final, the runtime will not move it, and there is no
+decision to take on it — so nothing here offers one. But the reason is still
+the one thing the reader needs, and a review that answers *no gate* with
+nothing to open leaves them to search the plan's runtime directory by hand
+([§GOAL-003-nothing-lost](../goals.md#goal-003-nothing-lost-the-watch-is-trusted-enough-to-retire-the-sweep)).
+
+So reviewing a matter also lists the files of every **finished blocked**
+ticket in its work: a ticket in a final state, not cancelled, whose verdict
+artifact is readable and whose verdict is explicitly `blocked`. Each such
+ticket contributes, in plan order and after every live gate's materials, its
+verdict artifact and then its runtime result, labelled
+`<ticket> · finished blocked · verdict` and `<ticket> · finished blocked ·
+result`. Paths already listed are not listed twice. Only those two known
+locations are read; no directory is swept and no link in them is followed. A
+result that is missing or unreadable beside a readable blocked verdict is still
+listed, with its problem, as any review file is
+([§FS-005-dispatch.9.1](FS-005-dispatch.md#91-a-human-gate-is-reviewed-and-moved-where-its-matter-is-read)).
+
+These files are read-only history. They add no gate, no destination and no
+transition, count toward no parked work, and start no run. Opening one goes
+through the same bounded, local viewer as a gate's files — `--file N` on the
+command line, the same selection in the interface — and where a matter has no
+live gate, the review still says *No work is waiting at a human gate for this
+matter.* and lists the finished files under it, because both are true.
+
+Nothing else changes. A finished ticket with no readable verdict, a verdict
+other than `blocked`, or a cancellation contributes no file and is presented
+exactly as before, in the list and in the review: a plan a workflow laid keeps
+its verdicts elsewhere
+([§FS-005-dispatch.35](FS-005-dispatch.md#35-what-a-ledger-entry-may-be-forgotten-for-is-read-from-the-plans)),
+and a row pointing at a file nobody was meant to write would be noise.
+
 ## 10. What ephor offers is not a limit on what can be asked
 
 Recipes are for the work that repeats. Most work does not: a reader looks at a
@@ -2658,6 +2697,18 @@ lock and never remembered
 ([§FS-005-dispatch.15](FS-005-dispatch.md#15-every-operation-is-visible-in-one-place)); a line for work that is
 over has no ticket to take back. Each says so in one sentence rather than
 appearing to act.
+
+**A finished blocked verdict says it is finished.** Where the last ticket's
+verdict is `blocked`, its line is a finished one — `✓ fix-gate · finished
+blocked`, never the verdict's own imperative sentence on its own, which reads
+as a person being waited on now — and the list prints, under it, the first
+readable file of that outcome, its verdict preferred over its result, so the
+reason is one open away
+([§FS-005-dispatch.9.2](FS-005-dispatch.md#92-a-finished-blocked-verdict-is-read-beside-the-gates-never-as-one)).
+The JSON reading carries the same files on the ticket as `outcome_files`, each
+a `name`, a `path` and a `problem`, absent where there are none; `state`,
+`finished`, the raw `verdict` and a review's `gates` keep the meanings they had
+([§REQ-002-parity.3](../requirements/REQ-002-parity.md#3-every-reading-answers-a-program)).
 
 ## 24. Work nobody has to start starts itself
 
