@@ -1273,6 +1273,18 @@ send, replay or resolution checks, displays the actual target and prepared
 words, and writes neither state nor lock files and never posts. It cannot
 guarantee a later disk write will succeed.
 
+**Evidence from the executable carrier.** The reply scenarios exercise both
+message refresh and sending through an external process, including replacement
+site configurations and saved source routing. Controlled startup latency must
+still let a healthy fixture answer and record its request within the fixture's
+configured budget. This is distinct from losing an acknowledgement after remote
+delivery: that scenario must time out with one recorded request and one delivery,
+then retain the recovery and refusal checks above. These are test conditions for
+the existing executable-forge and explicit-failure behavior
+([§FS-001-forge-interface.2](FS-001-forge-interface.md#2-two-transports-one-interface),
+[§FS-001-forge-interface.6](FS-001-forge-interface.md#6-a-source-that-did-not-answer-says-so-and-says-which-kind-of-not)),
+not a product latency guarantee or a change to the provider timeout default.
+
 ### 13.1 An issue nobody holds is owed work, not an answer
 
 A matter can wait on the reader for more than one reason, and only one of them

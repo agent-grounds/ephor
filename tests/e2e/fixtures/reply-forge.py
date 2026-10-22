@@ -53,6 +53,15 @@ def append(name, value):
 
 
 # Opt-in: a dry run elsewhere must leave this directory as it found it.
+# Model startup latency before handling or recording the selected command.
+# World-local and off by default; no subprocess survives the provider timeout.
+# This separates healthy startup from post-delivery loss (§FS-005-dispatch.13).
+delay = read("startup-delay.json")
+if delay and delay["command"] == command:
+    append("startup.jsonl", {"command": command, "phase": "started"})
+    time.sleep(delay["seconds"])
+    append("startup.jsonl", {"command": command, "phase": "ready"})
+
 if (mail / "log-calls").exists():
     append("calls.jsonl", {"command": command, "request": request})
 

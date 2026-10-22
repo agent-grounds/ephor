@@ -23,7 +23,13 @@ fn held(world: &MailWorld, drafted: bool, unknown: bool) -> Option<std::path::Pa
     world.flag(if unknown { "unknown" } else { "fail-ack" });
     let out = world.reply(if drafted { None } else { Some("Thanks") });
     assert!(!out.status.success(), "{}", says(&out));
-    assert_eq!(world.requests().len(), 1);
+    assert_eq!(
+        world.requests().len(),
+        1,
+        "held send must reach the carrier: {}; startup: {:?}",
+        says(&out),
+        world.lines("startup.jsonl")
+    );
     draft
 }
 
@@ -181,14 +187,24 @@ fn original_legacy_and_unknown_holds_resolve_even_after_configuration_is_removed
 
 #[test]
 fn original_site_context_survives_new_project_precedence_placement_replay_and_resolution() {
+    site_context_with_startup_delay(None);
+}
+
+pub(super) fn site_context_with_startup_delay(command: Option<&str>) {
     for choice in ["replay", "sent", "not-sent"] {
         let world = MailWorld::new(true);
         world.world.configure(json!({"defaults":{"provider_timeout_seconds":1},"sources":[{"provider":"mail-me","user":"me"}],"projects":{"demo":{"providers":[]}}}));
+        if command == Some("reply") {
+            world.delay_startup("reply");
+        }
         // Retain the already cached row's placement; fetch attribution is
         // independent of the binding chosen for the write.
         held(&world, false, choice != "replay");
         assert_eq!(world.requests()[0]["project"], "");
         world.world.configure(json!({"defaults":{"provider_timeout_seconds":1},"sources":[{"provider":"mail-me","user":"me"}],"projects":{"demo":{"providers":[{"provider":"mail-me","user":"other-account"}]}}}));
+        if command == Some("messages") {
+            world.delay_startup("messages");
+        }
         world.flag("absent");
         world.refresh();
         if choice == "replay" {
@@ -591,9 +607,16 @@ fn finished_work_reopens_with_new_binding_and_its_own_advertised_output() {
 
 #[test]
 fn saved_site_context_is_used_when_feed_placement_moves_to_a_different_project() {
+    moved_placement_with_startup_delay(false);
+}
+
+pub(super) fn moved_placement_with_startup_delay(delayed: bool) {
     for choice in ["replay", "sent", "not-sent"] {
         let world = MailWorld::new(true);
         world.world.configure(json!({"defaults":{"provider_timeout_seconds":1},"sources":[{"provider":"mail-me","user":"me"}],"projects":{"demo":{"providers":[]},"other":{"providers":[{"provider":"mail-me","user":"another-account"}]}}}));
+        if delayed {
+            world.delay_startup("reply");
+        }
         held(&world, false, choice != "replay");
         assert_eq!(world.requests()[0]["project"], "");
         let old = world.world.path().join("state/ephor/feed/demo.json");

@@ -74,6 +74,15 @@ impl MailWorld {
         self.ok(&["refresh", "demo"]);
     }
 
+    /// Startup-latency evidence for §FS-005-dispatch.13, without changing the
+    /// effective provider budget. Only the named command in this world waits.
+    pub fn delay_startup(&self, command: &str) {
+        self.put(
+            "startup-delay.json",
+            json!({"command": command, "seconds": 1.5}),
+        );
+    }
+
     pub fn reply(&self, words: Option<&str>) -> Output {
         match words {
             Some(words) => self.run(&["reply", ITEM, words]),
