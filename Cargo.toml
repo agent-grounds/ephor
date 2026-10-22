@@ -329,6 +329,10 @@ path = "tests/integration/work_checkout_test.rs"
 name = "standing_startup_test"
 path = "tests/integration/standing_startup_test.rs"
 
+[[test]]
+name = "suite_isolation_test"
+path = "tests/integration/suite_isolation_test.rs"
+
 [dependencies]
 clap = { version = "4", features = ["derive"] }
 serde = { version = "1", features = ["derive"] }

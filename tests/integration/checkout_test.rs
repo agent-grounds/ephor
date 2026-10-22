@@ -1577,3 +1577,20 @@ fn a_project_declared_only_by_skipped_rows_is_named_by_the_roles_it_wrote_down()
     assert!(root.join("feature/ce/.git").exists());
     assert!(root.join("feature/ee/.git").exists());
 }
+
+/// Three of the cases above, run as a caller that exported every one of
+/// ephor's flag spellings runs them (§REQ-003-test-isolation.4): they pass, and
+/// `ephor checkout` writes nothing at the caller's relative `REPORT`. Two of
+/// them hand `ephor` a program state's `PROJECT`, `BRANCH` and `REPORT` on the
+/// spawn, and those are the values it must still read
+/// (§REQ-003-test-isolation.4.2); an inherited `FROM` fails every checkout
+/// grown from the base, and an inherited `ITEM` every one at all.
+#[test]
+#[ignore = "red until #237: an inherited REPORT receives the checkout's report and an inherited FROM or ITEM fails it; implement removes this"]
+fn the_cases_hold_with_the_callers_flag_spellings_and_write_no_report_of_theirs() {
+    holds_with_the_callers_flag_spellings(&[
+        "a_missing_workspace_is_made_from_the_registry_alone",
+        "the_environment_a_program_state_sets_is_read_as_arguments",
+        "an_empty_value_is_still_nothing_given",
+    ]);
+}
