@@ -118,7 +118,6 @@ fn isolated(name: &str) -> bool {
 }
 
 #[test]
-#[ignore = "red until #244: the screen warning follows the affected snapshot across ticks and unrelated absorption; implement removes this"]
 fn issue_244_warning_tracks_the_displayed_snapshot_and_preserves_reader_state() {
     if isolated("feed::tui::cache_freshness_tests::issue_244_warning_tracks_the_displayed_snapshot_and_preserves_reader_state") {
         return;
@@ -232,7 +231,6 @@ fn issue_244_warning_tracks_the_displayed_snapshot_and_preserves_reader_state() 
 /// A deterministic replacement in the initial-read window prevents a later
 /// metadata baseline from silently claiming that NEW is already displayed.
 #[test]
-#[ignore = "red until #244: a cache replaced during the initial read still warns about the older displayed snapshot; implement removes this"]
 fn issue_244_cache_replaced_during_initial_read_is_still_outdated() {
     if isolated("feed::tui::cache_freshness_tests::issue_244_cache_replaced_during_initial_read_is_still_outdated") {
         return;

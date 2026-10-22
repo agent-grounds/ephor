@@ -994,7 +994,9 @@ fn author_color(author: &str) -> Color {
 /// Greedy word wrap by display width; words longer than the line are
 /// hard-broken. Lines that already fit pass through untouched (preserving
 /// leading whitespace, e.g. code snippets).
-fn wrap_line(line: &str, width: usize) -> Vec<String> {
+/// Shared with the persistent cache warning so all affected projects remain
+/// visible at the terminal's width (§FS-001-forge-interface.7.1).
+pub(super) fn wrap_line(line: &str, width: usize) -> Vec<String> {
     let width = width.max(1);
     if UnicodeWidthStr::width(line) <= width {
         return vec![line.to_string()];

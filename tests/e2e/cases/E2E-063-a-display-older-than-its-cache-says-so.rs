@@ -11,7 +11,6 @@ mod support;
 /// its temporary world. The dependency is in tests/requirements.txt and CI.
 #[test]
 #[cfg(unix)]
-#[ignore = "red until #244: an external cache refresh visibly identifies the outdated displayed project; implement removes this"]
 fn issue_244_external_cache_refresh_marks_the_current_feed_screen_outdated() {
     let world = support::World::new();
     let mut driver = std::process::Command::new("python3");
