@@ -216,7 +216,47 @@ pub fn load_feed(project_id: &str) -> Result<Option<ProjectFeed>> {
             ..ProjectFeed::default()
         }));
     }
+    // Test-only scheduling seam: replace a cache after its bytes were read,
+    // before the caller can establish a later observation baseline.
+    #[cfg(test)]
+    AFTER_TEST_FEED_READ.with(|pending| {
+        let hook = {
+            let mut pending = pending.borrow_mut();
+            if pending
+                .as_ref()
+                .is_some_and(|(project, _)| project == project_id)
+            {
+                pending.take().map(|(_, hook)| hook)
+            } else {
+                None
+            }
+        };
+        if let Some(hook) = hook {
+            hook();
+        }
+    });
     Ok(Some(feed))
+}
+
+#[cfg(test)]
+type FeedReadHook = (String, Box<dyn FnOnce()>);
+
+#[cfg(test)]
+thread_local! {
+    static AFTER_TEST_FEED_READ: std::cell::RefCell<Option<FeedReadHook>> = const { std::cell::RefCell::new(None) };
+}
+
+/// One-shot, thread-local fixture hook for the initial-read replacement race
+/// in §FS-001-forge-interface.7.1. It never changes a non-test cache read.
+#[cfg(test)]
+pub(crate) fn after_test_feed_read(project: &str, hook: impl FnOnce() + 'static) {
+    AFTER_TEST_FEED_READ.with(|pending| {
+        assert!(
+            pending.borrow().is_none(),
+            "a feed-read hook is already installed"
+        );
+        *pending.borrow_mut() = Some((project.into(), Box::new(hook)));
+    });
 }
 
 pub fn store_feed(feed: &ProjectFeed) -> Result<()> {

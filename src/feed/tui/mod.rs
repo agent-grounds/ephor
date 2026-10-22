@@ -2504,3 +2504,6 @@ fn read_answers(path: &Path) -> std::collections::BTreeMap<String, String> {
 #[cfg(test)]
 #[path = "mod_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+mod cache_freshness_tests;

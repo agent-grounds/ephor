@@ -1,0 +1,2 @@
+# Current-screen PTY assertions in the Cargo e2e suite.
+pyte==0.8.2

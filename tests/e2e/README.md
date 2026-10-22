@@ -20,6 +20,7 @@ They are ordinary cargo test targets, declared by path in `Cargo.toml`, so they
 run with everything else:
 
 ```sh
+python -m pip install -r tests/requirements.txt # terminal parser for PTY scenarios
 just check                      # the whole gate, e2e included
 just e2e                        # only the scenarios
 cargo test --test e2e_004_ticket_store   # one of them

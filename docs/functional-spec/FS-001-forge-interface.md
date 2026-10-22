@@ -494,6 +494,36 @@ None of this changes what a refresh costs the forge ([§GOAL-005-costless](../go
 moving the waiting off the reader's screen is not licence to ask more sources
 at once than were being asked before it.
 
+### 7.1 A displayed snapshot older than the cache says so
+
+A successful refresh in another process can leave an open interactive feed
+showing an earlier snapshot. During its periodic local observation, the screen
+checks only the known session projects' feed-cache files. When a valid cache
+has a later fetch time than the snapshot actually displayed, the feed screen
+visibly says **`Displayed feed outdated: <projects> — newer cache available;
+press r to refresh`**, naming every affected project. The indication appears
+without a keypress or another forge fetch; observation on the existing periodic
+tick is sufficient (the regression allows six seconds for a two-second tick).
+
+This describes the displayed snapshot, not a provider failure under
+[§FS-001-forge-interface.6](FS-001-forge-interface.md#6-a-source-that-did-not-answer-says-so-and-says-which-kind-of-not)
+or a refresh in progress. Observation does not change provider health or stale
+fields, write caches, replace rows, move the selection, or change seen/done
+state. The existing `r` action remains the remedy. The indication persists
+while an affected snapshot is displayed, including across unrelated project
+arrivals and other screen messages. It clears for a project only when an
+existing load/absorption path brings that displayed snapshot up to the newer
+cache; refreshing another project alone cannot clear it.
+
+The comparison baseline belongs to the snapshot read, so a replacement between
+that read and the first observation is still detected. Unchanged files cost
+only inexpensive local metadata checks: no repeated parsing, session reload,
+provider calls, recursive directory scan, or unconditional redraw. A changed
+file may be read to establish that a newer valid cache exists. A missing,
+unreadable, malformed or incompatible cache is not that evidence; it neither
+crashes the screen nor erases last-good rows or an already established warning.
+No CLI/JSON shape, cache schema, provider interface or refresh scope changes.
+
 ## 8. A refresh is asked in the cheapest form the forge offers
 
 A forge meters what it will answer, and not evenly: the endpoint that searches
