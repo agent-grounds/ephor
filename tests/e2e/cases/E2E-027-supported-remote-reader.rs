@@ -139,14 +139,56 @@ fn isolated(command: &mut Command, world: &World, environment: &[(&str, &str)]) 
     }
 }
 
+/// The terminal outcome and process evidence collected before fixture teardown
+/// (§FS-016-browser-opening.2).
 struct TuiRun {
     output: Output,
     compact: String,
     waited_for_enter: bool,
     opener_alive_before_enter: Option<bool>,
+    opener_alive_after_enter: Option<bool>,
     #[cfg(target_os = "linux")]
     detached_pipes_released_before_enter: Option<bool>,
     outcome_after: Duration,
+}
+
+/// Only cleanup expectations await stop; surviving fixtures are sampled
+/// immediately (§FS-016-browser-opening.2).
+#[derive(Clone, Copy)]
+enum ProcessObservation {
+    Immediate,
+    AwaitStop,
+}
+
+impl ProcessObservation {
+    /// Missing identity proves nothing. A cleanup observation returns early on
+    /// absence/zombie, but retains a live result at the separate 12-second bound.
+    /// Only this explicit observation time is excluded from notice/redraw timing
+    /// (§FS-016-browser-opening.2).
+    fn observe(
+        self,
+        pid: &str,
+        process_probe: &mut impl FnMut(&str) -> bool,
+        cleanup_observation_elapsed: &mut Duration,
+    ) -> Option<bool> {
+        if pid.is_empty() {
+            return None;
+        }
+        if matches!(self, Self::Immediate) {
+            return Some(process_probe(pid));
+        }
+        let started = Instant::now();
+        let deadline = started + Duration::from_secs(12);
+        loop {
+            let alive = process_probe(pid);
+            let remaining = deadline.saturating_duration_since(Instant::now());
+            if !alive || remaining.is_zero() {
+                *cleanup_observation_elapsed += started.elapsed();
+                return Some(alive);
+            }
+            thread::sleep(remaining.min(Duration::from_millis(25)));
+        }
+    }
 }
 
 /// Wait for evidence from the PTY, retaining the raw transcript on a timeout
@@ -182,23 +224,52 @@ fn await_terminal(
     );
 }
 
+/// Ordinary terminal proofs sample process state immediately, including fixtures
+/// intended to survive cleanup (§FS-016-browser-opening.2).
 fn tui(
     world: &World,
     keys: &[u8],
     environment: &[(&str, &str)],
     notice_timeout: Option<Duration>,
 ) -> TuiRun {
-    tui_with_process_probe(world, keys, environment, notice_timeout, process_alive)
+    tui_with_process_probe(
+        world,
+        keys,
+        environment,
+        notice_timeout,
+        ProcessObservation::Immediate,
+        process_alive,
+    )
+}
+
+/// Timeout cleanup proofs opt into the same bounded observation before and
+/// after Enter (§FS-016-browser-opening.2).
+fn tui_observing_cleanup(
+    world: &World,
+    keys: &[u8],
+    environment: &[(&str, &str)],
+    notice_timeout: Option<Duration>,
+) -> TuiRun {
+    tui_with_process_probe(
+        world,
+        keys,
+        environment,
+        notice_timeout,
+        ProcessObservation::AwaitStop,
+        process_alive,
+    )
 }
 
 /// A controllable process-state probe lets the PTY regression exercise the
 /// observation race without starving a CPU (§FS-016-browser-opening.2).
-/// The default probe and the single-sample behavior are unchanged here.
+/// Cleanup observation has its own budget; notice, Enter ownership and redraw
+/// retain their existing timing and transcript evidence.
 fn tui_with_process_probe(
     world: &World,
     keys: &[u8],
     environment: &[(&str, &str)],
     notice_timeout: Option<Duration>,
+    observation: ProcessObservation,
     mut process_probe: impl FnMut(&str) -> bool,
 ) -> TuiRun {
     let binary = assert_cmd::cargo::cargo_bin("ephor");
@@ -270,6 +341,8 @@ fn tui_with_process_probe(
 
     let mut waited_for_enter = false;
     let mut opener_alive_before_enter = None;
+    let mut opener_alive_after_enter = None;
+    let mut cleanup_observation_elapsed = Duration::ZERO;
     #[cfg(target_os = "linux")]
     let mut detached_pipes_released_before_enter = None;
     match notice_timeout {
@@ -285,9 +358,8 @@ fn tui_with_process_probe(
                 },
             );
             let pid = read_or_empty(world, "opener.pid").trim().to_string();
-            if !pid.is_empty() {
-                opener_alive_before_enter = Some(process_probe(&pid));
-            }
+            opener_alive_before_enter =
+                observation.observe(&pid, &mut process_probe, &mut cleanup_observation_elapsed);
             #[cfg(target_os = "linux")]
             if world.path().join("escaped.pid").exists() {
                 detached_pipes_released_before_enter = Some(detached_pipes_released(world, &pid));
@@ -318,6 +390,10 @@ fn tui_with_process_probe(
                 readiness_timeout,
                 |bytes| compact_terminal(&bytes[resumed_at..]).contains("j/kmoveenterthread"),
             );
+            if matches!(observation, ProcessObservation::AwaitStop) {
+                opener_alive_after_enter =
+                    observation.observe(&pid, &mut process_probe, &mut cleanup_observation_elapsed);
+            }
         }
         None => {
             await_terminal(
@@ -333,7 +409,9 @@ fn tui_with_process_probe(
             );
         }
     }
-    let outcome_after = action_started.elapsed();
+    let outcome_after = action_started
+        .elapsed()
+        .saturating_sub(cleanup_observation_elapsed);
     input.write_all(b"q").expect("quit after the action");
     drop(input);
     let status = match child
@@ -365,6 +443,7 @@ fn tui_with_process_probe(
         compact,
         waited_for_enter,
         opener_alive_before_enter,
+        opener_alive_after_enter,
         #[cfg(target_os = "linux")]
         detached_pipes_released_before_enter,
         outcome_after,
@@ -671,26 +750,26 @@ fn opener_outcomes_are_truthful_and_timeout_is_cleaned_up() {
         "xdg-open",
         "#!/bin/sh\nprintf '%s\\n' \"$$\" > \"$HOME/opener.pid\"\n/bin/sleep 30\n",
     );
-    let run = tui(
+    let run = tui_observing_cleanup(
         &timed,
         b"jo",
         &[("DISPLAY", ":1")],
         Some(Duration::from_millis(5_600)),
     );
     let pid = read_or_empty(&timed, "opener.pid").trim().to_string();
-    let alive = !pid.is_empty() && process_alive(&pid);
+    let alive = run.opener_alive_after_enter;
     if !contains(&run, "Browser opener did not finish within 5 seconds")
         || !contains(&run, URL)
         || run.opener_alive_before_enter != Some(false)
-        || alive
+        || alive != Some(false)
         || !run.waited_for_enter
     {
         failures.push(format!(
-            "timed opener (alive before Enter={:?}, alive after={alive}): {}",
+            "timed opener (alive before Enter={:?}, alive after={alive:?}): {}",
             run.opener_alive_before_enter, run.compact
         ));
     }
-    if alive {
+    if alive == Some(true) {
         let _ = Command::new("/bin/kill").args(["-TERM", &pid]).status();
     }
 
@@ -709,7 +788,7 @@ fn exited_shell_with_inherited_pipes_times_out_before_enter() {
         })),
         None,
     );
-    let run = tui(
+    let run = tui_observing_cleanup(
         &world,
         b"jo",
         &[("SSH_CLIENT", "reader")],
@@ -717,8 +796,8 @@ fn exited_shell_with_inherited_pipes_times_out_before_enter() {
     );
     let pid = read_or_empty(&world, "opener.pid").trim().to_string();
     let shell = read_or_empty(&world, "shell.pid").trim().to_string();
-    let alive = !pid.is_empty() && process_alive(&pid);
-    if alive {
+    let alive = run.opener_alive_after_enter;
+    if alive == Some(true) {
         let _ = Command::new("/bin/kill").args(["-KILL", &pid]).status();
     }
     assert!(run.output.status.success(), "{:?}", run.output);
@@ -738,7 +817,7 @@ fn exited_shell_with_inherited_pipes_times_out_before_enter() {
         Some(false),
         "descendant still ran before Enter"
     );
-    assert!(!alive, "descendant still ran after Enter");
+    assert_eq!(alive, Some(false), "descendant still ran after Enter");
     assert!(run.waited_for_enter);
     assert!(
         run.outcome_after < Duration::from_secs(7),
