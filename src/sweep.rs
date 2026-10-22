@@ -297,8 +297,9 @@ fn refuse_what_names_one_checkout(args: &RebaseArgs) -> Result<()> {
         }
     }
     // The two that are not values. `--upstream` has an environment spelling
-    // like the rest; `--dispatch` is a flag a reader types and nothing else.
-    if args.upstream || std::env::var("UPSTREAM").is_ok_and(|said| !said.trim().is_empty()) {
+    // like the rest, read through `given` like the rest; `--dispatch` is a
+    // flag a reader types and nothing else.
+    if args.upstream || crate::given::input(&None, "UPSTREAM").is_some() {
         refused.push("--upstream".to_string());
     }
     if args.dispatch {

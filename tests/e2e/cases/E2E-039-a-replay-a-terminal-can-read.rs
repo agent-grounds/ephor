@@ -363,7 +363,6 @@ fn the_case_holds_under_a_worktree_hook_and_leaves_its_repository_alone() {
 /// inherited `UPSTREAM`, `PROJECT`, `CHECKOUT`, `ITEM`, `HAND` or `ONTO` turned
 /// a sweep into a refusal.
 #[test]
-#[ignore = "red until #237: an inherited REPORT receives the sweep's report and the other spellings fail the sweep; implement removes this"]
 fn the_case_holds_with_the_callers_flag_spellings_and_writes_no_report_of_theirs() {
     holds_with_the_callers_flag_spellings(&[
         "a_replay_reaches_a_terminal_as_prose_and_a_file_as_the_document",

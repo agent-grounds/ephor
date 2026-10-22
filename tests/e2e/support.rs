@@ -24,8 +24,9 @@ use std::path::{Path, PathBuf};
 use serde_json::{json, Value};
 
 // The one helper under `tests/` that builds `git` and `ephor` without git's
-// repository variables (§REQ-003-test-isolation.3.4). A binary that uses only
-// part of it would warn about the rest.
+// repository variables, and `ephor` without its own flag spellings
+// (§REQ-003-test-isolation.3.4, §REQ-003-test-isolation.4.4). A binary that
+// uses only part of it would warn about the rest.
 #[path = "../shared/git_env.rs"]
 mod git_env;
 #[allow(unused_imports)]
@@ -196,7 +197,11 @@ impl World {
         )
     }
 
-    /// `ephor`, as a person runs it, with this world as its whole environment.
+    /// `ephor`, as a person runs it, in this world: its home, its registry,
+    /// its site configuration and its stubs ahead of `PATH`, with nothing of
+    /// git's repository variables or of ephor's own flag spellings from
+    /// whoever ran the suite (§REQ-003-test-isolation.3.3,
+    /// §REQ-003-test-isolation.4).
     pub fn ephor(&self) -> assert_cmd::Command {
         assert_cmd::Command::from_std(self.ephor_raw())
     }

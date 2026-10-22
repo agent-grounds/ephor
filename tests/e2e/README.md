@@ -45,9 +45,13 @@ declaration, rather than pretending a surface exists.
 A case runs `git` through `git_command()` and `ephor` through `World::ephor()`
 or `ephor_command()`, all from `tests/shared/git_env.rs`. Each takes off the
 `GIT_*` a git hook hands the suite, so a case acts on the repositories it made
-and on nothing else ([§REQ-003-test-isolation.3](../../docs/requirements/REQ-003-test-isolation.md#3-every-git-the-suite-causes-runs-without-gits-repository-variables)). The library a case links is
-not a test build, so nothing takes them off there: a case calls it directly only
-for what runs no `git`.
+and on nothing else ([§REQ-003-test-isolation.3](../../docs/requirements/REQ-003-test-isolation.md#3-every-git-the-suite-causes-runs-without-gits-repository-variables)). The two that build `ephor` also
+take off ephor's own flag spellings, every name in `ephor::given::ENVIRONMENT_SPELLINGS`
+(`REPORT`, `ITEM`, `PROJECT` and the rest), so a case reads only the values it
+passes or sets on the spawn itself, and a caller's `REPORT` never receives a
+case's report ([§REQ-003-test-isolation.4](../../docs/requirements/REQ-003-test-isolation.md#4-every-ephor-the-suite-causes-runs-without-ephors-own-flag-spellings)). The library a case links is not a test build,
+so nothing takes either off there: a case calls it directly only for what runs
+no `git` and reads no flag spelling.
 
 ## Adding one
 

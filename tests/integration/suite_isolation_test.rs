@@ -19,7 +19,6 @@ use common::ephor_command;
 /// whether this process happens to hold it or not — CI runs this from an
 /// environment that holds none of them.
 #[test]
-#[ignore = "red until #237: ephor_command() removes none of the flag spellings src/ reads; implement removes this"]
 fn every_flag_spelling_src_reads_is_one_ephor_command_removes() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));
     let read = spellings_read_under(root, &root.join("src"));
