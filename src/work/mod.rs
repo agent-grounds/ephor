@@ -22,7 +22,7 @@ pub mod workflow;
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU32, Ordering};
 
 use chrono::{DateTime, Utc};
@@ -154,6 +154,11 @@ pub struct TicketStatus {
     /// What the review left behind, where the work reached one — or, for a
     /// ticket taken back, the reason the reader gave (§FS-005-dispatch.16).
     pub verdict: Option<String>,
+    /// Where a finished, non-cancelled ticket's readable verdict is `blocked`:
+    /// its verdict, then its result, as the review lists them
+    /// (§FS-005-dispatch.9.2, §FS-005-dispatch.23). Empty for every other
+    /// ticket, which is presented as it always was.
+    pub outcome_files: Vec<runtime::human_gate::Artifact>,
     /// When ephor asked for it, from the ledger's record of the dispatch
     /// (§FS-005-dispatch.18). None for a ticket ephor did not dispatch — one
     /// written into the plan by hand, or by the machine for itself: nothing
@@ -179,6 +184,30 @@ pub struct Cancelled {
     /// cancelled — named, never moved: cancelling them too is the reader's
     /// call.
     pub left_waiting: Vec<String>,
+}
+
+impl TicketStatus {
+    /// What a finished ticket's row says after its recipe: `finished blocked`
+    /// where its verdict is `blocked`, never the verdict's imperative sentence
+    /// on its own, which reads as a person being waited on now; otherwise the
+    /// verdict's own sentence cut at `width`, or nothing (§FS-005-dispatch.23).
+    /// The one wording the badge, the rows and both surfaces use.
+    pub fn outcome(&self, width: usize) -> Option<String> {
+        if !self.outcome_files.is_empty() {
+            return Some("finished blocked".to_string());
+        }
+        self.verdict.as_deref().map(|verdict| clamp(verdict, width))
+    }
+
+    /// The first readable file of a finished blocked outcome, its verdict
+    /// preferred over its result, so the reason is one open away
+    /// (§FS-005-dispatch.23).
+    pub fn outcome_file(&self) -> Option<&Path> {
+        self.outcome_files
+            .iter()
+            .find(|file| file.problem.is_none())
+            .map(|file| file.path.as_path())
+    }
 }
 
 impl Cancelled {
@@ -493,12 +522,11 @@ impl WorkStatus {
                 // Taken back is a different kind of over from finished, and
                 // the row says which (§FS-005-dispatch.16).
                 Some(last) if last.cancelled => format!("⊘ {} · cancelled", last.recipe),
-                Some(last) => match &last.verdict {
-                    // The verdict's own sentence, cut where a row ends: the
-                    // rest of it is in the artifact, one keystroke away.
-                    Some(verdict) => {
-                        format!("✓ {} · {}", last.recipe, clamp(verdict, verdict_width))
-                    }
+                // The verdict's own sentence, cut where a row ends: the rest
+                // of it is in the artifact, one keystroke away — or, where it
+                // says blocked, that it finished so (§FS-005-dispatch.23).
+                Some(last) => match last.outcome(verdict_width) {
+                    Some(said) => format!("✓ {} · {said}", last.recipe),
                     None => format!("✓ {}", last.recipe),
                 },
                 None => "· no tickets".to_string(),
@@ -587,11 +615,10 @@ impl WorkStatus {
                 ),
                 Some(last) => {
                     // The verdict's own sentence, cut where a row ends: the
-                    // rest of it is in the artifact, one keystroke away.
-                    let said = match &last.verdict {
-                        Some(verdict) => {
-                            format!("{} · {}", last.recipe, clamp(verdict, verdict_width))
-                        }
+                    // rest of it is in the artifact, one keystroke away
+                    // (§FS-005-dispatch.23).
+                    let said = match last.outcome(verdict_width) {
+                        Some(said) => format!("{} · {said}", last.recipe),
                         None => last.recipe.clone(),
                     };
                     WorkLine::of(Tone::Over, "✓", said, last)
@@ -6764,7 +6791,20 @@ pub fn status_of_entry_seen(
         };
         for ticket in plan.into_iter().flat_map(|plan| plan.tickets()) {
             let running = holds(&ticket);
+            let finished = ticket
+                .state
+                .as_deref()
+                .is_some_and(|state| machine.as_ref().is_some_and(|root| root.is_final(state)));
+            // A finished blocked outcome is read, never waited on
+            // (§FS-005-dispatch.9.2): the same files the review lists.
+            let outcome_files = match finished && !ticket.cancelled() {
+                true => {
+                    runtime::results::finished_blocked(artifacts, &recorded.plan_id, &ticket.id)
+                }
+                false => Vec::new(),
+            };
             tickets.push(TicketStatus {
+                outcome_files,
                 running,
                 queued: live && !running,
                 asked: asked.get(ticket.id.as_str()).copied(),
@@ -6772,10 +6812,7 @@ pub fn status_of_entry_seen(
                     .get(ticket.id.as_str())
                     .map(|recipe| recipe.to_string())
                     .unwrap_or_else(|| ticket.id.clone()),
-                finished: ticket
-                    .state
-                    .as_deref()
-                    .is_some_and(|state| machine.as_ref().is_some_and(|root| root.is_final(state))),
+                finished,
                 cancelled: ticket.cancelled()
                     && machine
                         .as_ref()

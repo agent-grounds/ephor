@@ -1,7 +1,7 @@
 //! Review local materials before choosing a declared move (§FS-005-dispatch.9.1).
 
 use ratatui::crossterm::event::KeyCode;
-use ratatui::layout::Rect;
+use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::style::{Color, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{List, ListItem, ListState, Paragraph, Wrap};
@@ -54,7 +54,14 @@ impl HumanGateScreen {
     pub fn footer(&self) -> String {
         if self.preview.is_some() {
             " j/k scroll  PgUp/PgDn page  esc back to files · reading changes nothing".to_string()
-        } else if !self.review.gates.is_empty() && self.transitions() == 0 {
+        } else if self.review.gates.is_empty() {
+            // Nothing to decide; the finished files are only read
+            // (§FS-005-dispatch.9.2).
+            match self.review.files.is_empty() {
+                true => " H reload  esc work".to_string(),
+                false => " No human gate · j/k files  enter read  H reload  esc work".to_string(),
+            }
+        } else if self.transitions() == 0 {
             " No declared transitions · j/k files  enter read  H reload  esc work".to_string()
         } else {
             " j/k select  f files  enter review choice/read file  H reload  esc work".to_string()
@@ -132,13 +139,17 @@ impl HumanGateScreen {
             frame.render_widget(paragraph, area);
             return;
         }
-        if self.review.gates.is_empty() {
-            frame.render_widget(
-                Paragraph::new("No task is currently waiting at a human gate."),
-                area,
-            );
-            return;
-        }
+        // No live gate is said, and any finished blocked files are listed
+        // under it, opened through the same viewer (§FS-005-dispatch.9.2).
+        let area = match self.review.gates.is_empty() {
+            true => {
+                let [said, rest] =
+                    Layout::vertical([Constraint::Length(2), Constraint::Min(0)]).areas(area);
+                frame.render_widget(Paragraph::new(human_gate::NO_GATE), said);
+                rest
+            }
+            false => area,
+        };
         let mut rows = Vec::new();
         for gate in &self.review.gates {
             for destination in &gate.destinations {
@@ -227,8 +238,114 @@ mod tests {
                     path,
                     problem: None,
                 }],
+                finished: Vec::new(),
             },
         )
+    }
+
+    /// A review with no live gate and one finished blocked file, as
+    /// §FS-005-dispatch.9.2 lists it.
+    fn history(path: std::path::PathBuf) -> HumanGateScreen {
+        let mut screen = screen(path.clone());
+        screen.review = Review {
+            gates: Vec::new(),
+            files: vec![Artifact {
+                name: "review.1 · finished blocked · verdict".to_string(),
+                path,
+                problem: None,
+            }],
+            finished: Vec::new(),
+        };
+        screen
+    }
+
+    fn drawn(screen: &mut HumanGateScreen) -> String {
+        let backend = ratatui::backend::TestBackend::new(80, 12);
+        let mut terminal = ratatui::Terminal::new(backend).unwrap();
+        terminal
+            .draw(|frame| screen.draw(frame, frame.area()))
+            .unwrap();
+        let buffer = terminal.backend().buffer().clone();
+        buffer
+            .content
+            .chunks(buffer.area.width as usize)
+            .map(|row| row.iter().map(|cell| cell.symbol()).collect::<String>())
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+
+    /// With no gate the review still says so and lists the finished files
+    /// under it (§FS-005-dispatch.9.2).
+    #[test]
+    fn a_review_without_gates_draws_its_finished_files() {
+        let temp = tempfile::tempdir().unwrap();
+        let mut screen = history(temp.path().join("verdict.md"));
+        let drawn = drawn(&mut screen);
+        assert!(drawn.contains(human_gate::NO_GATE), "{drawn}");
+        assert!(drawn.contains("finished blocked · verdict"), "{drawn}");
+        assert!(screen.footer().contains("enter read"));
+    }
+
+    /// A finished file opens in the bounded viewer with no gate, and going
+    /// back moves nothing (§FS-005-dispatch.9.2).
+    #[test]
+    fn a_finished_file_opens_without_a_gate_and_returns_without_a_move() {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("verdict.md");
+        std::fs::write(&path, "VERDICT: blocked\n\nThe VPN was down.\n").unwrap();
+        let mut screen = history(path);
+        assert!(matches!(
+            screen.handle_key(KeyCode::Char('j')),
+            Action::None
+        ));
+        assert!(matches!(screen.handle_key(KeyCode::Enter), Action::None));
+        assert!(screen
+            .preview
+            .as_ref()
+            .unwrap()
+            .1
+            .contains("The VPN was down."));
+        assert!(matches!(screen.handle_key(KeyCode::Esc), Action::None));
+        assert!(screen.preview.is_none());
+        assert!(matches!(
+            screen.handle_key(KeyCode::Esc),
+            Action::OpenWork(_)
+        ));
+    }
+
+    /// Beside a finished file a live gate keeps its moves first, and the
+    /// finished file after them is only read (§FS-005-dispatch.9.1,
+    /// §FS-005-dispatch.9.2).
+    #[test]
+    fn a_mixed_review_keeps_transition_selection_for_its_live_gate() {
+        let temp = tempfile::tempdir().unwrap();
+        let verdict = temp.path().join("verdict.md");
+        std::fs::write(&verdict, "VERDICT: blocked\n").unwrap();
+        let mut screen = screen(temp.path().join("review.md"));
+        screen.review.files.push(Artifact {
+            name: "review.0 · finished blocked · verdict".to_string(),
+            path: verdict,
+            problem: None,
+        });
+        assert!(matches!(
+            screen.handle_key(KeyCode::Enter),
+            Action::TransitionHumanGate { to, .. } if to == "release"
+        ));
+        for _ in 0..3 {
+            screen.handle_key(KeyCode::Char('j'));
+        }
+        assert!(matches!(screen.handle_key(KeyCode::Enter), Action::None));
+        assert!(screen
+            .preview
+            .as_ref()
+            .unwrap()
+            .1
+            .contains("VERDICT: blocked"));
+        let drawn = {
+            screen.preview = None;
+            drawn(&mut screen)
+        };
+        assert!(!drawn.contains(human_gate::NO_GATE), "{drawn}");
     }
 
     #[test]

@@ -292,6 +292,7 @@ mod tests {
                 path: "/demo/review.md".into(),
                 problem: None,
             }],
+            finished: Vec::new(),
         };
         let value = serde_json::to_value(review).unwrap();
         assert!(holds("work-review", &value).is_empty());

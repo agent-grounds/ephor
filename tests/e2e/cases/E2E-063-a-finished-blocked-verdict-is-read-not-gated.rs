@@ -178,7 +178,6 @@ fn files_of(review: &Value) -> Vec<(String, PathBuf, Value)> {
 /// The reported site: the plan and both tickets final, both verdicts
 /// `blocked`, no live gate anywhere (§FS-005-dispatch.9.2, §FS-005-dispatch.23).
 #[test]
-#[ignore = "red until #243: a finished blocked verdict still reads as a live wait and its reason is unreachable; implement removes this"]
 fn a_finished_blocked_verdict_reads_as_finished_and_its_reason_is_one_open_away() {
     let world = site(&[
         Ticket {
@@ -342,7 +341,6 @@ fn a_finished_ticket_without_a_blocked_verdict_is_presented_as_before() {
 /// materials come first; the history after it is read-only
 /// (§FS-005-dispatch.9.1, §FS-005-dispatch.9.2).
 #[test]
-#[ignore = "red until #243: a finished blocked ticket beside a live gate contributes no files; implement removes this"]
 fn a_live_gate_stays_actionable_beside_finished_blocked_files() {
     let world = site(&[
         Ticket {
@@ -404,7 +402,6 @@ fn a_live_gate_stays_actionable_beside_finished_blocked_files() {
 /// A result missing beside a readable blocked verdict is still listed, with
 /// its problem (§FS-005-dispatch.9.2).
 #[test]
-#[ignore = "red until #243: a finished blocked ticket contributes no files; implement removes this"]
 fn a_missing_result_beside_a_blocked_verdict_carries_its_problem() {
     let world = site(&[Ticket {
         id: "fix-gate-1",

@@ -917,6 +917,7 @@ impl Session {
                         running: ticket.running,
                         queued: ticket.queued,
                         verdict: ticket.verdict.clone(),
+                        outcome_files: ticket.outcome_files.clone(),
                     })
                     .collect(),
             });

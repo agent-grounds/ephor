@@ -38,8 +38,10 @@ pub(super) fn review(config: &StatusConfig, args: &WorkReviewArgs) -> Result<Exi
         );
         return Ok(ExitCode::SUCCESS);
     }
+    // With no live gate the sentence stays, and any finished blocked files
+    // are listed under it (§FS-005-dispatch.9.2).
     if review.gates.is_empty() {
-        println!("No work is waiting at a human gate for this matter.");
+        println!("{}", human_gate::NO_GATE);
     }
     for gate in &review.gates {
         println!("{} [{}] {}", gate.ticket, gate.state, gate.title);

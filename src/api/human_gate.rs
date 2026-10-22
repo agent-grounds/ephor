@@ -47,7 +47,8 @@ impl Session {
                 )?);
             }
         }
-        Ok(review)
+        // History after every plan's gates (§FS-005-dispatch.9.2).
+        Ok(review.settled())
     }
 
     pub fn transition_work(
