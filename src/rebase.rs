@@ -144,11 +144,26 @@ fn one_checkout(args: &RebaseArgs) -> Result<ExitCode> {
     // the conflict needs (§FS-011-command-line.9).
     let report = given::value(&args.report, "REPORT")?;
 
+    // Whether the ticket `--dispatch` is about to write would be taken, asked
+    // before the replay rather than learned after it: the answer a dry run
+    // gives is what chooses the disposition (§FS-005-dispatch.12). A refusal
+    // that shows only in the real dispatch after this one passed stays as it
+    // was — the conflict is left standing and the refusal is the exit.
+    let mut asked = match (args.dispatch, &item) {
+        (true, Some(item)) => would_hand_over(item, picked.as_ref()).err(),
+        _ => None,
+    };
     // Somebody is waiting on this one: the reader who pressed the key, the
-    // state that ran the program, the ticket `--dispatch` is about to write.
-    // So a conflict stays standing in the working tree, which is the state
-    // resolving it needs (§FS-005-dispatch.12).
-    let outcome = git::rebase(&forest, &onto, git::Stopped::Leave);
+    // state that ran the program, the ticket `--dispatch` would write. So a
+    // conflict stays standing in the working tree, which is the state
+    // resolving it needs — unless the hand-over would be refused, when nobody
+    // is coming and the tree is put back on the commit it started from
+    // (§FS-005-dispatch.12).
+    let stopped = match asked {
+        None => git::Stopped::Leave,
+        Some(_) => git::Stopped::Restore,
+    };
+    let outcome = git::rebase(&forest, &onto, stopped);
     let conflicted = outcome.conflicted().len();
     // Everything the algorithm could do, it did; the rest is a question about
     // the code (§FS-005-dispatch.12). Handed over *before* anything is
@@ -158,6 +173,13 @@ fn one_checkout(args: &RebaseArgs) -> Result<ExitCode> {
     // reading may not be missing (§REQ-002-parity.3).
     let mut refused: Option<EphorError> = None;
     let handed = match (conflicted > 0 && args.dispatch, &item) {
+        // Refused before the replay, so the replay was restored and the
+        // refusal is this command's exit; a clean replay needs no hand-over
+        // and drops it (§FS-005-dispatch.12).
+        (true, Some(_)) if asked.is_some() => {
+            refused = asked.take();
+            None
+        }
         (true, Some(item)) => match hand_over(item, &outcome, picked.as_ref()) {
             Ok(handed) => Some(handed),
             // A dispatch that could not be made does not swallow the replay's
@@ -284,6 +306,42 @@ fn hand_over(
 ) -> Result<Handed> {
     let config = load_config()?;
     let mut dispatcher = Dispatcher::load(&config)?;
+    let recipe = rebase_recipe(&dispatcher, item, Some(outcome.in_a_body()))?;
+    let opened = dispatcher.dispatch(item, &recipe, picked, false)?;
+    dispatcher.save()?;
+    Ok(Handed {
+        item: item.id.clone(),
+        ticket: match &opened {
+            crate::work::Outcome::Opened { ticket, .. }
+            | crate::work::Outcome::Reopened { ticket, .. } => Some(ticket.clone()),
+            _ => None,
+        },
+        says: opened.describe(),
+        notes: dispatcher.notes().iter().map(ToString::to_string).collect(),
+    })
+}
+
+/// Whether [`hand_over`] would be taken, asked as a dry run before the replay
+/// it follows, so the replay knows whether anybody is coming
+/// (§FS-005-dispatch.12). A dispatcher of its own, discarded: what the dry run
+/// notes is about a dispatch it did not make, and must not reach the reader of
+/// the one that is made.
+fn would_hand_over(item: &Item, picked: Option<&crate::work::recipe::HandList>) -> Result<()> {
+    let config = load_config()?;
+    let mut dispatcher = Dispatcher::load(&config)?;
+    let recipe = rebase_recipe(&dispatcher, item, None)?;
+    dispatcher.dispatch(item, &recipe, picked, true).map(|_| ())
+}
+
+/// The recipe a conflict is handed over with, the same for the question asked
+/// before the replay and for the hand-over after it (§FS-005-dispatch.12):
+/// the project's `rebase` recipe, carrying what the replay stopped at where
+/// that is known yet, and with its opening move cleared.
+fn rebase_recipe(
+    dispatcher: &Dispatcher,
+    item: &Item,
+    stopped_at: Option<String>,
+) -> Result<crate::work::recipe::Recipe> {
     let recipe = dispatcher
         .recipes(&item.project)
         .into_iter()
@@ -306,25 +364,15 @@ fn hand_over(
         // instruction, then what to do with this matter, then what this run
         // found (§FS-005-dispatch.34.1), and a recipe that keeps its words in
         // a file may have no `brief` at all.
-        brief: Some(match &recipe.brief {
-            Some(brief) => format!("{brief}\n\n{}", outcome.in_a_body()),
-            None => outcome.in_a_body(),
-        }),
+        brief: match (&recipe.brief, stopped_at) {
+            (Some(brief), Some(body)) => Some(format!("{brief}\n\n{body}")),
+            (None, Some(body)) => Some(body),
+            (brief, None) => brief.clone(),
+        },
         opens_with: None,
         ..recipe
     };
-    let opened = dispatcher.dispatch(item, &recipe, picked, false)?;
-    dispatcher.save()?;
-    Ok(Handed {
-        item: item.id.clone(),
-        ticket: match &opened {
-            crate::work::Outcome::Opened { ticket, .. }
-            | crate::work::Outcome::Reopened { ticket, .. } => Some(ticket.clone()),
-            _ => None,
-        },
-        says: opened.describe(),
-        notes: dispatcher.notes().iter().map(ToString::to_string).collect(),
-    })
+    Ok(recipe)
 }
 
 /// Also write what this run came to as markdown, for a state to hand on to
