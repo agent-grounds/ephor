@@ -339,3 +339,19 @@ fn a_replay_nested_in_a_sweep_follows_the_document_carrying_it() {
         "the nested replay stopped naming its repository for its reader:\n{written}"
     );
 }
+
+/// The four cases above, run as the pre-commit hook runs them from a linked
+/// worktree: they pass, and the repository git names to the hook is left as
+/// it was (§REQ-003-test-isolation.2). This case was named by #233 because its
+/// `git init --bare` and the `ephor rebase` it spawns both act on whatever
+/// `GIT_DIR` they inherit.
+#[test]
+#[ignore = "red until #233: a hook's GIT_DIR sends the case's git and ephor into the decoy; implement removes this"]
+fn the_case_holds_under_a_worktree_hook_and_leaves_its_repository_alone() {
+    holds_under_a_worktree_hook(&[
+        "a_replay_reaches_a_terminal_as_prose_and_a_file_as_the_document",
+        "the_machine_form_of_a_replay_keeps_the_document_and_the_path",
+        "the_sweeps_own_report_reaches_a_terminal_as_prose",
+        "a_replay_nested_in_a_sweep_follows_the_document_carrying_it",
+    ]);
+}

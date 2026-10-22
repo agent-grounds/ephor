@@ -408,3 +408,112 @@ fn merge(base: &mut Value, overlay: Value) {
         (base, overlay) => *base = overlay,
     }
 }
+
+/// Re-runs `tests` of the calling case's own binary as a git hook committing
+/// from a linked worktree runs them, and holds both halves of
+/// §REQ-003-test-isolation.2: they pass, and the repository the hook's
+/// `GIT_DIR` names — a decoy no test names — keeps its configuration, refs,
+/// `HEAD`s and index (§REQ-003-test-isolation.1). The case's own `git` and the
+/// `ephor` it spawns both inherit whatever the case is handed, so the decoy
+/// stands in for the checkout being committed to.
+pub fn holds_under_a_worktree_hook(tests: &[&str]) {
+    let temp = tempfile::tempdir().expect("a temp dir for the decoy");
+    let main = temp.path().join("main");
+    let wt = temp.path().join("wt");
+    fs::create_dir_all(&main).expect("the decoy's main checkout");
+    decoy_git(&main, &["init", "-q", "-b", "main"]);
+    fs::write(main.join("README.md"), "decoy\n").expect("a decoy file");
+    decoy_git(&main, &["add", "README.md"]);
+    decoy_git(
+        &main,
+        &[
+            "-c",
+            "user.name=decoy",
+            "-c",
+            "user.email=decoy@example.invalid",
+            "commit",
+            "-q",
+            "-m",
+            "decoy",
+        ],
+    );
+    decoy_git(&main, &["worktree", "add", "-q", "-b", "topic", "../wt"]);
+    fs::write(wt.join("change.txt"), "the commit under test\n").expect("a staged file");
+    decoy_git(&wt, &["add", "change.txt"]);
+    let before = decoy_state(&main, &wt);
+
+    // What git exports to a hook run from a linked worktree: both absolute.
+    let git_dir = main.join(".git").join("worktrees").join("wt");
+    let mut child = std::process::Command::new(std::env::current_exe().expect("this binary"));
+    for key in inherited_git_vars() {
+        child.env_remove(key);
+    }
+    let output = child
+        .arg("--exact")
+        .args(tests)
+        .env("GIT_DIR", &git_dir)
+        .env("GIT_INDEX_FILE", git_dir.join("index"))
+        .current_dir(&wt)
+        .output()
+        .expect("the case's binary re-runs");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let after = decoy_state(&main, &wt);
+
+    assert!(
+        stdout.contains(&format!("running {} tests", tests.len())),
+        "the child ran something other than {tests:?}:\n{stdout}"
+    );
+    assert_eq!(
+        before,
+        after,
+        "a case's git or the ephor it spawned wrote into {}, a repository no test named \
+         (§REQ-003-test-isolation.1)",
+        main.display()
+    );
+    assert!(
+        output.status.success(),
+        "the case fails under a worktree hook's GIT_DIR and GIT_INDEX_FILE, and passes \
+         without them (§REQ-003-test-isolation.2):\n{stdout}"
+    );
+}
+
+/// Every `GIT_*` this process holds, so the decoy is read, and the child is
+/// handed it, with nothing inherited on top.
+fn inherited_git_vars() -> Vec<std::ffi::OsString> {
+    std::env::vars_os()
+        .map(|(key, _)| key)
+        .filter(|key| key.to_string_lossy().starts_with("GIT_"))
+        .collect()
+}
+
+/// A `git` run on the decoy on purpose, aimed by `-C` with nothing inherited.
+fn decoy_git(dir: &Path, args: &[&str]) -> String {
+    let mut cmd = std::process::Command::new("git");
+    for key in inherited_git_vars() {
+        cmd.env_remove(key);
+    }
+    let output = cmd
+        .arg("-C")
+        .arg(dir)
+        .args(args)
+        .output()
+        .expect("git runs");
+    assert!(
+        output.status.success(),
+        "git {args:?} on the decoy at {} failed: {}",
+        dir.display(),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    String::from_utf8_lossy(&output.stdout).into_owned()
+}
+
+/// Everything §REQ-003-test-isolation.1 measures, read without a hook's variables.
+fn decoy_state(main: &Path, wt: &Path) -> Vec<String> {
+    vec![
+        decoy_git(main, &["config", "--local", "--list"]),
+        decoy_git(main, &["for-each-ref", "--format=%(refname) %(objectname)"]),
+        decoy_git(main, &["symbolic-ref", "HEAD"]),
+        decoy_git(wt, &["symbolic-ref", "HEAD"]),
+        decoy_git(wt, &["ls-files", "--stage"]),
+    ]
+}
