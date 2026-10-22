@@ -23,6 +23,9 @@ mod review_cases;
 #[path = "../reply_refusal_cases.rs"]
 mod refusal_cases;
 
+#[path = "../reply_startup_cases.rs"]
+mod startup_cases;
+
 use std::fs;
 use std::process::Stdio;
 use std::time::{Duration, Instant};
