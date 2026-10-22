@@ -305,15 +305,27 @@ impl WorkRoot {
     /// or this root's `states.yaml` — because the root's machine is never
     /// moved for the reader (§FS-005-dispatch.6). One wording for every writer
     /// of a ticket that asks.
+    ///
+    /// Where the root is only proposed, no `states.yaml` is there to name: the
+    /// machine came from the work configuration's `states`, so that is the
+    /// side named instead.
     pub fn undeclared(&self, recipe: &str, state: &str) -> EphorError {
+        let file = self.dir.join("states.yaml");
+        let other = if file.is_file() {
+            format!("declare '{state}' in {}", file.display())
+        } else {
+            format!(
+                "declare '{state}' in the work configuration's 'states', the machine this root \
+                 would be given"
+            )
+        };
         EphorError::Command(format!(
             "recipe '{recipe}' starts in state '{state}', which the machine '{}' in {} does not \
              declare (it has: {}). Give the recipe a 'state' the machine declares in the work \
-             configuration, or declare '{state}' in {}.",
+             configuration, or {other}.",
             self.machine,
             self.dir.display(),
             self.state_names().join(", "),
-            self.dir.join("states.yaml").display(),
         ))
     }
 
