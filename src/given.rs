@@ -19,6 +19,19 @@
 
 use crate::error::{EphorError, Result};
 
+/// Every environment name a flag is read from when the flag is absent: the
+/// second spelling of each value `ephor checkout`, `ephor rebase` and the
+/// rebase sweep take (§FS-011-command-line.9).
+///
+/// Written down once, here, because the suite starts every `ephor` it runs
+/// without them, and a list kept anywhere else is the one the next spelling is
+/// left off (§REQ-003-test-isolation.4.1). A name handed to [`value`],
+/// [`branch`] or [`input`] belongs in it; `suite_isolation_test` holds the two
+/// together.
+pub const ENVIRONMENT_SPELLINGS: &[&str] = &[
+    "BRANCH", "CHECKOUT", "FROM", "HAND", "ITEM", "ONTO", "PROJECT", "REPORT", "UPSTREAM",
+];
+
 /// A value as it arrived, and the input it came in on: the flag where a reader
 /// typed one, the environment name where a program state set it.
 struct Said {

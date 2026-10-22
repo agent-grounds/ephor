@@ -1586,7 +1586,6 @@ fn a_project_declared_only_by_skipped_rows_is_named_by_the_roles_it_wrote_down()
 /// (§REQ-003-test-isolation.4.2); an inherited `FROM` fails every checkout
 /// grown from the base, and an inherited `ITEM` every one at all.
 #[test]
-#[ignore = "red until #237: an inherited REPORT receives the checkout's report and an inherited FROM or ITEM fails it; implement removes this"]
 fn the_cases_hold_with_the_callers_flag_spellings_and_write_no_report_of_theirs() {
     holds_with_the_callers_flag_spellings(&[
         "a_missing_workspace_is_made_from_the_registry_alone",

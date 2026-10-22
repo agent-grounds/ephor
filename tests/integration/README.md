@@ -17,7 +17,8 @@ not auto-discover tests in a subdirectory. `common/` is the shared harness
 against. A test runs `git` through `git_command()` and `ephor` through
 `ephor_cmd()`, which `common/` takes from `tests/shared/git_env.rs`: the one
 place under `tests/` that takes git's repository variables off what the suite
-spawns ([§REQ-003-test-isolation.3.4](../../docs/requirements/REQ-003-test-isolation.md#34-one-place-per-tree-applies-it)).
+spawns ([§REQ-003-test-isolation.3.4](../../docs/requirements/REQ-003-test-isolation.md#34-one-place-per-tree-applies-it)), and ephor's own flag spellings off every
+`ephor` it spawns ([§REQ-003-test-isolation.4.4](../../docs/requirements/REQ-003-test-isolation.md#44-one-place-applies-it)).
 
 - `check_test.rs` — `ephor check` end to end ([§FS-006-project-interface.5](../../docs/functional-spec/FS-006-project-interface.md#5-checks-are-verbs-and-every-script-is-self-contained)).
 - `checkout_test.rs` — `ephor checkout` end to end ([§FS-004-quick-actions.7](../../docs/functional-spec/FS-004-quick-actions.md#7-a-workspace-that-is-not-there-is-offered-the-checkout)).

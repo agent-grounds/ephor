@@ -9,8 +9,9 @@ use std::path::{Path, PathBuf};
 use serde_json::{json, Value};
 
 // The one helper under `tests/` that builds `git` and `ephor` without git's
-// repository variables (§REQ-003-test-isolation.3.4). A binary that uses only
-// part of it would warn about the rest.
+// repository variables, and `ephor` without its own flag spellings
+// (§REQ-003-test-isolation.3.4, §REQ-003-test-isolation.4.4). A binary that
+// uses only part of it would warn about the rest.
 #[path = "../../shared/git_env.rs"]
 mod git_env;
 #[allow(unused_imports)]
@@ -48,7 +49,8 @@ pub fn tempdir() -> tempfile::TempDir {
         .expect("a temporary directory")
 }
 
-/// `ephor`, with git's repository variables taken off (§REQ-003-test-isolation.3.3).
+/// `ephor`, with git's repository variables and ephor's own flag spellings
+/// taken off (§REQ-003-test-isolation.3.3, §REQ-003-test-isolation.4).
 pub fn ephor_cmd() -> assert_cmd::Command {
     assert_cmd::Command::from_std(ephor_command())
 }

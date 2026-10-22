@@ -198,8 +198,9 @@ fn issue_223_first_screen_uses_one_sweep_and_refresh_still_reloads() {
         .arg(assert_cmd::cargo::cargo_bin("ephor"))
         .arg(world.path());
     // Apply the same isolated child environment the CLI cases use, removals
-    // included, so the `ephor` the driver starts inherits no `GIT_*`
-    // (§REQ-003-test-isolation.3.3).
+    // included, so the `ephor` the driver starts inherits no `GIT_*` and none
+    // of ephor's own flag spellings (§REQ-003-test-isolation.3.3,
+    // §REQ-003-test-isolation.4.3).
     for (key, value) in world.ephor_raw().get_envs() {
         match value {
             Some(value) => driver.env(key, value),
