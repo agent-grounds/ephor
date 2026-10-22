@@ -1540,7 +1540,11 @@ one per ticket the plan holds open, the one the runtime parked (`⚠ … waiting
 you`) first, each saying when it was asked for where the ledger knows. Where
 nothing is open there is one row for what the last ticket decided — `✓ fix-gate
 · the gate is green`, or `⊘ fix-gate · cancelled` — and an item that has moved
-under its work adds a `⟳` row saying what changed. The cursor reaches them, and
+under its work adds a `⟳` row saying what changed. A ticket that finished with
+the verdict `blocked` reads `✓ fix-gate · finished blocked`, not the verdict's
+own sentence: the work is over, and nothing is waiting on you for it. Its reason
+is in the verdict, which `ephor work list` prints under the row and `H` opens
+([§8.7.2](#872-reviewing-a-human-gate)). The cursor reaches them, and
 the keys there are the work's ([§6.3](#63-keys)).
 
 **A row waiting on you about a file says so with one mark, `📎N`.** N counts
@@ -3334,6 +3338,11 @@ is open at all and `ephor work forget --done` clears it
 | `o` | open the item in the browser |
 | `j` `k` | move between recipes · `f`/`b` page · `;` ops · `Esc` back |
 
+Under each finished ticket is the first line of its verdict. A ticket whose
+verdict is `blocked` says `finished blocked · <path to its verdict>` there
+instead: it is over, and the path is where its reason is; `H` opens it
+([§8.7.2](#872-reviewing-a-human-gate)).
+
 The recipe rows show the words each would actually send, rendered against this
 item — dispatching is cheap to press and expensive to run — and the hand each
 would go to, resolved the way dispatch will resolve it (§8.4), in the same
@@ -3470,6 +3479,34 @@ ephor work transition --item <matter-id> --ticket <qualified-ticket> \
 The review numbers its files from one and lists the qualified ticket ids the
 transition command takes. `--json` is also supported for a file reading and a
 transition outcome.
+
+**A finished blocked ticket is read here, never decided.** A ticket that
+finished with the verdict `blocked` is over, so it is no gate: it has no
+transition and nothing waits on it. Its reason is still the thing to read, so
+the review lists its verdict and its runtime result after every live gate's
+files, labelled `<ticket> · finished blocked · verdict` and `… · result`, in
+plan order
+([§FS-005-dispatch.9.2](functional-spec/FS-005-dispatch.md#92-a-finished-blocked-verdict-is-read-beside-the-gates-never-as-one)).
+Where no gate is live, the review still says so and lists them under it:
+
+```text
+$ ephor work review --item gdev:graal
+No work is waiting at a human gate for this matter.
+  file 1: gdev-graal-24550-e13a1739.fix-gate-1 · finished blocked · verdict — …/runtime/ephor/gdev-graal-24550-e13a1739.fix-gate-1.verdict.md
+  file 2: gdev-graal-24550-e13a1739.fix-gate-1 · finished blocked · result — …/runtime/results/gdev-graal-24550-e13a1739.fix-gate-1.md
+$ ephor work review --item gdev:graal --file 1
+VERDICT: blocked — a person has to decide or do something first
+
+Collection could not run because the VPN was down; a person must restore the VPN and re-run collect.
+```
+
+In a review that also has a live gate, the gate's transitions and files come
+first and stay as actionable as ever; the finished files after them only open.
+`--json` carries them in `files` while `gates` holds only the live ones, and
+`ephor work list --json` carries the same files on the ticket as
+`outcome_files`. A result the ticket never wrote is listed with its problem. A
+finished ticket with no readable verdict, another verdict, or a cancellation
+adds nothing and reads exactly as it did.
 
 ### 8.8 By hand
 

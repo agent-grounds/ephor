@@ -535,9 +535,15 @@ impl WorkScreen {
                         spans.push(Span::styled(format!("   asked {}", ago(now, asked)), dim));
                     }
                     lines.push(Line::from(spans));
-                    if let Some(verdict) = &ticket.verdict {
+                    // A finished blocked outcome says it finished so, and
+                    // where its reason is (§FS-005-dispatch.23).
+                    let said = match ticket.outcome_file() {
+                        Some(path) => Some(format!("finished blocked · {}", path.display())),
+                        None => ticket.outcome(usize::MAX),
+                    };
+                    if let Some(said) = said {
                         lines.push(Line::from(Span::styled(
-                            format!("        {verdict}"),
+                            format!("        {said}"),
                             Style::default().fg(Color::Cyan),
                         )));
                     }
@@ -806,6 +812,7 @@ mod tests {
                 assignee: None,
                 pinned: None,
                 verdict: Some("done — the change is right".to_string()),
+                outcome_files: Vec::new(),
                 asked: Some(Utc::now() - chrono::Duration::hours(3)),
             }],
             changes: if stale {
@@ -1330,6 +1337,7 @@ mod tests {
             assignee: None,
             pinned: None,
             verdict: None,
+            outcome_files: Vec::new(),
             asked: Some(Utc::now() - chrono::Duration::minutes(12)),
         };
         status.tickets = vec![
@@ -1340,6 +1348,7 @@ mod tests {
                 finished: true,
                 cancelled: true,
                 verdict: Some("asked twice by mistake".to_string()),
+                outcome_files: Vec::new(),
                 ..open("fix-gate-2", "cancelled")
             },
             open("fix-gate-3", "collect"),

@@ -578,6 +578,10 @@ pub struct Ticket {
     pub queued: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub verdict: Option<String>,
+    /// The files a finished blocked outcome left, its verdict then its result;
+    /// absent for every other ticket (§FS-005-dispatch.23).
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub outcome_files: Vec<crate::work::runtime::human_gate::Artifact>,
 }
 
 /// What one move changed (§REQ-002-parity.3): the same outcome the prose

@@ -348,3 +348,76 @@ fn human_gate_authored_work_is_reviewed_through_its_original_matter() {
     let invocation = std::fs::read_to_string(world.dir.path().join("invocation")).unwrap();
     assert!(invocation.contains("--task\nreview.1\n--from\nwaiting\n--to\naccepted\n"));
 }
+
+/// Finished blocked tickets are read beside the gates, never as one: after
+/// every gate's materials, in plan order, verdict then result, a missing
+/// result carrying its problem; a final ticket with another verdict, none, or a
+/// cancellation adds nothing (§FS-005-dispatch.9.1, §FS-005-dispatch.9.2).
+#[test]
+fn finished_blocked_tickets_are_listed_after_the_gates_and_never_gated() {
+    let world = World::new();
+    let root = world.dir.path();
+    let mut machine: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(root.join("machine.json")).unwrap()).unwrap();
+    machine["states"][1]["final"] = true.into();
+    machine["states"]
+        .as_array_mut()
+        .unwrap()
+        .push(serde_json::json!({"name": "cancelled", "final": true}));
+    std::fs::write(root.join("machine.json"), machine.to_string()).unwrap();
+    std::fs::write(
+        &world.path,
+        "# Rhei: Review\n**States:** review\n\n## Tasks\n\n\
+         ### Task 0: Earlier\n**State:** accepted\n\n\
+         ### Task 1: Decide\n**State:** waiting\n\n\
+         ### Task 2: Other\n**State:** accepted\n\n\
+         ### Task 3: Plain\n**State:** accepted\n\n\
+         ### Task 4: Taken back\n**State:** cancelled\n",
+    )
+    .unwrap();
+    std::fs::create_dir_all(root.join("runtime/ephor")).unwrap();
+    std::fs::create_dir_all(root.join("runtime/results")).unwrap();
+    for (ticket, verdict) in [
+        ("0", "blocked — VPN"),
+        ("2", "blocked — VPN"),
+        ("3", "done — ok"),
+        ("4", "blocked — VPN"),
+    ] {
+        std::fs::write(
+            root.join(format!("runtime/ephor/review.{ticket}.verdict.md")),
+            format!("VERDICT: {verdict}\n"),
+        )
+        .unwrap();
+    }
+    std::fs::write(
+        root.join("runtime/results/review.0.md"),
+        "## Result\n\nVPN\n",
+    )
+    .unwrap();
+
+    let review = review_plan(&world.config, root, &world.path, "review", None)
+        .unwrap()
+        .settled();
+    assert_eq!(review.gates.len(), 1);
+    assert_eq!(review.gates[0].ticket, "review.1");
+    let names: Vec<_> = review.files.iter().map(|file| file.name.as_str()).collect();
+    let history = names
+        .iter()
+        .position(|name| name.contains("finished blocked"))
+        .unwrap();
+    assert!(names[..history]
+        .iter()
+        .all(|name| name.starts_with("review.1 · ")));
+    assert_eq!(
+        names[history..],
+        [
+            "review.0 · finished blocked · verdict",
+            "review.0 · finished blocked · result",
+            "review.2 · finished blocked · verdict",
+            "review.2 · finished blocked · result",
+        ]
+    );
+    let files = &review.files[history..];
+    assert!(files[..3].iter().all(|file| file.problem.is_none()));
+    assert!(files[3].problem.is_some(), "the missing result says so");
+}

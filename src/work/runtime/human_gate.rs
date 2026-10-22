@@ -16,10 +16,19 @@ use super::plan::{self, Plan};
 
 const FILE_LIMIT: usize = 256 * 1024;
 
+/// What a review with no live gate says on both surfaces, still true where
+/// finished files are listed under it (§FS-005-dispatch.9.2).
+pub const NO_GATE: &str = "No work is waiting at a human gate for this matter.";
+
 #[derive(Debug, Clone, Default, Serialize)]
 pub struct Review {
     pub gates: Vec<Gate>,
     pub files: Vec<Artifact>,
+    /// The files of finished blocked tickets, held back until every plan's
+    /// gates have listed theirs, then appended by [`Review::settled`]
+    /// (§FS-005-dispatch.9.2).
+    #[serde(skip)]
+    pub(crate) finished: Vec<Artifact>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -59,6 +68,8 @@ struct State {
     description: Option<String>,
     #[serde(default)]
     gating: bool,
+    #[serde(default, rename = "final")]
+    is_final: bool,
     #[serde(default)]
     inputs: Vec<DeclaredArtifact>,
     #[serde(default)]
@@ -174,12 +185,21 @@ pub fn review_plan(
         if only_ticket.is_some_and(|wanted| wanted != task.id) {
             continue;
         }
-        let Some(state) = task.state.as_ref().and_then(|current| {
+        let current = task.state.as_ref().and_then(|current| {
             machine_data
                 .states
                 .iter()
-                .find(|state| state.name == *current && state.gating)
-        }) else {
+                .find(|state| state.name == *current)
+        });
+        // Gates come from current state alone (§FS-005-dispatch.9.1); a final
+        // ticket that wrote `blocked` is history beside them, never a gate
+        // (§FS-005-dispatch.9.2).
+        let Some(state) = current.filter(|state| state.gating) else {
+            if current.is_some_and(|state| state.is_final) && !task.cancelled() {
+                review
+                    .finished
+                    .extend(super::results::finished_blocked(root, plan_id, &task.id));
+            }
             continue;
         };
         let ticket = format!("{plan_id}.{}", task.id);
@@ -251,19 +271,24 @@ impl Review {
         for file in review.files {
             self.add_file(file.name, file.path, file.problem);
         }
+        self.finished.extend(review.finished);
+    }
+
+    /// The review as it is read: every live gate's materials first, then each
+    /// finished blocked ticket's verdict and result in plan order, a path
+    /// already listed not listed twice (§FS-005-dispatch.9.2).
+    pub fn settled(mut self) -> Review {
+        for file in std::mem::take(&mut self.finished) {
+            self.add_file(file.name, file.path, file.problem);
+        }
+        self
     }
 
     fn add_file(&mut self, name: String, path: PathBuf, problem: Option<String>) {
         if self.files.iter().any(|file| file.path == path) {
             return;
         }
-        let problem = problem.or_else(|| match std::fs::metadata(&path) {
-            Ok(metadata) if metadata.is_file() => {
-                File::open(&path).err().map(|err| err.to_string())
-            }
-            Ok(_) => Some("not a regular file".to_string()),
-            Err(err) => Some(err.to_string()),
-        });
+        let problem = problem.or_else(|| unreadable(&path));
         self.files.push(Artifact {
             name,
             path,
@@ -305,6 +330,16 @@ impl Review {
                 None,
             );
         }
+    }
+}
+
+/// Why a review file cannot be opened, where it cannot — the one availability
+/// check every review file goes through (§FS-005-dispatch.9.1).
+pub fn unreadable(path: &Path) -> Option<String> {
+    match std::fs::metadata(path) {
+        Ok(metadata) if metadata.is_file() => File::open(path).err().map(|err| err.to_string()),
+        Ok(_) => Some("not a regular file".to_string()),
+        Err(err) => Some(err.to_string()),
     }
 }
 

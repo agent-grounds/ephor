@@ -289,6 +289,10 @@ fn list_work(
                         "running": ticket.running,
                         "queued": ticket.queued,
                         "verdict": ticket.verdict,
+                        // The files a finished blocked outcome left, absent
+                        // for every other ticket (§FS-005-dispatch.23).
+                        "outcome_files": (!ticket.outcome_files.is_empty())
+                            .then_some(&ticket.outcome_files),
                     }))).collect::<Vec<_>>(),
                     // The plans workflows laid down beside this matter's own
                     // (§FS-005-dispatch.19). They carry no ticket inside the
@@ -332,6 +336,17 @@ fn list_work(
             status.badge(64),
             style.dim(&title(&entry.title)),
         );
+        // Where the work finished blocked, the reason is one open away: the
+        // first readable file of that outcome (§FS-005-dispatch.23).
+        if status.open_tickets() == 0 {
+            if let Some(path) = status.tickets.last().and_then(|last| last.outcome_file()) {
+                println!(
+                    "{:<width$}  {}",
+                    "",
+                    style.dim(&format!("{}  (why it is blocked)", path.display()))
+                );
+            }
+        }
         // The plans ephor wrote itself, where there are any to name. What a
         // workflow laid is named below with the entry that laid it, so that
         // the widened reading (§FS-005-dispatch.35) adds nothing to this row
@@ -441,9 +456,14 @@ fn work_offers(config: &StatusConfig, args: &crate::cli::WorkOffersArgs) -> Resu
                 ticket.id,
                 ticket.state.as_deref().unwrap_or("?"),
                 ticket.recipe,
-                match &ticket.verdict {
-                    Some(verdict) => format!(" — {verdict}"),
-                    None => String::new(),
+                // Said as the row says it (§FS-005-dispatch.23).
+                match ticket.outcome_files.is_empty() {
+                    false => format!(" — finished blocked"),
+                    true => ticket
+                        .verdict
+                        .as_ref()
+                        .map(|verdict| format!(" — {verdict}"))
+                        .unwrap_or_default(),
                 }
             );
         }

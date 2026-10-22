@@ -927,6 +927,7 @@ fn ticket(id: &str, state: &str) -> TicketStatus {
         assignee: None,
         pinned: None,
         verdict: None,
+        outcome_files: Vec::new(),
         asked: None,
     }
 }
@@ -1003,6 +1004,38 @@ fn a_plan_with_nothing_open_stands_on_one_row_for_what_it_decided() {
     let cancelled = work_status(vec![taken_back]).lines(60);
     assert_eq!(cancelled[0].said, "fix-gate · cancelled");
     assert_eq!(cancelled[0].marker, "⊘");
+}
+
+/// A finished blocked outcome says it finished, on the badge and on the
+/// row, never the verdict's imperative sentence alone; its first readable
+/// file is the reason one open away (§FS-005-dispatch.23).
+#[test]
+fn a_finished_blocked_outcome_says_it_is_finished() {
+    let file = |what: &str, problem: Option<&str>| runtime::human_gate::Artifact {
+        name: format!("forge-widget-42.fix-gate-1 · finished blocked · {what}"),
+        path: PathBuf::from(format!("/w/{what}.md")),
+        problem: problem.map(String::from),
+    };
+    let blocked = TicketStatus {
+        finished: true,
+        verdict: Some("blocked — a person has to decide or do something first".to_string()),
+        outcome_files: vec![file("verdict", None), file("result", None)],
+        ..ticket("fix-gate-1", "done")
+    };
+    assert_eq!(blocked.outcome(60).as_deref(), Some("finished blocked"));
+    assert_eq!(blocked.outcome_file(), Some(Path::new("/w/verdict.md")));
+    let status = work_status(vec![blocked.clone()]);
+    assert_eq!(status.lines(60)[0].said, "fix-gate · finished blocked");
+    assert!(status.badge(60).contains("✓ fix-gate · finished blocked"));
+    assert!(!status.badge(60).contains("a person has to decide"));
+
+    // The verdict preferred over the result, the result where the verdict
+    // cannot be read.
+    let unreadable = TicketStatus {
+        outcome_files: vec![file("verdict", Some("gone")), file("result", None)],
+        ..blocked
+    };
+    assert_eq!(unreadable.outcome_file(), Some(Path::new("/w/result.md")));
 }
 
 /// An item that moved under its work says so on a row of its own: it is a

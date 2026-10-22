@@ -60,6 +60,48 @@ pub fn verdict(root: &Path, plan_id: &str, ticket: &str) -> Option<String> {
     Some(line.to_string())
 }
 
+/// Whether a verdict line says the ticket finished **blocked**: the shipped
+/// machine's own word, first, and nothing that merely mentions it
+/// (§FS-005-dispatch.9.2).
+pub fn is_blocked(verdict: &str) -> bool {
+    verdict
+        .split(|ch: char| !ch.is_alphanumeric() && ch != '-' && ch != '_')
+        .next()
+        .is_some_and(|word| word.eq_ignore_ascii_case("blocked"))
+}
+
+/// The files a finished blocked ticket left behind, read beside the gates and
+/// never as one (§FS-005-dispatch.9.2): its verdict artifact, then its runtime
+/// result, each with its problem where it cannot be read. Empty unless the
+/// verdict artifact is readable and explicitly `blocked` — a ticket with no
+/// verdict, or another one, is presented as it always was. The caller says the
+/// ticket is final and not cancelled; only these two known locations are read,
+/// and nothing in them is followed.
+pub fn finished_blocked(
+    root: &Path,
+    plan_id: &str,
+    ticket: &str,
+) -> Vec<super::human_gate::Artifact> {
+    if !verdict(root, plan_id, ticket).is_some_and(|said| is_blocked(&said)) {
+        return Vec::new();
+    }
+    let qualified = format!("{plan_id}.{ticket}");
+    [
+        (
+            "verdict",
+            root.join(ARTIFACTS).join(format!("{qualified}.verdict.md")),
+        ),
+        ("result", root.join(RESULTS).join(format!("{qualified}.md"))),
+    ]
+    .into_iter()
+    .map(|(what, path)| super::human_gate::Artifact {
+        name: format!("{qualified} · finished blocked · {what}"),
+        problem: super::human_gate::unreadable(&path),
+        path,
+    })
+    .collect()
+}
+
 /// A reply a run drafted and did not send (§FS-005-dispatch.13). It is a file
 /// and stays one until a person posts it: the proposal is materials, never an
 /// act (§REQ-001-boundary.1).
@@ -246,6 +288,55 @@ mod tests {
             Some("blocked — the failing job needs a credential")
         );
         assert!(verdict(tmp.path(), "widget-42", "nothing-1").is_none());
+    }
+
+    /// Only an explicit `blocked` verdict is one (§FS-005-dispatch.9.2).
+    #[test]
+    fn only_an_explicit_blocked_verdict_is_blocked() {
+        assert!(is_blocked(
+            "blocked — a person has to decide or do something first"
+        ));
+        assert!(is_blocked("Blocked: the VPN is down"));
+        assert!(!is_blocked("done — the ticket is answered"));
+        assert!(!is_blocked("partial — blocked on a credential"));
+        assert!(!is_blocked("blockedness"));
+    }
+
+    /// A finished blocked ticket offers its verdict, then its result, and a
+    /// result it never wrote carries its problem; any other verdict, or none,
+    /// offers nothing (§FS-005-dispatch.9.2).
+    #[test]
+    fn a_finished_blocked_ticket_offers_its_verdict_then_its_result() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = artifacts(tmp.path());
+        fs::write(
+            dir.join("widget-42.fix-gate-1.verdict.md"),
+            "VERDICT: blocked — a person has to decide\n\nThe VPN was down.\n",
+        )
+        .unwrap();
+        fs::write(
+            dir.join("widget-42.fix-gate-2.verdict.md"),
+            "VERDICT: done — the change is right\n",
+        )
+        .unwrap();
+        let files = finished_blocked(tmp.path(), "widget-42", "fix-gate-1");
+        let names: Vec<_> = files.iter().map(|file| file.name.as_str()).collect();
+        assert_eq!(
+            names,
+            [
+                "widget-42.fix-gate-1 · finished blocked · verdict",
+                "widget-42.fix-gate-1 · finished blocked · result"
+            ]
+        );
+        assert_eq!(files[0].path, dir.join("widget-42.fix-gate-1.verdict.md"));
+        assert!(files[0].problem.is_none());
+        assert_eq!(
+            files[1].path,
+            tmp.path().join(RESULTS).join("widget-42.fix-gate-1.md")
+        );
+        assert!(files[1].problem.is_some(), "the missing result says so");
+        assert!(finished_blocked(tmp.path(), "widget-42", "fix-gate-2").is_empty());
+        assert!(finished_blocked(tmp.path(), "widget-42", "fix-gate-3").is_empty());
     }
 
     /// The proposal is read whole: it is a reply, and a reply summarized is a
