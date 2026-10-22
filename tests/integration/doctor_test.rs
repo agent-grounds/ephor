@@ -659,6 +659,204 @@ fn the_self_pass_leaves_nothing_behind() {
     assert!(leftovers.is_empty(), "{leftovers:?}");
 }
 
+/// `git -C <dir> <args>`, run by the test itself, with what it printed and how
+/// it ended. A command that fails is part of the answer rather than a panic:
+/// once `core.bare` is set, `ls-files` in the main checkout fails, and that
+/// failure is the damage the assertion has to show.
+fn git_reads(dir: &Path, args: &[&str]) -> String {
+    let out = git_command()
+        .arg("-C")
+        .arg(dir)
+        .args(args)
+        .output()
+        .unwrap();
+    format!(
+        "$ git {}\n{}{}{}\n",
+        args.join(" "),
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr),
+        out.status
+    )
+}
+
+/// The test's own `git`, required to succeed, committing as nobody's local
+/// `[user]`: an identity in the repository's configuration would hide the one
+/// the defect writes there.
+fn git_does(dir: &Path, args: &[&str]) {
+    let out = git_command()
+        .arg("-C")
+        .arg(dir)
+        .args([
+            "-c",
+            "user.name=owner",
+            "-c",
+            "user.email=owner@example.org",
+        ])
+        .args(args)
+        .output()
+        .unwrap();
+    assert!(
+        out.status.success(),
+        "git {args:?} in {}: {}",
+        dir.display(),
+        String::from_utf8_lossy(&out.stderr)
+    );
+}
+
+/// What a run can change of a repository it was not asked to touch
+/// (§REQ-003-test-isolation.1): its configuration, branches and `HEAD`, the
+/// index of the checkout at `dir`, and its worktrees.
+fn repository_state(dir: &Path) -> String {
+    [
+        &["config", "--local", "--list"][..],
+        &["for-each-ref", "--format=%(refname) %(objectname)"],
+        &["symbolic-ref", "HEAD"],
+        &["rev-parse", "HEAD"],
+        &["ls-files", "--stage"],
+        &["worktree", "list", "--porcelain"],
+    ]
+    .iter()
+    .map(|args| git_reads(dir, args))
+    .collect()
+}
+
+/// A repository of the test's own, on `main` with one tracked file committed,
+/// so that its index is a file with an entry in it.
+fn repository(dir: &Path) {
+    fs::create_dir_all(dir).unwrap();
+    git_does(dir, &["init", "-q", "--initial-branch=main"]);
+    fs::write(dir.join("tracked.txt"), "the owner's\n").unwrap();
+    git_does(dir, &["add", "tracked.txt"]);
+    git_does(dir, &["commit", "-q", "-m", "base"]);
+}
+
+/// `ephor doctor --self-only` with git's repository variables naming
+/// `git_dir`, the way a hook hands them on. The harness takes off whatever this
+/// process inherited, and the two set here come after that and are kept
+/// (§REQ-003-test-isolation.3.2). The scratch site goes under `tmp`.
+fn doctor_under(tmp: &Path, work_tree: &Path, git_dir: &Path) -> std::process::Output {
+    let scratch = tmp.join("tmpdir");
+    fs::create_dir_all(&scratch).unwrap();
+    let mut cmd = ephor_cmd();
+    cmd.env_remove("EPHOR_REGISTRY");
+    cmd.env_remove("EPHOR_STATUS_CONFIG");
+    cmd.env("XDG_STATE_HOME", tmp.join("state"));
+    cmd.env("TMPDIR", &scratch);
+    cmd.env("GIT_DIR", git_dir);
+    cmd.env("GIT_INDEX_FILE", git_dir.join("index"));
+    // A hook runs at the top of the work tree being committed to.
+    cmd.current_dir(work_tree);
+    cmd.args(["doctor", "--self-only"]).output().unwrap()
+}
+
+/// The repository is the evidence, not only the exit code: what the defect does
+/// is write, and a run that wrote and then exited 0 would still be the defect.
+fn assert_untouched(what: &str, before: &str, after: &str, doctor: &std::process::Output) {
+    assert!(
+        before == after,
+        "doctor --self-only changed {what} (exit {:?}).\n\
+         doctor said:\n{}{}\n\
+         --- before\n{before}\n--- after\n{after}",
+        doctor.status.code(),
+        String::from_utf8_lossy(&doctor.stdout),
+        String::from_utf8_lossy(&doctor.stderr),
+    );
+}
+
+/// Run with `GIT_DIR` and `GIT_INDEX_FILE` naming a plain repository, the self
+/// pass answers as it does outside a hook and writes nothing into that
+/// repository: no `[user]`, no commit on its branch, nothing staged, and no
+/// worktree added by the `ephor checkout` it walks (§FS-010-doctor.4.1).
+#[test]
+#[ignore = "red until #238: the self pass hands an inherited GIT_DIR to the git it starts, \
+            which commits into that repository, and exits 1; implement removes this"]
+fn issue_238_the_self_pass_writes_nothing_into_the_repository_git_dir_names() {
+    let tmp = tempdir();
+    let plain = tmp.path().join("plain");
+    repository(&plain);
+    let before = repository_state(&plain);
+
+    let doctor = doctor_under(tmp.path(), &plain, &plain.join(".git"));
+
+    assert_untouched(
+        "the repository GIT_DIR names",
+        &before,
+        &repository_state(&plain),
+        &doctor,
+    );
+    assert_eq!(
+        doctor.status.code(),
+        Some(0),
+        "doctor --self-only under GIT_DIR failed where it passes outside one: {}",
+        String::from_utf8_lossy(&doctor.stdout)
+    );
+}
+
+/// The shape a hook really has in a linked worktree: `GIT_DIR` names the
+/// worktree's directory inside the shared `.git`, so whatever follows it writes
+/// the configuration every checkout of the project reads. The self pass leaves
+/// `core.bare` false and adds no `[user]` there, moves no branch — the one being
+/// committed to included — and adds no worktree (§FS-010-doctor.4.1).
+#[test]
+#[ignore = "red until #238: the self pass hands a linked worktree's GIT_DIR to the git it \
+            starts, which sets core.bare and a [user] in the shared .git, and exits 1; \
+            implement removes this"]
+fn issue_238_the_self_pass_from_a_linked_worktrees_hook_leaves_the_shared_repository_alone() {
+    let tmp = tempdir();
+    let main = tmp.path().join("main");
+    let worktree = tmp.path().join("wt");
+    repository(&main);
+    git_does(&main, &["worktree", "add", "-q", "-b", "topic", "../wt"]);
+    let git_dir = main.join(".git").join("worktrees").join("wt");
+    assert!(git_dir.is_dir(), "no gitdir for the linked worktree");
+    let before = (repository_state(&main), repository_state(&worktree));
+
+    let doctor = doctor_under(tmp.path(), &worktree, &git_dir);
+
+    // Read from the file, not through discovery, which `core.bare` would bend.
+    let shared_config = main.join(".git").join("config");
+    let config = |args: &[&str]| {
+        let out = git_command()
+            .args(["config", "--file"])
+            .arg(&shared_config)
+            .args(args)
+            .output()
+            .unwrap();
+        String::from_utf8_lossy(&out.stdout).trim().to_string()
+    };
+    assert_eq!(
+        config(&["--get", "core.bare"]),
+        "false",
+        "doctor --self-only set core.bare in the shared .git (exit {:?}): {}",
+        doctor.status.code(),
+        String::from_utf8_lossy(&doctor.stdout)
+    );
+    assert_eq!(
+        config(&["--get-regexp", r"^user\."]),
+        "",
+        "doctor --self-only wrote an identity into the shared .git"
+    );
+    assert_untouched(
+        "the main checkout's repository",
+        &before.0,
+        &repository_state(&main),
+        &doctor,
+    );
+    assert_untouched(
+        "the linked worktree GIT_DIR names",
+        &before.1,
+        &repository_state(&worktree),
+        &doctor,
+    );
+    assert_eq!(
+        doctor.status.code(),
+        Some(0),
+        "doctor --self-only under a linked worktree's GIT_DIR failed where it passes \
+         outside one: {}",
+        String::from_utf8_lossy(&doctor.stdout)
+    );
+}
+
 /// The roster is reportable before anything depends on it
 /// (§FS-005-dispatch.14): each hand, what it resolves to, and why an
 /// unavailable one is unavailable — shown with its reason, never hidden.
