@@ -1010,6 +1010,89 @@ fn a_refusal_for_an_undeclared_state_names_what_to_change() {
     );
 }
 
+/// agent-grounds/ephor#245 on a root not made yet: the ask before the replay
+/// vets the machine the real dispatch would install, just as a dry run does
+/// (§FS-005-dispatch.12), so a configured recipe whose state the shipped
+/// machine lacks puts the tree back and makes no work root. The refusal names
+/// the work configuration's `states`, not a `states.yaml` that is not there
+/// (§FS-005-dispatch.6).
+#[test]
+fn a_fresh_root_whose_machine_would_refuse_puts_the_tree_back() {
+    let tmp = tempdir();
+    let checkout = trailing_checkout(tmp.path(), true);
+    fixture_with(
+        tmp.path(),
+        &checkout,
+        "master",
+        json!({ "recipes": [{
+            "id": "rebase", "icon": "⤴", "description": "rebase onto main",
+            "state": "rebase", "when": { "behind": true }, "brief": "resolve it"
+        }]}),
+    );
+    let before = head_of(&checkout);
+    ephor(tmp.path())
+        .args(["refresh", "demo"])
+        .assert()
+        .success();
+
+    let out = ephor(tmp.path())
+        .args(["work", "dispatch", "--recipe", "rebase", "--dry-run"])
+        .output()
+        .unwrap();
+    let said = format!(
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert!(
+        said.contains("does not declare"),
+        "the dry run promised a ticket the real dispatch refuses:\n{said}"
+    );
+    assert!(!checkout.join("panta").exists(), "a dry run makes nothing");
+
+    let out = ephor(tmp.path())
+        .args([
+            "rebase",
+            "--project",
+            "demo",
+            "--checkout",
+            checkout.to_str().unwrap(),
+            "--item",
+            "github-prs:acme/widget#42",
+            "--dispatch",
+        ])
+        .output()
+        .unwrap();
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        stderr.contains("does not declare"),
+        "the hand-over was not refused, so there is nothing to judge:\n{stderr}"
+    );
+    assert!(!out.status.success(), "the refusal is the exit");
+    assert!(
+        stderr.contains("in the work configuration's 'states'"),
+        "the refusal for a proposed root names the machine's source:\n{stderr}"
+    );
+    assert!(
+        !stderr.contains("states.yaml"),
+        "the refusal names a states.yaml that does not exist:\n{stderr}"
+    );
+    assert!(
+        !checkout.join("panta").exists(),
+        "a refusal makes no work root"
+    );
+    assert!(
+        !mid_rebase(&checkout),
+        "the hand-over was refused, so nobody is coming, yet the tree is left \
+         mid-rebase:\n{stderr}"
+    );
+    assert_eq!(
+        head_of(&checkout),
+        before,
+        "the tree is back on its starting commit"
+    );
+}
+
 /// The recipe-driven path of agent-grounds/ephor#245: a recipe whose opening
 /// move is the replay asks the machine before it makes the move
 /// (§FS-005-dispatch.12), so a dispatch the machine refuses has not touched

@@ -2468,11 +2468,12 @@ impl Dispatcher {
             // A machine already in force is read without creating anything, and
             // it answers here too: a dry run that promises a ticket the real
             // dispatch would refuse is the most misleading promise of the set
-            // (§FS-005-dispatch.6). Where no root exists yet there is nothing
-            // to consult, and what the run promises is where the ticket would
-            // go.
-            if let Some(existing) = WorkRoot::open(&site.dir)? {
-                vet(&existing)?;
+            // (§FS-005-dispatch.6). Where no root exists yet the machine
+            // consulted is the one the real dispatch would install and vet, so
+            // a replay that asks first is refused here too (§FS-005-dispatch.12).
+            match WorkRoot::open(&site.dir)? {
+                Some(existing) => vet(&existing)?,
+                None => vet(&WorkRoot::proposed(&site.dir, &states)?)?,
             }
             // And so does the workspace: a directory that is there without
             // being one is a state the real dispatch refuses, so promising the
