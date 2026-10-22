@@ -43,3 +43,6 @@ pub mod table;
 pub mod ticket_ids;
 pub mod update;
 pub mod work;
+
+#[cfg(test)]
+mod suite_isolation_tests;
