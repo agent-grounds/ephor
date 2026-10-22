@@ -2178,6 +2178,180 @@ fn a_root_parked_on_a_person_holds_its_flight_slot_and_frees_its_agent_slot() {
     drop(held);
 }
 
+/// Move a root made by [`due_root`] onto a release-tag poll every half hour,
+/// between its attempts: the machine learns the poll, the ticket sits in it,
+/// and the run's journal says its last attempt let go (§FS-005-dispatch.24.4).
+fn polling_root(root: &Path) -> runtime::watch::RootPlans {
+    let group = due_root(root, &ticket_at("fix-gate-1", "holding"));
+    let states = root.join("states.yaml");
+    let machine = fs::read_to_string(&states).unwrap();
+    fs::write(
+        &states,
+        machine.replace(
+            "  done:\n",
+            "  holding:\n    program: [\"bash\", \"ship-pr.sh\", \"hold\"]\n    \
+             poll:\n      interval: 30m\n      max_attempts: 672\n  done:\n",
+        ),
+    )
+    .unwrap();
+    fs::create_dir_all(root.join("runtime")).unwrap();
+    fs::write(
+        root.join("runtime/transitions.log"),
+        concat!(
+            "2026-10-21T10:00:00Z  fix-gate-1  start@holding  ",
+            "runtime/logs/task-fix-gate-1-holding.log\n",
+            "2026-10-21T10:00:05Z  fix-gate-1  end@holding  ",
+            "runtime/logs/task-fix-gate-1-holding.log  exit=1,duration=5s,outcome=waiting\n",
+        ),
+    )
+    .unwrap();
+    group
+}
+
+/// A root whose run is witnessed holding its ticket at `fix`: an agent is
+/// working there (§FS-005-dispatch.15.2).
+fn working_root(root: &Path) -> runtime::watch::RootPlans {
+    let group = due_root(root, &ticket_at("fix-gate-1", "fix"));
+    fs::create_dir_all(root.join("runtime")).unwrap();
+    fs::write(
+        root.join("runtime/transitions.log"),
+        "2026-08-14T10:00:00Z  fix-gate-1  start@fix  runtime/logs/task-fix-gate-1-fix.log\n",
+    )
+    .unwrap();
+    group
+}
+
+/// The ticket's measured case, counted: one root working, one waiting on its
+/// author, one polling a release tag. The polling root is counted apart from
+/// both of the others, the three counts add up to what is live, and the
+/// reading and a refusal under `max_active` both say so — at the site and at
+/// the project alike (§FS-005-dispatch.24.4).
+#[test]
+#[ignore = "red until #229: a root polling a machine is counted as polling; implement removes this"]
+fn a_root_polling_a_machine_is_counted_beside_the_active_and_the_parked() {
+    let tmp = tempfile::tempdir().unwrap();
+    let roots = [
+        working_root(&tmp.path().join("working/panta")),
+        due_root(
+            &tmp.path().join("waiting/panta"),
+            &ticket_at("fix-gate-1", "plan-approval"),
+        ),
+        polling_root(&tmp.path().join("polling/panta")),
+    ];
+    let held: Vec<fs::File> = roots.iter().map(|root| hold(&root.root)).collect();
+
+    let site = Capacity::new(
+        Ceilings {
+            site: Limits {
+                concurrent: None,
+                active: Some(1),
+            },
+            site_as_configured: None,
+            ..Ceilings::default()
+        },
+        LiveRuns::read(&work_config(), &roots, &BTreeMap::new()),
+    );
+    let standing = site.standing();
+    assert_eq!(
+        standing,
+        Standing {
+            live: 3,
+            active: 1,
+            parked: 1,
+            polling: 1,
+            max_concurrent: None,
+            max_active: Some(1),
+        }
+    );
+    assert_eq!(
+        standing.live,
+        standing.active + standing.parked + standing.polling
+    );
+    assert_eq!(
+        standing.says(),
+        "capacity: 3 live root(s) — 1 active, 1 parked, 1 polling \
+         (work.max_concurrent unlimited, work.max_active 1)"
+    );
+    assert_eq!(
+        site.refusal(&["widget".to_string()]).as_deref(),
+        Some("global work.max_active 1 is full (1 active run(s), 1 parked, 1 polling)")
+    );
+    // The hold as data keeps its shape: its count is the active roots
+    // (§FS-005-dispatch.24.2).
+    let full = site.hold(&["widget".to_string()]).expect("full");
+    assert_eq!(
+        full.data(),
+        serde_json::json!({
+            "kind": "concurrency", "scope": "site", "key": "max_active",
+            "limit": 1, "count": 1
+        })
+    );
+
+    // A project's own working ceiling counts its own polling roots.
+    let project = Capacity::new(
+        Ceilings {
+            projects: BTreeMap::from([(
+                "widget".to_string(),
+                Limits {
+                    concurrent: None,
+                    active: Some(1),
+                },
+            )]),
+            ..Ceilings::default()
+        },
+        LiveRuns::read(&work_config(), &roots, &BTreeMap::new()),
+    );
+    assert_eq!(
+        project.refusal(&["widget".to_string()]).as_deref(),
+        Some("projects.widget.work.max_active 1 is full (1 active run(s), 1 parked, 1 polling)")
+    );
+    drop(held);
+}
+
+/// Where nothing is polling a machine, the reading and the refusal read word
+/// for word as they did before there was anything to count as polling
+/// (§FS-005-dispatch.24.4).
+#[test]
+fn a_site_with_no_machine_poll_reads_word_for_word_as_before() {
+    let tmp = tempfile::tempdir().unwrap();
+    let roots = [
+        working_root(&tmp.path().join("working/panta")),
+        due_root(
+            &tmp.path().join("waiting/panta"),
+            &ticket_at("fix-gate-1", "plan-approval"),
+        ),
+    ];
+    let held: Vec<fs::File> = roots.iter().map(|root| hold(&root.root)).collect();
+
+    let site = Capacity::new(
+        Ceilings {
+            site: Limits {
+                concurrent: None,
+                active: Some(1),
+            },
+            site_as_configured: None,
+            ..Ceilings::default()
+        },
+        LiveRuns::read(&work_config(), &roots, &BTreeMap::new()),
+    );
+    let standing = site.standing();
+    assert_eq!(standing.polling, 0);
+    assert_eq!(
+        standing.live,
+        standing.active + standing.parked + standing.polling
+    );
+    assert_eq!(
+        standing.says(),
+        "capacity: 2 live root(s) — 1 active, 1 parked \
+         (work.max_concurrent unlimited, work.max_active 1)"
+    );
+    assert_eq!(
+        site.refusal(&["widget".to_string()]).as_deref(),
+        Some("global work.max_active 1 is full (1 active run(s), 1 parked)")
+    );
+    drop(held);
+}
+
 /// A start refused by the agent ceiling says which ceiling refused it: with
 /// more than one to hit, "the ceiling is full" no longer says which
 /// (§FS-005-dispatch.24).
@@ -2280,6 +2454,7 @@ fn zero_admits_no_agent_work_and_omission_is_unlimited() {
             live: 1,
             active: 1,
             parked: 0,
+            polling: 0,
             max_concurrent: None,
             max_active: Some(1),
         }

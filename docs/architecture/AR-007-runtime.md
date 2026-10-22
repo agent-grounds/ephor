@@ -17,9 +17,12 @@ summons ([§AR-002-summons](AR-002-summons.md#ar-002-summons-one-executor-runs-e
 defaulting to the shipped runtime. Reading: work state from the plan, the
 verdict line from results, the parked states a machine will not leave on
 its own ([§FS-005-dispatch.9](../functional-spec/FS-005-dispatch.md#9-work-that-stops-for-a-person-says-so-where-the-person-is-looking)) and the polling ones that declare whose answer
-they wait for, which is the other half of the same fact and the one the
-autorun ceilings are counted from
-([§FS-005-dispatch.24](../functional-spec/FS-005-dispatch.md#24-work-nobody-has-to-start-starts-itself)) — and a result carrying a **proposed answer**
+they wait for, which is the other half of the same fact, and how long each
+poll waits between its attempts, read in the binding's own duration grammar —
+together what the autorun ceilings are counted from, a poll longer than a
+minute between attempts freeing its root and a shorter one, or one whose
+interval this module cannot read, holding it ([§FS-005-dispatch.24.4](../functional-spec/FS-005-dispatch.md#244-a-live-root-holds-an-agent-slot-while-something-in-it-runs-or-is-about-to)) — and a
+result carrying a **proposed answer**
 ([§FS-005-dispatch.13](../functional-spec/FS-005-dispatch.md#13-a-communication-is-work-too-and-its-answer-comes-back-as-a-proposal)), read back and attached to the matter beside the
 discussion it answers, for the surfaces to offer where the channel can
 post it. Rostering: the enumeration of who can be asked
