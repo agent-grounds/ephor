@@ -296,12 +296,28 @@ pub fn run_json_stdin(
         .map_err(|err| ProviderError(format!("{label}: invalid JSON output: {err}")))
 }
 
-/// A command as a reader would say it — `ephor-forge-acme failures`, not
-/// `"ephor-forge-acme" "failures"`. Every message out of here already names
-/// the command, so a caller that names it again says it twice.
+/// The executable and its leading operation words, without invocation data
+/// (§FS-001-forge-interface.6). Provider commands put their operation first:
+/// lowercase words (with internal hyphens or underscores), then options or
+/// data. Stop at that boundary rather than skipping over it: words following
+/// a flag or a payload are values, not more of the operation. This excludes
+/// scripts, assignments, JSON, URLs, paths and numeric identifiers even when
+/// they are the first argument, without naming any particular forge or CLI.
+///
+/// Every error path, including invalid JSON, uses this same identity. Keep
+/// the diagnosis separate and intact; shortening the whole error would hide
+/// the reason the reader needs.
 fn command_label(command: &Command) -> String {
     std::iter::once(command.get_program())
-        .chain(command.get_args())
+        .chain(command.get_args().take_while(|arg| {
+            let Some(word) = arg.to_str() else {
+                return false;
+            };
+            word.starts_with(|ch: char| ch.is_ascii_lowercase())
+                && word
+                    .bytes()
+                    .all(|byte| byte.is_ascii_lowercase() || byte == b'-' || byte == b'_')
+        }))
         .map(|part| part.to_string_lossy().into_owned())
         .collect::<Vec<_>>()
         .join(" ")
@@ -348,7 +364,6 @@ mod tests {
     /// Command identity is shared by every error path, and is independent of
     /// which forge supplies the operation (§FS-001-forge-interface.6).
     #[test]
-    #[ignore = "red until #250: command identities exclude even early argument payloads; implement removes this"]
     fn issue_250_command_identity_omits_supplied_data() {
         let cases: &[(&str, &[&str], &str, &[&str])] = &[
             (
@@ -412,7 +427,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "red until #250: non-GraphQL failures quote diagnosis without scripts; implement removes this"]
     fn issue_250_unsuccessful_exit_keeps_diagnosis_without_script_payload() {
         // The fixture's short-line bounds are not permission to truncate a
         // tool's own long diagnosis (§FS-001-forge-interface.6).
@@ -432,7 +446,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "red until #250: spawn errors omit invocation payloads; implement removes this"]
     fn issue_250_spawn_failure_omits_invocation_payload() {
         let dir = tempfile::tempdir().expect("a private directory");
         let mut command = Command::new(dir.path().join("missing-provider"));
@@ -452,7 +465,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "red until #250: timeout errors omit invocation payloads; implement removes this"]
     fn issue_250_timeout_omits_invocation_payload() {
         let mut command = Command::new("sh");
         command.args(["-c", "exec sleep 30", "invocation-payload"]);
@@ -462,7 +474,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "red until #250: invalid JSON errors omit invocation payloads; implement removes this"]
     fn issue_250_invalid_json_omits_invocation_payload() {
         let mut command = Command::new("sh");
         command.args(["-c", "printf not-json", "invocation-payload"]);
@@ -522,8 +533,8 @@ mod tests {
         );
         let err = run_capture_stdin(command, None, Duration::from_secs(30), false)
             .expect_err("exit 3 is a failure");
-        // Named as it would be typed, once — not `"sh" "-c" "…"`.
-        assert!(err.0.starts_with("sh -c "), "{}", err.0);
+        // Name the executable once, omitting the script (§FS-001-forge-interface.6).
+        assert!(err.0.starts_with("sh failed ("), "{}", err.0);
         let quoted = err
             .0
             .rsplit_once("): ")
