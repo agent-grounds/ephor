@@ -453,6 +453,19 @@ an empty or partial answer for a failure:
    says only that something was attempted, and that no reader can act on.
    The line reported is the one that reads as a diagnosis.
 
+   The command named alongside that diagnosis is a concise identity: the
+   executable and the operation that distinguishes it, such as `gh api
+   graphql` or `ephor-forge-acme failures`. Its invocation payload is not its
+   name: query documents, filters, option values, request bodies and other
+   supplied data are omitted, including when they occur early in the argument
+   list. The same rule applies to spawn, wait, timeout, unsuccessful exit and
+   invalid-output errors, for either transport and every provider. Keeping the
+   command short must not cut away the underlying diagnosis or the failure
+   information. Stored errors obey the same rule, so a cached reading and its
+   JSON representation cannot repeat the invocation payload. Project and
+   provider attribution, last-good items and their stale labels remain as
+   above; concision changes neither failure classification nor exit policy.
+
 ## 7. A fetch runs beneath the reading, never in front of it
 
 Asking every source takes as long as the slowest of them, and that is not a
