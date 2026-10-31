@@ -144,14 +144,12 @@ fn short_errors(output: &Output, cached: bool) {
 }
 
 #[test]
-#[ignore = "red until #250: fresh status omits GraphQL invocation payloads; implement removes this"]
 fn issue_250_fresh_status_names_each_source_without_its_query() {
     let world = watching();
     short_errors(&fresh(&world), false);
 }
 
 #[test]
-#[ignore = "red until #250: cached status retains concise stored failures; implement removes this"]
 fn issue_250_cached_status_keeps_the_diagnosis_without_fetching() {
     let world = watching();
     fresh(&world);
@@ -170,7 +168,6 @@ fn issue_250_cached_status_keeps_the_diagnosis_without_fetching() {
 }
 
 #[test]
-#[ignore = "red until #250: JSON stores command identity without query data; implement removes this"]
 fn issue_250_json_preserves_failed_slots_without_invocation_payloads() {
     let world = watching();
     fresh(&world);
