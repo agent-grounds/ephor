@@ -345,6 +345,141 @@ fn implied_extensions() -> Vec<String> {
 mod tests {
     use super::*;
 
+    /// Command identity is shared by every error path, and is independent of
+    /// which forge supplies the operation (§FS-001-forge-interface.6).
+    #[test]
+    #[ignore = "red until #250: command identities exclude even early argument payloads; implement removes this"]
+    fn issue_250_command_identity_omits_supplied_data() {
+        let cases: &[(&str, &[&str], &str, &[&str])] = &[
+            (
+                "gh",
+                &["api", "graphql", "-f", "query={q0:search(query:fixture)}"],
+                "gh api graphql",
+                &["-f", "query=", "search("],
+            ),
+            (
+                "ephor-forge-acme",
+                &["failures", "--repo", "acme/widget", "--filter", "state=red"],
+                "ephor-forge-acme failures",
+                &["--repo", "acme/widget", "state=red"],
+            ),
+            (
+                "source-tool",
+                &[r#"{"request":"private-payload"}"#],
+                "source-tool",
+                &["private-payload"],
+            ),
+            (
+                "source-tool",
+                &["https://forge.example/request-payload"],
+                "source-tool",
+                &["request-payload"],
+            ),
+            (
+                "source-tool",
+                &["query=early-payload", "fetch"],
+                "source-tool",
+                &["early-payload"],
+            ),
+        ];
+        // Collect all mismatches, so the red evidence includes the generic
+        // operation and early-payload cases, not only the first GraphQL case.
+        let mut problems = Vec::new();
+        for (program, args, identity, payloads) in cases {
+            let mut command = Command::new(program);
+            command.args(*args);
+            let label = command_label(&command);
+            if !label.starts_with(identity) || payloads.iter().any(|value| label.contains(value)) {
+                problems.push(format!("{identity}: invocation data in identity: {label}"));
+            }
+        }
+        assert!(problems.is_empty(), "{}", problems.join("\n"));
+    }
+
+    fn issue_250_no_script_payload(error: &ProviderError, kind: &str) {
+        assert!(error.0.contains(kind), "lost {kind}: {error}");
+        assert!(error.0.contains("sh"), "lost command identity: {error}");
+        assert!(
+            !error.0.contains("invocation-payload"),
+            "{kind} repeats invocation payload: {error}"
+        );
+        for script in ["echo ", "printf ", "exec sleep "] {
+            assert!(
+                !error.0.contains(script),
+                "{kind} repeats script text: {error}"
+            );
+        }
+    }
+
+    #[test]
+    #[ignore = "red until #250: non-GraphQL failures quote diagnosis without scripts; implement removes this"]
+    fn issue_250_unsuccessful_exit_keeps_diagnosis_without_script_payload() {
+        // The fixture's short-line bounds are not permission to truncate a
+        // tool's own long diagnosis (§FS-001-forge-interface.6).
+        let diagnosis = format!("error: fixture refused {}", "details ".repeat(80));
+        let script = format!("echo '{}' >&2; exit 7", diagnosis.trim());
+        let mut command = Command::new("sh");
+        command.args(["-c", &script, "invocation-payload"]);
+        let error = run_capture_stdin(
+            command,
+            Some("request-body".into()),
+            Duration::from_secs(5),
+            false,
+        )
+        .expect_err("exit 7 must still fail");
+        assert!(error.0.ends_with(diagnosis.trim()), "{error}");
+        issue_250_no_script_payload(&error, "failed (exit status: 7)");
+    }
+
+    #[test]
+    #[ignore = "red until #250: spawn errors omit invocation payloads; implement removes this"]
+    fn issue_250_spawn_failure_omits_invocation_payload() {
+        let dir = tempfile::tempdir().expect("a private directory");
+        let mut command = Command::new(dir.path().join("missing-provider"));
+        command.args(["fetch", "query=invocation-payload"]);
+        let error = run_capture(command, Duration::from_secs(5), false)
+            .expect_err("missing executable cannot spawn");
+        assert!(error.0.contains("failed to spawn"), "{error}");
+        assert!(error.0.contains("missing-provider"), "{error}");
+        assert!(
+            error.0.contains("os error"),
+            "spawn diagnosis must survive: {error}"
+        );
+        assert!(
+            !error.0.contains("invocation-payload"),
+            "spawn repeats invocation payload: {error}"
+        );
+    }
+
+    #[test]
+    #[ignore = "red until #250: timeout errors omit invocation payloads; implement removes this"]
+    fn issue_250_timeout_omits_invocation_payload() {
+        let mut command = Command::new("sh");
+        command.args(["-c", "exec sleep 30", "invocation-payload"]);
+        let error = run_capture_stdin(command, None, Duration::from_millis(20), false)
+            .expect_err("the child exceeds its deadline");
+        issue_250_no_script_payload(&error, "timed out after");
+    }
+
+    #[test]
+    #[ignore = "red until #250: invalid JSON errors omit invocation payloads; implement removes this"]
+    fn issue_250_invalid_json_omits_invocation_payload() {
+        let mut command = Command::new("sh");
+        command.args(["-c", "printf not-json", "invocation-payload"]);
+        let error = run_json_stdin(
+            command,
+            Some("request-body".into()),
+            Duration::from_secs(5),
+            false,
+        )
+        .expect_err("successful command with invalid JSON must still fail");
+        assert!(
+            error.0.contains("expected ident"),
+            "parser diagnosis must survive: {error}"
+        );
+        issue_250_no_script_payload(&error, "invalid JSON output");
+    }
+
     /// The narration a tool writes before it fails is not the failure
     /// (§FS-001-forge-interface.6).
     #[test]

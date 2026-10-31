@@ -290,6 +290,10 @@ name = "checkout_test"
 path = "tests/integration/checkout_test.rs"
 
 [[test]]
+name = "e2e_064_a_provider_failure_names_the_command"
+path = "tests/e2e/cases/E2E-064-a-provider-failure-names-the-command.rs"
+
+[[test]]
 name = "check_test"
 path = "tests/integration/check_test.rs"
 
