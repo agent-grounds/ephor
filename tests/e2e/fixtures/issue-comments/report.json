@@ -1,0 +1,13 @@
+{
+  "projects": {
+    "javelin": {
+      "providers": [
+        {"provider": "github-issues", "repos": ["demo/javelin"], "open": true,
+         "authored": true, "participating": true, "updated_within_days": 0,
+         "limit": 1000, "comments": true, "unclaimed": true,
+         "labels": ["state:triage", "priority", "high-priority", "bug", "enhancement",
+                    "usability", "tokens", "flaky-test"]}
+      ]
+    }
+  }
+}

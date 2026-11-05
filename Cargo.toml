@@ -16,6 +16,10 @@ exclude = ["docs/", "ai/", "tests/e2e/", "systemd/", ".github/", "scripts/", "te
 name = "ephor"
 path = "src/lib.rs"
 
+[[test]]
+name = "e2e_065_issue_comment_batches"
+path = "tests/e2e/cases/E2E-065-issue-comment-batches.rs"
+
 [[bin]]
 name = "ephor"
 path = "src/main.rs"
