@@ -48,7 +48,23 @@ case "$args" in
     printf '[{"name": "gate", "state": "FAILURE", "link": "https://ci/1"}, {"name": "style", "state": "SUCCESS", "link": "https://ci/2"}]'
     ;;
   *graphql*issue*comments*)
-    printf '{"data": {"repository": {"issue": {"comments": {"nodes": [{"id": "IC_1", "author": {"login": "someone"}, "body": "any update?", "createdAt": "2026-08-01T11:00:00Z", "reactions": {"nodes": []}}]}}}}}'
+    python3 - "$@" <<'PY'
+import json
+import re
+import sys
+
+query = next(arg[6:] for arg in sys.argv[1:] if arg.startswith("query="))
+fields = re.findall(r'(c\d+):repository\(owner:"([^"]+)",name:"([^"]+)"\)\{issue\(number:(\d+)\)', query)
+assert fields, "expected aliased issue comment reads"
+# §FS-001-forge-interface.8.3: aliases name distinct issue conversations.
+conversations = {
+    ("other/pi", 7951): [],
+    ("other/lib", 12): [{"id": "IC_1", "author": {"login": "someone"}, "body": "any update?", "createdAt": "2026-08-01T11:00:00Z", "reactions": {"nodes": []}}],
+}
+data = {alias: {"issue": {"comments": {"nodes": conversations[(f"{owner}/{name}", int(number))]}}}
+        for alias, owner, name, number in fields}
+print(json.dumps({"data": data}))
+PY
     ;;
   *)
     printf '[]'
@@ -437,7 +453,23 @@ case "$args" in
     printf '{"data":{"q0":%s}}' "$(conn "$ours,$theirs")"
     ;;
   *graphql*issue*comments*)
-    printf '{"data": {"repository": {"issue": {"comments": {"nodes": [{"id": "IC_9", "author": {"login": "stranger"}, "body": "still reproducing?", "createdAt": "2026-08-01T11:00:00Z", "reactions": {"nodes": []}}]}}}}}'
+    python3 - "$@" <<'PY'
+import json
+import re
+import sys
+
+query = next(arg[6:] for arg in sys.argv[1:] if arg.startswith("query="))
+fields = re.findall(r'(c\d+):repository\(owner:"([^"]+)",name:"([^"]+)"\)\{issue\(number:(\d+)\)', query)
+assert fields, "expected aliased issue comment reads"
+# §FS-001-forge-interface.8.3: aliases name distinct issue conversations.
+conversations = {
+    ("oracle/graalvm-reachability-metadata", 101): [],
+    ("oracle/graalvm-reachability-metadata", 102): [{"id": "IC_9", "author": {"login": "stranger"}, "body": "still reproducing?", "createdAt": "2026-08-01T11:00:00Z", "reactions": {"nodes": []}}],
+}
+data = {alias: {"issue": {"comments": {"nodes": conversations[(f"{owner}/{name}", int(number))]}}}
+        for alias, owner, name, number in fields}
+print(json.dumps({"data": data}))
+PY
     ;;
   *)
     printf '[]'

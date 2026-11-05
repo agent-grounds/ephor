@@ -209,7 +209,6 @@ fn retain_runtime_work(site: &Site) {
 /// §FS-001-forge-interface.8.3, §FS-003-feed-categories.2: the original source
 /// keeps quiet open conversations and recent loose ends at a bounded cost.
 #[test]
-#[ignore = "red until #252: bound distinct comment reads in alias batches; implement removes this"]
 fn issue_comments_closed_history_has_bounded_cold_and_warm_cost() {
     let mut warm = Vec::new();
     for size in [40, 240] {
@@ -298,7 +297,6 @@ fn assert_batches(log: &str) {
 /// §FS-001-forge-interface.8.3: multiple batches preserve normalized payloads,
 /// overlap precedence, configured host, and equal numbers in different repos.
 #[test]
-#[ignore = "red until #252: deduplicate before bounded hydration without changing payloads; implement removes this"]
 fn issue_comments_batches_preserve_payload_and_identity() {
     let site = Site::enriched("", true);
     let calls = site.refresh();
@@ -361,7 +359,6 @@ fn issue_comments_batches_preserve_payload_and_identity() {
 /// §FS-001-forge-interface.8.3: comment failures retain issues and available
 /// sibling answers, with no request-by-request fallback on a refused batch.
 #[test]
-#[ignore = "red until #252: preserve sibling answers without per-issue fallback; implement removes this"]
 fn issue_comments_batch_failures_keep_issues_and_successful_siblings() {
     let mut logs = Vec::new();
     for mode in [

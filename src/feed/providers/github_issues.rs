@@ -18,7 +18,7 @@
 //! bounds the search instead of a repository list is time:
 //! `updated_within_days`.
 
-use std::collections::HashSet;
+use std::collections::HashMap;
 
 use chrono::{Duration, Utc};
 use serde::Deserialize;
@@ -71,7 +71,8 @@ struct Config {
     #[serde(default = "default_limit")]
     limit: u32,
     /// Fetch each issue's comments, for the thread view and for deciding
-    /// whether the issue awaits a reply. One API call per issue that has any.
+    /// whether the issue awaits a reply. Distinct issues with comments share
+    /// requests in batches of at most 20 (§FS-001-forge-interface.8.3).
     #[serde(default = "crate::feed::providers::enabled")]
     comments: bool,
     /// Count an issue nobody has taken as work awaiting somebody
@@ -96,14 +97,29 @@ pub struct GithubIssues {
     config: Config,
 }
 
-const COMMENTS_QUERY: &str = "query($owner:String!,$repo:String!,$number:Int!){\
-repository(owner:$owner,name:$repo){issue(number:$number){\
-comments(last:30){nodes{id author{login} body createdAt \
-reactions(first:50){nodes{content user{login}}}}}}}}";
+/// Bound each comment request while filling it before starting another
+/// (§FS-001-forge-interface.8.3).
+const COMMENTS_BATCH_SIZE: usize = 20;
+
+/// Keep the existing conversation and reaction limits in every alias
+/// (§FS-001-forge-interface.8.3).
+const COMMENTS_SELECTION: &str = "comments(last:30){nodes{\
+id author{login} body createdAt \
+reactions(first:50){nodes{content user{login}}}\
+}}";
+
+/// A distinct conversation and its destination in the collected issues. Alias
+/// positions carry answers back without confusing equal issue numbers across
+/// repositories (§FS-001-forge-interface.8.3).
+struct CommentRead {
+    issue_index: usize,
+    repo: String,
+    number: u64,
+}
 
 /// What a search reports about an issue. `comments.totalCount` is what lets us
-/// skip the comment fetch for the many issues that have none — the difference
-/// between one API call and sixty on a forge-wide refresh.
+/// skip empty conversations, so they consume neither a comment alias nor a
+/// follow-up request (§FS-001-forge-interface.8.3).
 ///
 /// `author` is what label and open searches read the role off: they asked about
 /// the work, not about the reader, so who opened the issue is the only thing
@@ -297,66 +313,61 @@ impl GithubIssues {
         Ok(found)
     }
 
-    /// An issue's comments as interface messages. Failure yields none: a
-    /// conversation we could not read is not a reason to lose the issue.
+    /// Hydrate distinct conversations in filled, bounded alias batches
+    /// (§FS-001-forge-interface.8.3). Read available aliases even on an
+    /// unsuccessful exit: a failed sibling must not discard successful data.
+    /// Unavailable conversations stay empty, without per-issue retries, and
+    /// later batches are still read.
     fn messages(
         &self,
         ctx: &ProviderContext,
-        repo: &str,
-        number: u64,
+        reads: &[CommentRead],
+        issues: &mut [Issue],
         login: &str,
-    ) -> Vec<Message> {
-        let Some((owner, name)) = repo.split_once('/') else {
-            return Vec::new();
-        };
-        let mut gql = gh_command(self.config.host.as_deref());
-        gql.args(["api", "graphql", "-f", &format!("query={COMMENTS_QUERY}")])
-            .args(["-F", &format!("owner={owner}")])
-            .args(["-F", &format!("repo={name}")])
-            .args(["-F", &format!("number={number}")]);
-        let Ok(response) = run_json(gql, ctx.timeout, false) else {
-            return Vec::new();
-        };
-        response
-            .pointer("/data/repository/issue/comments/nodes")
-            .and_then(Value::as_array)
-            .map(|nodes| {
-                nodes
-                    .iter()
-                    .map(|node| message(node, login, self.config.host.as_deref()))
-                    .collect()
-            })
-            .unwrap_or_default()
+    ) {
+        for batch in reads.chunks(COMMENTS_BATCH_SIZE) {
+            let mut query = String::from("query{");
+            for (alias, read) in batch.iter().enumerate() {
+                let Some((owner, name)) = read.repo.split_once('/') else {
+                    continue;
+                };
+                let owner = serde_json::json!(owner);
+                let name = serde_json::json!(name);
+                let number = read.number;
+                query.push_str(&format!(
+                    "c{alias}:repository(owner:{owner},name:{name}){{issue(number:{number}){{{COMMENTS_SELECTION}}}}}"
+                ));
+            }
+            query.push('}');
+            let mut gql = gh_command(self.config.host.as_deref());
+            gql.args(["api", "graphql", "-f", &format!("query={query}")]);
+            let Ok(response) = run_json(gql, ctx.timeout, true) else {
+                continue;
+            };
+            for (alias, read) in batch.iter().enumerate() {
+                if let Some(nodes) = response
+                    .pointer(&format!("/data/c{alias}/issue/comments/nodes"))
+                    .and_then(Value::as_array)
+                {
+                    issues[read.issue_index].messages = nodes
+                        .iter()
+                        .map(|node| message(node, login, self.config.host.as_deref()))
+                        .collect();
+                }
+            }
+        }
     }
 
-    /// One search result as an interface issue, comments included when it has
-    /// any and we were asked to read them.
-    fn issue(
-        &self,
-        ctx: &ProviderContext,
-        found: &Value,
-        role: Role,
-        login: &str,
-    ) -> Option<Issue> {
-        let number = found.get("number").and_then(Value::as_u64)?;
+    /// Normalize a valid, distinct search result without fetching comments;
+    /// conversations are hydrated together (§FS-001-forge-interface.8.3).
+    fn issue(found: &Value, key: String, role: Role) -> Issue {
         let url = found.get("url").and_then(Value::as_str).map(String::from);
-        let repo = repo_of(found)?;
-        let has_comments = found
-            .pointer("/comments/totalCount")
-            .and_then(Value::as_u64)
-            .unwrap_or(0)
-            > 0;
-        let messages = if self.config.comments && has_comments {
-            self.messages(ctx, &repo, number, login)
-        } else {
-            Vec::new()
-        };
         // Who holds it, read once: `assigned` is the same fact counted rather
         // than named (§FS-005-dispatch.31), and deriving it here is what keeps
         // the two from drifting apart on a later change to either read.
         let assignees = names_under(found, "/assignees/nodes", "login");
-        Some(Issue {
-            key: format!("{repo}#{number}"),
+        Issue {
+            key,
             title: found
                 .get("title")
                 .and_then(Value::as_str)
@@ -381,8 +392,8 @@ impl GithubIssues {
                 .pointer("/blockedBy/nodes")
                 .and_then(Value::as_array)
                 .map(|nodes| nodes.iter().filter_map(dependency).collect()),
-            messages,
-        })
+            messages: Vec::new(),
+        }
     }
 }
 
@@ -484,11 +495,13 @@ impl Provider for GithubIssues {
     }
 
     /// Reuse open coverage for labels, retain closed-inclusive role questions,
-    /// and deduplicate with author precedence (§FS-001-forge-interface.8.1).
+    /// and deduplicate with author precedence (§FS-001-forge-interface.8.1)
+    /// before hydrating distinct conversations (§FS-001-forge-interface.8.3).
     fn fetch(&self, ctx: &ProviderContext) -> ProviderResult {
         let login = github_login(ctx, self.config.host.as_deref())?;
-        let mut items: Vec<Item> = Vec::new();
-        let mut seen: HashSet<String> = HashSet::new();
+        let mut issues: Vec<Issue> = Vec::new();
+        let mut seen: HashMap<String, usize> = HashMap::new();
+        let mut comments = Vec::new();
 
         // Authored and actual-role open answers precede involves, preserving
         // author precedence even with authored off (§FS-001-forge-interface.8.1).
@@ -509,21 +522,47 @@ impl Provider for GithubIssues {
         }
         for (question, nodes) in self.search(ctx, &questions)? {
             for found in nodes {
-                let role = question.role(&found, &login);
-                let Some(issue) = self.issue(ctx, &found, role, &login) else {
+                let Some(number) = found.get("number").and_then(Value::as_u64) else {
                     continue;
                 };
-                if !seen.insert(issue.key.clone()) {
+                let Some(repo) = repo_of(&found) else {
+                    continue;
+                };
+                let key = format!("{repo}#{number}");
+                let role = question.role(&found, &login);
+                // Merge roles before hydration; each canonical issue is read
+                // at most once (§FS-001-forge-interface.8.3).
+                if let Some(&index) = seen.get(&key) {
+                    if role == Role::Author {
+                        issues[index].role = role;
+                    }
                     continue;
                 }
-                items.push(policy::issue_item(
-                    "github-issues",
-                    &ctx.project_id,
-                    &issue,
-                    self.unclaimed(),
-                ));
+                let issue_index = issues.len();
+                seen.insert(key.clone(), issue_index);
+                issues.push(Self::issue(&found, key, role));
+                if self.config.comments
+                    && found
+                        .pointer("/comments/totalCount")
+                        .and_then(Value::as_u64)
+                        .unwrap_or(0)
+                        > 0
+                {
+                    comments.push(CommentRead {
+                        issue_index,
+                        repo,
+                        number,
+                    });
+                }
             }
         }
+        self.messages(ctx, &comments, &mut issues, &login);
+        let items: Vec<Item> = issues
+            .iter()
+            .map(|issue| {
+                policy::issue_item("github-issues", &ctx.project_id, issue, self.unclaimed())
+            })
+            .collect();
         Ok(items)
     }
 }

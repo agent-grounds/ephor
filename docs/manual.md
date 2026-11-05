@@ -1262,7 +1262,7 @@ costs its listing and nothing else. It never asks `gh run list` or
                                 //   them — open only; covered by open when enabled
   "updated_within_days": 30,    // 0 removes the bound
   "limit": 30,                  // per question; reaching it fails the source
-  "comments": true,             // fetch comments (one call per issue that has any)
+  "comments": true,             // fetch comments (up to 20 distinct issues per call)
   "host": null }
 
 { "provider": "github-notifications",
