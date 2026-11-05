@@ -124,6 +124,8 @@ def matches(found, query):
 FIELD = re.compile(
     r'(\w+):search\(query:("(?:[^"\\]|\\.)*"),type:ISSUE,first:(\d+)(?:,after:("(?:[^"\\]|\\.)*"))?\)'
 )
+# Comment reads arrive batched, one alias per distinct issue (§FS-001-forge-interface.8.3).
+READ = re.compile(r'(c\d+):repository\(owner:"([^"]+)",name:"([^"]+)"\)\{issue\(number:(\d+)\)')
 
 
 def log(line):
@@ -190,15 +192,12 @@ def searches(fields):
 
 def graphql(args):
     query = None
-    variables = {}
     index = 0
     while index < len(args):
         if args[index] in ("-f", "-F") and index + 1 < len(args):
             key, _, value = args[index + 1].partition("=")
             if key == "query":
                 query = value
-            else:
-                variables[key] = value
             index += 2
         else:
             index += 1
@@ -206,6 +205,7 @@ def graphql(args):
         return refuse("graphql with no query: " + " ".join(args))
 
     fields = FIELD.findall(query)
+    reads = READ.findall(query)
     if fields:
         try:
             answer = searches(fields)
@@ -214,11 +214,15 @@ def graphql(args):
         except Failed as failed:
             print(f"gh: {failed}", file=sys.stderr)
             return 1
-    elif "issue(number:$number)" in query and "number" in variables:
-        found = next((e for e in ISSUES if e["number"] == int(variables["number"])), None)
-        comments = {"nodes": comment_nodes(found) if found else []}
-        answer = {"data": {"repository": {"issue": {"comments": comments}}}}
-        log(f"comments {variables['number']}")
+    elif reads:
+        data = {}
+        for alias, owner, name, number in reads:
+            if f"{owner}/{name}" != REPO:
+                return refuse(f"comments of {owner}/{name}#{number}")
+            found = next((e for e in ISSUES if e["number"] == int(number)), None)
+            data[alias] = {"issue": {"comments": {"nodes": comment_nodes(found) if found else []}}}
+            log(f"comments {number}")
+        answer = {"data": data}
     else:
         return refuse("query " + query)
     print(json.dumps(answer))
