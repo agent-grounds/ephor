@@ -31,6 +31,7 @@ fn scenario(name: &str) {
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr)
     );
+    print!("{}", String::from_utf8_lossy(&output.stdout));
 }
 
 #[test]
@@ -41,6 +42,13 @@ fn issue_253_project_answers() {
 #[test]
 fn issue_253_site_answers() {
     scenario("site_answers");
+}
+
+/// Thin and detailed site reports must share their reasons and placement
+/// evidence before the subject is placed (§FS-001-forge-interface.6.1).
+#[test]
+fn issue_253_site_overlap_evidence() {
+    scenario("site_overlap_evidence");
 }
 
 #[test]

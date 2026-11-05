@@ -208,9 +208,22 @@ impl Identity {
 /// carrying its candidates, because a guess that lands wrong amends someone
 /// else's matter silently (§FS-008-attribution.4).
 pub fn place(evidence: &Evidence, identities: &[Identity]) -> Placed {
+    place_all(std::slice::from_ref(evidence), identities)
+}
+
+/// Place one subject using every report's evidence before selecting a home
+/// (§FS-001-forge-interface.6.1). Each identity's strongest claim counts;
+/// precedence and ties are the same as for a single report (§FS-008-attribution.3).
+pub fn place_all(evidence: &[Evidence], identities: &[Identity]) -> Placed {
     let mut claims: Vec<(&Identity, Strength)> = identities
         .iter()
-        .filter_map(|identity| identity.claim(evidence).map(|how| (identity, how)))
+        .filter_map(|identity| {
+            evidence
+                .iter()
+                .filter_map(|report| identity.claim(report))
+                .max()
+                .map(|how| (identity, how))
+        })
         .collect();
     claims.sort_by(|left, right| right.1.cmp(&left.1));
 

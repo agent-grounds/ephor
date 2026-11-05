@@ -715,10 +715,26 @@ pub fn refresh_shared(registry_doc: &Value, config: &StatusConfig) -> Result<Ref
             continue;
         }
         item_count += answer.items.len();
-        for item in answer.items {
-            let mut matter = crate::matter::Matter::of_item(&item);
-            let evidence = crate::matter::evidence_of(&item);
-            matter.placement = match crate::attribution::place(&evidence, &identities) {
+        // One subject is placed once, with every report's reasons and evidence
+        // (§FS-001-forge-interface.6.1). Extract evidence before merging: the
+        // fullest matter can retain only one report's title, repo or room,
+        // while any sibling may carry the decisive claim or a competing one.
+        let mut subjects: BTreeMap<String, usize> = BTreeMap::new();
+        let mut reports: Vec<(crate::matter::Matter, Vec<crate::attribution::Evidence>)> =
+            Vec::new();
+        for item in &answer.items {
+            let matter = crate::matter::Matter::of_item(item);
+            let evidence = crate::matter::evidence_of(item);
+            if let Some(&index) = subjects.get(&matter.subject()) {
+                reports[index].0.absorb(matter);
+                reports[index].1.push(evidence);
+            } else {
+                subjects.insert(matter.subject(), reports.len());
+                reports.push((matter, vec![evidence]));
+            }
+        }
+        for (mut matter, evidence) in reports {
+            matter.placement = match crate::attribution::place_all(&evidence, &identities) {
                 // How firmly it was claimed travels with it: what may be done
                 // with a placement depends on how it was reached
                 // (§FS-008-attribution.3).
