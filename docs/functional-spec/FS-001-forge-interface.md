@@ -588,6 +588,27 @@ per-result follow-up is where a refresh's cost stops being proportional to the
 registry and starts being proportional to the reader's own work — the one
 direction that punishes exactly the busiest reader.
 
+For `github-issues`, overlapping search answers are deduplicated by repository
+and issue number before comments are read, with author precedence unchanged.
+Each distinct issue is hydrated at most once per fetch; the same number in two
+repositories names two issues. Comment reads use GraphQL alias batches of at
+most 20 distinct issues per request, filling each batch before starting the
+next. They retain the last 30 comments and first 50 reactions per comment,
+message order, identities, and the configured host. `comments: false` and
+issues with no comments cause no comment requests. A failed comment read does
+not remove its issue; successful sibling answers in a partial response are
+retained. Failure must not trigger a series of per-issue fallback requests.
+
+With `open`, `authored`, and `participating` enabled, `updated_within_days: 0`,
+`limit: 1000`, and comments enabled, increasing closed history from 40 to 240
+issues must add at most 0.25 forge calls per added issue on a warm refresh.
+Both cold and warm refreshes retain every quiet open issue and its actual
+conversation, yesterday's closed issue with somebody else's last word under
+Recent, and the conversation of an old finished matter retained by open runtime
+work. Saving calls must not change search questions, shared bounds, limits,
+completeness checks, normalization, or visibility policy. No new opt-in setting
+is required: batching changes the asking, not the facts or conversations read.
+
 None of this licenses asking for more than is needed: the cheap form of a
 question is still only asked because the answer is read.
 
