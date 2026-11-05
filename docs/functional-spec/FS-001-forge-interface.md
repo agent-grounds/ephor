@@ -466,6 +466,35 @@ an empty or partial answer for a failure:
    provider attribution, last-good items and their stale labels remain as
    above; concision changes neither failure classification nor exit policy.
 
+### 6.1 Every contribution to one provider answer counts
+
+Repeating a provider name in a project's `providers` or the site's `sources`
+is allowed. Each configured block is asked, and every answer contributes to
+the existing provider slot, regardless of completion order. Disjoint subjects
+are all retained; overlapping reports become one subject with their combined
+reasons under [§FS-003-feed-categories.5](FS-003-feed-categories.md#5-one-subject-is-one-row-however-many-sources-reported-it).
+Site answers are combined before attribution, so each subject reaches its
+proper project or the unattributed bucket. Several discovered task stores of
+one kind obey the same contribution rule.
+
+The combined answer is complete only if every contribution answered. An empty
+success counts as an answer. Any failed contribution makes the whole slot
+incomplete: every distinct failure diagnosis remains visible, and a successful
+sibling cannot clear a failure. An incomplete answer retains the previous
+complete slot as last-good, marks its items stale and its failure explicit,
+and preserves its last-good timestamp. A fresh successful subset must not
+replace it or masquerade as a complete current answer. With no previous data,
+failure is still explicit and no last-good items are invented. This is a
+whole-slot rule, with no per-block cache history.
+
+Refresh outcome accounting counts contributions, not just provider names:
+at least one answer and at least one failure is partial failure (exit 4),
+including an empty answer; every attempted contribution failing is total
+failure (exit 3). No failed contribution permits exit 0. The next complete
+answer replaces last-good data and clears the slot's error and stale state,
+including when the complete answer is empty. Provider names, configuration
+acceptance, binding and move resolution, and the cache format stay the same.
+
 ## 7. A fetch runs beneath the reading, never in front of it
 
 Asking every source takes as long as the slowest of them, and that is not a
@@ -635,6 +664,10 @@ once per refresh, is told no project, and what it reports is placed by
 attribution ([§FS-008-attribution](FS-008-attribution.md#fs-008-attribution-every-conversation-finds-its-project-or-says-that-it-could-not)) — which is what lets one source serve every
 project a person has, a notification stream or a chat gateway, without being
 told in advance where to look.
+
+Each block bound here is one fetch contribution. Several blocks naming the
+same provider are combined under [§FS-001-forge-interface.6.1](FS-001-forge-interface.md#61-every-contribution-to-one-provider-answer-counts);
+binding scope does not make the provider name a unique invocation identity.
 
 Every move back on a matter — a reply, a reaction, a ticked task, a settled
 conversation, the failures under its gate, a restart — goes to the source that

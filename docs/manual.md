@@ -465,6 +465,17 @@ ephor doctor [--project P] [--skip-self|--self-only] [--json]
 
 ### 4.2 Shared sources
 
+You may repeat a provider in a project's `providers` list or the site's
+`sources` list, for example to use different windows for open issues and role
+questions. Every block is fetched; their answers share the existing provider
+slot and overlapping subjects merge into one row. If any block fails, the
+combined answer is incomplete: ephor reports every distinct diagnosis and keeps
+the previous complete slot as stale, with its last-good timestamp, rather than
+showing a fresh subset as complete. An answered block (even an empty answer)
+beside a failure gives exit 4; all attempts failing gives exit 3. A later
+complete answer clears the failure and replaces the old slot, including when
+empty ([§FS-001-forge-interface.6.1](functional-spec/FS-001-forge-interface.md#61-every-contribution-to-one-provider-answer-counts)).
+
 A source that asks about specific repositories belongs to the project that
 owns them, and lives under `projects.<id>.providers`. A source that asks
 *nothing* — GitHub's notification list, a mailbox — answers about every
