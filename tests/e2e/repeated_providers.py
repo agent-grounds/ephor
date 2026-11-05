@@ -316,7 +316,10 @@ registry = json.loads(registry_path.read_text())
 registry["projects"][0]["territory"] = ["demo/javelin"]
 write(registry_path, registry)
 turn()
-if CASE == "task_stores":
+if CASE == "site_overlap_evidence":
+    from shared_provider_overlap import run
+    run(BIN, ROOT)
+elif CASE == "task_stores":
     task_stores()
 elif CASE.endswith("_answers"):
     answers()
