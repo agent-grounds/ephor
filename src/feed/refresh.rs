@@ -1,18 +1,18 @@
 //! Refresh orchestration: fetch every configured provider for the selected
 //! projects in parallel, isolate failures, merge into the cache.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::sync::mpsc::{self, Receiver};
-use std::sync::Mutex;
 use std::thread::JoinHandle;
 use std::time::Duration;
 
-use chrono::Utc;
+use chrono::{DateTime, Utc};
 use serde_json::Value;
 
 use crate::error::{registry_error, EphorError, Result};
 use crate::feed::cache::{load_feed, store_feed, ProjectFeed, ProviderSlot};
 use crate::feed::config::{Defaults, ProjectFeedConfig, StatusConfig};
+use crate::feed::model::Item;
 use crate::feed::provider::ProviderContext;
 use crate::feed::providers::build_provider;
 use crate::feed::reachability;
@@ -51,8 +51,123 @@ pub struct RefreshOutcome {
     /// says so — but not silent either, because a drop nobody is told about is
     /// how a selector stops matching for no reason a reader can see.
     pub notes: Vec<String>,
-    /// True when every configured provider failed.
-    pub total_failure: bool,
+    /// Actual answers and failures, including stores and empty answers
+    /// (§FS-001-forge-interface.6.1).
+    pub contributions: ContributionTally,
+}
+
+/// Refresh exits count attempts, never cached data or idle projects
+/// (§FS-001-forge-interface.6.1).
+#[derive(Default, Clone, Copy)]
+pub struct ContributionTally {
+    pub answered: usize,
+    pub failed: usize,
+}
+
+impl ContributionTally {
+    pub fn add(&mut self, other: Self) {
+        self.answered += other.answered;
+        self.failed += other.failed;
+    }
+
+    pub fn total_failure(&self) -> bool {
+        self.failed > 0 && self.answered == 0
+    }
+}
+
+/// Each invocation contributes once to completeness and outcome accounting
+/// (§FS-001-forge-interface.6.1).
+type Contribution = std::result::Result<Vec<Item>, String>;
+
+/// A stable provider name holds all contributions, including every distinct
+/// diagnosis; successes cannot reset failures (§FS-001-forge-interface.6.1).
+#[derive(Default)]
+struct ProviderAnswer {
+    contributions: ContributionTally,
+    errors: BTreeSet<String>,
+    items: Vec<Item>,
+}
+
+impl ProviderAnswer {
+    fn record(&mut self, contribution: Contribution) {
+        match contribution {
+            Ok(items) => {
+                self.contributions.answered += 1;
+                self.items.extend(items);
+            }
+            Err(error) => {
+                self.contributions.failed += 1;
+                self.errors.insert(error);
+            }
+        }
+    }
+
+    fn failure(&self, name: &str) -> Option<ProviderFailure> {
+        if self.errors.is_empty() {
+            return None;
+        }
+        Some(ProviderFailure {
+            provider: name.to_string(),
+            message: self.errors.iter().cloned().collect::<Vec<_>>().join("; "),
+            // A mixed network/actionable failure must still ask the reader
+            // to fix the actionable part (§FS-001-forge-interface.6.1).
+            unreachable: self
+                .errors
+                .iter()
+                .all(|why| reachability::is_unreachable(why)),
+        })
+    }
+}
+
+/// Ask all blocks concurrently, then reduce in configuration order rather
+/// than completion order, before either collector persists or attributes
+/// anything (§FS-001-forge-interface.6.1).
+fn collect_providers(configs: &[Value], ctx: &ProviderContext) -> BTreeMap<String, ProviderAnswer> {
+    std::thread::scope(|scope| {
+        let jobs: Vec<_> = configs
+            .iter()
+            .map(|config| scope.spawn(move || fetch_one(config, ctx)))
+            .collect();
+        let mut answers: BTreeMap<String, ProviderAnswer> = BTreeMap::new();
+        for job in jobs {
+            let (name, contribution) = job.join().unwrap();
+            answers.entry(name).or_default().record(contribution);
+        }
+        answers
+    })
+}
+
+/// Only a complete answer replaces a slot. An incomplete answer retains the
+/// whole last-good slot, timestamp and cursor (§FS-001-forge-interface.6.1).
+fn refreshed_slot(
+    previous: Option<&ProviderSlot>,
+    now: DateTime<Utc>,
+    matters: Vec<crate::matter::Matter>,
+    failure: Option<&ProviderFailure>,
+) -> ProviderSlot {
+    if let Some(failure) = failure {
+        ProviderSlot {
+            fetched_at: previous.and_then(|slot| slot.fetched_at),
+            ok: false,
+            error: Some(failure.message.clone()),
+            stale: previous.is_some_and(|slot| !slot.matters.is_empty()),
+            unreachable: failure.unreachable,
+            matters: previous
+                .map(|slot| slot.matters.clone())
+                .unwrap_or_default(),
+            cursor: previous.and_then(|slot| slot.cursor.clone()),
+        }
+    } else {
+        ProviderSlot {
+            fetched_at: Some(now),
+            ok: true,
+            error: None,
+            stale: false,
+            unreachable: false,
+            matters,
+            cursor: previous.and_then(|slot| slot.cursor.clone()),
+        }
+    }
 }
 
 impl RefreshOutcome {
@@ -163,6 +278,8 @@ fn stores_to_read(
 }
 
 /// Fetch all providers of one project concurrently and store the merged feed.
+/// Repeated blocks and stores form one complete answer per provider
+/// (§FS-001-forge-interface.6.1).
 ///
 /// `site_sources` names the sources bound for the site ([`site_source_names`]).
 /// They are not asked here, so the slots they placed in this project are kept
@@ -177,61 +294,9 @@ pub fn refresh_project(
     let ctx = build_context(registry_doc, project_id, defaults)?;
     let previous = load_feed(project_id)?.unwrap_or_default();
 
-    let results: Mutex<BTreeMap<String, (bool, Option<String>, Vec<crate::feed::model::Item>)>> =
-        Mutex::new(BTreeMap::new());
-
-    std::thread::scope(|scope| {
-        for provider_config in &project_config.providers {
-            let ctx = &ctx;
-            let results = &results;
-            scope.spawn(move || {
-                let raised;
-                let ctx = match provider_timeout(provider_config) {
-                    Some(timeout) => {
-                        raised = ProviderContext {
-                            timeout,
-                            ..ctx.clone()
-                        };
-                        &raised
-                    }
-                    None => ctx,
-                };
-                let (name, outcome) = match build_provider(provider_config) {
-                    Ok(provider) => {
-                        let name = provider.name().to_string();
-                        if !provider.available(ctx) {
-                            let reason = provider.unavailable_reason().unwrap_or_else(|| {
-                                "unavailable (missing tool or secret)".to_string()
-                            });
-                            (name.clone(), (false, Some(reason), Vec::new()))
-                        } else {
-                            match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                                provider.fetch(ctx)
-                            })) {
-                                Ok(Ok(items)) => (name.clone(), (true, None, items)),
-                                Ok(Err(err)) => (name.clone(), (false, Some(err.0), Vec::new())),
-                                Err(_) => (
-                                    name.clone(),
-                                    (false, Some("provider panicked".to_string()), Vec::new()),
-                                ),
-                            }
-                        }
-                    }
-                    Err(err) => {
-                        let name = provider_config
-                            .get("provider")
-                            .and_then(Value::as_str)
-                            .unwrap_or("unknown")
-                            .to_string();
-                        (name, (false, Some(err.0), Vec::new()))
-                    }
-                };
-                results.lock().unwrap().insert(name, outcome);
-            });
-        }
-    });
-
-    let mut results = results.into_inner().unwrap();
+    // The same reducer handles configured blocks and discovered stores
+    // (§FS-001-forge-interface.6.1).
+    let mut results = collect_providers(&project_config.providers, &ctx);
 
     let mut notes: Vec<String> = Vec::new();
 
@@ -248,9 +313,7 @@ pub fn refresh_project(
                 // included: a store with no open tasks has said so, and its
                 // slot saying so is what tells last refresh's tasks to go.
                 Ok((items, said)) => {
-                    let slot = results.entry(name).or_insert((true, None, Vec::new()));
-                    slot.0 = true;
-                    slot.2.extend(items);
+                    results.entry(name).or_default().record(Ok(items));
                     // Reported once, where this source's own answer for this
                     // read is reported (§FS-005-dispatch.8).
                     notes.extend(
@@ -262,7 +325,7 @@ pub fn refresh_project(
                 // source that did not answer, rather than read as a store with
                 // nothing in it (§FS-001-forge-interface.6).
                 Err(why) => {
-                    results.insert(name, (false, Some(why), Vec::new()));
+                    results.entry(name).or_default().record(Err(why));
                 }
             }
         }
@@ -276,14 +339,18 @@ pub fn refresh_project(
         providers: BTreeMap::new(),
     };
     let mut failures = Vec::new();
-    let mut ok_count = 0usize;
+    let mut contributions = ContributionTally::default();
 
-    for (name, (ok, error, items)) in results {
-        let slot = if ok {
-            ok_count += 1;
-            let matters: Vec<crate::matter::Matter> =
-                items.iter().map(crate::matter::Matter::of_item).collect();
-            let matters = if name == "custom-status" {
+    for (name, answer) in results {
+        contributions.add(answer.contributions);
+        let failure = answer.failure(&name);
+        let matters = if failure.is_none() {
+            let matters: Vec<crate::matter::Matter> = answer
+                .items
+                .iter()
+                .map(crate::matter::Matter::of_item)
+                .collect();
+            if name == "custom-status" {
                 reconcile_custom_status_answer_matters(
                     matters,
                     previous
@@ -293,44 +360,19 @@ pub fn refresh_project(
                 )
             } else {
                 matters
-            };
-            ProviderSlot {
-                fetched_at: Some(now),
-                ok: true,
-                error: None,
-                stale: false,
-                unreachable: false,
-                // Fetch normalization: what a source reported becomes the
-                // matter it is about, once, here (§AR-008-pipeline.1).
-                matters,
-                cursor: previous
-                    .providers
-                    .get(&name)
-                    .and_then(|slot| slot.cursor.clone()),
             }
         } else {
-            let message = error.unwrap_or_else(|| "unknown error".to_string());
-            let unreachable = reachability::is_unreachable(&message);
-            failures.push(ProviderFailure {
-                provider: name.clone(),
-                message: message.clone(),
-                unreachable,
-            });
-            let previous_slot = previous.providers.get(&name);
-            ProviderSlot {
-                fetched_at: previous_slot.and_then(|slot| slot.fetched_at),
-                ok: false,
-                error: Some(message),
-                stale: previous_slot
-                    .map(|slot| !slot.matters.is_empty())
-                    .unwrap_or(false),
-                unreachable,
-                matters: previous_slot
-                    .map(|slot| slot.matters.clone())
-                    .unwrap_or_default(),
-                cursor: previous_slot.and_then(|slot| slot.cursor.clone()),
-            }
+            Vec::new()
         };
+        let slot = refreshed_slot(
+            previous.providers.get(&name),
+            now,
+            matters,
+            failure.as_ref(),
+        );
+        if let Some(failure) = failure {
+            failures.push(failure);
+        }
         feed.providers.insert(name, slot);
     }
 
@@ -347,13 +389,12 @@ pub fn refresh_project(
             feed.providers.insert(name.clone(), slot.clone());
         }
     }
-    let total_failure = ok_count == 0 && !project_config.providers.is_empty();
     store_feed(&feed)?;
     Ok(RefreshOutcome {
         item_count,
         failures,
         notes,
-        total_failure,
+        contributions,
     })
 }
 
@@ -633,13 +674,15 @@ pub const UNATTRIBUTED: &str = "unattributed";
 /// nothing about any one project and answers about all of them, so it is
 /// fetched once here and its findings are placed against every project's
 /// identity (§AR-003-attribution). What nothing claims is kept, visibly.
+/// Repeated blocks combine before placement; incomplete answers preserve
+/// whole-slot last-good data (§FS-001-forge-interface.6.1).
 pub fn refresh_shared(registry_doc: &Value, config: &StatusConfig) -> Result<RefreshOutcome> {
     if config.sources.is_empty() {
         return Ok(RefreshOutcome {
             item_count: 0,
             failures: Vec::new(),
             notes: Vec::new(),
-            total_failure: false,
+            contributions: ContributionTally::default(),
         });
     }
 
@@ -655,53 +698,24 @@ pub fn refresh_shared(registry_doc: &Value, config: &StatusConfig) -> Result<Ref
 
     let ctx = site_context(&config.defaults);
 
-    let results: Mutex<BTreeMap<String, (bool, Option<String>, Vec<crate::feed::model::Item>)>> =
-        Mutex::new(BTreeMap::new());
-    std::thread::scope(|scope| {
-        for source in &config.sources {
-            let ctx = &ctx;
-            let results = &results;
-            scope.spawn(move || {
-                let raised;
-                let ctx = match provider_timeout(source) {
-                    Some(timeout) => {
-                        raised = ProviderContext {
-                            timeout,
-                            ..ctx.clone()
-                        };
-                        &raised
-                    }
-                    None => ctx,
-                };
-                let (name, outcome) = fetch_one(source, ctx);
-                results.lock().unwrap().insert(name, outcome);
-            });
-        }
-    });
-
-    let results = results.into_inner().unwrap();
+    let results = collect_providers(&config.sources, &ctx);
     let now = Utc::now();
     let mut failures = Vec::new();
-    let mut ok_count = 0usize;
+    let mut contributions = ContributionTally::default();
     let mut item_count = 0usize;
     // Where each source's findings ended up: project id (or the bucket) to the
     // matters placed there.
     let mut placed: BTreeMap<String, BTreeMap<String, Vec<crate::matter::Matter>>> =
         BTreeMap::new();
 
-    for (name, (ok, error, items)) in results {
-        if !ok {
-            let message = error.unwrap_or_else(|| "unknown error".to_string());
-            failures.push(ProviderFailure {
-                unreachable: reachability::is_unreachable(&message),
-                provider: name,
-                message,
-            });
+    for (name, answer) in results {
+        contributions.add(answer.contributions);
+        if let Some(failure) = answer.failure(&name) {
+            failures.push(failure);
             continue;
         }
-        ok_count += 1;
-        item_count += items.len();
-        for item in items {
+        item_count += answer.items.len();
+        for item in answer.items {
             let mut matter = crate::matter::Matter::of_item(&item);
             let evidence = crate::matter::evidence_of(&item);
             matter.placement = match crate::attribution::place(&evidence, &identities) {
@@ -752,36 +766,18 @@ pub fn refresh_shared(registry_doc: &Value, config: &StatusConfig) -> Result<Ref
         for name in &names {
             let matters = mine.get(name).cloned().unwrap_or_default();
             let failed = failures.iter().find(|failure| &failure.provider == name);
-            if let Some(failure) = failed {
+            if failed.is_some() {
                 // Last-good data waits out a failure here exactly as it does
                 // for a per-project source, and says why, and which kind of
                 // not, beside it (§FS-001-forge-interface.6). A home that
                 // never held this source's rows is not given a slot for its
                 // failure: the run already says it, once.
-                if let Some(slot) = feed.providers.get_mut(name) {
-                    slot.ok = false;
-                    slot.stale = !slot.matters.is_empty();
-                    slot.error = Some(failure.message.clone());
-                    slot.unreachable = failure.unreachable;
-                    touched = true;
+                if !feed.providers.contains_key(name) {
+                    continue;
                 }
-                continue;
             }
-            feed.providers.insert(
-                name.clone(),
-                ProviderSlot {
-                    fetched_at: Some(now),
-                    ok: true,
-                    error: None,
-                    stale: false,
-                    unreachable: false,
-                    matters,
-                    cursor: feed
-                        .providers
-                        .get(name)
-                        .and_then(|slot| slot.cursor.clone()),
-                },
-            );
+            let slot = refreshed_slot(feed.providers.get(name), now, matters, failed);
+            feed.providers.insert(name.clone(), slot);
             touched = true;
         }
         if touched {
@@ -796,18 +792,21 @@ pub fn refresh_shared(registry_doc: &Value, config: &StatusConfig) -> Result<Ref
         failures,
         // Shared sources are forge readers; no store answers here.
         notes: Vec::new(),
-        total_failure: ok_count == 0,
+        contributions,
     })
 }
 
 /// The names of the sources bound for the site, each the slot it writes in
-/// every home it places a matter in (§FS-001-forge-interface.9).
+/// every home it places a matter in (§FS-001-forge-interface.9). Repeated
+/// contributions still write that slot only once (§FS-001-forge-interface.6.1).
 pub fn site_source_names(config: &StatusConfig) -> Vec<String> {
     config
         .sources
         .iter()
         .filter_map(|source: &Value| source.get("provider").and_then(Value::as_str))
         .map(String::from)
+        .collect::<BTreeSet<_>>()
+        .into_iter()
         .collect()
 }
 
@@ -831,14 +830,20 @@ pub fn site_context(defaults: &crate::feed::config::Defaults) -> ProviderContext
 }
 
 /// Build one source and ask it, reporting a failure as data rather than
-/// letting it end the refresh (§FS-001-forge-interface.6).
-fn fetch_one(
-    config: &Value,
-    ctx: &ProviderContext,
-) -> (
-    String,
-    (bool, Option<String>, Vec<crate::feed::model::Item>),
-) {
+/// letting it end the refresh. Project and site blocks share this invocation
+/// boundary and preserve each result (§FS-001-forge-interface.6.1).
+fn fetch_one(config: &Value, ctx: &ProviderContext) -> (String, Contribution) {
+    let raised;
+    let ctx = match provider_timeout(config) {
+        Some(timeout) => {
+            raised = ProviderContext {
+                timeout,
+                ..ctx.clone()
+            };
+            &raised
+        }
+        None => ctx,
+    };
     match build_provider(config) {
         Ok(provider) => {
             let name = provider.name().to_string();
@@ -846,15 +851,12 @@ fn fetch_one(
                 let reason = provider
                     .unavailable_reason()
                     .unwrap_or_else(|| "unavailable (missing tool or secret)".to_string());
-                return (name, (false, Some(reason), Vec::new()));
+                return (name, Err(reason));
             }
             match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| provider.fetch(ctx))) {
-                Ok(Ok(items)) => (name, (true, None, items)),
-                Ok(Err(err)) => (name, (false, Some(err.0), Vec::new())),
-                Err(_) => (
-                    name,
-                    (false, Some("provider panicked".to_string()), Vec::new()),
-                ),
+                Ok(Ok(items)) => (name, Ok(items)),
+                Ok(Err(err)) => (name, Err(err.0)),
+                Err(_) => (name, Err("provider panicked".to_string())),
             }
         }
         Err(err) => (
@@ -863,7 +865,7 @@ fn fetch_one(
                 .and_then(Value::as_str)
                 .unwrap_or("unknown")
                 .to_string(),
-            (false, Some(err.0), Vec::new()),
+            Err(err.0),
         ),
     }
 }

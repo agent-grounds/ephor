@@ -134,6 +134,9 @@ fn refresh_projects(
     let mut total_failures = 0usize;
     let mut degraded = 0usize;
     let mut refreshed = 0usize;
+    // Idle project housekeeping supplies no answer that could mask a failed
+    // shared fetch (§FS-001-forge-interface.6.1).
+    let mut contributions = crate::feed::refresh::ContributionTally::default();
     let mut per_project: Vec<serde_json::Value> = Vec::new();
     for (project, project_config) in selected {
         let outcome = refresh_project(
@@ -144,6 +147,7 @@ fn refresh_projects(
             &config.defaults,
         )?;
         refreshed += 1;
+        contributions.add(outcome.contributions);
         // A provider that did not deliver is an error, not a warning: its
         // section of the feed is last-good data or nothing at all, and either
         // reads exactly like "you have no work here".
@@ -156,7 +160,7 @@ fn refresh_projects(
         for note in &outcome.notes {
             eprintln!("note: {project}: {note}");
         }
-        if outcome.total_failure {
+        if outcome.contributions.total_failure() {
             total_failures += 1;
         } else if !outcome.failures.is_empty() {
             degraded += 1;
@@ -164,7 +168,7 @@ fn refresh_projects(
         per_project.push(serde_json::json!({
             "project": project,
             "items": outcome.item_count,
-            "lost": outcome.total_failure,
+            "lost": outcome.contributions.total_failure(),
             "failures": outcome
                 .failures
                 .iter()
@@ -193,17 +197,15 @@ fn refresh_projects(
     // feed, so a shared source's slot has to be folded in once the file it
     // lands in has been rewritten (§AR-008-pipeline.1).
     let shared = crate::feed::refresh::refresh_shared(&registry_doc, config)?;
+    contributions.add(shared.contributions);
     for failure in &shared.failures {
         eprintln!("error: sources: {}", failure.describe());
     }
-    // The shared sources are a refreshed unit like a project, and their
-    // failures count like one: this is the leg that reads the forge's own
-    // notice list, so losing it silently is how the completeness capability
-    // stays dark while whatever runs the timer sees exit 0
-    // (§FS-001-forge-interface.6).
+    // Keep the public project/source-unit summary; the exit independently
+    // counts actual contributions (§FS-001-forge-interface.6.1).
     if !config.sources.is_empty() {
         refreshed += 1;
-        if shared.total_failure {
+        if shared.contributions.total_failure() {
             total_failures += 1;
         } else if !shared.failures.is_empty() {
             degraded += 1;
@@ -213,7 +215,7 @@ fn refresh_projects(
         per_project.push(serde_json::json!({
             "project": "sources",
             "items": shared.item_count,
-            "lost": shared.total_failure,
+            "lost": shared.contributions.total_failure(),
             "failures": shared
                 .failures
                 .iter()
@@ -229,6 +231,7 @@ fn refresh_projects(
         refreshed,
         total_failures,
         degraded,
+        contributions,
         projects: per_project,
         notes,
     })
@@ -266,6 +269,9 @@ struct RefreshTally {
     total_failures: usize,
     /// Projects that lost some providers but not all.
     degraded: usize,
+    /// Contributions determine exits independently of public project totals
+    /// (§FS-001-forge-interface.6.1).
+    contributions: crate::feed::refresh::ContributionTally,
     /// Per project: what came back, and what did not. A provider that did not
     /// deliver is reported rather than counted away — its section of the feed
     /// is last-good data or nothing at all, and either reads exactly like "you
@@ -650,10 +656,12 @@ pub fn refresh(args: &RefreshArgs, scope: &Projects) -> Result<ExitCode> {
             .unwrap_or_else(|_| "null".to_string())
         );
     }
-    if tally.refreshed > 0 && tally.total_failures == tally.refreshed {
+    // Even an empty answer counts; an idle project or retained last-good
+    // slot does not (§FS-001-forge-interface.6.1).
+    if tally.contributions.total_failure() {
         return Ok(ExitCode::from(3));
     }
-    if tally.total_failures > 0 || tally.degraded > 0 {
+    if tally.contributions.failed > 0 {
         return Ok(ExitCode::from(4));
     }
     Ok(ExitCode::SUCCESS)

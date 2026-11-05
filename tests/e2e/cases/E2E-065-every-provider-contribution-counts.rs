@@ -34,43 +34,36 @@ fn scenario(name: &str) {
 }
 
 #[test]
-#[ignore = "red until #253: project blocks retain every answer; implement removes this"]
 fn issue_253_project_answers() {
     scenario("project_answers");
 }
 
 #[test]
-#[ignore = "red until #253: site blocks retain and place every answer; implement removes this"]
 fn issue_253_site_answers() {
     scenario("site_answers");
 }
 
 #[test]
-#[ignore = "red until #253: project failures survive siblings; implement removes this"]
 fn issue_253_project_failures() {
     scenario("project_failures");
 }
 
 #[test]
-#[ignore = "red until #253: site failures survive siblings; implement removes this"]
 fn issue_253_site_failures() {
     scenario("site_failures");
 }
 
 #[test]
-#[ignore = "red until #253: incomplete project answers preserve last-good; implement removes this"]
 fn issue_253_project_last_good() {
     scenario("project_last_good");
 }
 
 #[test]
-#[ignore = "red until #253: incomplete site answers preserve last-good; implement removes this"]
 fn issue_253_site_last_good() {
     scenario("site_last_good");
 }
 
 #[test]
-#[ignore = "red until #253: task-store failures survive same-name contributions; implement removes this"]
 fn issue_253_task_stores() {
     scenario("task_stores");
 }
