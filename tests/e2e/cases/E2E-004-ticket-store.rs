@@ -13,6 +13,9 @@
 //! The case keeps its id, which is stable; what it is about is the project's
 //! own **tasks** — a ticket is what a remote tracker keys, an issue is what a
 //! forge files, and these are neither (§FS-003-feed-categories.1).
+//!
+//! Each failed-read case attempts only one store, with no configured forge
+//! contribution: nothing answered, so the exit is 3 (§FS-001-forge-interface.6.1).
 
 #[path = "../support.rs"]
 mod support;
@@ -255,7 +258,7 @@ fn directory_workspaces_with_an_unreadable_machine_fail_the_store_read() {
         "### Task work: Must not borrow root semantics\n**State:** root-open\n",
     );
 
-    world.ephor().args(["refresh", PROJECT]).assert().code(4);
+    world.ephor().args(["refresh", PROJECT]).assert().code(3);
 
     let slot = &world.feed()["providers"]["rhei"];
     assert_eq!(slot["ok"], false, "{slot:#?}");
@@ -313,7 +316,7 @@ fn directory_workspaces_only_resolve_an_applicable_root_machine() {
                 continue;
             }
         }
-        world.ephor().args(["refresh", PROJECT]).assert().code(4);
+        world.ephor().args(["refresh", PROJECT]).assert().code(3);
         failed_task_store(&world, "panta/states.yaml");
     }
 }
@@ -331,7 +334,7 @@ fn directory_workspaces_with_unreadable_task_text_fail_the_store_read() {
         std::io::ErrorKind::InvalidData
     );
 
-    world.ephor().args(["refresh", PROJECT]).assert().code(4);
+    world.ephor().args(["refresh", PROJECT]).assert().code(3);
     failed_task_store(&world, "alpha/tasks/01-work.md");
 }
 
@@ -356,7 +359,7 @@ fn directory_workspaces_with_a_permission_denied_task_fail_the_store_read() {
             .kind(),
         std::io::ErrorKind::PermissionDenied
     );
-    refresh.code(4);
+    refresh.code(3);
     failed_task_store(&world, "alpha/tasks/01-work.md");
 }
 
@@ -375,7 +378,7 @@ fn directory_workspaces_distinguish_empty_tasks_from_enumeration_failure() {
 
     // A file in place of the task directory makes read_dir fail on any user account.
     world.file("panta/absent/tasks", "not a directory\n");
-    world.ephor().args(["refresh", PROJECT]).assert().code(4);
+    world.ephor().args(["refresh", PROJECT]).assert().code(3);
     failed_task_store(&world, "absent/tasks");
 }
 
