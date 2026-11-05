@@ -25,6 +25,14 @@ persists the store ([§AR-006-matters.4](AR-006-matters.md#4-the-cache-is-a-cach
 too — the bucket is part of the store, not a log line
 ([§FS-008-attribution.4](../functional-spec/FS-008-attribution.md#4-unattributed-is-a-place-not-a-fate)).
 
+Fetch retains every same-name contribution before this stage: repeated project
+blocks, repeated site blocks, and discovered stores combine under
+[§FS-001-forge-interface.6.1](../functional-spec/FS-001-forge-interface.md#61-every-contribution-to-one-provider-answer-counts).
+A provider name identifies the persisted slot, not a single fetch attempt.
+Only a complete combined answer replaces that slot; an incomplete one follows
+the whole-slot last-good rule before attribution or persistence can publish a
+successful subset as current.
+
 Attribution runs here and nowhere else. It is the expensive stage — an
 item's evidence is its whole recorded conversation joined into one string,
 matched against a table — so a surface asking it again is asking a

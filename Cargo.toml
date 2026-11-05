@@ -349,6 +349,10 @@ path = "tests/integration/standing_startup_test.rs"
 name = "suite_isolation_test"
 path = "tests/integration/suite_isolation_test.rs"
 
+[[test]]
+name = "e2e_065_every_provider_contribution_counts"
+path = "tests/e2e/cases/E2E-065-every-provider-contribution-counts.rs"
+
 [dependencies]
 clap = { version = "4", features = ["derive"] }
 serde = { version = "1", features = ["derive"] }
