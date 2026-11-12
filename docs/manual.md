@@ -3249,6 +3249,15 @@ rhei transition <ticket> --from needs-human --to propose
 The question and its answer stay next to each other in the file that is the
 record of this item's work, where the next round can read them.
 
+A poll with `waiting_on: owner` reads `⚠ waiting on owner · <step>` on the
+matter's row; another declared person appears by that name. The poll resumes
+when the answer arrives, so it offers no manual gate transition or advance
+command. A real gate alongside it still has its own review and action.
+With no person wait, a running or polling step leads an unstarted step that
+depends on it; a machine poll has no person warning. The row and the location
+naming one current task point at the same step
+([§FS-005-dispatch.9](functional-spec/FS-005-dispatch.md#9-work-that-stops-for-a-person-says-so-where-the-person-is-looking)).
+
 **A failure that was never the change's fault.** A runner dies, a mirror is
 unreachable, the same flake lands again — and what the item needs is not a fix
 but another run
