@@ -3157,8 +3157,17 @@ impl Dispatcher {
         // Where the plan goes: named after the matter and the entry, and
         // named apart from what an earlier run of the same entry left, since
         // two runs of one workflow about one item are two records and not a
-        // correction of the first (§FS-005-dispatch.19).
-        let plan_id = free_plan_id(&site.dir, &plan::laid_plan_id(&item.id, &entry.id));
+        // correction of the first (§FS-005-dispatch.19). Apart, too, from
+        // every name a retirement took from this root: that plan is in the
+        // archive under the name the record keeps, and new work after it is a
+        // plan under a fresh id (§FS-005-dispatch.5).
+        let taken = self
+            .ledger
+            .entries
+            .get(&item.id)
+            .map(|recorded| retired::names_in(recorded, &site.dir))
+            .unwrap_or_default();
+        let plan_id = free_plan_id(&site.dir, &plan::laid_plan_id(&item.id, &entry.id), &taken);
         let output = site.dir.join(&plan_id);
         // What ephor knows reaches a workflow as files: the paths are fixed
         // here so an answer may name them, and the files themselves are
@@ -3535,10 +3544,20 @@ impl Dispatcher {
             Some(said) => format!("\n\n{}", chose(said)),
             None => String::new(),
         };
+        // Work laid after a retirement says where the earlier work is kept,
+        // in the paragraph a recipe plan's first ticket carries; nothing in
+        // the workflow waits on it (§FS-005-dispatch.5).
+        let retired_said = self
+            .ledger
+            .entries
+            .get(&item.id)
+            .and_then(retired::paragraph)
+            .map(|said| format!("\n\n{said}"))
+            .unwrap_or_default();
         put(
             DOSSIER,
             &format!(
-                "# {}\n\n{}{recorded}",
+                "# {}\n\n{}{recorded}{retired_said}",
                 item.title,
                 laying.site.dossier.trim_end()
             ),
@@ -7772,14 +7791,16 @@ fn identifiers(metadata: &[(&'static str, String)]) -> String {
 /// A plan id nothing has taken in this work root: the name the entry earns,
 /// then the same name counted, so a second run of one workflow about one item
 /// is a second record rather than a correction of the first
-/// (§FS-005-dispatch.19).
-fn free_plan_id(root: &std::path::Path, base: &str) -> String {
-    if !root.join(base).exists() {
+/// (§FS-005-dispatch.19). Taken means on disk, or among the names `taken`
+/// holds — a retired plan's, which the record keeps (§FS-005-dispatch.5).
+fn free_plan_id(root: &std::path::Path, base: &str, taken: &BTreeSet<String>) -> String {
+    let free = |id: &str| !taken.contains(id) && !root.join(id).exists();
+    if free(base) {
         return base.to_string();
     }
     (2..)
         .map(|nth| format!("{base}-{nth}"))
-        .find(|id| !root.join(id).exists())
+        .find(|id| free(id))
         .unwrap_or_else(|| base.to_string())
 }
 

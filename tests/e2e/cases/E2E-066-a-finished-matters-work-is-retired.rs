@@ -1590,6 +1590,53 @@ fn after_a_reopen_new_work_is_a_new_plan_that_points_at_the_archive() {
     assert_eq!(now, archived, "the archive is untouched");
 }
 
+#[test]
+fn a_workflow_laid_after_a_reopen_takes_a_fresh_id_and_names_the_archive() {
+    // A laid workflow is the other kind of new work after a retirement: its
+    // dossier carries the paragraph a recipe plan's first ticket does, and it
+    // takes a fresh id rather than the retired plan's (§FS-005-dispatch.5).
+    let site = finished(false);
+    let retired_plan = site.laid_plan(ISSUE);
+    let value = site.retired(&["--item", ISSUE]);
+    let archive = value["archive"].as_str().unwrap().to_string();
+    let record = value["record"].as_str().unwrap().to_string();
+
+    site.issue(301, reopened_now());
+    site.refresh();
+    site.lay(ISSUE);
+
+    let entry = site.entry(ISSUE);
+    let laid: Vec<&Value> = entry["dispatches"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|dispatch| dispatch["recipe"] == "implement")
+        .collect();
+    assert_eq!(laid.len(), 2, "{entry:#}");
+    let (old, new) = (laid[0], laid[1]);
+    assert!(old["retired_at"].is_string(), "{entry:#}");
+    assert!(new["retired_at"].is_null(), "{entry:#}");
+    assert_eq!(old["root"], new["root"], "laid in the same root: {entry:#}");
+    let old_id = old["plan"].as_str().unwrap();
+    let new_id = new["plan"].as_str().unwrap();
+    assert_ne!(new_id, old_id, "a fresh id, not the retired plan's");
+    assert_eq!(new_id, format!("{old_id}-2"));
+    assert_eq!(
+        retired_plan.file_name().unwrap().to_string_lossy(),
+        old_id,
+        "the retired dispatch still names where its plan was"
+    );
+
+    let root = PathBuf::from(new["root"].as_str().unwrap());
+    let dossier = fs::read_to_string(root.join(".ephor").join(new_id).join("dossier.md"))
+        .expect("the new plan's dossier");
+    assert!(dossier.contains(&record), "it names the record:\n{dossier}");
+    assert!(
+        dossier.contains(&archive),
+        "and where the earlier work is kept:\n{dossier}"
+    );
+}
+
 // --- 6. Forget -----------------------------------------------------------------
 
 #[test]
