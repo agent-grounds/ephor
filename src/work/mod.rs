@@ -3773,26 +3773,6 @@ impl Dispatcher {
         )
     }
 
-    /// Why `work cancel` names no ticket to take back on this matter, where
-    /// its work was retired (§FS-005-dispatch.16): nothing of it is left to
-    /// cancel, and the sentence says where it went. `None` where the matter
-    /// has work that was not retired, or none was ever retired.
-    pub fn retired_beyond_cancel(&self, item: &str) -> Option<String> {
-        let entry = self.ledger.entries.get(item)?;
-        let last = entry.retirements.last()?;
-        if entry
-            .dispatches
-            .iter()
-            .any(|dispatch| !retired::is_retired(dispatch))
-        {
-            return None;
-        }
-        Some(format!(
-            "{item} has nothing to cancel: its work was retired to {} and is kept there as it was",
-            last.archive.display()
-        ))
-    }
-
     /// The reply a run drafted about this matter and did not send, where one
     /// was drafted (§FS-005-dispatch.13). Attached to the matter here rather
     /// than stored on it: it is what the runtime left on disk, and reading it
