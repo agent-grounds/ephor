@@ -304,6 +304,7 @@ fn human_gate_authored_work_is_reviewed_through_its_original_matter() {
     item.kind = ItemKind::Pr;
     item.raw = serde_json::json!({});
     let entry = crate::work::ledger::Entry {
+        retirements: Vec::new(),
         project: item.project.clone(),
         title: item.title.clone(),
         url: None,

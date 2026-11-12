@@ -83,6 +83,7 @@ fn repeated_workflow_finds_a_unique_recorded_plan_in_its_prior_root() {
     ledger.entries.insert(
         item.id.clone(),
         Entry {
+            retirements: Vec::new(),
             project: item.project.clone(),
             title: item.title.clone(),
             url: None,
@@ -93,6 +94,7 @@ fn repeated_workflow_finds_a_unique_recorded_plan_in_its_prior_root() {
             plan: newest_entry_root.join("forge-widget-42.rhei.md"),
             dispatches: vec![
                 ledger::Dispatch {
+                    retired_at: None,
                     reply_binding: None,
                     reply_path: None,
                     ticket: String::new(),
@@ -106,6 +108,7 @@ fn repeated_workflow_finds_a_unique_recorded_plan_in_its_prior_root() {
                     snapshot: Snapshot::of(&item),
                 },
                 ledger::Dispatch {
+                    retired_at: None,
                     reply_binding: None,
                     reply_path: None,
                     ticket: String::new(),
@@ -213,6 +216,7 @@ fn issue_43_every_recorded_dispatch_root_is_enumerated_after_reload() {
     ledger.entries.insert(
         "forge:widget/42".to_string(),
         Entry {
+            retirements: Vec::new(),
             project: "widget".to_string(),
             title: "Fix it".to_string(),
             url: None,
@@ -223,6 +227,7 @@ fn issue_43_every_recorded_dispatch_root_is_enumerated_after_reload() {
             plan: new_root.join("forge-widget-42.rhei.md"),
             dispatches: vec![
                 ledger::Dispatch {
+                    retired_at: None,
                     reply_binding: None,
                     reply_path: None,
                     ticket: String::new(),
@@ -236,6 +241,7 @@ fn issue_43_every_recorded_dispatch_root_is_enumerated_after_reload() {
                     snapshot: snapshot.clone(),
                 },
                 ledger::Dispatch {
+                    retired_at: None,
                     reply_binding: None,
                     reply_path: None,
                     ticket: String::new(),
@@ -321,6 +327,7 @@ fn the_roots_are_the_configured_places_and_the_ledger_keeps_its_matter() {
     ledger.entries.insert(
         "forge:widget/7".to_string(),
         Entry {
+            retirements: Vec::new(),
             project: "widget".to_string(),
             pool: None,
             title: "Widen the retry window".to_string(),
@@ -447,6 +454,7 @@ fn root_with_plan(tmp: &Path) -> (WorkConfig, PathBuf, PathBuf) {
 
 fn entry_for(root: &Path, plan_path: &Path) -> Entry {
     Entry {
+        retirements: Vec::new(),
         project: "demo".to_string(),
         pool: None,
         title: "demo".to_string(),
@@ -934,6 +942,7 @@ fn ticket(id: &str, state: &str) -> TicketStatus {
 
 fn work_status(tickets: Vec<TicketStatus>) -> WorkStatus {
     WorkStatus {
+        retired: Vec::new(),
         quiet: None,
         project: "widget".to_string(),
         root: PathBuf::from("/w/widget/panta"),
@@ -1230,6 +1239,7 @@ fn issue_43_recorded_recipe_roots_are_all_enumerated() {
     plant(&root_b, &format!("{plan_id}.rhei.md"), "project work");
     let item = issue_43_item();
     let dispatch = |ticket: &str, root: &Path| ledger::Dispatch {
+        retired_at: None,
         reply_binding: None,
         reply_path: None,
         ticket: ticket.to_string(),
@@ -1246,6 +1256,7 @@ fn issue_43_recorded_recipe_roots_are_all_enumerated() {
     ledger.entries.insert(
         item.id.clone(),
         Entry {
+            retirements: Vec::new(),
             project: item.project.clone(),
             title: item.title.clone(),
             url: None,
@@ -1288,6 +1299,7 @@ fn issue_43_legacy_dispatch_falls_back_to_the_item_root() {
     ledger.entries.insert(
         item.id.clone(),
         Entry {
+            retirements: Vec::new(),
             project: item.project.clone(),
             title: item.title.clone(),
             url: None,
@@ -1297,6 +1309,7 @@ fn issue_43_legacy_dispatch_falls_back_to_the_item_root() {
             plan_id: plan_id.to_string(),
             plan: root.join(format!("{plan_id}.rhei.md")),
             dispatches: vec![ledger::Dispatch {
+                retired_at: None,
                 reply_binding: None,
                 reply_path: None,
                 ticket: "fix-1".to_string(),
@@ -1364,6 +1377,7 @@ fn issue_43_multi_root_record() -> (tempfile::TempDir, Dispatcher, crate::feed::
     ledger.entries.insert(
         item.id.clone(),
         Entry {
+            retirements: Vec::new(),
             project: item.project.clone(),
             title: item.title.clone(),
             url: None,
@@ -1374,6 +1388,7 @@ fn issue_43_multi_root_record() -> (tempfile::TempDir, Dispatcher, crate::feed::
             plan: plan_b,
             dispatches: vec![
                 ledger::Dispatch {
+                    retired_at: None,
                     reply_binding: None,
                     reply_path: None,
                     ticket: "answer-1".to_string(),
@@ -1387,6 +1402,7 @@ fn issue_43_multi_root_record() -> (tempfile::TempDir, Dispatcher, crate::feed::
                     snapshot: Snapshot::of(&item),
                 },
                 ledger::Dispatch {
+                    retired_at: None,
                     reply_binding: None,
                     reply_path: None,
                     ticket: "sweep-2".to_string(),
@@ -3387,6 +3403,7 @@ fn a_checkout_standing_on_another_branch_is_not_run_in() {
     ledger.entries.insert(
         "forge:widget/42".to_string(),
         Entry {
+            retirements: Vec::new(),
             project: "widget".to_string(),
             pool: None,
             title: "t".to_string(),
@@ -3438,6 +3455,7 @@ fn a_branch_nobody_recorded_refuses_nothing() {
     ledger.entries.insert(
         "forge:widget/42".to_string(),
         Entry {
+            retirements: Vec::new(),
             project: "widget".to_string(),
             pool: None,
             title: "t".to_string(),
@@ -3478,6 +3496,7 @@ fn the_ledgers_recipe_answers_for_a_ticket_ephor_dispatched() {
     ledger.entries.insert(
         "forge:widget/42".to_string(),
         Entry {
+            retirements: Vec::new(),
             project: "widget".to_string(),
             pool: None,
             title: "t".to_string(),
@@ -3488,6 +3507,7 @@ fn the_ledgers_recipe_answers_for_a_ticket_ephor_dispatched() {
             plan_id: "widget-42".to_string(),
             plan: root.join("widget-42.rhei.md"),
             dispatches: vec![ledger::Dispatch {
+                retired_at: None,
                 reply_binding: None,
                 reply_path: None,
                 ticket: "fix-gate-1".to_string(),
@@ -3541,6 +3561,7 @@ fn a_symlinked_root_keeps_the_ledgers_recorded_recipe() {
     ledger.entries.insert(
         "forge:widget/42".to_string(),
         Entry {
+            retirements: Vec::new(),
             project: "widget".to_string(),
             pool: None,
             title: "t".to_string(),
@@ -3551,6 +3572,7 @@ fn a_symlinked_root_keeps_the_ledgers_recorded_recipe() {
             plan_id: "widget-42".to_string(),
             plan: recorded_root.join("widget-42.rhei.md"),
             dispatches: vec![ledger::Dispatch {
+                retired_at: None,
                 reply_binding: None,
                 reply_path: None,
                 ticket: "fix-gate-1".to_string(),
@@ -3619,6 +3641,7 @@ fn an_unrecorded_symlinked_root_keeps_the_callers_checkout_spelling() {
     dispatch_ledger.entries.insert(
         "forge:widget/42".to_string(),
         Entry {
+            retirements: Vec::new(),
             project: "widget".to_string(),
             pool: None,
             title: "t".to_string(),
@@ -3629,6 +3652,7 @@ fn an_unrecorded_symlinked_root_keeps_the_callers_checkout_spelling() {
             plan_id: "widget-42".to_string(),
             plan: recorded_root.join("widget-42.rhei.md"),
             dispatches: vec![ledger::Dispatch {
+                retired_at: None,
                 reply_binding: None,
                 reply_path: None,
                 ticket: "fix-gate-1".to_string(),
@@ -3652,6 +3676,7 @@ fn an_unrecorded_symlinked_root_keeps_the_callers_checkout_spelling() {
     legacy_ledger.entries.insert(
         "forge:widget/42".to_string(),
         Entry {
+            retirements: Vec::new(),
             project: "widget".to_string(),
             pool: None,
             title: "t".to_string(),
@@ -3721,6 +3746,7 @@ fn laid_ledger(root: &Path, entry: &str) -> Ledger {
     ledger.entries.insert(
         "forge:widget/42".to_string(),
         Entry {
+            retirements: Vec::new(),
             project: "widget".to_string(),
             pool: None,
             title: "t".to_string(),
@@ -3731,6 +3757,7 @@ fn laid_ledger(root: &Path, entry: &str) -> Ledger {
             plan_id: "widget-42".to_string(),
             plan: root.join("widget-42.rhei.md"),
             dispatches: vec![ledger::Dispatch {
+                retired_at: None,
                 reply_binding: None,
                 reply_path: None,
                 ticket: String::new(),
@@ -4655,6 +4682,7 @@ fn the_recipe_reading_sees_no_workflow_plan_and_falls_back_only_to_the_entrys_ow
     let mut entry = entry_for(&root, &plan_path);
     entry.plan_id = "widget-10".to_string();
     entry.dispatches = vec![ledger::Dispatch {
+        retired_at: None,
         reply_binding: None,
         reply_path: None,
         ticket: String::new(),
@@ -4727,6 +4755,7 @@ fn lay_plan(root: &Path, name: &str, state: &str, machine: Option<&str>, target:
 /// report's site produces: no ticket of its own, and a plan name to resolve.
 fn laying_dispatch(name: &str, root: &Path) -> ledger::Dispatch {
     ledger::Dispatch {
+        retired_at: None,
         reply_binding: None,
         reply_path: None,
         ticket: String::new(),
@@ -4833,6 +4862,7 @@ fn a_workflow_plan_sharing_a_root_with_the_matters_own_yields_both() {
     entry.plan_id = "widget-10".to_string();
     entry.dispatches = vec![
         ledger::Dispatch {
+            retired_at: None,
             reply_binding: None,
             reply_path: None,
             ticket: "implement-1".to_string(),
@@ -5088,6 +5118,7 @@ fn a_reply_left_in_a_workflow_root_is_not_offered_as_the_matters_proposal() {
     entry.plan_id = plan_id.to_string();
     entry.dispatches = vec![
         ledger::Dispatch {
+            retired_at: None,
             reply_binding: None,
             reply_path: None,
             ticket: "answer-1".to_string(),
@@ -5348,6 +5379,7 @@ fn ledger_naming_the_pre_digest_stem(id: &str, title: &str, root: &Path) -> Ledg
     ledger.entries.insert(
         id.to_string(),
         Entry {
+            retirements: Vec::new(),
             project: "widget".to_string(),
             title: title.to_string(),
             url: None,

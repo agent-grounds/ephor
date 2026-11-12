@@ -159,6 +159,35 @@ pub struct Entry {
     /// claims nothing.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub pool: Option<String>,
+    /// Every retirement of this matter's work, oldest first
+    /// (§FS-005-dispatch.36.5). Additive: the dispatches keep their original
+    /// placements, and an older ephor reads the entry and ignores this.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub retirements: Vec<Retirement>,
+}
+
+/// One retirement of a matter's work, as the ledger keeps it
+/// (§FS-005-dispatch.36.5): when, the record written beside the archive, the
+/// archive itself, and per plan where it came from and where it went.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Retirement {
+    pub at: DateTime<Utc>,
+    pub record: PathBuf,
+    pub archive: PathBuf,
+    #[serde(default)]
+    pub plans: Vec<RetiredPlan>,
+}
+
+/// One placement a retirement took, or found already gone
+/// (§FS-005-dispatch.36.5).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RetiredPlan {
+    pub from: PathBuf,
+    /// Where it went in the archive. Absent where it was already gone.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub to: Option<PathBuf>,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub absent: bool,
 }
 
 /// How long a root waits after one failed start, and how long it may ever
@@ -309,6 +338,11 @@ pub struct Dispatch {
     pub pools: Vec<String>,
     /// The item as it was when this was asked for.
     pub snapshot: Snapshot,
+    /// When this dispatch's placement was retired (§FS-005-dispatch.36.5).
+    /// Its root, plan and branch stay as written, so the original placement
+    /// is still the record of where the work was committed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub retired_at: Option<DateTime<Utc>>,
 }
 
 impl Dispatch {
@@ -654,6 +688,63 @@ mod tests {
             updated_at: Utc::now() - chrono::Duration::minutes(minutes_ago),
             raw,
         }
+    }
+
+    /// The retirement fields are additive (§FS-005-dispatch.36.5): they
+    /// round-trip, are not written where nothing was retired, and a reader
+    /// that meets a field it does not know ignores it, as an older ephor
+    /// ignores these.
+    #[test]
+    fn retirement_fields_round_trip_and_unknown_fields_are_ignored() {
+        let at = Utc::now();
+        let plain = json!({
+            "project": "widget", "title": "t", "root": "/w/panta", "plan_id": "p",
+            "plan": "/w/panta/p.rhei.md",
+            "dispatches": [{ "ticket": "answer-1", "recipe": "answer", "at": at,
+                             "snapshot": { "updated_at": at } }]
+        });
+        let entry: Entry = serde_json::from_value(plain.clone()).unwrap();
+        assert!(entry.retirements.is_empty());
+        assert!(entry.dispatches[0].retired_at.is_none());
+        let written = serde_json::to_value(&entry).unwrap();
+        assert!(written.get("retirements").is_none());
+        assert!(written["dispatches"][0].get("retired_at").is_none());
+
+        let mut retired = entry.clone();
+        retired.dispatches[0].retired_at = Some(at);
+        retired.retirements.push(Retirement {
+            at,
+            record: PathBuf::from("/d/archive/widget/x/s/retirement.json"),
+            archive: PathBuf::from("/d/archive/widget/x/s"),
+            plans: vec![
+                RetiredPlan {
+                    from: PathBuf::from("/w/panta/p.rhei.md"),
+                    to: Some(PathBuf::from("/d/archive/widget/x/s/1-panta/p.rhei.md")),
+                    absent: false,
+                },
+                RetiredPlan {
+                    from: PathBuf::from("/gone/panta/laid"),
+                    to: None,
+                    absent: true,
+                },
+            ],
+        });
+        let text = serde_json::to_string(&retired).unwrap();
+        let back: Entry = serde_json::from_str(&text).unwrap();
+        assert_eq!(back.retirements, retired.retirements);
+        assert_eq!(back.dispatches[0].retired_at, Some(at));
+        let value: Value = serde_json::from_str(&text).unwrap();
+        assert!(value["retirements"][0]["plans"][0].get("absent").is_none());
+        assert_eq!(value["retirements"][0]["plans"][1]["absent"], true);
+
+        // Something a later ephor adds is read past, on the entry, on a
+        // dispatch and on a retirement.
+        let mut later = value.clone();
+        later["future"] = json!({ "any": 1 });
+        later["dispatches"][0]["future"] = json!(true);
+        later["retirements"][0]["future"] = json!("x");
+        let read: Entry = serde_json::from_value(later).unwrap();
+        assert_eq!(read.retirements, retired.retirements);
     }
 
     fn gate(failed: u64, blocked: bool) -> Value {

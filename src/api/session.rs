@@ -1693,6 +1693,80 @@ mod tests {
         assert!(!session.shows(&item, now));
     }
 
+    /// Retired work is not open work (§FS-003-feed-categories.2,
+    /// §FS-005-dispatch.4): a finished matter whose work was all retired is
+    /// not Working and leaves Recent; where the archive is gone afterwards, the
+    /// rules for a missing plan bring it back.
+    #[test]
+    fn a_finished_matter_whose_work_was_retired_is_not_working() {
+        use crate::work::ledger::{Dispatch, Entry, RetiredPlan, Retirement, Snapshot};
+        let now = Utc::now();
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path().join("panta");
+        std::fs::create_dir_all(&root).unwrap();
+        let archive = tmp.path().join("archive/widget/item/stamp");
+        let to = archive.join("1-panta/p.rhei.md");
+        std::fs::create_dir_all(to.parent().unwrap()).unwrap();
+        std::fs::write(&to, "# Rhei: t\n").unwrap();
+        let item = merged(now - chrono::Duration::hours(2));
+        let entry = Entry {
+            project: "widget".to_string(),
+            title: "t".to_string(),
+            url: None,
+            root: root.clone(),
+            checkout: tmp.path().to_path_buf(),
+            branch: None,
+            plan_id: "p".to_string(),
+            plan: root.join("p.rhei.md"),
+            dispatches: vec![Dispatch {
+                reply_binding: None,
+                reply_path: None,
+                ticket: "answer-1".to_string(),
+                recipe: "answer".to_string(),
+                at: now,
+                plan: None,
+                root: Some(root.clone()),
+                checkout: Some(tmp.path().to_path_buf()),
+                branch: None,
+                pools: Vec::new(),
+                snapshot: Snapshot::default(),
+                retired_at: Some(now),
+            }],
+            pool: None,
+            retirements: vec![Retirement {
+                at: now,
+                record: archive.join("retirement.json"),
+                archive: archive.clone(),
+                plans: vec![RetiredPlan {
+                    from: root.join("p.rhei.md"),
+                    to: Some(to.clone()),
+                    absent: false,
+                }],
+            }],
+        };
+        let config = crate::work::recipe::WorkConfig::default();
+        let status = crate::work::status_of_entry(&config, &entry, None);
+        assert!(!status.missing, "a readable archive is not missing");
+        assert!(status
+            .lines(64)
+            .iter()
+            .all(|line| line.said.contains("retired →")));
+
+        let mut session = Session {
+            recent_days: 7,
+            ..Session::default()
+        };
+        session.work.insert(item.id.clone(), status.lines(64));
+        assert!(!session.working(&item.id), "retired work is not open work");
+        assert!(!session.shows(&item, now));
+
+        std::fs::remove_dir_all(&archive).unwrap();
+        let status = crate::work::status_of_entry(&config, &entry, None);
+        assert!(status.missing, "an archive that is gone is a missing plan");
+        session.work.insert(item.id.clone(), status.lines(64));
+        assert!(session.working(&item.id), "and that brings the matter back");
+    }
+
     /// A job's line is filed under what the job was about, so it lands on that
     /// row rather than at the top of the screen (§FS-005-dispatch.17). The
     /// record names a matter or a branch and never both

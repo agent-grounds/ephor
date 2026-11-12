@@ -543,11 +543,28 @@ pub struct WorkStatus {
     /// long enough to note (§FS-005-dispatch.23). A badge, never a verdict.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub quiet: Option<u64>,
+    /// The placements a retirement took, said where they went
+    /// (§FS-005-dispatch.4). Absent where nothing was retired.
+    #[serde(skip_serializing_if = "Vec::is_empty", default)]
+    pub retired: Vec<RetiredPlan>,
     pub tickets: Vec<Ticket>,
 }
 
 /// One committed recipe-plan placement in a work reading
 /// (§FS-005-dispatch.4).
+/// One retired placement (§FS-005-dispatch.4): where the plan was, where it
+/// went, the retirement's archive and record, and whether the archive is gone.
+#[derive(Debug, Clone, Serialize)]
+pub struct RetiredPlan {
+    pub plan: PathBuf,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub to: Option<PathBuf>,
+    pub archive: PathBuf,
+    pub record: PathBuf,
+    pub archive_missing: bool,
+    pub said: String,
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct WorkPlan {
     pub plan: PathBuf,

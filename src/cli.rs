@@ -491,7 +491,8 @@ pub struct WorkCancelArgs {
     pub item: String,
 
     /// The ticket(s) to take back, by id inside the item's plan (`fix-gate-2`).
-    #[arg(value_name = "TICKET", required = true)]
+    /// At least one, unless the matter's work was retired, which is then said.
+    #[arg(value_name = "TICKET")]
     pub tickets: Vec<String>,
 
     /// Why — one line, recorded as the ticket's result. Left out, the result

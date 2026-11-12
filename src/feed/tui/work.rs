@@ -433,6 +433,12 @@ impl WorkScreen {
                     status.plans.iter().map(|plan| plan.path.as_path()),
                     status.missing,
                     status.unread_workflows > 0,
+                    status
+                        .retired
+                        .iter()
+                        .map(|retired| retired.said())
+                        .collect(),
+                    status.retired.iter().any(|retired| retired.archive_missing),
                 );
                 for plan in &said.plans {
                     let mut line = vec![Span::styled(format!("    {}", plan.path.display()), dim)];
@@ -443,6 +449,10 @@ impl WorkScreen {
                         ));
                     }
                     lines.push(Line::from(line));
+                }
+                // Where retired work went (§FS-005-dispatch.4).
+                for retired in &said.retired {
+                    lines.push(Line::from(Span::styled(format!("    {retired}"), dim)));
                 }
                 // An id is how the reader and the runtime agree on which run
                 // they mean, so the operation says it here as the board says it
@@ -788,6 +798,7 @@ mod tests {
 
     fn status(stale: bool) -> WorkStatus {
         WorkStatus {
+            retired: Vec::new(),
             quiet: None,
             project: "demo".to_string(),
             root: PathBuf::from("/w/demo/panta"),

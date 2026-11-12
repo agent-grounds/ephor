@@ -905,6 +905,18 @@ impl Session {
                 unread: status.unread_workflows,
                 changes: status.changes.clone(),
                 quiet: status.quiet,
+                retired: status
+                    .retired
+                    .iter()
+                    .map(|retired| views::RetiredPlan {
+                        plan: retired.from.clone(),
+                        to: retired.to.clone(),
+                        archive: retired.archive.clone(),
+                        record: retired.record.clone(),
+                        archive_missing: retired.archive_missing,
+                        said: retired.said(),
+                    })
+                    .collect(),
                 tickets: status
                     .tickets
                     .iter()

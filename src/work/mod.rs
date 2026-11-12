@@ -15,6 +15,7 @@ pub mod ledger;
 pub mod private;
 mod ranking;
 pub mod recipe;
+pub mod retired;
 pub mod runtime;
 pub mod spend;
 pub mod sweeps;
@@ -259,6 +260,9 @@ pub struct WorkStatus {
     /// whose work is finished from one whose plan is unreadable — both are
     /// zero — so what may be forgotten is read from this beside it.
     pub unread_workflows: usize,
+    /// The placements a retirement took (§FS-005-dispatch.4): said where they
+    /// went, never as open work or as missing while the archive reads.
+    pub retired: Vec<retired::Retired>,
     pub tickets: Vec<TicketStatus>,
     /// How many plans a workflow laid down beside this matter's own
     /// (§FS-005-dispatch.19). A count rather than the plans themselves: what
@@ -325,6 +329,10 @@ pub struct RecordedWork {
     /// found. `work forget` names them, because it is the last reading of the
     /// record (§FS-005-dispatch.35.1).
     pub unread: Vec<PathBuf>,
+    /// The placements a retirement took, read where they were put
+    /// (§FS-005-dispatch.4): not open work, never missing while the archive
+    /// can be read.
+    pub retired: Vec<retired::Retired>,
 }
 
 /// One plan a matter had, as `work forget` leaves it (§FS-005-dispatch.35.1):
@@ -338,6 +346,10 @@ pub struct LeftPlan {
     /// but holds no plan anybody could read is not missing in this sense:
     /// forget leaves it where it is, so it stays.
     pub missing: bool,
+    /// Where a retired plan was retired to (§FS-005-dispatch.35.1): its copy
+    /// in the archive. `missing` is then whether that is gone.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub retired_to: Option<PathBuf>,
 }
 
 impl RecordedWork {
@@ -355,7 +367,13 @@ impl RecordedWork {
             .map(|plan| LeftPlan {
                 missing: !plan.exists(),
                 plan: plan.clone(),
+                retired_to: None,
             })
+            .chain(self.retired.iter().map(|retired| LeftPlan {
+                plan: retired.from.clone(),
+                missing: retired.archive_missing,
+                retired_to: Some(retired.kept_at().to_path_buf()),
+            }))
             .collect()
     }
 }
@@ -368,6 +386,8 @@ pub struct PlanHeading<'a> {
     pub plans: Vec<HeadedPlan<'a>>,
     /// What the record holds that no named plan says, where it holds it.
     pub note: Option<&'static str>,
+    /// One line per retired placement, where it went (§FS-005-dispatch.4).
+    pub retired: Vec<String>,
 }
 
 /// One plan the work view names, and whether it is on disk
@@ -403,9 +423,13 @@ pub fn plan_heading<'a>(
     placed: impl IntoIterator<Item = &'a std::path::Path>,
     missing: bool,
     unread: bool,
+    retired: Vec<String>,
+    archive_missing: bool,
 ) -> PlanHeading<'a> {
     let mut named: Vec<&std::path::Path> = placed.into_iter().collect();
-    if named.is_empty() && !unread {
+    // A matter whose work was all retired has nothing at its own path, and
+    // that is not a plan gone (§FS-005-dispatch.4).
+    if named.is_empty() && !unread && retired.is_empty() {
         named.push(own);
     }
     let plans: Vec<HeadedPlan> = named
@@ -415,10 +439,14 @@ pub fn plan_heading<'a>(
             gone: !path.exists(),
         })
         .collect();
-    let unexplained = missing && !plans.iter().any(|plan| plan.gone);
+    let unexplained = missing && !archive_missing && !plans.iter().any(|plan| plan.gone);
     let note =
         (unread || unexplained).then_some("a plan this matter's record names could not be read");
-    PlanHeading { plans, note }
+    PlanHeading {
+        plans,
+        note,
+        retired,
+    }
 }
 
 impl WorkStatus {
@@ -438,8 +466,8 @@ impl WorkStatus {
     /// a file ephor never wrote (§FS-005-dispatch.19). None where none of them
     /// is on disk, which is said rather than handed to an editor.
     pub fn plan_to_read(&self) -> Option<&std::path::Path> {
-        let own =
-            (self.plans.is_empty() && self.unread_workflows == 0).then_some(self.plan.as_path());
+        let own = (self.plans.is_empty() && self.unread_workflows == 0 && self.retired.is_empty())
+            .then_some(self.plan.as_path());
         self.open_at
             .as_ref()
             .map(|open| open.plan.as_path())
@@ -470,12 +498,53 @@ impl WorkStatus {
         self.missing && self.tickets.is_empty()
     }
 
+    /// Whether everything this matter's record names was retired, so its work
+    /// is in the archive and nowhere else (§FS-005-dispatch.4).
+    pub fn only_retired(&self) -> bool {
+        self.tickets.is_empty()
+            && self.workflows == 0
+            && self.unread_workflows == 0
+            && !self.retired.is_empty()
+    }
+
+    /// A plan missing other than a retired one whose archive went, which says
+    /// so on its own line (§FS-005-dispatch.4).
+    fn lost(&self) -> bool {
+        let only_archive = self.retired.iter().any(|retired| retired.archive_missing)
+            && self.unread_workflows == 0
+            && self.plans.iter().all(|plan| plan.path.is_file());
+        self.missing && !only_archive
+    }
+
+    /// One row per retirement, saying where its work went — a quiet row — or,
+    /// where its archive is gone, that it is (§FS-005-dispatch.4).
+    fn retired_lines(&self) -> Vec<WorkLine> {
+        let mut lines: Vec<WorkLine> = Vec::new();
+        let mut seen: Vec<&std::path::Path> = Vec::new();
+        for retired in &self.retired {
+            if seen.contains(&retired.archive.as_path()) {
+                continue;
+            }
+            seen.push(&retired.archive);
+            let gone = self
+                .retired
+                .iter()
+                .filter(|other| other.archive == retired.archive)
+                .find(|other| other.archive_missing);
+            lines.push(match gone {
+                Some(gone) => WorkLine::said(Tone::Waiting, "⚠", gone.said()),
+                None => WorkLine::said(Tone::Over, "⊟", retired.said()),
+            });
+        }
+        lines
+    }
+
     /// A row that has something to say and a plan that could not be read says
     /// both (§FS-005-dispatch.30): the second is a fact about the record and
     /// never a reason to withhold the first, so the row and the sentence
     /// `work sync` writes about one matter cannot name different facts.
     fn warned(&self, said: String) -> String {
-        match self.missing {
+        match self.lost() {
             true => format!("{said}  ⚠ a plan is missing"),
             false => said,
         }
@@ -485,6 +554,18 @@ impl WorkStatus {
     /// what it decided, and whether the item has moved under it. `verdict` is
     /// how much of the verdict's own sentence fits where this is going.
     pub fn badge(&self, verdict_width: usize) -> String {
+        // Work that was all retired is said where it went, or that its
+        // archive is gone (§FS-005-dispatch.4).
+        if self.only_retired() {
+            return match self.retired.iter().find(|retired| retired.archive_missing) {
+                Some(gone) => format!("⚠ {}", gone.said()),
+                None => self
+                    .retired
+                    .last()
+                    .map(retired::Retired::said)
+                    .unwrap_or_default(),
+            };
+        }
         // Nothing here to read — not merely a plan the record named that
         // nobody could (§FS-005-dispatch.35). Where another plan of this
         // matter's did answer, what it says leads and the unreadable one is
@@ -545,6 +626,12 @@ impl WorkStatus {
     /// last ticket decided. `verdict` is how much of a verdict's own sentence
     /// fits on a row.
     pub fn lines(&self, verdict_width: usize) -> Vec<WorkLine> {
+        // Retired work is not open work: where it is all there is, its rows
+        // are the quiet ones saying where it went (§FS-005-dispatch.4).
+        let retired = self.retired_lines();
+        if self.only_retired() {
+            return retired;
+        }
         // As the badge reads it: nothing to read is one fact, a plan the
         // record named that nobody could read is another, and a matter with
         // both a going plan and an unreadable one gets a row for each
@@ -626,9 +713,10 @@ impl WorkStatus {
                 None => WorkLine::said(Tone::Over, "·", "no tickets"),
             });
         }
-        if self.missing {
+        if self.lost() {
             lines.push(WorkLine::said(Tone::Waiting, "⚠", "a plan is missing"));
         }
+        lines.extend(retired);
         if self.stale() {
             lines.push(WorkLine::said(
                 Tone::Stale,
@@ -2657,6 +2745,13 @@ impl Dispatcher {
             .map(|entry| entry.changes_since(item))
             .unwrap_or_default();
 
+        // Retired work is in the archive and never appended to: the new plan
+        // says where it is, and nothing in it waits on it (§FS-005-dispatch.5).
+        let retired_said = self
+            .ledger
+            .entries
+            .get(&item.id)
+            .and_then(retired::paragraph);
         let (outcome, ticket_id) = match Plan::read(&path)? {
             None => {
                 let ticket_id = request_ticket.clone();
@@ -2667,7 +2762,10 @@ impl Dispatcher {
                     prior: None,
                     target: target.clone(),
                     model: model.clone(),
-                    body: brief,
+                    body: match retired_said {
+                        Some(said) => format!("{brief}\n\n{said}"),
+                        None => brief,
+                    },
                 };
                 let mut plan =
                     Plan::create(&path, &root.machine, &item.title, &site.dossier, &ticket);
@@ -2724,6 +2822,7 @@ impl Dispatcher {
         };
 
         let entry = self.ledger.entries.entry(item.id.clone()).or_insert(Entry {
+            retirements: Vec::new(),
             project: item.project.clone(),
             title: item.title.clone(),
             url: item.url.clone(),
@@ -2744,6 +2843,7 @@ impl Dispatcher {
         entry.plan = path;
         entry.pool = pool;
         entry.dispatches.push(Dispatch {
+            retired_at: None,
             reply_binding,
             reply_path: Some(reply_path),
             ticket: ticket_id,
@@ -3456,6 +3556,7 @@ impl Dispatcher {
             .unwrap_or_else(|| laying.output.clone());
         let entry_id = laying.entry.clone();
         let ledger_entry = self.ledger.entries.entry(item.id.clone()).or_insert(Entry {
+            retirements: Vec::new(),
             project: item.project.clone(),
             title: item.title.clone(),
             url: item.url.clone(),
@@ -3477,6 +3578,7 @@ impl Dispatcher {
         ledger_entry.checkout = laying.site.checkout.workspace.clone();
         ledger_entry.branch = laying.site.checkout.branch.clone();
         ledger_entry.dispatches.push(Dispatch {
+            retired_at: None,
             reply_binding: workflow_reply_binding,
             reply_path: Some(workflow_reply_path),
             ticket: String::new(),
@@ -3640,6 +3742,18 @@ impl Dispatcher {
             .iter()
             .rev()
             .find(|dispatch| !dispatch.is_workflow() && dispatch.ticket == ticket);
+        // A ticket in a retired plan is in the archive, in the state it was
+        // in, and nobody's to move (§FS-005-dispatch.16).
+        if let Some(retired) = dispatch
+            .filter(|dispatch| retired::is_retired(dispatch))
+            .and_then(|_| entry.retirements.last())
+        {
+            return Err(EphorError::Command(format!(
+                "{ticket} cannot be cancelled: its plan was retired to {} and is kept there \
+                 as it was",
+                retired.archive.display()
+            )));
+        }
         let root = dispatch
             .and_then(|dispatch| dispatch.root.as_ref())
             .unwrap_or(&entry.root);
@@ -3656,6 +3770,26 @@ impl Dispatcher {
             why,
             dry_run,
         )
+    }
+
+    /// Why `work cancel` names no ticket to take back on this matter, where
+    /// its work was retired (§FS-005-dispatch.16): nothing of it is left to
+    /// cancel, and the sentence says where it went. `None` where the matter
+    /// has work that was not retired, or none was ever retired.
+    pub fn retired_beyond_cancel(&self, item: &str) -> Option<String> {
+        let entry = self.ledger.entries.get(item)?;
+        let last = entry.retirements.last()?;
+        if entry
+            .dispatches
+            .iter()
+            .any(|dispatch| !retired::is_retired(dispatch))
+        {
+            return None;
+        }
+        Some(format!(
+            "{item} has nothing to cancel: its work was retired to {} and is kept there as it was",
+            last.archive.display()
+        ))
     }
 
     /// The reply a run drafted about this matter and did not send, where one
@@ -6543,7 +6677,7 @@ fn recipe_placements(entry: &Entry) -> Vec<RecordedPlan> {
     for dispatch in entry
         .dispatches
         .iter()
-        .filter(|dispatch| !dispatch.is_workflow())
+        .filter(|dispatch| !dispatch.is_workflow() && !retired::is_retired(dispatch))
     {
         let root = dispatch.root.clone().unwrap_or_else(|| entry.root.clone());
         let path = match dispatch.root.is_some() {
@@ -6608,7 +6742,7 @@ pub fn recorded_workflow_plans(entry: &Entry) -> RecordedWork {
     for dispatch in entry
         .dispatches
         .iter()
-        .filter(|dispatch| dispatch.is_workflow())
+        .filter(|dispatch| dispatch.is_workflow() && !retired::is_retired(dispatch))
     {
         let Some(name) = dispatch.plan.as_deref() else {
             continue;
@@ -6662,11 +6796,15 @@ pub fn recorded_plans(entry: &Entry) -> RecordedWork {
     // name a plan, so this is not the provenance-less ledger the fallback is
     // for, and a stray file at the entry's own path would otherwise answer
     // for the laid plan that is gone.
-    if plans.is_empty() && work.plans.is_empty() && work.unread.is_empty() {
+    // A retired dispatch named a plan too, and it is in the archive rather
+    // than at the entry's own path (§FS-005-dispatch.4).
+    let any_retired = entry.dispatches.iter().any(retired::is_retired);
+    if plans.is_empty() && work.plans.is_empty() && work.unread.is_empty() && !any_retired {
         plans.extend(legacy_placement(entry));
     }
     plans.extend(work.plans);
     work.plans = plans;
+    work.retired = retired::placements(entry);
     work
 }
 
@@ -6740,7 +6878,11 @@ pub fn status_of_entry_seen(
     // the recipe plans alone reports no open tickets while a laid plan on
     // disk says otherwise, which is the watch reporting on itself
     // (§FS-005-dispatch.4).
-    let RecordedWork { plans, unread } = recorded_plans(entry);
+    let RecordedWork {
+        plans,
+        unread,
+        retired,
+    } = recorded_plans(entry);
     let unread_workflows = unread.len();
     let mut tickets: Vec<TicketStatus> = Vec::new();
     // The plan each ticket was read out of, kept beside them so a report with
@@ -6847,11 +6989,12 @@ pub fn status_of_entry_seen(
     let advance = tickets.iter().find(|ticket| ticket.waiting).map(|ticket| {
         runtime::advance_command(global, &ticket.id, ticket.state.as_deref().unwrap_or("?"))
     });
+    let archive_missing = retired.iter().any(|retired| retired.archive_missing);
     WorkStatus {
         workflows: entry
             .dispatches
             .iter()
-            .filter(|dispatch| dispatch.is_workflow())
+            .filter(|dispatch| dispatch.is_workflow() && !retired::is_retired(dispatch))
             .count(),
         project: entry.project.clone(),
         root: entry.root.clone(),
@@ -6866,8 +7009,11 @@ pub fn status_of_entry_seen(
         // nobody can read is not evidence the work is over. An entry whose
         // dispatches named no plan at all still has none to be missing, and
         // is not alarmed about a file nobody promised (§FS-005-dispatch.19).
-        missing: missing || unread_workflows > 0,
+        // Where a retirement's archive is gone, the rules for a missing plan
+        // apply to it from then on (§FS-005-dispatch.4).
+        missing: missing || unread_workflows > 0 || archive_missing,
         unread_workflows,
+        retired,
         tickets,
         open_at,
         advance,

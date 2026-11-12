@@ -794,6 +794,22 @@
             "stale": { "type": "boolean", "description": "The matter moved since its work was asked for (FS-005-dispatch.5)." },
             "missing": { "type": "boolean", "description": "A plan the record names could not be read: one it placed that is gone or will not read, or a laid plan it could not place at all (FS-005-dispatch.35)." },
             "unread": { "type": "integer", "minimum": 0, "description": "How many laid plans the record names that nobody could read. Such a plan is placed nowhere, so neither `plans` nor `missing` can say it; this is what tells a plan that is gone from one that could not be read (FS-005-dispatch.35.1, REQ-002-parity.3)." },
+            "retired": {
+              "type": "array",
+              "description": "The placements a retirement took, said where they went (FS-005-dispatch.4). A retired placement is not open work and not missing while its archive reads. Absent where nothing was retired.",
+              "items": {
+                "type": "object",
+                "required": ["plan", "archive", "record", "archive_missing", "said"],
+                "properties": {
+                  "plan": { "type": "string", "description": "Where the plan was." },
+                  "to": { "type": "string", "description": "Its copy in the archive; absent where it was already gone." },
+                  "archive": { "type": "string" },
+                  "record": { "type": "string" },
+                  "archive_missing": { "type": "boolean" },
+                  "said": { "type": "string" }
+                }
+              }
+            },
             "changes": {
               "type": "array",
               "items": { "type": "string" }
@@ -1119,6 +1135,21 @@
             }
           },
           "missing": { "type": "boolean", "description": "The plan the ledger points at is gone." },
+          "retired": {
+            "type": "array",
+            "description": "Where this matter's retired work went (FS-005-dispatch.4); absent where nothing was retired.",
+            "items": {
+              "type": "object",
+              "required": ["plan", "archive", "record", "archive_missing"],
+              "properties": {
+                "plan": { "type": "string" },
+                "to": { "type": ["string", "null"] },
+                "archive": { "type": "string" },
+                "record": { "type": "string" },
+                "archive_missing": { "type": "boolean" }
+              }
+            }
+          },
           "stale": { "type": "boolean", "description": "The matter moved since its work was asked for (FS-005-dispatch.5)." },
           "changes": {
             "type": "array",
@@ -1211,6 +1242,7 @@
         "item": { "type": "string" },
         "dry_run": { "type": "boolean" },
         "refused": { "type": "integer" },
+        "says": { "type": "string", "description": "Why no ticket was named and none is left to cancel: the matter's work was retired, and where it went (FS-005-dispatch.16)." },
         "tickets": {
           "type": "array",
           "items": {
@@ -1404,6 +1436,10 @@
                     "missing": {
                       "type": "boolean",
                       "description": "The plan was not on disk when the entry was dropped: the prose says it was already gone. The word `work list --json` uses for a plan nobody can read."
+                    },
+                    "retired_to": {
+                      "type": "string",
+                      "description": "Where a retired plan was retired to: its copy in the archive (FS-005-dispatch.35.1). `missing` is then whether that copy is gone."
                     }
                   }
                 }
