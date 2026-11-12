@@ -12,6 +12,7 @@
 //! above the interface (§FS-001-forge-interface.3), which is what keeps an
 //! implementation small enough to be a shell script.
 
+pub mod closure;
 pub mod external;
 pub mod policy;
 

@@ -506,7 +506,7 @@ fn is_empty_node(node: &Value) -> bool {
 /// A GraphQL string literal. JSON's own escaping is a subset of GraphQL's, so
 /// serializing is the escape: a label carrying a quote, a backslash, or a
 /// newline cannot end the literal and change the query around it.
-fn graphql_string(text: &str) -> String {
+pub(super) fn graphql_string(text: &str) -> String {
     Value::String(text.to_string()).to_string()
 }
 
@@ -514,7 +514,7 @@ fn graphql_string(text: &str) -> String {
 /// may be a partial success — some aliases answered, one refused — and the
 /// refusal is reported rather than read as an empty answer
 /// (§FS-001-forge-interface.6).
-fn graphql_error(response: &Value) -> Option<String> {
+pub(super) fn graphql_error(response: &Value) -> Option<String> {
     let errors = response.get("errors")?.as_array()?;
     let first = errors.first()?;
     Some(
