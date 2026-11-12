@@ -1014,6 +1014,25 @@ runtime will not leave on its own, that ticket is **waiting on the reader**, and
 it is shown that way — ahead of anything else its work is doing, since it is
 the one part of it nobody else will move.
 
+A poll that declares whose answer it awaits is also a person wait in the
+work reading: the matter's badge names the parked ticket and says
+`waiting on <declared person>`, ahead of ordinary work. A gate keeps its
+`waiting on you` wording. The runtime adapter reads the declaration, with
+block and flow mappings agreeing; a blank value or `waiting_on:` text only
+in a YAML comment or another value names nobody
+([§FS-005-dispatch.24.4](FS-005-dispatch.md#244-a-live-root-holds-an-agent-slot-while-something-in-it-runs-or-is-about-to)). This display does not
+turn the poll into a manually moved gate: it offers no gate destination or
+advance command, and a real gate alongside it retains its own action.
+
+The badge and the location that names one current task agree on where work
+stands. With no person wait, running or polling work leads an unstarted
+downstream task whose prerequisites it has not satisfied. The reading uses
+the runtime's run, state and prerequisite facts, never guessed state names
+or a claim taken as proof of running. A machine poll names its polling task
+without a person warning. This changes neither scheduling nor transition
+eligibility; finished and cancelled outcomes retain their existing reading,
+including finished blocked history ([§FS-005-dispatch.9.2](FS-005-dispatch.md#92-a-finished-blocked-verdict-is-read-beside-the-gates-never-as-one)).
+
 The question and its answer stay in the plan. A ticket that asked something
 carries the question in the artifact it wrote, and the answer belongs beside it
 rather than in a chat window, a comment, or somebody's memory: the plan is the

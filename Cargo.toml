@@ -357,6 +357,10 @@ path = "tests/e2e/cases/E2E-065-every-provider-contribution-counts.rs"
 name = "e2e_066_a_finished_matters_work_is_retired"
 path = "tests/e2e/cases/E2E-066-a-finished-matters-work-is-retired.rs"
 
+[[test]]
+name = "e2e_067_a_poll_names_the_person_and_step_it_waits_on"
+path = "tests/e2e/cases/E2E-067-a-poll-names-the-person-and-step-it-waits-on.rs"
+
 [dependencies]
 clap = { version = "4", features = ["derive"] }
 serde = { version = "1", features = ["derive"] }

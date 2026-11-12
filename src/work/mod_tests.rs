@@ -468,6 +468,68 @@ fn entry_for(root: &Path, plan_path: &Path) -> Entry {
     }
 }
 
+/// The ordinary-work fallback uses a live runtime witness and Prior facts,
+/// not the last open task or an assignee (§FS-005-dispatch.9).
+#[test]
+#[ignore = "red until #257: witnessed running work leads its unstarted dependent; implement removes this"]
+fn issue257_a_witnessed_running_step_leads_an_unstarted_claimed_dependent() {
+    let tmp = tempfile::tempdir().unwrap();
+    let root = tmp.path().join("panta");
+    fs::create_dir_all(root.join("runtime")).unwrap();
+    fs::write(
+        root.join("states.yaml"),
+        concat!(
+            "name: m\nstates:\n",
+            "  supervising:\n    prompt: Supervise.\n",
+            "  composing:\n    prompt: Compose.\n",
+            "  publishing:\n    prompt: Publish.\n",
+            "  done:\n    final: true\n",
+        ),
+    )
+    .unwrap();
+    let path = root.join("forge-demo-17.rhei.md");
+    fs::write(
+        &path,
+        concat!(
+            "# Rhei: work\n\n### Task ticket: Supervise\n**State:** supervising\n\n",
+            "#### Step ticket.compose: Compose\n**State:** composing\n\n",
+            "#### Step ticket.publish: Publish\n**State:** publishing\n",
+            "**Prior:** ticket.compose\n**Assignee:** somebody\n",
+        ),
+    )
+    .unwrap();
+    let _held = hold(&root);
+    fs::write(root.join("runtime/events.jsonl"), concat!(
+        "{\"seq\":1,\"event\":\"run_started\",\"run_id\":\"live\",\"schema\":1}\n",
+        "{\"seq\":2,\"event\":\"slot_assigned\",\"slot\":0,\"task\":\"forge-demo-17.ticket.compose\",\"from\":\"composing\",\"to\":\"composing\"}\n",
+    )).unwrap();
+    let status = status_of_entry(&work_config(), &entry_for(&root, &path), None);
+    assert!(
+        status
+            .tickets
+            .iter()
+            .any(|ticket| ticket.id == "ticket.compose" && ticket.running),
+        "{status:?}"
+    );
+    assert!(
+        status
+            .tickets
+            .iter()
+            .any(|ticket| ticket.id == "ticket.publish" && !ticket.running),
+        "a claim is not a live slot: {status:?}"
+    );
+    let badge = status.badge(100);
+    let open = status.open_at.as_ref().unwrap();
+    assert!(
+        badge.contains("ticket.compose")
+            && !badge.contains("ticket.publish")
+            && open.ticket == "ticket.compose"
+            && open.state == "composing"
+            && open.plan == path,
+        "running step displaced by unstarted dependent: badge={badge:?}; location={open:?}"
+    );
+}
+
 /// A cancel is the runtime's move: the stand-in moves the state line and
 /// records the reason, ephor reads both back — the ticket taken back,
 /// with its reason as its line — and names what was ordered after it.
