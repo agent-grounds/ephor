@@ -5,6 +5,7 @@ mod custom_status;
 pub mod forge;
 pub(crate) mod github;
 mod github_ci;
+mod github_closure;
 mod github_issues;
 mod github_notifications;
 mod github_prs;
@@ -127,6 +128,38 @@ pub fn may_carry_pull_requests(name: &str) -> bool {
         "github-prs" | "github-ci" | "github-threads" => true,
         _ if built_in(name) => false,
         _ => crate::seams::tasks::Kind::parse(name).is_none(),
+    }
+}
+
+/// The forge's answer, asked now, about whether one item is over and what is
+/// still open from `heads` (§FS-001-forge-interface.1). `block` is the source's
+/// own entry, for the host it reaches.
+///
+/// Declared by the sources that carry issues and pull requests of their own:
+/// any other source is refused in a sentence of its own rather than guessed
+/// at. The out-of-process transport does not carry the question yet, so an
+/// extension forge is one that does not declare it.
+pub fn closure(
+    item: &str,
+    block: Option<&Value>,
+    heads: &[String],
+    timeout: std::time::Duration,
+) -> Result<crate::forge::closure::Closure, crate::forge::closure::ClosureError> {
+    use crate::forge::closure::ClosureError;
+    let (source, tail) = item.split_once(':').unwrap_or((item, ""));
+    match source {
+        "github-issues" | "github-prs" | "github-ci" | "github-threads" => {
+            let (repo, number) = tail.rsplit_once('#').ok_or(ClosureError::Neither)?;
+            let number: u64 = number.parse().map_err(|_| ClosureError::Neither)?;
+            let host = block
+                .and_then(|block| block.get("host"))
+                .and_then(Value::as_str);
+            github_closure::closure(host, repo, number, heads, timeout)
+        }
+        _ if built_in(source) || crate::seams::tasks::Kind::parse(source).is_some() => {
+            Err(ClosureError::Neither)
+        }
+        _ => Err(ClosureError::Undeclared),
     }
 }
 
