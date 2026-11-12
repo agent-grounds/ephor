@@ -80,6 +80,14 @@ impl Unit {
     }
 }
 
+/// The plan file of a unit's path: a workspace's index, or the file itself.
+pub fn plan_file(unit: &Path) -> PathBuf {
+    match unit.is_dir() {
+        true => unit.join(INDEX),
+        false => unit.to_path_buf(),
+    }
+}
+
 /// Every root a move of `units` reaches, in the runtime's canonical order —
 /// sorted absolute paths (§FS-005-dispatch.36.3): each unit's execution root,
 /// and for a single file's shared root every workspace it holds as well.

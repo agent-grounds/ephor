@@ -276,6 +276,15 @@ fn list_work(
                         "branch": plan.branch,
                     }))).collect::<Vec<_>>(),
                     "missing": status.missing,
+                    // Where retired work went (§FS-005-dispatch.4); absent
+                    // where nothing was retired.
+                    "retired": (!status.retired.is_empty()).then(|| status.retired.iter().map(|retired| stated(serde_json::json!({
+                        "plan": retired.from,
+                        "to": retired.to,
+                        "archive": retired.archive,
+                        "record": retired.record,
+                        "archive_missing": retired.archive_missing,
+                    }))).collect::<Vec<_>>()),
                     "stale": status.stale(),
                     "changes": status.changes,
                     "tickets": status.tickets.iter().map(|ticket| stated(serde_json::json!({
@@ -375,7 +384,11 @@ fn list_work(
         // (§FS-005-dispatch.19) — named by the file on disk, so the row is
         // something a reader can open, and by the record's own name where
         // nobody could read it (§FS-005-dispatch.35).
-        for dispatch in entry.dispatches.iter().filter(|d| d.is_workflow()) {
+        for dispatch in entry
+            .dispatches
+            .iter()
+            .filter(|d| d.is_workflow() && !crate::work::retired::is_retired(d))
+        {
             let name = dispatch.plan.as_deref().unwrap_or_default();
             let root = dispatch.root.as_ref().unwrap_or(&entry.root);
             let said = status
@@ -389,6 +402,13 @@ fn list_work(
                 "",
                 style.dim(&format!("{said}  ({})", dispatch.recipe))
             );
+        }
+        // Where retired work went, beside work that is not; where it is all
+        // there is, the badge already said it (§FS-005-dispatch.4).
+        if !status.only_retired() {
+            for retired in &status.retired {
+                println!("{:<width$}  {}", "", style.dim(&retired.said()));
+            }
         }
     }
     Ok(ExitCode::SUCCESS)
@@ -436,6 +456,12 @@ fn work_offers(config: &StatusConfig, args: &crate::cli::WorkOffersArgs) -> Resu
             status.plans.iter().map(|plan| plan.plan.as_path()),
             status.missing,
             status.unread > 0,
+            status
+                .retired
+                .iter()
+                .map(|retired| retired.said.clone())
+                .collect(),
+            status.retired.iter().any(|retired| retired.archive_missing),
         );
         for plan in &heading.plans {
             let mark = plan
@@ -446,6 +472,9 @@ fn work_offers(config: &StatusConfig, args: &crate::cli::WorkOffersArgs) -> Resu
         }
         if let Some(note) = heading.note {
             println!("  {note}");
+        }
+        for retired in &heading.retired {
+            println!("  {retired}");
         }
         if status.stale {
             println!("  it has moved since: {}", status.changes.join("; "));
@@ -660,7 +689,19 @@ fn dispatch_work(
             // and one item wants one piece of work.
             None => offers.first().cloned(),
         };
-        let has_work = dispatcher.ledger.entries.contains_key(&item.id);
+        // A retired dispatch is not work already handed over: a matter whose
+        // every dispatch was retired is handed over again (§FS-005-dispatch.5).
+        let has_work = dispatcher
+            .ledger
+            .entries
+            .get(&item.id)
+            .is_some_and(|entry| {
+                entry.dispatches.is_empty()
+                    || entry
+                        .dispatches
+                        .iter()
+                        .any(|dispatch| !crate::work::retired::is_retired(dispatch))
+            });
         let Some(recipe) = recipe else {
             // A recipe named for the one matter asked about and not among its
             // offers is refused out loud: a row in the reading and the same
@@ -711,10 +752,9 @@ fn dispatch_work(
             .entries
             .get(&item.id)
             .map(|entry| {
-                entry
-                    .dispatches
-                    .iter()
-                    .any(|dispatch| dispatch.recipe == recipe.id)
+                entry.dispatches.iter().any(|dispatch| {
+                    dispatch.recipe == recipe.id && !crate::work::retired::is_retired(dispatch)
+                })
             })
             .unwrap_or(false);
         if !args.again && (already || (has_work && args.recipe.is_none())) {
@@ -1511,6 +1551,29 @@ fn one_line(text: &str) -> String {
 /// asked for was cancelled.
 fn cancel_work(config: &StatusConfig, args: &crate::cli::WorkCancelArgs) -> Result<ExitCode> {
     let dispatcher = Dispatcher::load(config)?;
+    // Naming no ticket is a usage error, except about a matter whose work was
+    // retired, where the answer is that and where it went (§FS-005-dispatch.16).
+    if args.tickets.is_empty() {
+        if let Some(says) = dispatcher.retired_beyond_cancel(&args.item) {
+            if args.json {
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&serde_json::json!({
+                        "item": args.item,
+                        "dry_run": args.dry_run,
+                        "refused": 1,
+                        "tickets": [],
+                        "says": says,
+                    }))
+                    .unwrap_or_else(|_| "null".to_string())
+                );
+            }
+            eprintln!("note: {says}");
+            return Ok(ExitCode::from(1));
+        }
+        eprintln!("error: work cancel names at least one TICKET to take back");
+        return Ok(ExitCode::from(2));
+    }
     let style = Style::detect();
     let why = args.why.as_deref().unwrap_or("");
     let mut refused = 0usize;
@@ -2787,7 +2850,12 @@ fn exit_code(failed: usize) -> Result<ExitCode> {
 /// verb it names are one decision, and having been two is the defect
 /// §FS-005-dispatch.35 is about.
 fn done_enough_to_forget(status: &crate::work::WorkStatus) -> bool {
-    status.open_tickets() == 0 && status.unread_workflows == 0
+    // A retired placement is still the matter's work: an archived task that
+    // is not final, or an archived plan that cannot be read, keeps the entry
+    // (§FS-005-dispatch.35.1).
+    status.open_tickets() == 0
+        && status.unread_workflows == 0
+        && status.retired.iter().all(|retired| retired.open == Some(0))
 }
 
 /// What `work forget --missing` selects: a plan the record named that nobody
@@ -2864,9 +2932,20 @@ fn forget_work(config: &StatusConfig, args: &crate::cli::WorkForgetArgs) -> Resu
 /// its path, one that is not was already gone, and an entry the reading holds
 /// no plan for names no path at all.
 fn forgot_line(id: &str, left: &[crate::work::LeftPlan]) -> String {
-    let said = |plan: &crate::work::LeftPlan| match plan.missing {
-        false => format!("stays at {}", plan.plan.display()),
-        true => format!("was already gone ({})", plan.plan.display()),
+    let said = |plan: &crate::work::LeftPlan| match (&plan.retired_to, plan.missing) {
+        // A retired plan is named where it went (§FS-005-dispatch.35.1).
+        (Some(to), false) => format!(
+            "was retired to {} (from {}), which stays",
+            to.display(),
+            plan.plan.display()
+        ),
+        (Some(to), true) => format!(
+            "was retired to {}, which is gone (from {})",
+            to.display(),
+            plan.plan.display()
+        ),
+        (None, false) => format!("stays at {}", plan.plan.display()),
+        (None, true) => format!("was already gone ({})", plan.plan.display()),
     };
     match left {
         [] => format!("forgot {id} — nothing of it stays: no plan of it is on disk"),
