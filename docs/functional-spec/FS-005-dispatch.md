@@ -1992,6 +1992,15 @@ much of it it has seen; it says how each slot ended rather than leaving the
 end to be deduced; and it says when the run ended, so a reader knows the
 difference between a run that finished and a run that stopped existing.
 
+An unfinished task the live run holds leads an unstarted task in the work
+reading, even when the held task is outside the last open task's prerequisite
+ancestry. A supervising parent need not be a prerequisite of its later steps
+to be what the run is doing. The badge and the location naming one current
+task agree on that held work; real gates and declared person waits still lead
+both ([§FS-005-dispatch.9](FS-005-dispatch.md#9-work-that-stops-for-a-person-says-so-where-the-person-is-looking)). This applies to laid workflow plans as well
+as recipe work ([§FS-005-dispatch.35](FS-005-dispatch.md#35-what-a-ledger-entry-may-be-forgotten-for-is-read-from-the-plans)). Without a held unfinished task or a person wait,
+the existing prerequisite-poll reading and last-open fallback remain.
+
 **The journal stays the floor.** A runner that writes no such record is
 read exactly as before, with the same inferences and the same caution
 ([§FS-005-dispatch.15](FS-005-dispatch.md#15-every-operation-is-visible-in-one-place)): this sharpens the reading where the artifact is

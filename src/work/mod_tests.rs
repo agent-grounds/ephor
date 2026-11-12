@@ -1035,6 +1035,69 @@ fn work_status(tickets: Vec<TicketStatus>) -> WorkStatus {
     }
 }
 
+/// A witnessed supervisor need not occur in ship's prerequisite ancestry
+/// to lead the shared current-task reading (§FS-005-dispatch.15.2).
+#[test]
+#[ignore = "red until #258: a held task outside the last open prerequisite chain is current; implement removes this"]
+fn issue258_current_finds_a_live_slot_outside_the_last_open_ancestry() {
+    let mut supervisor = ticket("ticket", "supervising");
+    supervisor.running = true;
+    let specify = ticket("ticket.specify", "specify");
+    let mut ship = ticket("ticket.ship", "ship");
+    ship.reading.prior = vec![1];
+    let tickets = vec![supervisor, specify, ship];
+    let at = reading::current(&tickets).unwrap();
+    assert_eq!(
+        tickets[at].id, "ticket",
+        "the live supervisor is outside ship's prerequisite ancestry"
+    );
+}
+
+/// Controls for the live-slot repair: person waits still lead a running
+/// supervisor, and absent such evidence the prerequisite-poll and last-open
+/// recipe readings stay intact (§FS-005-dispatch.9, §FS-005-dispatch.15.2).
+/// These already pass before the fix; they pin preservation, not the defect.
+#[test]
+fn issue258_current_preserves_person_waits_polls_idle_and_finished_readings() {
+    let mut supervisor = ticket("ticket", "supervising");
+    supervisor.running = true;
+    let mut poll = ticket("ticket.poll", "awaiting-answer");
+    poll.reading.polling = true;
+    poll.reading.waiting_on = Some("author".to_string());
+    let mut gate = ticket("ticket.gate", "needs-ruling");
+    gate.waiting = true;
+    let mut ship = ticket("ticket.ship", "ship");
+    ship.reading.prior = vec![1];
+    // A real gate leads even a declared person poll and a real live slot.
+    let mut tickets = vec![supervisor, poll, gate, ship];
+    assert_eq!(reading::current(&tickets), Some(2));
+    tickets[2].finished = true;
+    assert_eq!(reading::current(&tickets), Some(1));
+    // With no live slot or person wait, the machine polling prerequisite leads.
+    tickets[0].running = false;
+    tickets[1].reading.waiting_on = None;
+    assert_eq!(reading::current(&tickets), Some(1));
+    // An unrelated machine poll does not change the idle last-open fallback.
+    tickets[3].reading.prior.clear();
+    assert_eq!(reading::current(&tickets), Some(3));
+    // A claim alone does not make an earlier recipe ticket current.
+    tickets[1].reading.polling = false;
+    tickets[0].assignee = Some("somebody".to_string());
+    assert_eq!(reading::current(&tickets), Some(3));
+    // A finished task cannot displace unfinished work, even with a stale slot.
+    tickets[0].finished = true;
+    tickets[0].running = true;
+    assert_eq!(reading::current(&tickets), Some(3));
+    for task in &mut tickets {
+        task.finished = true;
+    }
+    assert_eq!(reading::current(&tickets), None);
+    assert!(work_status(tickets.clone()).badge(80).starts_with("✓"));
+    tickets[3].cancelled = true;
+    assert_eq!(reading::current(&tickets), None);
+    assert_eq!(work_status(tickets).badge(80), "⊘ fix-gate · cancelled");
+}
+
 /// The work stands on a row per open ticket, and the one the runtime
 /// parked stands first: it is the one part nobody else will move
 /// (§FS-005-dispatch.9, §FS-005-dispatch.23). Each row names the ticket it
