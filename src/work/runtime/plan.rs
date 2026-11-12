@@ -181,7 +181,7 @@ pub enum Interval {
 
 impl WorkRoot {
     /// Prepare `dir` to hold tickets: create the project manifest when it is
-    /// not there, install `states_yaml` when the directory has no machine of
+    /// not there, install `machine` when the directory has no machine of
     /// its own, and read back whichever machine is in force. An existing
     /// machine is never replaced — a reader who edited it meant it.
     ///
@@ -190,8 +190,11 @@ impl WorkRoot {
     /// how every plan in a project resolves its states, so dropping one in
     /// changes what those plans run under. A project with no plans in it —
     /// which is exactly what the runtime's own `init` leaves behind — has
-    /// nothing to disturb, and ephor moves in beside it.
-    pub fn ensure(dir: &Path, states_yaml: &str) -> Result<WorkRoot> {
+    /// nothing to disturb, and ephor moves in beside it. The refusal names the
+    /// command that installs `machine` — `--project <id>` where it was resolved
+    /// for one project — so following it installs what ephor would have
+    /// (§FS-011-command-line.7).
+    pub fn ensure(dir: &Path, machine: &crate::work::StateMachine) -> Result<WorkRoot> {
         create_dir(dir)?;
         let manifest = dir.join(MANIFEST);
         let states = dir.join("states.yaml");
@@ -225,13 +228,12 @@ impl WorkRoot {
                 return Err(EphorError::Command(format!(
                     "{} already holds plans of its own and declares no state machine — \
                      writing one there would change what they run under. Either install \
-                     ephor's (`ephor work states > {}`) or give ephor a directory of its own \
-                     with `work.root`.",
+                     ephor's (`{}`) or give ephor a directory of its own with `work.root`.",
                     dir.display(),
-                    states.display()
+                    machine.install_command(dir)
                 )));
             }
-            write(&states, states_yaml)?;
+            write(&states, &machine.text)?;
         }
         Self::read_root(dir, &states)
     }
@@ -2046,7 +2048,7 @@ mod tests {
     #[test]
     fn the_shipped_machine_declares_the_states_the_shipped_recipes_name() {
         let tmp = tempfile::tempdir().unwrap();
-        let root = WorkRoot::ensure(tmp.path(), SHIPPED_STATES).unwrap();
+        let root = WorkRoot::ensure(tmp.path(), &crate::work::StateMachine::shipped()).unwrap();
         assert_eq!(root.machine, "ephor-work");
         assert!(root.declares("fix"), "{:?}", root.state_names());
         assert!(root.declares("review"));
@@ -2071,7 +2073,7 @@ mod tests {
             ),
         )
         .unwrap();
-        let root = WorkRoot::ensure(tmp.path(), SHIPPED_STATES).unwrap();
+        let root = WorkRoot::ensure(tmp.path(), &crate::work::StateMachine::shipped()).unwrap();
         assert!(root.is_gating("needs-human"));
         assert!(!root.is_gating("fix"));
         assert!(!root.is_final("needs-human"));
@@ -2160,7 +2162,11 @@ mod tests {
         // A person-waiting poll is not gating and the shipped machine has
         // neither: absence is the reading every machine written before this
         // field keeps.
-        let shipped = WorkRoot::ensure(&tmp.path().join("shipped"), SHIPPED_STATES).unwrap();
+        let shipped = WorkRoot::ensure(
+            &tmp.path().join("shipped"),
+            &crate::work::StateMachine::shipped(),
+        )
+        .unwrap();
         assert!(shipped
             .state_names()
             .iter()
@@ -2239,7 +2245,11 @@ mod tests {
         assert_eq!(root.poll_interval("done"), None);
         assert_eq!(root.poll_interval("nonexistent"), None);
         // The shipped machine polls nothing.
-        let shipped = WorkRoot::ensure(&tmp.path().join("shipped"), SHIPPED_STATES).unwrap();
+        let shipped = WorkRoot::ensure(
+            &tmp.path().join("shipped"),
+            &crate::work::StateMachine::shipped(),
+        )
+        .unwrap();
         assert!(shipped
             .state_names()
             .iter()
@@ -2520,7 +2530,7 @@ states:
 "#,
         )
         .unwrap();
-        let root = WorkRoot::ensure(tmp.path(), SHIPPED_STATES).unwrap();
+        let root = WorkRoot::ensure(tmp.path(), &crate::work::StateMachine::shipped()).unwrap();
 
         assert!(root.needs_input("fix"));
         // Producing files is not waiting on them, and neither is saying nothing.
@@ -2536,7 +2546,7 @@ states:
     #[test]
     fn the_abandonment_state_is_the_final_one_under_the_runtimes_name() {
         let tmp = tempfile::tempdir().unwrap();
-        let root = WorkRoot::ensure(tmp.path(), SHIPPED_STATES).unwrap();
+        let root = WorkRoot::ensure(tmp.path(), &crate::work::StateMachine::shipped()).unwrap();
         assert_eq!(root.cancel_state(), Some(CANCELLED));
         assert!(root.is_final(CANCELLED));
 
@@ -2546,7 +2556,7 @@ states:
             "name: m\nstates:\n  fix:\n    agent: x\n  cancelled:\n    agent: y\n  done:\n    final: true\n",
         )
         .unwrap();
-        let root = WorkRoot::ensure(tmp.path(), SHIPPED_STATES).unwrap();
+        let root = WorkRoot::ensure(tmp.path(), &crate::work::StateMachine::shipped()).unwrap();
         assert_eq!(root.cancel_state(), None, "not final is not abandonment");
 
         let tmp = tempfile::tempdir().unwrap();
@@ -2555,7 +2565,7 @@ states:
             "name: m\nstates:\n  fix:\n    agent: x\n  done:\n    final: true\n",
         )
         .unwrap();
-        let root = WorkRoot::ensure(tmp.path(), SHIPPED_STATES).unwrap();
+        let root = WorkRoot::ensure(tmp.path(), &crate::work::StateMachine::shipped()).unwrap();
         assert_eq!(root.cancel_state(), None);
     }
 
@@ -2638,7 +2648,7 @@ states:
         let tmp = tempfile::tempdir().unwrap();
         let mine = "name: mine\nversion: 2\nstates:\n  triage:\n    agent: x\n  shipped:\n    final: true\n";
         fs::write(tmp.path().join("states.yaml"), mine).unwrap();
-        let root = WorkRoot::ensure(tmp.path(), SHIPPED_STATES).unwrap();
+        let root = WorkRoot::ensure(tmp.path(), &crate::work::StateMachine::shipped()).unwrap();
         assert_eq!(root.machine, "mine");
         assert!(root.declares("triage"));
         assert!(!root.declares("fix"));
@@ -2657,7 +2667,7 @@ states:
     fn only_a_project_with_plans_of_its_own_refuses_a_machine() {
         let tmp = tempfile::tempdir().unwrap();
         fs::write(tmp.path().join("index.panta.md"), "# Panta: theirs\n").unwrap();
-        let root = WorkRoot::ensure(tmp.path(), SHIPPED_STATES)
+        let root = WorkRoot::ensure(tmp.path(), &crate::work::StateMachine::shipped())
             .unwrap_or_else(|err| panic!("an empty project has nothing to lose: {err}"));
         assert_eq!(root.machine, "ephor-work");
 
@@ -2665,10 +2675,29 @@ states:
         let tmp = tempfile::tempdir().unwrap();
         fs::write(tmp.path().join("index.panta.md"), "# Panta: theirs\n").unwrap();
         fs::write(tmp.path().join("auth.rhei.md"), "# Rhei: Auth\n").unwrap();
-        let Err(err) = WorkRoot::ensure(tmp.path(), SHIPPED_STATES) else {
+        let Err(err) = WorkRoot::ensure(tmp.path(), &crate::work::StateMachine::shipped()) else {
             panic!("their plans, their machine");
         };
-        assert!(err.to_string().contains("ephor work states"), "{err}");
+        assert!(err.to_string().contains("(`ephor work states > "), "{err}");
+        assert!(!tmp.path().join("states.yaml").exists());
+
+        // Resolved for one project, the remedy prints that project's machine
+        // (§FS-011-command-line.7).
+        let demo = crate::work::StateMachine::resolve(
+            &crate::work::recipe::WorkConfig::default(),
+            Some(("demo", None)),
+        )
+        .unwrap();
+        let Err(err) = WorkRoot::ensure(tmp.path(), &demo) else {
+            panic!("their plans, their machine");
+        };
+        assert!(
+            err.to_string().contains(&format!(
+                "`ephor work states --project demo > {}`",
+                tmp.path().join("states.yaml").display()
+            )),
+            "{err}"
+        );
         assert!(!tmp.path().join("states.yaml").exists());
 
         // A workspace-shaped rhei counts as a plan too.
@@ -2680,7 +2709,7 @@ states:
             "# Rhei: Billing\n",
         )
         .unwrap();
-        assert!(WorkRoot::ensure(tmp.path(), SHIPPED_STATES).is_err());
+        assert!(WorkRoot::ensure(tmp.path(), &crate::work::StateMachine::shipped()).is_err());
     }
 
     /// Every plan a work root holds is found whoever wrote it

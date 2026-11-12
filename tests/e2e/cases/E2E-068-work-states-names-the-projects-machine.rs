@@ -142,7 +142,6 @@ fn site() -> World {
 }
 
 #[test]
-#[ignore = "red until #259: work states takes no --project, names no override, and checkout's remedy is the bare form; implement removes this"]
 fn work_states_answers_for_the_project_it_is_asked_about() {
     let world = site();
 
@@ -184,7 +183,6 @@ fn work_states_answers_for_the_project_it_is_asked_about() {
 }
 
 #[test]
-#[ignore = "red until #259: bare work states names no project that overrides the site's machine; implement removes this"]
 fn work_states_without_a_project_names_the_projects_that_override_it() {
     let world = site();
 
@@ -222,7 +220,6 @@ fn work_states_without_a_project_names_the_projects_that_override_it() {
 }
 
 #[test]
-#[ignore = "red until #259: work states takes no --project, so it cannot print what a checkout installs; implement removes this"]
 fn work_states_for_a_project_is_what_its_new_root_receives() {
     let world = site();
 
@@ -254,7 +251,6 @@ fn work_states_for_a_project_is_what_its_new_root_receives() {
 }
 
 #[test]
-#[ignore = "red until #259: the checkout refusal's remedy redirects the site's machine into demo's root; implement removes this"]
 fn the_checkout_refusal_names_the_projects_machine() {
     let world = site();
     // The work root already holds a plan of the reader's own and no machine.
@@ -286,7 +282,6 @@ fn the_checkout_refusal_names_the_projects_machine() {
 }
 
 #[test]
-#[ignore = "red until #259: with no site machine, work states prints the alphabetically first project's; implement removes this"]
 fn with_no_site_machine_the_answer_is_the_shipped_one() {
     let world = World::new();
     let machine = shipped();
@@ -332,7 +327,6 @@ fn with_no_site_machine_the_answer_is_the_shipped_one() {
 }
 
 #[test]
-#[ignore = "red until #259: work states --help offers no --project; implement removes this"]
 fn the_help_says_whose_machine_it_prints() {
     let world = World::new();
     let help = run(&world, &["work", "states", "--help"]);

@@ -2056,10 +2056,10 @@ impl Dispatcher {
             .as_ref()
     }
 
-    /// The states YAML installed into a work root that has none: the project's
-    /// own, the global one, or the machine ephor ships.
-    fn states_yaml(&self, project: &str) -> Result<String> {
-        states_yaml(&self.global, self.projects.get(project))
+    /// The machine installed into a work root of `project` that has none: the
+    /// project's own, the site's, or the one ephor ships (§FS-005-dispatch.6).
+    fn state_machine(&self, project: &str) -> Result<StateMachine> {
+        StateMachine::resolve(&self.global, Some((project, self.projects.get(project))))
     }
 
     fn root_template(&self, project: &str) -> String {
@@ -2517,7 +2517,7 @@ impl Dispatcher {
             said,
             pool,
         } = self.pin(item, recipe, picked, &site.dir)?;
-        let states = self.states_yaml(&item.project)?;
+        let states = self.state_machine(&item.project)?;
         let plan_id = plan::plan_id(&item.id);
         // A request owns both its binding and its output, even before that output
         // exists (§FS-005-dispatch.13).
@@ -2577,7 +2577,7 @@ impl Dispatcher {
             // a replay that asks first is refused here too (§FS-005-dispatch.12).
             match WorkRoot::open(&site.dir)? {
                 Some(existing) => vet(&existing)?,
-                None => vet(&WorkRoot::proposed(&site.dir, &states)?)?,
+                None => vet(&WorkRoot::proposed(&site.dir, &states.text)?)?,
             }
             // And so does the workspace: a directory that is there without
             // being one is a state the real dispatch refuses, so promising the
@@ -2679,7 +2679,7 @@ impl Dispatcher {
         // at all (§FS-005-dispatch.12). Reading the machine writes nothing.
         match WorkRoot::open(&site.dir)? {
             Some(existing) => vet(&existing)?,
-            None => vet(&WorkRoot::proposed(&site.dir, &states)?)?,
+            None => vet(&WorkRoot::proposed(&site.dir, &states.text)?)?,
         }
 
         // The deterministic move first, and the work starts where it stopped
@@ -3487,7 +3487,7 @@ impl Dispatcher {
                 });
             }
         }
-        let states = self.states_yaml(&item.project)?;
+        let states = self.state_machine(&item.project)?;
         let values_json = serde_json::to_string_pretty(&laying.answered.values)
             .unwrap_or_else(|_| "{}".to_string());
         if dry_run {
@@ -4190,7 +4190,16 @@ pub fn due_among(
         // (§FS-005-dispatch.30).
         let Some(machine) = WorkRoot::open(&group.root).ok().flatten() else {
             if names_a_plan_here(group, reach) {
-                due.push(refused_root(ledger, group, no_machine_here(&group.root)));
+                let projects: BTreeSet<&str> = group
+                    .plans
+                    .iter()
+                    .map(|plan| plan.project.as_str())
+                    .collect();
+                due.push(refused_root(
+                    ledger,
+                    group,
+                    no_machine_here(&group.root, &projects),
+                ));
             }
             continue;
         };
@@ -6588,12 +6597,20 @@ fn named_run_plans(due: &[Due], item: Option<&str>) -> std::result::Result<Vec<S
 /// move that ends it. It covers both ways the machine can be absent — no
 /// `states.yaml` there at all, and one that will not parse — because neither
 /// leaves anything to judge by.
-pub fn no_machine_here(root: &std::path::Path) -> String {
+///
+/// The move names `--project <id>` where every plan in the root belongs to one
+/// project, so it installs the machine ephor would have installed there; a root
+/// shared by several gets the bare form (§FS-011-command-line.7).
+pub fn no_machine_here(root: &std::path::Path, projects: &BTreeSet<&str>) -> String {
+    let project = match projects.len() {
+        1 => projects.first().copied(),
+        _ => None,
+    };
     format!(
         "{}: this work root has no state machine that will read, so nothing in it can be \
-         judged runnable. Install one with 'ephor work states > {}'.",
+         judged runnable. Install one with '{}'.",
         root.display(),
-        root.join("states.yaml").display()
+        install_command(project, root)
     )
 }
 
@@ -7399,23 +7416,169 @@ pub fn enumerate_roots(
     groups.into_values().collect()
 }
 
-/// The states YAML installed into a work root that has none: the project's
-/// own, the global one, or the machine ephor ships.
-pub fn states_yaml(global: &WorkConfig, project: Option<&ProjectWorkConfig>) -> Result<String> {
-    let configured = project
-        .and_then(|work| work.states.clone())
-        .or_else(|| global.states.clone());
-    match configured {
-        Some(path) => {
-            let path = crate::paths::resolve_path(&path);
-            std::fs::read_to_string(&path).map_err(|err| {
-                EphorError::Command(format!(
-                    "Cannot read the configured state machine {}: {err}",
-                    path.display()
-                ))
-            })
+/// Which rung of the resolution order answered for a state machine
+/// (§FS-011-command-line.7).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MachineTier {
+    /// The project's own `projects.<id>.work.states`.
+    Project,
+    /// The site's `work.states`.
+    Site,
+    /// The `ephor-work` machine ephor ships.
+    Shipped,
+}
+
+impl MachineTier {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            MachineTier::Project => "project",
+            MachineTier::Site => "site",
+            MachineTier::Shipped => "shipped",
         }
-        None => Ok(plan::SHIPPED_STATES.to_string()),
+    }
+}
+
+/// The state machine a new work root receives, and where it came from
+/// (§FS-005-dispatch.6, §FS-011-command-line.7).
+///
+/// There is one order and this is it: the project's `work.states`, else the
+/// site's, else the shipped machine. Installing a root and answering
+/// `ephor work states` both read it from here, so the verb prints byte for byte
+/// what ephor installs and the two cannot drift apart again (agent-grounds/ephor#259).
+#[derive(Debug, Clone)]
+pub struct StateMachine {
+    /// The document, exactly as it is installed.
+    pub text: String,
+    pub tier: MachineTier,
+    /// The configured file it was read from; None for the shipped machine.
+    pub path: Option<PathBuf>,
+    /// The project it was resolved for; None for the site's answer.
+    pub project: Option<String>,
+}
+
+impl StateMachine {
+    /// Resolve the machine for `project` — its id and its own work block,
+    /// where it has one — or, with no project, the site's answer
+    /// (§FS-005-dispatch.6).
+    pub fn resolve(
+        global: &WorkConfig,
+        project: Option<(&str, Option<&ProjectWorkConfig>)>,
+    ) -> Result<StateMachine> {
+        let own = project
+            .and_then(|(_, work)| work)
+            .and_then(|work| work.states.as_deref());
+        let (tier, configured) = match (own, global.states.as_deref()) {
+            (Some(path), _) => (MachineTier::Project, Some(path)),
+            (None, Some(path)) => (MachineTier::Site, Some(path)),
+            (None, None) => (MachineTier::Shipped, None),
+        };
+        let project = project.map(|(id, _)| id.to_string());
+        let Some(configured) = configured else {
+            return Ok(StateMachine {
+                text: plan::SHIPPED_STATES.to_string(),
+                tier,
+                path: None,
+                project,
+            });
+        };
+        let path = crate::paths::resolve_path(configured);
+        let text = std::fs::read_to_string(&path).map_err(|err| {
+            EphorError::Command(format!(
+                "Cannot read the configured state machine {}: {err}",
+                path.display()
+            ))
+        })?;
+        Ok(StateMachine {
+            text,
+            tier,
+            path: Some(path),
+            project,
+        })
+    }
+
+    /// The machine ephor ships, resolved for nobody in particular.
+    pub fn shipped() -> StateMachine {
+        StateMachine {
+            text: plan::SHIPPED_STATES.to_string(),
+            tier: MachineTier::Shipped,
+            path: None,
+            project: None,
+        }
+    }
+
+    /// `source` as `work states --json` has always said it: configured or
+    /// shipped.
+    pub fn source(&self) -> &'static str {
+        match self.tier {
+            MachineTier::Shipped => "shipped",
+            MachineTier::Project | MachineTier::Site => "configured",
+        }
+    }
+
+    /// The command that installs this machine into `root`, as ephor's own
+    /// remedies print it (§FS-011-command-line.7).
+    pub fn install_command(&self, root: &std::path::Path) -> String {
+        install_command(self.project.as_deref(), root)
+    }
+}
+
+/// `ephor work states [--project <id>]`, the command that prints the machine
+/// `project`'s new roots receive, or the site's where there is no one project
+/// (§FS-011-command-line.7). The one rendering every remedy uses.
+pub fn states_command(project: Option<&str>) -> String {
+    match project {
+        Some(id) => format!("ephor work states --project {id}"),
+        None => "ephor work states".to_string(),
+    }
+}
+
+/// [`states_command`] redirected into `root`'s `states.yaml`.
+pub fn install_command(project: Option<&str>, root: &std::path::Path) -> String {
+    format!(
+        "{} > {}",
+        states_command(project),
+        root.join("states.yaml").display()
+    )
+}
+
+/// One project whose own `work.states` overrides the site's answer
+/// (§FS-011-command-line.7).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MachineOverride {
+    pub project: String,
+    pub path: PathBuf,
+}
+
+/// What `ephor work states` answers: the machine resolved for the project
+/// asked about, or the site's, and every project that overrides the site's
+/// machine with one of its own, sorted by id (§FS-011-command-line.7).
+#[derive(Debug, Clone)]
+pub struct StatesAnswer {
+    pub machine: StateMachine,
+    pub overrides: Vec<MachineOverride>,
+}
+
+impl StatesAnswer {
+    /// Resolve through [`StateMachine::resolve`] — the same order a new root
+    /// gets — over every project the site configures.
+    pub fn resolve<'a>(
+        global: &WorkConfig,
+        projects: impl IntoIterator<Item = (&'a str, &'a ProjectWorkConfig)>,
+        project: Option<&str>,
+    ) -> Result<StatesAnswer> {
+        let projects: BTreeMap<&str, &ProjectWorkConfig> = projects.into_iter().collect();
+        let asked = project.map(|id| (id, projects.get(id).copied()));
+        let machine = StateMachine::resolve(global, asked)?;
+        let overrides = projects
+            .iter()
+            .filter_map(|(id, work)| {
+                work.states.as_deref().map(|path| MachineOverride {
+                    project: id.to_string(),
+                    path: crate::paths::resolve_path(path),
+                })
+            })
+            .collect();
+        Ok(StatesAnswer { machine, overrides })
     }
 }
 
@@ -7463,7 +7626,7 @@ pub fn ensure_store(
         workspace,
         root,
     )?;
-    ensure_store_at(global, project, &dir)
+    ensure_store_at(global, project_id, project, &dir)
 }
 
 /// Initialize a work root whose template has already been selected by a
@@ -7471,10 +7634,12 @@ pub fn ensure_store(
 /// placement, so no wider project-level template may replace it here.
 pub fn ensure_store_at(
     global: &WorkConfig,
+    project_id: &str,
     project: Option<&ProjectWorkConfig>,
     dir: &std::path::Path,
 ) -> Result<Store> {
-    let states = states_yaml(global, project)?;
+    // The project's machine, else the site's, else the shipped one (§FS-005-dispatch.6).
+    let states = StateMachine::resolve(global, Some((project_id, project)))?;
     let made = !dir.is_dir();
     // The directory first: the runner is asked to make a place that is there,
     // and what ephor installs afterwards reads what the runner left rather than

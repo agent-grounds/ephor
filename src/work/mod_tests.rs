@@ -418,7 +418,7 @@ echo "Task $stem.$task transitioned: '$from' → '$to'"
 /// the config binding the stand-in runtime as the runner.
 fn root_with_plan(tmp: &Path) -> (WorkConfig, PathBuf, PathBuf) {
     let root = tmp.join("panta");
-    WorkRoot::ensure(&root, plan::SHIPPED_STATES).unwrap();
+    WorkRoot::ensure(&root, &StateMachine::shipped()).unwrap();
     let plan_path = root.join("forge-demo-17.rhei.md");
     fs::write(
         &plan_path,
@@ -1422,8 +1422,8 @@ fn issue_43_multi_root_record() -> (tempfile::TempDir, Dispatcher, crate::feed::
     let root_a = tmp.path().join("checkout/panta");
     let root_b = tmp.path().join("project/panta");
     let plan_id = "forge-widget-42";
-    let machine_a = WorkRoot::ensure(&root_a, plan::SHIPPED_STATES).unwrap();
-    let machine_b = WorkRoot::ensure(&root_b, plan::SHIPPED_STATES).unwrap();
+    let machine_a = WorkRoot::ensure(&root_a, &StateMachine::shipped()).unwrap();
+    let machine_b = WorkRoot::ensure(&root_b, &StateMachine::shipped()).unwrap();
     let make_plan = |root: &WorkRoot, ticket: &str| {
         let path = root.plan_path(plan_id);
         Plan::create(
@@ -7227,4 +7227,82 @@ fn a_workflow_entry_named_as_a_recipe_is_pointed_at_work_lay() {
         unknown.contains("work ask") && !unknown.contains("work lay"),
         "{unknown}"
     );
+}
+
+/// One order answers for every root and for `ephor work states`: the project's
+/// own machine, else the site's, else the shipped one, each saying which rung
+/// answered (§FS-005-dispatch.6, §FS-011-command-line.7).
+#[test]
+fn the_state_machine_resolves_project_then_site_then_shipped() {
+    let tmp = tempfile::tempdir().unwrap();
+    let site_path = tmp.path().join("site.states.yaml");
+    let own_path = tmp.path().join("own.states.yaml");
+    fs::write(&site_path, "# site\n").unwrap();
+    fs::write(&own_path, "# own\n").unwrap();
+    let own = ProjectWorkConfig {
+        states: Some(own_path.to_string_lossy().into_owned()),
+        ..ProjectWorkConfig::default()
+    };
+    let bare = ProjectWorkConfig::default();
+    let site = WorkConfig {
+        states: Some(site_path.to_string_lossy().into_owned()),
+        ..WorkConfig::default()
+    };
+
+    let machine = StateMachine::resolve(&site, Some(("demo", Some(&own)))).unwrap();
+    assert_eq!(
+        (machine.tier, machine.text.as_str(), machine.path.as_deref()),
+        (MachineTier::Project, "# own\n", Some(own_path.as_path()))
+    );
+    assert_eq!(machine.project.as_deref(), Some("demo"));
+    assert_eq!(machine.source(), "configured");
+
+    let machine = StateMachine::resolve(&site, Some(("other", Some(&bare)))).unwrap();
+    assert_eq!(
+        (machine.tier, machine.text.as_str()),
+        (MachineTier::Site, "# site\n")
+    );
+    let machine = StateMachine::resolve(&site, None).unwrap();
+    assert_eq!((machine.tier, machine.project), (MachineTier::Site, None));
+
+    let machine = StateMachine::resolve(&WorkConfig::default(), Some(("other", None))).unwrap();
+    assert_eq!(machine.tier, MachineTier::Shipped);
+    assert_eq!(machine.text, plan::SHIPPED_STATES);
+    assert_eq!((machine.source(), machine.path), ("shipped", None));
+
+    // The answer names every override, sorted, whoever was asked about.
+    let projects = [("zeta", &own), ("other", &bare), ("alpha", &own)];
+    let answer = StatesAnswer::resolve(&WorkConfig::default(), projects, None).unwrap();
+    assert_eq!(answer.machine.tier, MachineTier::Shipped);
+    let named: Vec<&str> = answer
+        .overrides
+        .iter()
+        .map(|over| over.project.as_str())
+        .collect();
+    assert_eq!(named, ["alpha", "zeta"]);
+    let answer = StatesAnswer::resolve(&site, projects, Some("zeta")).unwrap();
+    assert_eq!(answer.machine.tier, MachineTier::Project);
+    assert_eq!(answer.overrides.len(), 2);
+}
+
+/// A root with no machine that will read names the command that installs
+/// one: `--project <id>` where all its plans are one project's, the bare
+/// form where they are several projects' (§FS-011-command-line.7).
+#[test]
+fn no_machine_here_names_the_project_when_the_root_has_one() {
+    let root = Path::new("/work/demo");
+    let one: BTreeSet<&str> = ["demo"].into_iter().collect();
+    let said = no_machine_here(root, &one);
+    assert!(
+        said.contains("'ephor work states --project demo > /work/demo/states.yaml'"),
+        "{said}"
+    );
+    let several: BTreeSet<&str> = ["alpha", "beta"].into_iter().collect();
+    let said = no_machine_here(root, &several);
+    assert!(
+        said.contains("'ephor work states > /work/demo/states.yaml'"),
+        "{said}"
+    );
+    let said = no_machine_here(root, &BTreeSet::new());
+    assert!(said.contains("'ephor work states > "), "{said}");
 }

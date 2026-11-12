@@ -428,7 +428,7 @@ ephor work cancel --item ID TICKET… [--why "…"]   # take a ticket back; the 
 ephor work retire --item ID [--dry-run]     # put a finished matter's leftover work in the archive
 ephor work run [--project P] [--item ID] [--act] [-- --parallel 2]   # rhei run, one per checkout
 ephor work forget [--item ID | --done | --missing]
-ephor work states                           # the state machine the tickets run under
+ephor work states [--project P]             # the site's state machine, or the one P's new roots get
 ```
 
 The loop, whole:
@@ -611,8 +611,10 @@ A rhei project that already holds plans of its own and declares no state
 machine is refused: `states.yaml` is how every plan in a project resolves its
 states, so writing one there would change what those plans run under. An empty
 project — what `rhei init` leaves behind — has nothing to disturb, and ephor
-moves in beside it. `ephor work states` prints the machine, for installing
-deliberately (`ephor work states > panta/states.yaml`) or for editing.
+moves in beside it. `ephor work states --project <id>` prints the machine that
+project's new roots get — its own `work.states`, else the site's, else the
+shipped one — for installing deliberately (`ephor work states --project <id> >
+panta/states.yaml`) or for editing.
 
 The shipped machine is two agent passes — `fix` does the work and writes a
 report, `review` reads that against the ticket and writes a verdict whose first

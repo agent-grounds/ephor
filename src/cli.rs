@@ -258,13 +258,19 @@ pub enum WorkCommand {
     /// Drop ledger entries. Ephor deletes no plan; the report says which of
     /// each entry's plans stay on disk and which were already gone.
     Forget(WorkForgetArgs),
-    /// Print the state machine ephor's tickets run under, for editing or for
-    /// installing into a runtime project it did not create.
+    /// Print the site's state machine, or with --project the one that
+    /// project's new work roots get, for editing or for installing into a
+    /// runtime project ephor did not create.
     States(WorkStatesArgs),
 }
 
 #[derive(Args, Debug, Default)]
 pub struct WorkStatesArgs {
+    /// Print the machine this project's new work roots get: its own
+    /// `work.states`, else the site's, else the shipped one.
+    #[arg(long)]
+    pub project: Option<String>,
+
     /// Print the machine and where it came from as JSON.
     #[arg(long)]
     pub json: bool,
