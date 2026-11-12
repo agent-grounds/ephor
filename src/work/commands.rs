@@ -370,11 +370,13 @@ fn list_work(
                     style.dim(&plan.path.display().to_string())
                 );
             }
-        } else if entry.plan.is_file() {
+        } else if crate::work::retired::entry_placement_stands(entry) && entry.plan.is_file() {
             // An entry that is nothing but workflows never had a plan of its
             // own (§FS-005-dispatch.19), and printing a path to a file ephor
             // never wrote reads as a loss — which is why a missing laid plan
-            // is said by the badge and not by naming the file it is not.
+            // is said by the badge and not by naming the file it is not. Nor
+            // is the path of a placement a retirement took: a file there now
+            // is not this matter's work (§FS-005-dispatch.4).
             println!(
                 "{:<width$}  {}",
                 "",
@@ -385,11 +387,7 @@ fn list_work(
         // (§FS-005-dispatch.19) — named by the file on disk, so the row is
         // something a reader can open, and by the record's own name where
         // nobody could read it (§FS-005-dispatch.35).
-        for dispatch in entry
-            .dispatches
-            .iter()
-            .filter(|d| d.is_workflow() && !crate::work::retired::is_retired(d))
-        {
+        for dispatch in crate::work::retired::standing(entry).filter(|d| d.is_workflow()) {
             let name = dispatch.plan.as_deref().unwrap_or_default();
             let root = dispatch.root.as_ref().unwrap_or(&entry.root);
             let said = status
@@ -698,10 +696,7 @@ fn dispatch_work(
             .get(&item.id)
             .is_some_and(|entry| {
                 entry.dispatches.is_empty()
-                    || entry
-                        .dispatches
-                        .iter()
-                        .any(|dispatch| !crate::work::retired::is_retired(dispatch))
+                    || crate::work::retired::standing(entry).next().is_some()
             });
         let Some(recipe) = recipe else {
             // A recipe named for the one matter asked about and not among its
@@ -753,9 +748,7 @@ fn dispatch_work(
             .entries
             .get(&item.id)
             .map(|entry| {
-                entry.dispatches.iter().any(|dispatch| {
-                    dispatch.recipe == recipe.id && !crate::work::retired::is_retired(dispatch)
-                })
+                crate::work::retired::standing(entry).any(|dispatch| dispatch.recipe == recipe.id)
             })
             .unwrap_or(false);
         if !args.again && (already || (has_work && args.recipe.is_none())) {

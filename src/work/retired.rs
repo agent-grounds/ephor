@@ -57,6 +57,27 @@ pub fn is_retired(dispatch: &Dispatch) -> bool {
     dispatch.retired_at.is_some()
 }
 
+/// The dispatches whose placement still stands, in the record's order: every
+/// one no retirement took (§FS-005-dispatch.4). A reader asking where this
+/// matter's work is — to read it, run it, count it or attribute a root to it —
+/// asks over these, so none of them finds a placement in the archive in a root.
+pub fn standing(entry: &Entry) -> impl Iterator<Item = &Dispatch> + '_ {
+    entry
+        .dispatches
+        .iter()
+        .filter(|dispatch| !is_retired(dispatch))
+}
+
+/// Whether the entry's own singular placement, its `root` and `plan`, may
+/// still be read as one (§FS-005-dispatch.4). Those fields are what a record
+/// written before provenance falls back to and what a run seeds beside the
+/// dispatches. Once any of the matter's placements was retired they name what
+/// went to the archive, and every placement made since names its own root, so
+/// a file found at the entry's own path is not this matter's open work.
+pub fn entry_placement_stands(entry: &Entry) -> bool {
+    !entry.dispatches.iter().any(is_retired)
+}
+
 /// Every placement this matter's retirements took, oldest first, resolved
 /// against the disk (§FS-005-dispatch.4).
 pub fn placements(entry: &Entry) -> Vec<Retired> {

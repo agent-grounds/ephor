@@ -861,6 +861,70 @@ fn a_retired_placement_reads_as_retired_and_no_longer_as_open_work() {
     );
 }
 
+/// The rows `ephor work` prints about #301, which a retired placement's own
+/// lines are among.
+fn board_of_301(site: &Site) -> Vec<String> {
+    let out = site.ok(&["work"]);
+    String::from_utf8_lossy(&out.stdout)
+        .lines()
+        .filter(|line| line.contains("acme/widget#301") || line.contains("acme-widget-301"))
+        .map(str::to_string)
+        .collect()
+}
+
+/// A run of the runtime itself, as the stub logged it, apart from the runs
+/// listing a read may ask for and the help a probe reads.
+fn ran(calls: &str) -> Vec<&str> {
+    calls
+        .lines()
+        .filter(|line| *line == "run" || line.starts_with("run "))
+        .filter(|line| !line.contains("--help"))
+        .collect()
+}
+
+#[test]
+fn a_file_put_back_at_a_retired_plans_path_is_neither_shown_nor_run() {
+    // Every reader asks the one rule whether a placement was retired, so a
+    // file someone puts back where the plan was changes neither what the
+    // board says nor what a run by name reaches (§FS-005-dispatch.4,
+    // §FS-005-dispatch.36.5).
+    let site = finished(false);
+    let plan = site.recipe_plan(ISSUE);
+    let value = site.retired(&["--item", ISSUE]);
+    let to = PathBuf::from(
+        plan_named(&value, &plan)["to"]
+            .as_str()
+            .expect("where the plan went"),
+    );
+    let board = board_of_301(&site);
+    assert!(
+        board.iter().any(|line| line.contains("retired →")),
+        "{board:#?}"
+    );
+    let run = site.run(&["work", "run", "--item", ISSUE]);
+    assert!(
+        said(&run).contains(&format!("Nothing to run for {ISSUE}")),
+        "{}",
+        said(&run)
+    );
+
+    fs::copy(&to, &plan).unwrap();
+
+    assert_eq!(board_of_301(&site), board, "the board says what it said");
+    let again = site.run(&["work", "run", "--item", ISSUE]);
+    assert_eq!(again.status.code(), run.status.code(), "{}", said(&again));
+    assert_eq!(
+        said(&again),
+        said(&run),
+        "and a run by name reaches nothing"
+    );
+    assert!(
+        ran(&site.runner_calls()).is_empty(),
+        "the runtime was never run:\n{}",
+        site.runner_calls()
+    );
+}
+
 #[test]
 fn a_ticket_in_a_retired_plan_cannot_be_cancelled() {
     let site = finished(false);

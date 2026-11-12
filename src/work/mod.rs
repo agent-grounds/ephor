@@ -937,10 +937,9 @@ impl WorkAt<'_> {
                 hold_at(at, plan_id, ticket, &mut running, &mut queued);
             };
 
-            let mine: BTreeSet<&str> = self
-                .entry
-                .dispatches
-                .iter()
+            // Over the placements that stand: a retired one is in the archive,
+            // and what it named is not going anywhere (§FS-005-dispatch.4).
+            let mine: BTreeSet<&str> = retired::standing(self.entry)
                 .filter(|dispatch| {
                     dispatch.recipe == action
                         && !dispatch.is_workflow()
@@ -957,7 +956,7 @@ impl WorkAt<'_> {
                 }
             }
 
-            for dispatch in self.entry.dispatches.iter().filter(|dispatch| {
+            for dispatch in retired::standing(self.entry).filter(|dispatch| {
                 dispatch.recipe == action
                     && dispatch.is_workflow()
                     && canonical(dispatch.root.as_ref().unwrap_or(&self.entry.root))
@@ -2999,7 +2998,11 @@ impl Dispatcher {
                 .iter()
                 .rev()
                 .find(|dispatch| dispatch.is_workflow() && dispatch.recipe == entry_id)?;
-            if !dispatch.snapshot.changes(&Snapshot::of(item)).is_empty() {
+            // A retired newest plan is in the archive, and the action may be
+            // laid again; nothing older is fallen back to (§FS-005-dispatch.5).
+            if retired::is_retired(dispatch)
+                || !dispatch.snapshot.changes(&Snapshot::of(item)).is_empty()
+            {
                 return None;
             }
             let plan_id = dispatch.plan.clone()?;
@@ -3833,7 +3836,9 @@ impl Dispatcher {
     pub fn work_at(&self, item: &Item) -> Option<WorkAt<'_>> {
         let entry = self.ledger.entries.get(&item.id)?;
         let mut root_paths: Vec<PathBuf> = Vec::new();
-        for dispatch in &entry.dispatches {
+        // The roots its standing placements are in: a retired placement's root
+        // holds none of this matter's work now (§FS-005-dispatch.4).
+        for dispatch in retired::standing(entry) {
             let root = dispatch.root.as_ref().unwrap_or(&entry.root);
             if !root_paths
                 .iter()
@@ -3842,7 +3847,7 @@ impl Dispatcher {
                 root_paths.push(root.clone());
             }
         }
-        if root_paths.is_empty() {
+        if entry.dispatches.is_empty() {
             root_paths.push(entry.root.clone());
         }
         let plans = recorded_recipe_plans(entry);
@@ -4341,8 +4346,10 @@ pub fn due_among(
         // (§FS-005-dispatch.3). Dispatch refuses on this and so does a
         // start, because with nobody watching there is no one to notice
         // (§FS-005-dispatch.24).
+        // Whose work lives here, by the placements that stand
+        // (§FS-005-dispatch.4).
         let known = ledger.entries.values().find(|entry| {
-            entry.dispatches.iter().any(|dispatch| {
+            retired::standing(entry).any(|dispatch| {
                 canonical(dispatch.root.as_ref().unwrap_or(&entry.root)) == canonical(&group.root)
             }) || (entry.dispatches.is_empty() && canonical(&entry.root) == canonical(&group.root))
         });
@@ -4838,7 +4845,9 @@ impl Dispatcher {
     ) -> BTreeMap<String, (String, headroom::Held)> {
         let mut held = BTreeMap::new();
         for entry in self.ledger.entries.values() {
-            for dispatch in &entry.dispatches {
+            // A retired dispatch's pools hold nothing: its plan is in the
+            // archive (§FS-005-dispatch.4).
+            for dispatch in retired::standing(entry) {
                 let Some(plan) = dispatch.plan.as_deref() else {
                     continue;
                 };
@@ -5102,7 +5111,7 @@ impl Dispatcher {
                     .entries
                     .values()
                     .find(|entry| {
-                        entry.dispatches.iter().any(|dispatch| {
+                        retired::standing(entry).any(|dispatch| {
                             canonical(dispatch.root.as_ref().unwrap_or(&entry.root))
                                 == canonical(&root.root)
                         }) || (entry.dispatches.is_empty()
@@ -5248,7 +5257,7 @@ impl Dispatcher {
             .entries
             .values()
             .find(|entry| {
-                entry.dispatches.iter().any(|dispatch| {
+                retired::standing(entry).any(|dispatch| {
                     canonical(dispatch.root.as_ref().unwrap_or(&entry.root)) == canonical(root)
                 }) || (entry.dispatches.is_empty() && canonical(&entry.root) == canonical(root))
             })
@@ -6655,11 +6664,7 @@ pub fn recorded_recipe_plans(entry: &Entry) -> Vec<RecordedPlan> {
 /// (§FS-005-dispatch.19, §FS-005-dispatch.35).
 fn recipe_placements(entry: &Entry) -> Vec<RecordedPlan> {
     let mut plans: Vec<RecordedPlan> = Vec::new();
-    for dispatch in entry
-        .dispatches
-        .iter()
-        .filter(|dispatch| !dispatch.is_workflow() && !retired::is_retired(dispatch))
-    {
+    for dispatch in retired::standing(entry).filter(|dispatch| !dispatch.is_workflow()) {
         let root = dispatch.root.clone().unwrap_or_else(|| entry.root.clone());
         let path = match dispatch.root.is_some() {
             true => plan::plan_path_in(&root, &entry.plan_id),
@@ -6696,8 +6701,14 @@ fn recipe_placements(entry: &Entry) -> Vec<RecordedPlan> {
 /// (§FS-005-dispatch.4). A fallback and never an addition: it is read only
 /// where nothing else was, so nothing that reads today stops reading and
 /// nothing that reads a plan gains a second one beside it.
+///
+/// The one fallback both readings share, so the rule for a matter whose work
+/// was retired is said once: its own fields then name what went to the
+/// archive, and a file put back at that path is nobody's work in place
+/// (§FS-005-dispatch.4).
 fn legacy_placement(entry: &Entry) -> Option<RecordedPlan> {
-    entry.plan.is_file().then(|| RecordedPlan {
+    let stands = retired::entry_placement_stands(entry) && entry.plan.is_file();
+    stands.then(|| RecordedPlan {
         root: entry.root.clone(),
         checkout: entry.checkout(),
         branch: entry.branch.clone(),
@@ -6720,11 +6731,7 @@ fn legacy_placement(entry: &Entry) -> Option<RecordedPlan> {
 pub fn recorded_workflow_plans(entry: &Entry) -> RecordedWork {
     let mut work = RecordedWork::default();
     let mut seen: BTreeSet<PathBuf> = BTreeSet::new();
-    for dispatch in entry
-        .dispatches
-        .iter()
-        .filter(|dispatch| dispatch.is_workflow() && !retired::is_retired(dispatch))
-    {
+    for dispatch in retired::standing(entry).filter(|dispatch| dispatch.is_workflow()) {
         let Some(name) = dispatch.plan.as_deref() else {
             continue;
         };
@@ -6776,11 +6783,9 @@ pub fn recorded_plans(entry: &Entry) -> RecordedWork {
     // nobody could read counts as placed for this question: the record did
     // name a plan, so this is not the provenance-less ledger the fallback is
     // for, and a stray file at the entry's own path would otherwise answer
-    // for the laid plan that is gone.
-    // A retired dispatch named a plan too, and it is in the archive rather
-    // than at the entry's own path (§FS-005-dispatch.4).
-    let any_retired = entry.dispatches.iter().any(retired::is_retired);
-    if plans.is_empty() && work.plans.is_empty() && work.unread.is_empty() && !any_retired {
+    // for the laid plan that is gone. A retired dispatch named a plan too,
+    // and the fallback itself declines where one did (§FS-005-dispatch.4).
+    if plans.is_empty() && work.plans.is_empty() && work.unread.is_empty() {
         plans.extend(legacy_placement(entry));
     }
     plans.extend(work.plans);
@@ -6972,10 +6977,8 @@ pub fn status_of_entry_seen(
     });
     let archive_missing = retired.iter().any(|retired| retired.archive_missing);
     WorkStatus {
-        workflows: entry
-            .dispatches
-            .iter()
-            .filter(|dispatch| dispatch.is_workflow() && !retired::is_retired(dispatch))
+        workflows: retired::standing(entry)
+            .filter(|dispatch| dispatch.is_workflow())
             .count(),
         project: entry.project.clone(),
         root: entry.root.clone(),
@@ -7163,8 +7166,10 @@ pub fn enumerate_roots(
         // Every dispatch is a durable placement seed. Older records carry no
         // placement and therefore fall back to the item-level fields they
         // were written with (§FS-005-dispatch.4,
-        // §FS-005-dispatch.15.1).
-        for dispatch in &entry.dispatches {
+        // §FS-005-dispatch.15.1). A retired placement seeds nothing: its plan
+        // is in the archive, and the run reaches what the board reads
+        // (§FS-005-dispatch.36.5).
+        for dispatch in retired::standing(entry) {
             let recorded_root = dispatch.root.as_ref().unwrap_or(&entry.root);
             let root = canon(recorded_root);
             let group = groups.entry(root.clone()).or_insert_with(|| RootPlans {
@@ -7201,7 +7206,12 @@ pub fn enumerate_roots(
         // append can move an entry to a root whose dispatch history predates
         // that placement (and older records only have these fields); retaining
         // it keeps the named matter reachable without widening discovery.
-        if !entry.dispatches.is_empty() && entry.plan.is_file() {
+        // Not once a retirement took the matter's work: that path then names
+        // what went to the archive (§FS-005-dispatch.4).
+        if !entry.dispatches.is_empty()
+            && retired::entry_placement_stands(entry)
+            && entry.plan.is_file()
+        {
             let root = canon(&entry.root);
             let group = groups.entry(root.clone()).or_insert_with(|| RootPlans {
                 root,

@@ -248,12 +248,10 @@ pub fn matters_at(
 /// Whether the ledger records work about `item` that no retirement has taken
 /// (§FS-004-quick-actions.10).
 pub fn has_unretired_work(ledger: &Ledger, item: &str) -> bool {
-    ledger.entries.get(item).is_some_and(|entry| {
-        entry
-            .dispatches
-            .iter()
-            .any(|dispatch| !retired::is_retired(dispatch))
-    })
+    ledger
+        .entries
+        .get(item)
+        .is_some_and(|entry| retired::standing(entry).next().is_some())
 }
 
 /// The work roots inside a checkout one entry records — its own and its

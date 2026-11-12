@@ -78,7 +78,7 @@ pub fn witnesses(read: &Plan, plan_id: &str, unit: &Path, ledger: &Ledger) -> Wi
         }
         // The lay record beside the dispatch's recorded root, where the plan
         // was put somewhere other than the root it names.
-        for dispatch in entry.dispatches.iter().filter(|d| !retired::is_retired(d)) {
+        for dispatch in retired::standing(entry) {
             let (Some(name), Some(root)) = (dispatch.plan.as_deref(), dispatch.root.as_ref())
             else {
                 continue;
