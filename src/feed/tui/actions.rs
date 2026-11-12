@@ -1124,6 +1124,28 @@ mod tests {
         }
     }
 
+    /// Retiring where it is not offered stands on the screen's menu as the row
+    /// it would be, carrying the note, and choosing it runs nothing
+    /// (§FS-004-quick-actions.10).
+    #[test]
+    fn a_withheld_retire_row_carries_its_note_and_runs_nothing() {
+        let mut menu = menu(
+            WorkspaceState::Ready,
+            None,
+            vec![offers::retire_withheld(
+                offers::RETIRE_STILL_OPEN.to_string(),
+            )],
+        );
+        match menu.gate(0) {
+            Gate::Blocked(note) => assert_eq!(note, offers::RETIRE_STILL_OPEN),
+            _ => panic!("the row is blocked on its note"),
+        }
+        assert!(matches!(
+            menu.handle_key(KeyCode::Char('1')),
+            MenuOutcome::Stay
+        ));
+    }
+
     fn menu_unmatched(actions: Vec<ActionConfig>) -> ActionMenu {
         menu(WorkspaceState::Unmatched, Some(checkout_config()), actions)
     }

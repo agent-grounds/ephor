@@ -1824,13 +1824,16 @@ fn the_retire_action_is_offered_on_a_finished_matter_and_asks_first() {
         .clone();
     assert_eq!(retire["confirm"], true, "{retire:#}");
 
+    // Where the entry stands on an open matter it is the row that says why,
+    // never one that runs (§FS-004-quick-actions.10).
     let open = json_of(&site.ok(&["actions", "--item", NEIGHBOUR, "--json"]));
     assert!(
-        !open["offers"]
+        open["offers"]
             .as_array()
             .unwrap()
             .iter()
-            .any(|offer| offer["id"] == "retire"),
+            .filter(|offer| offer["id"] == "retire")
+            .all(|offer| offer["gate"] == "blocked"),
         "an open matter is not offered retirement: {open:#}"
     );
 
@@ -1865,6 +1868,87 @@ fn the_branch_action_is_offered_where_the_branch_names_one_finished_matter() {
             .any(|offer| offer["id"] == "retire"),
         "{actions:#}"
     );
+}
+
+/// The retire entry on one matter's menu, where the menu has one.
+fn retire_entry(site: &Site, item: &str) -> Option<Value> {
+    let actions = json_of(&site.ok(&["actions", "--item", item, "--json"]));
+    actions["offers"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|offer| offer["id"] == "retire")
+        .cloned()
+}
+
+/// §FS-004-quick-actions.10: where retiring is not offered on a matter, the
+/// entry stands with the note in the reader's terms — the item is still open,
+/// or nothing recorded about it is left — and running it refuses with the same
+/// note and moves nothing. An open matter with nothing recorded says nothing.
+#[test]
+fn where_retiring_is_not_offered_the_matter_menu_says_why() {
+    let site = finished(false);
+    site.issue(303, json!({ "title": "Untouched", "state": "OPEN" }));
+    site.refresh();
+
+    let open =
+        retire_entry(&site, NEIGHBOUR).expect("an open matter with recorded work carries the note");
+    assert_eq!(open["gate"], "blocked", "{open:#}");
+    let note = open["refusal"].as_str().expect("the note");
+    assert!(note.contains("still open"), "{open:#}");
+    let before = site.snapshot();
+    let out = site.run(&["actions", "run", "retire", "--item", NEIGHBOUR, "--yes"]);
+    assert!(!out.status.success(), "{}", said(&out));
+    assert!(said(&out).contains(note), "{}", said(&out));
+    untouched(&before, &site.snapshot());
+
+    site.retired(&["--item", ISSUE]);
+    let done = retire_entry(&site, ISSUE)
+        .expect("a finished matter with nothing left to retire carries the note");
+    assert_eq!(done["gate"], "blocked", "{done:#}");
+    assert!(
+        done["refusal"]
+            .as_str()
+            .is_some_and(|note| note.contains("no recorded work")),
+        "{done:#}"
+    );
+
+    assert_eq!(
+        retire_entry(&site, "github-issues:acme/widget#303"),
+        None,
+        "an open matter with no recorded work has nothing to say about retiring"
+    );
+}
+
+/// §FS-004-quick-actions.10: a branch carrying two matters offers neither,
+/// and its note names each so the reader can retire each by its item.
+#[test]
+fn a_branch_carrying_two_matters_names_each_instead_of_offering() {
+    let site = finished(true);
+    let mut ledger = site.ledger();
+    ledger["entries"][NEIGHBOUR]["branch"] = json!("fix/issue-301");
+    write_json(&site.ledger_path(), &ledger);
+
+    let actions = json_of(&site.ok(&[
+        "actions",
+        "--project",
+        PROJECT,
+        "--branch",
+        "fix/issue-301",
+        "--json",
+    ]));
+    let retire = actions["offers"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|offer| offer["id"] == "retire")
+        .unwrap_or_else(|| panic!("the branch row carries the note: {actions:#}"));
+    assert_eq!(retire["gate"], "blocked", "{retire:#}");
+    let note = retire["refusal"].as_str().expect("the note");
+    for item in [ISSUE, NEIGHBOUR] {
+        assert!(note.contains(item), "{item} is named: {note}");
+    }
+    assert!(note.contains("--item"), "{note}");
 }
 
 #[test]

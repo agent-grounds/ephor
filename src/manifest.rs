@@ -256,6 +256,7 @@ impl Offer {
             root: self.root.clone(),
             minted: None,
             held: None,
+            withheld: None,
             confirm: self.confirm,
             background: self.background,
             window: self.window,

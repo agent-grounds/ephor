@@ -101,6 +101,7 @@ impl Beside {
             root: self.root.clone(),
             minted: None,
             held: None,
+            withheld: None,
             confirm: self.confirm,
             // What a workflow lays down is files, and running it is the move
             // after (§FS-005-dispatch.19): there is no terminal to take, and so
