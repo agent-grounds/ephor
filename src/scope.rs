@@ -190,6 +190,8 @@ fn work_honoured(args: &WorkArgs) -> (String, Honours) {
         Some(WorkCommand::Transition(_)) => said("work transition", Honours::Nothing),
         Some(WorkCommand::Ask(_)) => said("work ask", Honours::Nothing),
         Some(WorkCommand::Cancel(_)) => said("work cancel", Honours::Nothing),
+        // One matter, never a set of projects (§FS-005-dispatch.36.6).
+        Some(WorkCommand::Retire(_)) => said("work retire", Honours::Nothing),
         Some(WorkCommand::Workflows(_)) => said("work workflows", Honours::Nothing),
         Some(WorkCommand::Lay(_)) => said("work lay", Honours::Nothing),
         Some(WorkCommand::Forget(_)) => said("work forget", Honours::Nothing),
@@ -317,6 +319,7 @@ fn work_sweeps(args: &WorkArgs) -> Sweeps {
         | Some(WorkCommand::Transition(_))
         | Some(WorkCommand::Ask(_))
         | Some(WorkCommand::Cancel(_))
+        | Some(WorkCommand::Retire(_))
         | Some(WorkCommand::Workflows(_))
         | Some(WorkCommand::Lay(_))
         | Some(WorkCommand::Forget(_))

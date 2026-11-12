@@ -135,6 +135,12 @@ pub fn writer_locks(unit: &Unit) -> Vec<PathBuf> {
     locks
 }
 
+/// The run lock of each root, in the order given: what a recovery holds while
+/// it puts a half-done move back (§FS-005-dispatch.36.5).
+pub fn run_locks(roots: &[PathBuf]) -> Vec<PathBuf> {
+    roots.iter().map(|root| root.join(RUN_LOCK)).collect()
+}
+
 /// Every lock the move of `units` holds, in order: each root's run lock by
 /// sorted root, then each unit's writer locks (§FS-005-dispatch.36.3).
 pub fn lock_set(units: &[Unit]) -> Vec<PathBuf> {

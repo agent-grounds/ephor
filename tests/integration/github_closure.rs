@@ -192,7 +192,6 @@ fn closed_by_331(model: &mut Value) {
 }
 
 #[test]
-#[ignore = "red until #249: the closure read reports a closed issue and its merged closing PR; implement removes this"]
 fn a_closed_issue_and_its_merged_closing_pull_request_are_read_from_the_forge() {
     let site = Closure::dispatched(closed_by_331);
     let (out, value) = site.read();
@@ -225,7 +224,6 @@ fn a_closed_issue_and_its_merged_closing_pull_request_are_read_from_the_forge() 
 }
 
 #[test]
-#[ignore = "red until #249: an open PR from a fork head of the same name is found; implement removes this"]
 fn an_open_pull_request_from_a_fork_head_is_found_by_name() {
     let site = Closure::dispatched(|model| {
         closed_by_331(model);
@@ -247,7 +245,6 @@ fn an_open_pull_request_from_a_fork_head_is_found_by_name() {
 }
 
 #[test]
-#[ignore = "red until #249: a list the forge cut short is reported incomplete; implement removes this"]
 fn a_list_with_more_pages_is_incomplete_not_empty() {
     let site = Closure::dispatched(|model| {
         closed_by_331(model);
@@ -266,7 +263,6 @@ fn a_list_with_more_pages_is_incomplete_not_empty() {
 }
 
 #[test]
-#[ignore = "red until #249: an answer carrying errors[] is a failure in the forge's words; implement removes this"]
 fn an_answer_with_errors_is_a_failure_in_the_forges_words() {
     let site = Closure::dispatched(|model| {
         closed_by_331(model);

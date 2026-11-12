@@ -1264,6 +1264,113 @@
         }
       }
     },
+    "work-retire": {
+      "description": "`ephor work retire --json` (FS-005-dispatch.36.6) — what retiring one finished matter's leftover work did or would do: the forge's word as it was read, each plan and what became of it, what stayed in a shared root, the archive and the record. A refusal is an answer in the same shape, naming the guard that refused.",
+      "type": "object",
+      "required": ["item", "project", "dry_run", "retired", "says", "refused", "eligibility", "plans", "left", "archive", "record", "recovered"],
+      "properties": {
+        "item": { "type": "string" },
+        "project": { "type": "string" },
+        "dry_run": { "type": "boolean" },
+        "retired": { "type": "boolean", "description": "Whether anything was retired: false on a dry run and on a refusal." },
+        "says": { "type": "string", "description": "One sentence saying what happened, or what is in the way." },
+        "refused": {
+          "type": ["object", "null"],
+          "description": "Null, or the guard that refused, its sentence and the paths it names (FS-005-dispatch.36.6).",
+          "required": ["guard", "says", "paths"],
+          "properties": {
+            "guard": { "enum": ["eligibility", "forge", "open-pull-request", "branch", "witness", "unreadable", "live-root", "tracked", "archive", "recovery", "runtime"] },
+            "says": { "type": "string" },
+            "paths": { "type": "array", "items": { "type": "string" } }
+          }
+        },
+        "eligibility": {
+          "type": "object",
+          "description": "The forge's word as it was read, and the branches it was asked about (FS-005-dispatch.36.1).",
+          "required": ["issue", "merged", "branches", "discarded", "open"],
+          "properties": {
+            "issue": {
+              "type": ["object", "null"],
+              "description": "The issue's state and when it closed, or the pull request's for a pull-request matter; null where the forge was not read.",
+              "required": ["state", "closed_at"],
+              "properties": {
+                "state": { "enum": ["open", "closed", "merged"] },
+                "closed_at": { "type": ["string", "null"] }
+              }
+            },
+            "merged": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["pr", "head", "merged_at", "via"],
+                "properties": {
+                  "pr": { "type": "integer" },
+                  "head": { "type": "string" },
+                  "merged_at": { "type": ["string", "null"] },
+                  "via": { "type": "string", "description": "How it is tied to the matter." }
+                }
+              }
+            },
+            "branches": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["name", "from"],
+                "properties": {
+                  "name": { "type": "string" },
+                  "from": { "type": "array", "items": { "enum": ["worktree", "ledger", "plan", "lay record", "closing pr", "caller"] } }
+                }
+              }
+            },
+            "discarded": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["name", "why"],
+                "properties": { "name": { "type": "string" }, "why": { "type": "string" } }
+              }
+            },
+            "open": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["pr", "owner", "branch"],
+                "properties": {
+                  "pr": { "type": "integer" },
+                  "owner": { "type": ["string", "null"] },
+                  "branch": { "type": "string" }
+                }
+              }
+            }
+          }
+        },
+        "plans": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["plan", "outcome", "open", "admitted_by_caller"],
+            "properties": {
+              "plan": { "type": "string" },
+              "outcome": { "enum": ["moved", "would-move", "left-final", "absent"] },
+              "to": { "type": "string", "description": "Where it went, or would go, in the archive." },
+              "open": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": ["task", "state"],
+                  "properties": { "task": { "type": "string" }, "state": { "type": "string" } }
+                }
+              },
+              "admitted_by_caller": { "type": "boolean" }
+            }
+          }
+        },
+        "left": { "type": "array", "items": { "type": "string" }, "description": "Every artifact of a moved plan that stays where the runtime put it (FS-005-dispatch.36.5)." },
+        "archive": { "type": ["string", "null"], "description": "The retirement's directory: where it went, or would go." },
+        "record": { "type": ["string", "null"], "description": "The record written beside it; null where none was written." },
+        "recovered": { "type": "array", "items": { "type": "string" }, "description": "What a half-done earlier retirement of this matter came to first (FS-005-dispatch.36.5)." }
+      }
+    },
     "work-run": {
       "description": "`ephor work run --json` (FS-005-dispatch.12) — the runtime let at every work root holding a task a run would advance, whichever plan holds it: the matter's own and every one a workflow laid beside it (FS-005-dispatch.30). The runtime's own output goes to the error stream under this flag, so what is here is the account and not the run (FS-011-command-line.7).",
       "type": "object",

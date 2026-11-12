@@ -103,6 +103,17 @@ pub fn state_dir() -> PathBuf {
         .join("ephor")
 }
 
+/// `$XDG_DATA_HOME/ephor` or `~/.local/share/ephor`: what ephor keeps that is
+/// the only copy of something, unlike the state directory, whose contents are
+/// promised to be safe to delete (§FS-005-dispatch.36.4).
+pub fn data_dir() -> PathBuf {
+    env::var_os("XDG_DATA_HOME")
+        .map(PathBuf::from)
+        .filter(|p| p.is_absolute())
+        .unwrap_or_else(|| home_dir().join(".local").join("share"))
+        .join("ephor")
+}
+
 #[allow(dead_code)] // wired up by the status feed
 pub fn secrets_dir() -> PathBuf {
     home_dir().join("config").join("secrets").join("ephor")

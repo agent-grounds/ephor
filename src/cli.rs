@@ -244,6 +244,10 @@ pub enum WorkCommand {
     /// Take a ticket back: the runtime moves it into its cancelled state, with
     /// your reason as its result. The plan keeps it.
     Cancel(WorkCancelArgs),
+    /// Put away a finished matter's leftover work: move its plans, unchanged,
+    /// into an archive under ephor's data directory, and record where they
+    /// went. No ticket changes state.
+    Retire(WorkRetireArgs),
     /// Run the runtime over every work root that still has an open ticket.
     Run(WorkRunArgs),
     /// What workflows the runtime offers, and what each one takes.
@@ -502,6 +506,45 @@ pub struct WorkCancelArgs {
 
     /// Report what would be cancelled without asking the runtime to move
     /// anything.
+    #[arg(long)]
+    pub dry_run: bool,
+
+    /// Emit the outcome as JSON.
+    #[arg(long)]
+    pub json: bool,
+}
+
+/// `ephor work retire` (§FS-005-dispatch.36.6): one matter, named by its id,
+/// by a branch, or by the checkout one stands in.
+#[derive(Args, Debug, Default)]
+pub struct WorkRetireArgs {
+    /// The matter whose work is retired, by its feed id.
+    #[arg(long)]
+    pub item: Option<String>,
+
+    /// With --branch: the project the branch belongs to.
+    #[arg(long, requires = "branch")]
+    pub project: Option<String>,
+
+    /// With --project: name the matter by the branch it was worked on.
+    #[arg(long, requires = "project")]
+    pub branch: Option<String>,
+
+    /// Take an open plan nothing witnesses as this matter's, by its exact
+    /// path. Only beside --item, so the admission names the matter.
+    #[arg(long, value_name = "PATH")]
+    pub admit: Vec<std::path::PathBuf>,
+
+    /// One more branch to check for open pull requests. It adds nothing to
+    /// take.
+    #[arg(long, value_name = "NAME")]
+    pub pr_branch: Vec<String>,
+
+    /// Why — recorded in the retirement's record.
+    #[arg(long, value_name = "WORDS")]
+    pub why: Option<String>,
+
+    /// Resolve everything and write nothing, not even a lock file.
     #[arg(long)]
     pub dry_run: bool,
 
