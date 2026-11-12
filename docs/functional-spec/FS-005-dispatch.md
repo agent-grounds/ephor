@@ -705,8 +705,11 @@ one, because a state machine governs every plan in a project and theirs were
 there first.
 
 Fresh plans ephor writes use the machine in the neighboring `states.yaml`;
-they emit no `**States:**` declaration. A new work root receives the shipped
-`ephor-work` machine, and an existing root keeps its machine unchanged. This
+they emit no `**States:**` declaration. A new work root receives its project's
+`work.states` where one is set, else the site's `work.states`, else the shipped
+`ephor-work` machine, and an existing root keeps its machine unchanged.
+`ephor work states --project <id>` prints exactly what that project's new root
+receives ([§FS-011-command-line.7](FS-011-command-line.md#7---json-is-the-same-answer-not-a-second-one)). This
 holds at the shared plan writer, including fresh creation through dispatch
 and sync; it does not change machine validation or the refusals above. Plans
 already carrying the old declaration remain readable without migration.

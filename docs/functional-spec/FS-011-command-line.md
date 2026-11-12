@@ -216,13 +216,39 @@ they belong — the forge answer schema and the registry schema — and named
 here as pointing there, because one document described twice is two
 descriptions to keep true and only one of them will be.
 
-`ephor work states` prints a fourth such document — the state machine tickets
-run under, which is the runtime's own language ([§FS-005-dispatch.11](FS-005-dispatch.md#11-a-failure-that-is-not-the-changes-fault-is-restarted-not-fixed)). It is not
-declared by reference, because ephor knows something about it the document does
-not say: *which* machine is in force, the one ephor ships or one this site
-configured. So the machine rides in a field of a shape of ephor's own, beside
-where it came from. A reader who got only the document could not tell the two
-apart, and they are different answers to "what states can a ticket be in".
+`ephor work states` prints a fourth such document — the site's state machine,
+or with `--project <id>` the one that project's new work roots get, which is the
+runtime's own language ([§FS-005-dispatch.6](FS-005-dispatch.md#6-dispatch-is-offered-where-it-would-work-and-refuses-where-it-would-not)). It names what ephor installs, not what
+every root runs: an existing root keeps its own `states.yaml`. With `--project`,
+the machine is resolved in the order a new root of that project receives it —
+the project's `work.states`, else the site's, else the shipped one — so what the
+verb prints is byte for byte what ephor would install there. An id that is
+neither registered nor configured is refused, naming it. `--project` names one
+project's configuration rather than a set of projects, so it is not a scope
+selector and the verb still refuses every selector ([§FS-011-command-line.9](FS-011-command-line.md#9-a-scope-selector-is-honoured-or-refused)).
+Without `--project`, the answer is the site's `work.states`, or the shipped
+machine when the site sets none — never one project's machine passed off as
+everyone's.
+
+It is not declared by reference, because ephor knows something about it the
+document does not say: *which* machine is in force, and for whom. So the machine
+rides in a field of a shape of ephor's own, beside where it came from: `source`
+(`configured` or `shipped`) and `path` as before, `project` (the id asked for, or
+null), `tier` (`project`, `site` or `shipped` — which rung answered), and
+`overrides`, every project whose own `work.states` is set, as `{project, path}`
+sorted by id and present as `[]` when there is none. A reader who got only the
+document could not tell these apart, and they are different answers to "what
+states can a ticket be in". In prose, standard output stays exactly the machine,
+because that stream is what a reader redirects into a root's `states.yaml`. When
+no `--project` was given and some project overrides the answer, one `note:` line
+on standard error names those projects and the `--project` form that prints each.
+
+Where ephor itself tells a reader to install a machine — a work root that holds
+plans of its own and no `states.yaml`, or a root whose machine will not read —
+the remedy it prints is `ephor work states --project <id> > <root>/states.yaml`
+whenever the root belongs to one project, so following it installs the machine
+ephor would have installed there; the bare form is left for a root of no single
+project.
 
 
 ## 8. What is going is said, and the way in is printed
