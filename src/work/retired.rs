@@ -10,7 +10,7 @@ use std::path::{Path, PathBuf};
 
 use chrono::{DateTime, Utc};
 
-use super::ledger::{Dispatch, Entry};
+use super::ledger::{Dispatch, Entry, Retirement};
 use super::runtime::exclusion;
 use super::runtime::plan::{self, Plan, WorkRoot};
 
@@ -144,14 +144,19 @@ pub fn placements(entry: &Entry) -> Vec<Retired> {
     out
 }
 
-/// The latest retirement that took `path`, where one did — what a refusal to
-/// cancel a ticket in it names (§FS-005-dispatch.16).
-pub fn of_path(entry: &Entry, path: &Path) -> Option<Retired> {
-    let wanted = canonical(path);
-    placements(entry)
-        .into_iter()
-        .rev()
-        .find(|retired| canonical(&retired.from) == wanted)
+/// The retirement that took a dispatch's placement: the one stamped with the
+/// same instant as the dispatch's `retired_at`, which is what ties the two
+/// (§FS-005-dispatch.36.5), and the latest only where no stamp matches. What a
+/// refusal to cancel a ticket in it names (§FS-005-dispatch.16) — a path
+/// cannot say it, because a later retirement may have taken the same path
+/// again. `None` where the dispatch was not retired.
+pub fn of_dispatch<'a>(entry: &'a Entry, dispatch: &Dispatch) -> Option<&'a Retirement> {
+    let at = dispatch.retired_at?;
+    entry
+        .retirements
+        .iter()
+        .find(|retirement| retirement.at == at)
+        .or_else(|| entry.retirements.last())
 }
 
 /// The paragraph a new plan's first ticket carries after a reopen
@@ -219,5 +224,63 @@ fn canonical(path: &Path) -> PathBuf {
     match (path.parent(), path.file_name()) {
         (Some(parent), Some(name)) => canonical(parent).join(name),
         _ => path.to_path_buf(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn retirement(at: DateTime<Utc>, archive: &str) -> Retirement {
+        Retirement {
+            at,
+            record: PathBuf::from(archive).join("retirement.json"),
+            archive: PathBuf::from(archive),
+            plans: Vec::new(),
+        }
+    }
+
+    /// A dispatch names the retirement that took it, by the instant both carry,
+    /// not the latest one — after a reopen a second retirement may take the
+    /// same path again — and a dispatch nothing took names none
+    /// (§FS-005-dispatch.16, §FS-005-dispatch.36.5).
+    #[test]
+    fn a_dispatch_names_the_retirement_stamped_with_its_own_instant() {
+        let first = Utc::now() - chrono::Duration::hours(1);
+        let second = Utc::now();
+        let mut entry: Entry = serde_json::from_value(serde_json::json!({
+            "project": "widget", "title": "t", "root": "/w/panta", "plan_id": "p",
+            "plan": "/w/panta/p.rhei.md",
+            "dispatches": [
+                { "ticket": "answer-1", "recipe": "answer", "at": first,
+                  "snapshot": { "updated_at": first } },
+                { "ticket": "answer-2", "recipe": "answer", "at": second,
+                  "snapshot": { "updated_at": second } },
+                { "ticket": "answer-3", "recipe": "answer", "at": second,
+                  "snapshot": { "updated_at": second } }
+            ]
+        }))
+        .unwrap();
+        entry.retirements = vec![retirement(first, "/a/1"), retirement(second, "/a/2")];
+        entry.dispatches[0].retired_at = Some(first);
+        entry.dispatches[1].retired_at = Some(second);
+
+        let named = |index: usize| of_dispatch(&entry, &entry.dispatches[index]);
+        assert_eq!(
+            named(0).map(|r| r.archive.clone()),
+            Some(PathBuf::from("/a/1"))
+        );
+        assert_eq!(
+            named(1).map(|r| r.archive.clone()),
+            Some(PathBuf::from("/a/2"))
+        );
+        assert_eq!(named(2), None, "a dispatch nothing took names nothing");
+
+        // A stamp no retirement carries falls back to the latest.
+        entry.dispatches[2].retired_at = Some(first - chrono::Duration::hours(1));
+        assert_eq!(
+            of_dispatch(&entry, &entry.dispatches[2]).map(|r| r.archive.clone()),
+            Some(PathBuf::from("/a/2"))
+        );
     }
 }
