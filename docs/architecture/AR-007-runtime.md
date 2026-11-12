@@ -120,6 +120,24 @@ command is. Whether the binding *can* detach on this platform is this
 module's answer too, so the surfaces ask it before offering: where it cannot,
 the run is the attached invocation of before, and the outcome line says so.
 
+Holding: the binding's own exclusion, taken and held for a move ephor makes on
+its files, and the knowledge of which of those files are coordination state
+rather than work ([§FS-005-dispatch.36.3](../functional-spec/FS-005-dispatch.md#363-it-holds-the-runtimes-own-exclusion-and-asks-the-runtime-to-move-nothing),
+[§DA-011-retire-holds-the-runtimes-locks](../decisions/architectural/DA-011-retire-holds-the-runtimes-locks.md#da-011-retire-holds-the-runtimes-locks-retiring-holds-the-runtimes-own-locks-rather-than-asking-the-runtime)). Which roots a move
+reaches — a directory workspace's own, a shared root for a single plan file —
+which locks the binding keeps for a file there, the order it takes them in (the
+run locks by sorted absolute path, then each writer lock), the markers it
+leaves for a forced recovery and a pending removal, and its own listing of live
+runs (`rhei runs --json`), with a descriptor saying `running` read as a claim
+the lock and that listing must confirm: all of it is the binding's grammar and
+is spelled here and nowhere else ([§REQ-001-boundary.5](../requirements/REQ-001-boundary.md#5-no-product-literal-outside-its-adapter)). What goes up is a held
+set of locks, released when the caller's commit or rollback is done, or a
+refusal naming the root and what held it — never a lock path a surface has to
+interpret. The board's probe stays a probe that releases at once; only the lock
+path it and the holder share is declared once, here, for both. The archive
+itself, where it is and what is recorded in it, is the work module's; this
+module only says which files of a plan stay behind.
+
 ## 2. What stays outside
 
 The ledger is the engine's and runtime-agnostic: it records what was

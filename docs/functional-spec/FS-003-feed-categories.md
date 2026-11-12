@@ -58,7 +58,16 @@ There are three such things, and they are the whole list:
 - **Work is still open on it** — the runtime holds a ticket about this matter.
   Work stands on rows beneath the matter ([§FS-005-dispatch.23](FS-005-dispatch.md#23-work-stands-on-rows-of-its-own-beneath-the-row-it-is-about)), so a matter
   that leaves the feed takes the work rows with it, and a run nobody can see is
-  a run nobody can take back.
+  a run nobody can take back. Open work is work in a placement that has not
+  been retired ([§FS-005-dispatch.36](FS-005-dispatch.md#36-a-finished-matters-work-can-be-retired-and-the-record-says-where-it-went)): a retired plan is
+  in the archive and nobody's to run, so its tasks hold the matter here no
+  longer, whatever state they were left in, and the work rows they stood on go
+  with them.
+
+A matter whose only loose end was retired work leaves Recent when it is
+retired, unless a missing answer or a red gate inside the window still holds it
+there; those two keep their own case, and retiring takes away only the reason
+that was the work's.
 
 A finished item with none of the three leaves the feed the moment it finishes,
 whatever the recency window would still allow. Nothing is lost by that: it

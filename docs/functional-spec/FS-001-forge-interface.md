@@ -153,6 +153,22 @@ ephor degrades to what is answered rather than failing.
   from the gate. What must not happen is that answer arriving as *nothing*. An
   implementation whose forge cannot re-run a check does not declare it, and
   ephor offers nothing rather than a key that fails.
+- **Closure** — whether one issue or pull request is over, and what is still
+  open about it, asked by number at the moment it matters rather than read from
+  a refresh
+  ([§FS-005-dispatch.36.1](FS-005-dispatch.md#361-it-is-allowed-only-where-the-forge-says-the-matter-is-over-and-nothing-is-open-from-its-branches)).
+  For an issue: its state and when it closed, and every pull request the forge
+  links as closing it, open, merged or closed, each with its state, when it
+  merged, its head branch and the owner of the head. For a pull request: whether
+  it merged or closed. And for each head branch it is asked about, the pull
+  requests still open from a branch of that name, whoever owns the repository
+  it was pushed to, so a fork's head counts. **Every list says whether it is
+  complete**: a list the forge cut short is reported as cut short and never as
+  everything, and an answer that came back with errors is a failure carrying
+  the forge's own words, never a partial answer read as a whole one. It writes
+  nothing. An implementation that cannot answer it does not declare it, and
+  retiring is refused for its items in a sentence of its own rather than
+  guessed at.
 - **Branch gate** — the gate of a branch a source is told to watch, the
   periodic build that belongs to no change of its own. It is declared on its
   own, as `branch_gate`, for the reason **Own review** is kept apart from pull
