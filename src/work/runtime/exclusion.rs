@@ -750,6 +750,8 @@ mod tests {
         let runner = dir.join("runtime-stub");
         fs::write(&runner, format!("#!/bin/sh\n{said}echo '[]'\n")).unwrap();
         fs::set_permissions(&runner, fs::Permissions::from_mode(0o755)).unwrap();
+        // Executed by path, so wait out `ETXTBSY` from another thread's fork.
+        crate::seams::summons::settle_executable(&runner);
         WorkConfig {
             runner: Some(runner.display().to_string()),
             ..WorkConfig::default()
