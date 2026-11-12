@@ -31,10 +31,11 @@ use super::runner;
 use crate::seams::summons::{self, quote, Mode, Site, Summons};
 use crate::work::recipe::WorkConfig;
 
-/// The lock a run holds on its execution root, under the root. The file is
-/// created by the first run on a root and never rewritten after: only its
-/// birth is a timestamp, everything else about it is the flock itself.
-const LOCK: &str = ".rhei/run.lock";
+// The lock a run holds on its execution root, under the root. The file is
+// created by the first run on a root and never rewritten after: only its
+// birth is a timestamp, everything else about it is the flock itself. Declared
+// once in `exclusion`, which holds it for a move (§AR-007-runtime.1).
+use super::exclusion::RUN_LOCK as LOCK;
 
 /// The append-only journal a run writes one line to per slot move — and
 /// keeps across runs: nothing ever truncates it, so a line is evidence that

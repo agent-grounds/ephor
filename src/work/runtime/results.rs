@@ -25,7 +25,7 @@ const ARTIFACTS: &str = "runtime/ephor";
 /// move carried, appended as one `## Result` entry per move — relative to the
 /// work root, keyed by the ticket's project-qualified id. The runtime's own
 /// ledger, read and never written here.
-const RESULTS: &str = "runtime/results";
+pub(super) const RESULTS: &str = "runtime/results";
 
 /// The result the runtime recorded for a ticket, where it recorded one: the
 /// last entry's first line — which for a ticket the reader took back is the
