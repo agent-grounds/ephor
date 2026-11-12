@@ -3766,10 +3766,7 @@ impl Dispatcher {
             .find(|dispatch| !dispatch.is_workflow() && dispatch.ticket == ticket);
         // A ticket in a retired plan is in the archive, in the state it was
         // in, and nobody's to move (§FS-005-dispatch.16).
-        if let Some(retired) = dispatch
-            .filter(|dispatch| retired::is_retired(dispatch))
-            .and_then(|_| entry.retirements.last())
-        {
+        if let Some(retired) = dispatch.and_then(|dispatch| retired::of_dispatch(entry, dispatch)) {
             return Err(EphorError::Command(format!(
                 "{ticket} cannot be cancelled: its plan was retired to {} and is kept there \
                  as it was",

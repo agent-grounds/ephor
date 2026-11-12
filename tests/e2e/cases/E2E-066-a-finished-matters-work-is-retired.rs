@@ -1016,6 +1016,70 @@ fn a_ticket_in_a_retired_plan_cannot_be_cancelled() {
     );
 }
 
+#[test]
+fn after_a_second_retirement_a_cancel_names_the_archive_that_took_its_ticket() {
+    // A ticket is kept in the archive of the retirement that took it, and a
+    // later retirement of new work laid at the same path after a reopen does
+    // not change where (§FS-005-dispatch.16, §FS-005-dispatch.36.5).
+    let site = finished(false);
+    let plan = site.recipe_plan(ISSUE);
+    let first = site.retired(&["--item", ISSUE]);
+    let first = first["archive"].as_str().unwrap().to_string();
+
+    site.issue(301, reopened_now());
+    site.refresh();
+    site.ok(&["work", "sync", "--project", PROJECT]);
+    assert!(plan.exists(), "new work is laid where the old plan was");
+    let closed = (chrono::Utc::now() + chrono::Duration::minutes(10))
+        .format("%Y-%m-%dT%H:%M:%SZ")
+        .to_string();
+    site.issue(
+        301,
+        json!({ "state": "CLOSED", "closedAt": closed, "updatedAt": closed, "closedBy": [331] }),
+    );
+    site.refresh();
+    let second = site.retired(&["--item", ISSUE]);
+    let second = second["archive"].as_str().unwrap().to_string();
+    assert_ne!(first, second, "two retirements, two archives");
+    let entry = site.entry(ISSUE);
+    let froms: Vec<Vec<String>> = entry["retirements"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|retirement| {
+            retirement["plans"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|taken| taken["from"].as_str().unwrap().to_string())
+                .collect()
+        })
+        .collect();
+    let path = plan.to_string_lossy().into_owned();
+    assert!(
+        froms.len() == 2 && froms.iter().all(|taken| taken.contains(&path)),
+        "both retirements took the same path: {entry:#}"
+    );
+
+    let out = site.run(&[
+        "work", "cancel", "--item", ISSUE, "answer-1", "--why", "late",
+    ]);
+    assert!(!out.status.success(), "{}", said(&out));
+    let text = said(&out);
+    assert!(
+        text.contains(&first),
+        "the first archive holds answer-1:\n{text}"
+    );
+    assert!(!text.contains(&second), "the second never held it:\n{text}");
+    assert!(
+        !site
+            .runner_calls()
+            .lines()
+            .any(|line| line.starts_with("transition")),
+        "nothing was asked of the runtime"
+    );
+}
+
 // --- 2. The grund#249 shape ---------------------------------------------------
 
 #[test]
