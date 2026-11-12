@@ -587,6 +587,18 @@ fn strings(value: &Value) -> Vec<String> {
         .unwrap_or_default()
 }
 
+/// The forge's fields for an issue reopened after this run's clock: the forge
+/// stamps what it does not set with its own wall clock, so a fixed instant would
+/// fall behind the dispatch it must come after (§FS-005-dispatch.5).
+fn reopened_now() -> Value {
+    let at = chrono::Utc::now() + chrono::Duration::minutes(5);
+    json!({
+        "state": "OPEN",
+        "closedAt": null,
+        "updatedAt": at.format("%Y-%m-%dT%H:%M:%SZ").to_string()
+    })
+}
+
 /// grund#301 in miniature: #301 answered by a recipe plan in the shared root
 /// beside #302's and a hand-laid directory workspace, and by a workflow laid in
 /// `fix/issue-301`; the checkout removed; #301 closed by #331 merged from
@@ -801,7 +813,6 @@ fn the_retirement_is_recorded_beside_the_archive_and_in_the_ledger() {
 }
 
 #[test]
-#[ignore = "red until #249: a retired placement reads as retired, not missing or open; implement removes this"]
 fn a_retired_placement_reads_as_retired_and_no_longer_as_open_work() {
     let site = finished(false);
     let before = site.ok(&["work", "offers", "--item", ISSUE, "--json"]);
@@ -826,9 +837,19 @@ fn a_retired_placement_reads_as_retired_and_no_longer_as_open_work() {
     let list = String::from_utf8_lossy(&list.stdout);
     assert!(list.contains("retired →"), "{list}");
     assert!(!list.contains("a plan is missing"), "{list}");
+    let ours: Vec<&str> = list
+        .lines()
+        .filter(|line| line.contains("acme/widget#301") || line.contains("acme-widget-301"))
+        .collect();
+    assert!(!ours.is_empty(), "{list}");
     assert!(
-        !list.contains("answer · fix"),
-        "no open ticket row is left:\n{list}"
+        ours.iter().all(|line| !line.contains("answer · fix")),
+        "no open ticket row is left for #301:\n{list}"
+    );
+    assert!(
+        list.lines()
+            .any(|line| line.contains("acme/widget#302") && line.contains("answer · fix")),
+        "the neighbour's open row stays:\n{list}"
     );
     let after = site.ok(&["work", "offers", "--item", ISSUE, "--json"]);
     let text = String::from_utf8_lossy(&after.stdout).into_owned();
@@ -845,7 +866,9 @@ fn a_ticket_in_a_retired_plan_cannot_be_cancelled() {
     let site = finished(false);
     let value = site.retired(&["--item", ISSUE]);
     let archive = value["archive"].as_str().unwrap().to_string();
-    let out = site.run(&["work", "cancel", "--item", ISSUE, "--why", "late"]);
+    let out = site.run(&[
+        "work", "cancel", "--item", ISSUE, "answer-1", "--why", "late",
+    ]);
     assert!(!out.status.success(), "{}", said(&out));
     let text = said(&out);
     assert!(text.contains("retired"), "{text}");
@@ -1470,7 +1493,6 @@ fn a_failed_ledger_save_rolls_every_move_back() {
 // --- 5. Reopen -----------------------------------------------------------------
 
 #[test]
-#[ignore = "red until #249: after a reopen, new work is a new plan that points at the archive; implement removes this"]
 fn after_a_reopen_new_work_is_a_new_plan_that_points_at_the_archive() {
     let site = finished(false);
     let plan = site.recipe_plan(ISSUE);
@@ -1480,10 +1502,7 @@ fn after_a_reopen_new_work_is_a_new_plan_that_points_at_the_archive() {
     let mut archived = Snapshot::new();
     walk(&archive, &mut archived);
 
-    site.issue(
-        301,
-        json!({ "state": "OPEN", "closedAt": null, "updatedAt": "2026-11-12T15:00:00Z" }),
-    );
+    site.issue(301, reopened_now());
     site.refresh();
     site.ok(&["work", "sync", "--project", PROJECT]);
 

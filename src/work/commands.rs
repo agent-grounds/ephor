@@ -1552,29 +1552,6 @@ fn one_line(text: &str) -> String {
 /// asked for was cancelled.
 fn cancel_work(config: &StatusConfig, args: &crate::cli::WorkCancelArgs) -> Result<ExitCode> {
     let dispatcher = Dispatcher::load(config)?;
-    // Naming no ticket is a usage error, except about a matter whose work was
-    // retired, where the answer is that and where it went (§FS-005-dispatch.16).
-    if args.tickets.is_empty() {
-        if let Some(says) = dispatcher.retired_beyond_cancel(&args.item) {
-            if args.json {
-                println!(
-                    "{}",
-                    serde_json::to_string_pretty(&serde_json::json!({
-                        "item": args.item,
-                        "dry_run": args.dry_run,
-                        "refused": 1,
-                        "tickets": [],
-                        "says": says,
-                    }))
-                    .unwrap_or_else(|_| "null".to_string())
-                );
-            }
-            eprintln!("note: {says}");
-            return Ok(ExitCode::from(1));
-        }
-        eprintln!("error: work cancel names at least one TICKET to take back");
-        return Ok(ExitCode::from(2));
-    }
     let style = Style::detect();
     let why = args.why.as_deref().unwrap_or("");
     let mut refused = 0usize;
