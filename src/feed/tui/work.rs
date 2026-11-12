@@ -434,8 +434,8 @@ impl WorkScreen {
                     status.missing,
                     status.unread_workflows > 0,
                     status
-                        .retired
-                        .iter()
+                        .retired_once()
+                        .into_iter()
                         .map(|retired| retired.said())
                         .collect(),
                     status.retired.iter().any(|retired| retired.archive_missing),

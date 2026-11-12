@@ -1635,6 +1635,35 @@ fn a_workflow_laid_after_a_reopen_takes_a_fresh_id_and_names_the_archive() {
         dossier.contains(&archive),
         "and where the earlier work is kept:\n{dossier}"
     );
+
+    let board = board_of_301(&site);
+    let retired_lines = board
+        .iter()
+        .filter(|line| line.contains("retired →"))
+        .count();
+    assert_eq!(retired_lines, 1, "one line per archive:\n{board:#?}");
+    assert!(
+        board.iter().any(|line| line.contains(new_id)),
+        "the live plan is shown:\n{board:#?}"
+    );
+
+    let list = site.ok(&["work", "list", "--json"]);
+    let rows = json_of(&list);
+    let row = rows
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|row| row["item"] == ISSUE)
+        .expect("#301's row");
+    let workflows = row["workflows"].as_array().expect("workflows");
+    let by_plan = |id: &str| {
+        workflows
+            .iter()
+            .find(|workflow| workflow["plan"] == id)
+            .unwrap_or_else(|| panic!("no workflow {id} in {row:#}"))
+    };
+    assert!(by_plan(old_id)["retired_at"].is_string(), "{row:#}");
+    assert!(by_plan(new_id).get("retired_at").is_none(), "{row:#}");
 }
 
 // --- 6. Forget -----------------------------------------------------------------

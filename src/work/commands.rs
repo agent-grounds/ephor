@@ -307,7 +307,10 @@ fn list_work(
                     // The plans workflows laid down beside this matter's own
                     // (§FS-005-dispatch.19). They carry no ticket inside the
                     // matter's plan, so without this the ledger's record of
-                    // them would be readable nowhere.
+                    // them would be readable nowhere. A retired one says when
+                    // it was retired, so a program reading this list alone
+                    // does not take it for work still laid in its root
+                    // (§FS-005-dispatch.36.5, §REQ-002-parity.4).
                     "workflows": entry.dispatches.iter().filter_map(|dispatch| {
                         dispatch.plan.as_ref().map(|plan| stated(serde_json::json!({
                             "plan": plan,
@@ -316,6 +319,7 @@ fn list_work(
                             "root": dispatch.root.as_ref().unwrap_or(&entry.root),
                             "checkout": dispatch.checkout.clone().unwrap_or_else(|| entry.checkout()),
                             "branch": dispatch.branch(entry),
+                            "retired_at": dispatch.retired_at,
                         })))
                     }).collect::<Vec<_>>(),
                 }))
@@ -405,7 +409,7 @@ fn list_work(
         // Where retired work went, beside work that is not; where it is all
         // there is, the badge already said it (§FS-005-dispatch.4).
         if !status.only_retired() {
-            for retired in &status.retired {
+            for retired in status.retired_once() {
                 println!("{:<width$}  {}", "", style.dim(&retired.said()));
             }
         }
@@ -455,11 +459,14 @@ fn work_offers(config: &StatusConfig, args: &crate::cli::WorkOffersArgs) -> Resu
             status.plans.iter().map(|plan| plan.plan.as_path()),
             status.missing,
             status.unread > 0,
-            status
-                .retired
-                .iter()
-                .map(|retired| retired.said.clone())
-                .collect(),
+            crate::work::retired::one_per_archive(
+                &status.retired,
+                |retired| &retired.archive,
+                |retired| retired.archive_missing,
+            )
+            .into_iter()
+            .map(|retired| retired.said.clone())
+            .collect(),
             status.retired.iter().any(|retired| retired.archive_missing),
         );
         for plan in &heading.plans {
