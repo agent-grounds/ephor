@@ -612,6 +612,11 @@ const ELSEWHERE: &[(&str, &str)] = &[
         "work-lay",
         "E2E-011-workflows's own lay — it needs a runtime that offers workflows",
     ),
+    (
+        "work-retire",
+        "E2E-066's a_dry_run_writes_nothing_not_even_a_lock_file — it needs a forge that answers \
+         whether the matter is over",
+    ),
 ];
 
 /// Local review and an explicit owner decision share the published command

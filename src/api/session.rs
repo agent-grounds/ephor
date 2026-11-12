@@ -213,6 +213,11 @@ impl Session {
                 .collect()
         };
         recognized.extend(from(crate::work::runtime::workflow::Source::Runtime));
+        // A finished matter whose recorded work was never retired is offered
+        // retirement, checkout or not (§FS-004-quick-actions.10).
+        if item.is_finished() && self.unretired(&item.id) {
+            recognized.push(offers::retire_action(None));
+        }
         let mut offered = self.offers(item, &facts);
         offered.extend(from(crate::work::runtime::workflow::Source::Project));
         let mut configured = offers::applicable(&self.actions, project, item, &facts);
@@ -463,10 +468,36 @@ impl Session {
     /// against an item and a branch row has none to select against
     /// (§FS-004-quick-actions.2).
     pub fn branch_actions(&self, project: &str, branch: &str) -> Vec<ActionConfig> {
-        match self.branch_trailing(project, branch) {
+        let mut actions = match self.branch_trailing(project, branch) {
             Some(trailing) => self.rebase_offers(project, &trailing),
             None => Vec::new(),
-        }
+        };
+        actions.extend(self.branch_retire(project, branch));
+        actions
+    }
+
+    /// Whether the ledger records work about `id` that no retirement has
+    /// taken (§FS-004-quick-actions.10). Read only for a finished matter.
+    fn unretired(&self, id: &str) -> bool {
+        crate::work::ledger::load()
+            .is_ok_and(|ledger| crate::work::retire::has_unretired_work(&ledger, id))
+    }
+
+    /// Retirement on a branch row, where the branch identifies exactly one
+    /// finished matter with work never retired (§FS-004-quick-actions.10).
+    fn branch_retire(&self, project: &str, branch: &str) -> Option<ActionConfig> {
+        let checkout = self.placement(project)?.workspace_for(branch)?;
+        let ledger = crate::work::ledger::load().ok()?;
+        let matters: Vec<String> =
+            crate::work::retire::matters_at(&ledger, project, Some(branch), &checkout)
+                .into_iter()
+                .collect();
+        let [matter] = matters.as_slice() else {
+            return None;
+        };
+        let finished = self.item(matter).is_some_and(|item| item.is_finished());
+        (finished && crate::work::retire::has_unretired_work(&ledger, matter))
+            .then(|| offers::retire_action(Some(matter)))
     }
 
     /// One matter by its key, across every project's feed — for the moments

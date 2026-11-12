@@ -139,6 +139,38 @@ pub fn upstream_rebase_action(published: Option<&str>, trail: Trail) -> ActionCo
     )
 }
 
+/// The retirement ephor offers on a finished matter whose recorded work was
+/// never retired, and on a branch that identifies exactly one such matter
+/// (§FS-004-quick-actions.10). It runs `ephor work retire`, which asks the
+/// forge again before anything moves (§FS-005-dispatch.36.1), so the offer is
+/// read from the cache and costs nothing. It asks first, and it runs where the
+/// reader asked: what moved and where the record is is the answer.
+///
+/// `item` is the matter a branch row names, since a branch row has no item of
+/// its own to put in `EPHOR_ITEM_ID`; an item's own menu passes `None`.
+pub fn retire_action(item: Option<&str>) -> ActionConfig {
+    let exe = std::env::current_exe()
+        .map(|path| path.to_string_lossy().into_owned())
+        .unwrap_or_else(|_| "ephor".to_string());
+    let named = match item {
+        Some(item) => crate::feed::providers::shell_quote(item),
+        None => "\"$EPHOR_ITEM_ID\"".to_string(),
+    };
+    ActionConfig {
+        id: "retire".to_string(),
+        icon: "⌫".to_string(),
+        description: "retire the leftover work of this finished matter".to_string(),
+        command: format!(
+            "{} work retire --item {named}",
+            crate::feed::providers::shell_quote(&exe)
+        ),
+        requires_checkout: false,
+        confirm: true,
+        background: false,
+        ..ActionConfig::default()
+    }
+}
+
 /// One entry for both rebases, so the key the reader presses and the command a
 /// state machine runs stay one operation (§FS-005-dispatch.12) and the two
 /// offers cannot drift apart in how they are run.

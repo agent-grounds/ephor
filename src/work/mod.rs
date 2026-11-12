@@ -15,6 +15,7 @@ pub mod ledger;
 pub mod private;
 mod ranking;
 pub mod recipe;
+pub mod retire;
 pub mod retired;
 pub mod runtime;
 pub mod spend;

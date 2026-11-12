@@ -119,6 +119,13 @@ pub const ABILITIES: &[Ability] = &[
         keys: &["c"],
         command: "work cancel",
     },
+    // Retiring is an entry on the action menu, reached by the keys that run
+    // one (§FS-004-quick-actions.10, §FS-005-dispatch.36.6).
+    Ability {
+        what: "put a finished matter's leftover work away",
+        keys: &["enter", "1-9"],
+        command: "work retire",
+    },
     Ability {
         what: "inspect a matter's human gates and local review files",
         keys: &["H"],

@@ -1431,6 +1431,13 @@ impl Plan {
         self.said_of(plan_id, task_id, "id")
     }
 
+    /// The branch one ticket records it was written about, where it records
+    /// one: a candidate a retirement checks for open pull requests
+    /// (§FS-005-dispatch.36.1).
+    pub fn branch_of(&self, plan_id: &str, task_id: &str) -> Option<String> {
+        self.said_of(plan_id, task_id, "branch")
+    }
+
     /// The source that reported one ticket's matter, as the ticket itself
     /// records it (§FS-005-dispatch.8): the `source` ephor wrote into this
     /// plan's metadata block, else the provider its matter id is keyed by. A

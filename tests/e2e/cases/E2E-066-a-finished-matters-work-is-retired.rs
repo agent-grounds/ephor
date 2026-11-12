@@ -677,7 +677,6 @@ fn placeholder(keep_checkout: bool, closing_pr: bool) -> Site {
 // --- 1. The grund#301 shape ---------------------------------------------------
 
 #[test]
-#[ignore = "red until #249: retiring moves a single-file plan whole and leaves its lock; implement removes this"]
 fn a_finished_matters_plan_in_a_shared_root_moves_whole_and_its_lock_stays() {
     let site = finished(false);
     let root = site.shared_root();
@@ -751,7 +750,6 @@ fn a_finished_matters_plan_in_a_shared_root_moves_whole_and_its_lock_stays() {
 }
 
 #[test]
-#[ignore = "red until #249: a retirement is recorded beside the archive and in the ledger; implement removes this"]
 fn the_retirement_is_recorded_beside_the_archive_and_in_the_ledger() {
     let site = finished(false);
     let plan = site.recipe_plan(ISSUE);
@@ -843,7 +841,6 @@ fn a_retired_placement_reads_as_retired_and_no_longer_as_open_work() {
 }
 
 #[test]
-#[ignore = "red until #249: a ticket in a retired plan cannot be cancelled; implement removes this"]
 fn a_ticket_in_a_retired_plan_cannot_be_cancelled() {
     let site = finished(false);
     let value = site.retired(&["--item", ISSUE]);
@@ -865,7 +862,6 @@ fn a_ticket_in_a_retired_plan_cannot_be_cancelled() {
 // --- 2. The grund#249 shape ---------------------------------------------------
 
 #[test]
-#[ignore = "red until #249: a placeholder branch is discarded and a directory's content moves; implement removes this"]
 fn a_placeholder_is_discarded_and_a_directory_workspace_moves_its_content_and_keeps_its_locks() {
     let site = placeholder(true, true);
     let plan = site.laid_plan(PLACEHOLDER);
@@ -935,7 +931,6 @@ fn a_placeholder_is_discarded_and_a_directory_workspace_moves_its_content_and_ke
 }
 
 #[test]
-#[ignore = "red until #249: the branch form resolves to the matter its checkout carries; implement removes this"]
 fn the_branch_form_reaches_the_same_matter() {
     let site = placeholder(true, true);
     let (out, value) = site.retire(&[
@@ -962,7 +957,6 @@ fn the_branch_form_reaches_the_same_matter() {
 // --- 3. One refusal per guard -------------------------------------------------
 
 #[test]
-#[ignore = "red until #249: an open pull request from a fork head refuses; implement removes this"]
 fn an_open_pull_request_from_a_fork_refuses() {
     let site = finished(false);
     site.pull(
@@ -978,7 +972,6 @@ fn an_open_pull_request_from_a_fork_refuses() {
 }
 
 #[test]
-#[ignore = "red until #249: an open issue whose only pull request closed unmerged is not over; implement removes this"]
 fn an_open_issue_whose_only_pull_request_closed_unmerged_refuses() {
     let site = Site::new();
     site.refresh();
@@ -994,7 +987,6 @@ fn an_open_issue_whose_only_pull_request_closed_unmerged_refuses() {
 }
 
 #[test]
-#[ignore = "red until #249: a held run lock refuses; implement removes this"]
 fn a_held_run_lock_refuses() {
     let site = finished(false);
     let lock = site.shared_root().join(".rhei/run.lock");
@@ -1007,7 +999,6 @@ fn a_held_run_lock_refuses() {
 }
 
 #[test]
-#[ignore = "red until #249: a held writer lock refuses; implement removes this"]
 fn a_held_writer_lock_refuses() {
     let site = finished(false);
     let plan = site.recipe_plan(ISSUE);
@@ -1016,7 +1007,6 @@ fn a_held_writer_lock_refuses() {
 }
 
 #[test]
-#[ignore = "red until #249: a forced-recovery marker refuses; implement removes this"]
 fn a_forced_recovery_marker_refuses() {
     let site = finished(false);
     let marker = site.shared_root().join(".rhei/forced-recovery.json");
@@ -1026,7 +1016,6 @@ fn a_forced_recovery_marker_refuses() {
 }
 
 #[test]
-#[ignore = "red until #249: a pending-removal marker refuses; implement removes this"]
 fn a_pending_removal_marker_refuses() {
     let site = finished(false);
     let marker = site.shared_root().join(".rhei/pending-removal.json");
@@ -1036,7 +1025,6 @@ fn a_pending_removal_marker_refuses() {
 }
 
 #[test]
-#[ignore = "red until #249: a root the runtime reports live or undecided refuses with its lock free; implement removes this"]
 fn a_root_the_runtime_reports_live_or_cannot_decide_refuses_though_its_lock_is_free() {
     let site = finished(false);
     let root = site.shared_root();
@@ -1065,7 +1053,6 @@ fn a_root_the_runtime_reports_live_or_cannot_decide_refuses_though_its_lock_is_f
 }
 
 #[test]
-#[ignore = "red until #249: a stale running descriptor with its lock free does not block; implement removes this"]
 fn a_stale_running_descriptor_does_not_block() {
     let site = finished(false);
     let root = site.shared_root();
@@ -1078,7 +1065,6 @@ fn a_stale_running_descriptor_does_not_block() {
 }
 
 #[test]
-#[ignore = "red until #249: a plan witnessed as another matter's refuses, admitted or not; implement removes this"]
 fn a_foreign_witness_refuses_with_and_without_admit() {
     let site = finished(true);
     let root = site.checkout(301).join("panta");
@@ -1092,7 +1078,6 @@ fn a_foreign_witness_refuses_with_and_without_admit() {
 }
 
 #[test]
-#[ignore = "red until #249: a plan whose witnesses name two matters refuses even with --admit; implement removes this"]
 fn a_mixed_witness_refuses_even_with_admit() {
     let site = finished(false);
     let plan = site.recipe_plan(ISSUE);
@@ -1113,7 +1098,6 @@ fn a_mixed_witness_refuses_even_with_admit() {
 }
 
 #[test]
-#[ignore = "red until #249: a witness-less plan refuses until --admit names it with --item; implement removes this"]
 fn a_witness_less_plan_refuses_until_the_caller_admits_it() {
     let site = finished(true);
     let root = site.checkout(301).join("panta");
@@ -1158,7 +1142,6 @@ fn a_witness_less_plan_refuses_until_the_caller_admits_it() {
 }
 
 #[test]
-#[ignore = "red until #249: a path git tracks refuses; implement removes this"]
 fn a_tracked_path_refuses() {
     let site = finished(true);
     let laid = site.laid_plan(ISSUE);
@@ -1170,7 +1153,6 @@ fn a_tracked_path_refuses() {
 }
 
 #[test]
-#[ignore = "red until #249: a failed forge lookup refuses in the forge's words; implement removes this"]
 fn a_failed_forge_lookup_refuses_in_the_forges_words() {
     let site = finished(false);
     site.on_forge(|model| model["closure_fails"] = json!("HTTP 502: the forge is down"));
@@ -1187,7 +1169,6 @@ fn a_failed_forge_lookup_refuses_in_the_forges_words() {
 }
 
 #[test]
-#[ignore = "red until #249: a list the forge cut short is incomplete, never empty; implement removes this"]
 fn a_list_the_forge_cut_short_refuses() {
     let site = finished(false);
     site.on_forge(|model| model["cut_short"] = json!(["fix/issue-301"]));
@@ -1199,7 +1180,6 @@ fn a_list_the_forge_cut_short_refuses() {
 }
 
 #[test]
-#[ignore = "red until #249: a plan that cannot be read refuses and is never read as finished; implement removes this"]
 fn an_unreadable_plan_refuses() {
     let site = finished(true);
     let laid = site.laid_plan(ISSUE);
@@ -1209,7 +1189,6 @@ fn an_unreadable_plan_refuses() {
 
 #[cfg(unix)]
 #[test]
-#[ignore = "red until #249: an archive reached through a symlink into a work root refuses; implement removes this"]
 fn an_archive_reached_through_a_symlink_into_a_work_root_refuses() {
     let site = finished(false);
     let inside = site.shared_root().join("keep");
@@ -1219,7 +1198,6 @@ fn an_archive_reached_through_a_symlink_into_a_work_root_refuses() {
 }
 
 #[test]
-#[ignore = "red until #249: work retire refuses --act by name with exit 2; implement removes this"]
 fn act_is_refused_by_name() {
     let site = finished(false);
     let before = site.snapshot();
@@ -1236,7 +1214,6 @@ fn act_is_refused_by_name() {
 }
 
 #[test]
-#[ignore = "red until #249: a forge that cannot say whether an item is over is refused in its own sentence; implement removes this"]
 fn a_forge_without_the_capability_is_refused_in_its_own_sentence() {
     let world = World::new();
     world.stub(
@@ -1301,7 +1278,6 @@ esac
 }
 
 #[test]
-#[ignore = "red until #249: an open pull request from a second candidate branch refuses; implement removes this"]
 fn an_open_pull_request_from_a_second_candidate_branch_refuses() {
     let site = finished(true);
     let mut ledger = site.ledger();
@@ -1331,7 +1307,6 @@ fn an_open_pull_request_from_a_second_candidate_branch_refuses() {
 }
 
 #[test]
-#[ignore = "red until #249: an open pull request linked to the issue from an unrecorded branch refuses; implement removes this"]
 fn an_open_pull_request_linked_to_the_issue_from_an_unrecorded_branch_refuses() {
     let site = finished(false);
     site.pull(
@@ -1344,7 +1319,6 @@ fn an_open_pull_request_linked_to_the_issue_from_an_unrecorded_branch_refuses() 
 }
 
 #[test]
-#[ignore = "red until #249: a record naming only a placeholder, with no closing PR, refuses naming --pr-branch; implement removes this"]
 fn a_placeholder_only_record_refuses_naming_pr_branch_until_the_caller_names_one() {
     let site = placeholder(false, false);
     site.refused(
@@ -1380,7 +1354,6 @@ fn interrupted(site: &Site) -> PathBuf {
 }
 
 #[test]
-#[ignore = "red until #249: a pending retirement whose save never happened is undone, then retired afresh; implement removes this"]
 fn a_pending_retirement_whose_save_never_happened_is_undone_then_retired_afresh() {
     let site = finished(false);
     let plan = site.recipe_plan(ISSUE);
@@ -1413,7 +1386,6 @@ fn a_pending_retirement_whose_save_never_happened_is_undone_then_retired_afresh(
 }
 
 #[test]
-#[ignore = "red until #249: a pending retirement whose save happened is marked committed; implement removes this"]
 fn a_pending_retirement_whose_save_happened_is_marked_committed() {
     let site = finished(false);
     let plan = site.recipe_plan(ISSUE);
@@ -1438,7 +1410,6 @@ fn a_pending_retirement_whose_save_happened_is_marked_committed() {
 }
 
 #[test]
-#[ignore = "red until #249: a restore never replaces a path that is now occupied; implement removes this"]
 fn a_restore_never_replaces_a_path_now_occupied() {
     let site = finished(false);
     let plan = site.recipe_plan(ISSUE);
@@ -1469,7 +1440,6 @@ fn a_restore_never_replaces_a_path_now_occupied() {
 }
 
 #[test]
-#[ignore = "red until #249: a failed ledger save rolls every move back; implement removes this"]
 fn a_failed_ledger_save_rolls_every_move_back() {
     let site = finished(false);
     let plan = site.recipe_plan(ISSUE);
@@ -1540,7 +1510,6 @@ fn after_a_reopen_new_work_is_a_new_plan_that_points_at_the_archive() {
 // --- 6. Forget -----------------------------------------------------------------
 
 #[test]
-#[ignore = "red until #249: forget --missing and --done leave a retired entry, --item names the archive; implement removes this"]
 fn forget_leaves_a_retired_entry_to_item_and_item_names_the_archive() {
     let site = finished(false);
     let value = site.retired(&["--item", ISSUE]);
@@ -1574,7 +1543,6 @@ fn forget_leaves_a_retired_entry_to_item_and_item_names_the_archive() {
 }
 
 #[test]
-#[ignore = "red until #249: a deleted archive reads as missing and --missing takes the entry; implement removes this"]
 fn a_deleted_archive_reads_as_missing_and_forget_missing_takes_it() {
     let site = finished(false);
     let value = site.retired(&["--item", ISSUE]);
@@ -1594,7 +1562,6 @@ fn a_deleted_archive_reads_as_missing_and_forget_missing_takes_it() {
 // --- 7. Dry run ------------------------------------------------------------------
 
 #[test]
-#[ignore = "red until #249: a dry run resolves everything and writes nothing, not even a lock file; implement removes this"]
 fn a_dry_run_writes_nothing_not_even_a_lock_file() {
     let site = finished(false);
     let plan = site.recipe_plan(ISSUE);
@@ -1626,7 +1593,6 @@ fn a_dry_run_writes_nothing_not_even_a_lock_file() {
 // --- 8. Help, the action, and the shape -------------------------------------------
 
 #[test]
-#[ignore = "red until #249: work retire's help refuses --act and the selectors in their words; implement removes this"]
 fn work_retire_help_refuses_act_and_the_selectors() {
     let site = Site::new();
     let out = site.ok(&["work", "retire", "--help"]);
@@ -1652,7 +1618,6 @@ fn work_retire_help_refuses_act_and_the_selectors() {
 }
 
 #[test]
-#[ignore = "red until #249: retire is offered on a finished matter with recorded work and asks first; implement removes this"]
 fn the_retire_action_is_offered_on_a_finished_matter_and_asks_first() {
     let site = finished(false);
     let out = site.ok(&["actions", "--item", ISSUE, "--json"]);
@@ -1688,7 +1653,6 @@ fn the_retire_action_is_offered_on_a_finished_matter_and_asks_first() {
 }
 
 #[test]
-#[ignore = "red until #249: retire is offered on a branch that identifies one finished matter; implement removes this"]
 fn the_branch_action_is_offered_where_the_branch_names_one_finished_matter() {
     let site = placeholder(true, true);
     let out = site.ok(&[
@@ -1711,7 +1675,6 @@ fn the_branch_action_is_offered_where_the_branch_names_one_finished_matter() {
 }
 
 #[test]
-#[ignore = "red until #249: every work-retire outcome is the published shape; implement removes this"]
 fn the_published_shape_is_printed_by_schema_views() {
     let site = Site::new();
     let out = site.ok(&["schema", "views"]);

@@ -750,3 +750,110 @@ pub struct BurnSpan {
     pub at: DateTime<Utc>,
     pub tokens: u64,
 }
+
+/// What `ephor work retire` did, or would do, about one matter
+/// (§FS-005-dispatch.36.6): the `work-retire` shape. A refusal is an answer in
+/// the same shape, with the guard that refused.
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct WorkRetire {
+    pub item: String,
+    pub project: String,
+    pub dry_run: bool,
+    /// Whether anything was retired: false on a dry run and on a refusal.
+    pub retired: bool,
+    /// One sentence saying what happened.
+    pub says: String,
+    /// The guard that refused, or null.
+    pub refused: Option<RetireRefusal>,
+    pub eligibility: RetireEligibility,
+    pub plans: Vec<RetirePlan>,
+    /// Every artifact of a moved plan that stays where the runtime put it
+    /// (§FS-005-dispatch.36.5).
+    pub left: Vec<PathBuf>,
+    /// The retirement's directory: where it went, or would go.
+    pub archive: Option<PathBuf>,
+    /// The record written beside it; null where none was written.
+    pub record: Option<PathBuf>,
+    /// What a half-done earlier retirement of this matter came to before this
+    /// one read anything (§FS-005-dispatch.36.5).
+    pub recovered: Vec<String>,
+}
+
+/// Why nothing moved: the guard, from a closed vocabulary, its sentence, and
+/// the paths it names (§FS-005-dispatch.36.6).
+#[derive(Debug, Clone, Serialize)]
+pub struct RetireRefusal {
+    pub guard: &'static str,
+    pub says: String,
+    pub paths: Vec<PathBuf>,
+}
+
+/// The forge's word as it was read, and the branches it was asked about
+/// (§FS-005-dispatch.36.1).
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct RetireEligibility {
+    /// The issue's state and when it closed — or the pull request's, for a
+    /// pull-request matter. Null where the forge was not read.
+    pub issue: Option<RetireState>,
+    pub merged: Vec<RetireMerged>,
+    pub branches: Vec<RetireBranch>,
+    pub discarded: Vec<RetireDiscarded>,
+    pub open: Vec<RetireOpen>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct RetireState {
+    pub state: &'static str,
+    pub closed_at: Option<String>,
+}
+
+/// A merged pull request, its head branch, and how it is tied to the matter.
+#[derive(Debug, Clone, Serialize)]
+pub struct RetireMerged {
+    pub pr: u64,
+    pub head: String,
+    pub merged_at: Option<String>,
+    pub via: &'static str,
+}
+
+/// One candidate branch and where it came from: `worktree`, `ledger`,
+/// `plan`, `lay record`, `closing pr`, `caller`.
+#[derive(Debug, Clone, Serialize)]
+pub struct RetireBranch {
+    pub name: String,
+    pub from: Vec<&'static str>,
+}
+
+/// A recorded branch that is not one: a placeholder, and why.
+#[derive(Debug, Clone, Serialize)]
+pub struct RetireDiscarded {
+    pub name: String,
+    pub why: String,
+}
+
+/// A pull request still open from a candidate, or linked to the issue.
+#[derive(Debug, Clone, Serialize)]
+pub struct RetireOpen {
+    pub pr: u64,
+    pub owner: Option<String>,
+    pub branch: String,
+}
+
+/// One plan: where it is, what became of it — `moved`, `would-move`,
+/// `left-final` or `absent` — where it went, the tasks still open in it, and
+/// whether the caller admitted it (§FS-005-dispatch.36.2).
+#[derive(Debug, Clone, Serialize)]
+pub struct RetirePlan {
+    pub plan: PathBuf,
+    pub outcome: &'static str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub to: Option<PathBuf>,
+    pub open: Vec<RetireTask>,
+    pub admitted_by_caller: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct RetireTask {
+    pub task: String,
+    pub state: String,
+}

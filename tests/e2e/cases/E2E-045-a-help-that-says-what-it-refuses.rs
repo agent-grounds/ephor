@@ -284,7 +284,6 @@ fn a_verb_that_refuses_act_says_so_in_its_help() {
 /// it is classified beside `work cancel`: its help refuses the selectors and
 /// `--act` in their refusals' words (§FS-011-command-line.10.1).
 #[test]
-#[ignore = "red until #249: work retire is classified as refusing the selectors and --act; implement removes this"]
 fn work_retire_refuses_the_selectors_and_act_in_its_help() {
     let world = World::new();
     let page = pages()

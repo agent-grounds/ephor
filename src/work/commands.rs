@@ -70,6 +70,7 @@ pub fn work(args: &WorkArgs, scope: &Projects, act: crate::scope::Act) -> Result
             sync_work(&config, sync, &projects, &gate)
         }
         WorkCommand::Cancel(cancel) => cancel_work(&config, cancel),
+        WorkCommand::Retire(retire) => super::retire::command(&config, retire),
         WorkCommand::Run(run) => {
             let projects = scope.narrow(&run.project, watched())?;
             // `--item` narrows to one matter only where the verb honours it. The
