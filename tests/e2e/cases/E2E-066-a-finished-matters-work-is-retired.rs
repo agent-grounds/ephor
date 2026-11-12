@@ -778,17 +778,42 @@ fn the_retirement_is_recorded_beside_the_archive_and_in_the_ledger() {
     let log = root.join(format!("runtime/logs/task-{plan_id}.answer-1-fix.log"));
     let spawn = root.join(format!("runtime/spawns/task-{plan_id}.answer-1-fix.json"));
     let theirs = root.join(format!("runtime/logs/task-{neighbour_id}.answer-1-fix.log"));
+    // And what ephor's own machine and drafts keep there: the ticket's report,
+    // verdict and reply — the reply where the ledger says ephor put it — and
+    // the plan's own reply; a neighbour's report is not this plan's
+    // (§FS-005-dispatch.36.5).
+    let ephor = root.join("runtime/ephor");
+    let report = ephor.join(format!("{plan_id}.answer-1.report.md"));
+    let verdict = ephor.join(format!("{plan_id}.answer-1.verdict.md"));
+    let reply = PathBuf::from(
+        site.entry(ISSUE)["dispatches"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|dispatch| dispatch["recipe"] == "answer")
+            .and_then(|dispatch| dispatch["reply_path"].as_str())
+            .expect("the ledger names where answer-1's reply goes"),
+    );
+    assert_eq!(reply, ephor.join(format!("{plan_id}.answer-1.reply.md")));
+    let plan_reply = ephor.join(format!("{plan_id}.reply.md"));
+    let their_report = ephor.join(format!("{neighbour_id}.answer-1.report.md"));
     for file in [
         cache.join("review/fix/1/a/record.json"),
         log.clone(),
         spawn.clone(),
         theirs.clone(),
+        report.clone(),
+        verdict.clone(),
+        reply.clone(),
+        plan_reply.clone(),
+        their_report.clone(),
     ] {
         fs::create_dir_all(file.parent().unwrap()).unwrap();
         fs::write(&file, "kept\n").unwrap();
     }
 
     let value = site.retired(&["--item", ISSUE, "--why", "merged as #331"]);
+    let reported = strings(&value["left"]);
 
     let archive = PathBuf::from(value["archive"].as_str().unwrap());
     let record_path = PathBuf::from(value["record"].as_str().expect("the record"));
@@ -814,18 +839,29 @@ fn the_retirement_is_recorded_beside_the_archive_and_in_the_ledger() {
         "so is the plan's own result left in the root's runtime/results:\n{left}"
     );
     let named = strings(&record["left"]);
-    for kept in [&cache, &log, &spawn] {
+    for kept in [&cache, &log, &spawn, &report, &verdict, &reply, &plan_reply] {
         assert!(
             named.iter().any(|said| Path::new(said) == kept.as_path()),
-            "{} stays where the runtime put it, and the record names it:\n{left}",
+            "{} stays where it was put, and the record names it:\n{left}",
             kept.display()
+        );
+        assert!(
+            reported
+                .iter()
+                .any(|said| Path::new(said) == kept.as_path()),
+            "and so does what --json says: {reported:#?}"
         );
         assert!(kept.exists(), "{} stays", kept.display());
     }
-    assert!(
-        !named.iter().any(|said| Path::new(said) == theirs.as_path()),
-        "the neighbour's log is not this plan's:\n{left}"
-    );
+    for neighbours in [&theirs, &their_report] {
+        assert!(
+            !named
+                .iter()
+                .any(|said| Path::new(said) == neighbours.as_path()),
+            "{} is the neighbour's, not this plan's:\n{left}",
+            neighbours.display()
+        );
+    }
 
     let entry = site.entry(ISSUE);
     let retirements = entry["retirements"].as_array().expect("retirements");
@@ -987,8 +1023,32 @@ fn a_placeholder_is_discarded_and_a_directory_workspace_moves_its_content_and_ke
     let site = placeholder(true, true);
     let plan = site.laid_plan(PLACEHOLDER);
     let index = fs::read(plan.join("index.rhei.md")).unwrap();
+    // The workflow's answer goes where ephor named it, in the root the
+    // workspace was laid in rather than in the workspace, so it stays there
+    // and the record names it (§FS-005-dispatch.36.5).
+    let answer = PathBuf::from(
+        site.entry(PLACEHOLDER)["dispatches"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|dispatch| dispatch["recipe"] == "implement")
+            .and_then(|dispatch| dispatch["reply_path"].as_str())
+            .expect("the ledger names where the workflow's answer goes"),
+    );
+    assert_eq!(
+        answer.parent(),
+        Some(plan.parent().unwrap().join("runtime/ephor").as_path())
+    );
+    fs::create_dir_all(answer.parent().unwrap()).unwrap();
+    fs::write(&answer, "an answer\n").unwrap();
 
     let value = site.retired(&["--item", PLACEHOLDER]);
+    assert_eq!(
+        strings(&value["left"]),
+        [answer.to_string_lossy().into_owned()],
+        "a workspace leaves only what ephor kept for it in its root: {value:#}"
+    );
+    assert!(answer.exists(), "the answer stays where ephor named it");
 
     let eligibility = &value["eligibility"];
     let discarded = eligibility["discarded"].as_array().unwrap();

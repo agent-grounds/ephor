@@ -21,6 +21,41 @@ const RUNTIME: &str = "runtime";
 /// Where the shipped states put what a run wrote, relative to the work root.
 const ARTIFACTS: &str = "runtime/ephor";
 
+/// What a workflow's answer is keyed by in place of a ticket: a workflow is
+/// laid with its tickets still unnamed, so its one request is the workflow's
+/// (§FS-005-dispatch.13).
+const WORKFLOW_REQUEST: &str = "workflow";
+
+/// Where ephor keeps what its own states and drafts wrote, under a root: each
+/// ticket's report, verdict and collected failures, and the replies a run
+/// drafted, every one named after its task or its plan.
+pub fn artifacts(root: &Path) -> PathBuf {
+    root.join(ARTIFACTS)
+}
+
+/// How the name of every file kept under [`artifacts`] for one task begins:
+/// the project-qualified task id — the shipped machine's `{task_id}` — and its
+/// separator, which is what keeps `answer-1`'s files apart from `answer-10`'s
+/// (§FS-005-dispatch.36.5).
+pub fn task_prefix(task: &str) -> String {
+    format!("{task}.")
+}
+
+/// Every file ephor may keep under [`artifacts`] for a plan as a whole rather
+/// than for one of its tickets: the matter's proposed reply and a workflow's
+/// answer, each as drafted and as posted (§FS-005-dispatch.13). What a moved
+/// plan leaves in the root it was laid in, where any of them is there
+/// (§FS-005-dispatch.36.5).
+pub fn kept_for_plan(root: &Path, plan_id: &str) -> Vec<PathBuf> {
+    let workflow = workflow_reply_path(root, plan_id);
+    vec![
+        reply_path(root, plan_id),
+        posted_path(root, plan_id),
+        posted_twin(&workflow),
+        workflow,
+    ]
+}
+
 /// Where the runtime itself keeps a ticket's result — the message a terminal
 /// move carried, appended as one `## Result` entry per move — relative to the
 /// work root, keyed by the ticket's project-qualified id. The runtime's own
@@ -47,9 +82,7 @@ pub fn result(root: &Path, plan_id: &str, ticket: &str) -> Option<String> {
 /// asked for a document writes a document, and its first line is a heading.
 /// Absent while the work has not reached that state, which is not a failure.
 pub fn verdict(root: &Path, plan_id: &str, ticket: &str) -> Option<String> {
-    let path = root
-        .join(ARTIFACTS)
-        .join(format!("{plan_id}.{ticket}.verdict.md"));
+    let path = verdict_path(root, &format!("{plan_id}.{ticket}"));
     let text = fs::read_to_string(path).ok()?;
     let line = text
         .lines()
@@ -58,6 +91,11 @@ pub fn verdict(root: &Path, plan_id: &str, ticket: &str) -> Option<String> {
         .map(|line| line.trim_start_matches("VERDICT:").trim())
         .or_else(|| text.lines().map(str::trim).find(|line| !line.is_empty()))?;
     Some(line.to_string())
+}
+
+/// Where the shipped machine's `review` writes a task's verdict.
+fn verdict_path(root: &Path, task: &str) -> PathBuf {
+    artifacts(root).join(format!("{}verdict.md", task_prefix(task)))
 }
 
 /// Whether a verdict line says the ticket finished **blocked**: the shipped
@@ -87,10 +125,7 @@ pub fn finished_blocked(
     }
     let qualified = format!("{plan_id}.{ticket}");
     [
-        (
-            "verdict",
-            root.join(ARTIFACTS).join(format!("{qualified}.verdict.md")),
-        ),
+        ("verdict", verdict_path(root, &qualified)),
         ("result", root.join(RESULTS).join(format!("{qualified}.md"))),
     ]
     .into_iter()
@@ -121,14 +156,23 @@ pub struct Proposal {
 /// pass over the same conversation supersedes the first rather than adding to
 /// it.
 pub fn reply_path(root: &Path, plan_id: &str) -> PathBuf {
-    root.join(ARTIFACTS).join(format!("{plan_id}.reply.md"))
+    artifacts(root).join(format!("{}reply.md", task_prefix(plan_id)))
 }
 
 /// Every request writes its own answer; late older output never replaces the
 /// latest request (§FS-005-dispatch.13, §AR-007-runtime.1).
 pub fn request_reply_path(root: &Path, plan_id: &str, ticket: &str) -> PathBuf {
-    root.join(ARTIFACTS)
-        .join(format!("{plan_id}.{ticket}.reply.md"))
+    artifacts(root).join(format!(
+        "{}reply.md",
+        task_prefix(&format!("{plan_id}.{ticket}"))
+    ))
+}
+
+/// Where a workflow's answer belongs: the one request a workflow is laid
+/// with, in the root it is laid in rather than in its own workspace
+/// (§FS-005-dispatch.13).
+pub fn workflow_reply_path(root: &Path, plan_id: &str) -> PathBuf {
+    request_reply_path(root, plan_id, WORKFLOW_REQUEST)
 }
 
 /// Read only the chosen request's file, including absent/withdrawn output;
@@ -152,21 +196,25 @@ pub fn mark_path_posted(path: &Path) -> Result<()> {
     if !path.is_file() {
         return Ok(());
     }
+    fs::rename(path, posted_twin(path))
+        .map_err(|err| EphorError::Command(format!("Cannot move {}: {err}", path.display())))
+}
+
+/// Where a request's answer is kept once it was posted: beside it, its name
+/// marked (§FS-005-dispatch.13).
+fn posted_twin(path: &Path) -> PathBuf {
     let name = path.file_name().unwrap_or_default().to_string_lossy();
-    let posted = path.with_file_name(format!(
+    path.with_file_name(format!(
         "{}.posted.md",
         name.strip_suffix(".md").unwrap_or(&name)
-    ));
-    fs::rename(path, posted)
-        .map_err(|err| EphorError::Command(format!("Cannot move {}: {err}", path.display())))
+    ))
 }
 
 /// Where a posted proposal is moved to. Posting is the one deliberate move
 /// (§FS-005-dispatch.13), and a proposal that stayed offered after it was sent
 /// would invite sending it twice.
 fn posted_path(root: &Path, plan_id: &str) -> PathBuf {
-    root.join(ARTIFACTS)
-        .join(format!("{plan_id}.reply.posted.md"))
+    posted_twin(&reply_path(root, plan_id))
 }
 
 /// The proposed answer a run left for this plan, or None where it left none —

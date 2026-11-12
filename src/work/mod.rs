@@ -3177,7 +3177,7 @@ impl Dispatcher {
         // (§FS-005-dispatch.13).
         values.insert(
             std::borrow::Cow::Borrowed("reply"),
-            runtime::results::request_reply_path(&site.dir, &plan_id, "workflow")
+            runtime::results::workflow_reply_path(&site.dir, &plan_id)
                 .to_string_lossy()
                 .into_owned(),
         );
@@ -3514,7 +3514,7 @@ impl Dispatcher {
         self.carry_over_before_writing(Some(&item.id))?;
         self.begin_handoff();
         let workflow_reply_path =
-            runtime::results::request_reply_path(&laying.site.dir, &laying.plan_id, "workflow");
+            runtime::results::workflow_reply_path(&laying.site.dir, &laying.plan_id);
         let workflow_reply_binding = self.capture_reply(item, workflow_reply_path.clone())?;
         self.journal_work_root(&laying.site.dir)?;
         self.mint(item, &laying.site)?;

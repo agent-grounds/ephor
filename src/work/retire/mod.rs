@@ -1088,7 +1088,7 @@ struct Layout {
     to: BTreeMap<PathBuf, PathBuf>,
     /// The roots something came from, in the order they were read.
     roots: Vec<PathBuf>,
-    /// What a moved single plan leaves in its shared root
+    /// What a moved plan leaves in the root it shared
     /// (§FS-005-dispatch.36.5).
     left: Vec<PathBuf>,
 }
@@ -1142,10 +1142,10 @@ fn layout(
                 from: found.unit.clone(),
                 to: to.clone(),
             });
-            layout
-                .left
-                .extend(exclusion::left_behind(&found.unit, &found.plan_id));
         }
+        layout
+            .left
+            .extend(exclusion::left_behind(&found.unit, &found.plan_id));
         if let Some(record) = witness::lay_record_dir(&found.unit) {
             if let Some(record_name) = record.file_name() {
                 layout.moves.push(Move {
