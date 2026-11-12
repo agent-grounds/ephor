@@ -14,6 +14,7 @@ pub mod hold;
 pub mod ledger;
 pub mod private;
 mod ranking;
+mod reading;
 pub mod recipe;
 pub mod retire;
 pub mod retired;
@@ -144,9 +145,12 @@ pub struct TicketStatus {
     /// abandonment state (§FS-005-dispatch.16). Finished too, since that
     /// state is final — this says which kind of over it is.
     pub cancelled: bool,
-    /// The runtime has stopped on this ticket and a person has to answer it
-    /// (§FS-005-dispatch.9).
+    /// A manual gate, kept separate from a poll's display person wait so a
+    /// poll never offers a manual advance (§FS-005-dispatch.9).
     pub waiting: bool,
+    /// Display facts from this plan and machine, retained in the same snapshot
+    /// as the live run witness (§FS-005-dispatch.9); absent from public JSON.
+    pub(crate) reading: reading::TicketReading,
     /// Who claimed the ticket, where anyone has — a claimed ticket is not a
     /// run's to advance (§FS-005-dispatch.15).
     pub assignee: Option<String>,
@@ -189,6 +193,29 @@ pub struct Cancelled {
 }
 
 impl TicketStatus {
+    /// Who this live ticket awaits (§FS-005-dispatch.9): the reader at a gate,
+    /// or the person its poll declares. Finished work awaits nobody.
+    pub(crate) fn person_wait(&self) -> Option<&str> {
+        if self.finished {
+            None
+        } else if self.waiting {
+            Some("you")
+        } else {
+            self.reading.waiting_on.as_deref()
+        }
+    }
+
+    /// The same person-wait wording on the badge and expanded rows
+    /// (§FS-005-dispatch.9). Machine-created steps have no recipe: their own
+    /// id is its fallback, and saying it twice would bury the question.
+    fn wait_said(&self) -> Option<String> {
+        let person = self.person_wait()?;
+        Some(match self.recipe == self.id {
+            true => format!("waiting on {person} · {}", self.id),
+            false => format!("{} · waiting on {person} · {}", self.recipe, self.id),
+        })
+    }
+
     /// What a finished ticket's row says after its recipe: `finished blocked`
     /// where its verdict is `blocked`, never the verdict's imperative sentence
     /// on its own, which reads as a person being waited on now; otherwise the
@@ -478,10 +505,10 @@ impl WorkStatus {
             .find(|plan| plan.is_file())
     }
 
-    /// Work that has stopped and is waiting on a person. The one thing in here
-    /// that is nobody else's to move (§FS-005-dispatch.9).
+    /// The manual gate whose question and advance the work screen offers.
+    /// Display person polls grant no manual action (§FS-005-dispatch.9).
     pub fn waiting(&self) -> Option<&TicketStatus> {
-        self.tickets.iter().find(|ticket| ticket.waiting)
+        reading::gate(&self.tickets).map(|at| &self.tickets[at])
     }
 
     /// Whether there is nothing here to read at all: a plan the record named
@@ -584,16 +611,11 @@ impl WorkStatus {
         // A question for a person leads: everything else in the badge is the
         // runtime telling you what it is doing, and this is it telling you it
         // has stopped.
-        if let Some(waiting) = self.waiting() {
-            // A ticket the machine opened for itself has no recipe — its
-            // "recipe" falls back to its own id, and saying that twice is
-            // noise where the point is the question.
-            return self.warned(match waiting.recipe == waiting.id {
-                true => format!("⚠ waiting on you · {}", waiting.id),
-                false => format!("⚠ {} · waiting on you · {}", waiting.recipe, waiting.id),
-            });
+        let current = reading::current(&self.tickets).map(|at| &self.tickets[at]);
+        if let Some(said) = current.and_then(TicketStatus::wait_said) {
+            return self.warned(format!("⚠ {said}"));
         }
-        let mut badge = match self.tickets.iter().rev().find(|ticket| !ticket.finished) {
+        let mut badge = match current {
             Some(open) => format!(
                 "⚙ {} · {}",
                 open.recipe,
@@ -650,17 +672,12 @@ impl WorkStatus {
         }
         let mut lines: Vec<WorkLine> = Vec::new();
         let open = self.tickets.iter().filter(|ticket| !ticket.finished);
-        for ticket in open.clone().filter(|ticket| ticket.waiting) {
-            // A ticket the machine opened for itself has no recipe — its
-            // "recipe" falls back to its own id, and saying that twice is
-            // noise where the point is the question.
-            let said = match ticket.recipe == ticket.id {
-                true => format!("waiting on you · {}", ticket.id),
-                false => format!("{} · waiting on you · {}", ticket.recipe, ticket.id),
-            };
-            lines.push(WorkLine::of(Tone::Waiting, "⚠", said, ticket));
+        for ticket in open.clone() {
+            if let Some(said) = ticket.wait_said() {
+                lines.push(WorkLine::of(Tone::Waiting, "⚠", said, ticket));
+            }
         }
-        for ticket in open.filter(|ticket| !ticket.waiting) {
+        for ticket in open.filter(|ticket| ticket.person_wait().is_none()) {
             let mut said = format!(
                 "{} · {}",
                 ticket.recipe,
@@ -6926,7 +6943,16 @@ pub fn status_of_entry_seen(
                 )
             })
         };
-        for ticket in plan.into_iter().flat_map(|plan| plan.tickets()) {
+        // Resolve prerequisites within this plan in the current snapshot;
+        // equal local ids in other plans establish no ordering (§FS-005-dispatch.9).
+        let plan_tickets = plan.map(|plan| plan.tickets()).unwrap_or_default();
+        let offset = tickets.len();
+        let indices: BTreeMap<String, usize> = plan_tickets
+            .iter()
+            .enumerate()
+            .map(|(at, ticket)| (ticket.id.clone(), offset + at))
+            .collect();
+        for ticket in plan_tickets {
             let running = holds(&ticket);
             let finished = ticket
                 .state
@@ -6941,6 +6967,22 @@ pub fn status_of_entry_seen(
                 false => Vec::new(),
             };
             tickets.push(TicketStatus {
+                reading: reading::TicketReading {
+                    waiting_on: ticket
+                        .state
+                        .as_deref()
+                        .and_then(|state| machine.as_ref()?.waiting_on(state).map(str::to_string)),
+                    polling: ticket.state.as_deref().is_some_and(|state| {
+                        machine
+                            .as_ref()
+                            .is_some_and(|root| root.poll_interval(state).is_some())
+                    }),
+                    prior: ticket
+                        .prior
+                        .iter()
+                        .filter_map(|id| indices.get(id.as_str()).copied())
+                        .collect(),
+                },
                 outcome_files,
                 running,
                 queued: live && !running,
@@ -6954,9 +6996,10 @@ pub fn status_of_entry_seen(
                     && machine
                         .as_ref()
                         .is_some_and(|root| root.cancel_state().is_some()),
-                waiting: ticket.state.as_deref().is_some_and(|state| {
-                    machine.as_ref().is_some_and(|root| root.is_gating(state))
-                }),
+                waiting: !finished
+                    && ticket.state.as_deref().is_some_and(|state| {
+                        machine.as_ref().is_some_and(|root| root.is_gating(state))
+                    }),
                 verdict: runtime::results::verdict(artifacts, &recorded.plan_id, &ticket.id)
                     .or_else(|| {
                         ticket
@@ -6975,19 +7018,14 @@ pub fn status_of_entry_seen(
             held_in.push(recorded.path.clone());
         }
     }
-    // What the matter is still at, ranked as the badge ranks it: a task
-    // waiting on a person stands ahead of anything else (§FS-005-dispatch.9),
-    // and otherwise the last one nothing has finished.
-    let open_at = tickets
-        .iter()
-        .position(|ticket| ticket.waiting)
-        .or_else(|| tickets.iter().rposition(|ticket| !ticket.finished))
-        .map(|at| OpenWork {
-            plan: held_in[at].clone(),
-            ticket: tickets[at].id.clone(),
-            state: tickets[at].state.clone().unwrap_or_else(|| "?".to_string()),
-        });
-    let advance = tickets.iter().find(|ticket| ticket.waiting).map(|ticket| {
+    // One selector for the badge and location (§FS-005-dispatch.9).
+    let open_at = reading::current(&tickets).map(|at| OpenWork {
+        plan: held_in[at].clone(),
+        ticket: tickets[at].id.clone(),
+        state: tickets[at].state.clone().unwrap_or_else(|| "?".to_string()),
+    });
+    let advance = reading::gate(&tickets).map(|at| {
+        let ticket = &tickets[at];
         runtime::advance_command(global, &ticket.id, ticket.state.as_deref().unwrap_or("?"))
     });
     let archive_missing = retired.iter().any(|retired| retired.archive_missing);

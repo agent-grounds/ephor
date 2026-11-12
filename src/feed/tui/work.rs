@@ -500,7 +500,7 @@ impl WorkScreen {
                     }
                     let (marker, style) = if ticket.cancelled {
                         ("⊘", dim)
-                    } else if ticket.waiting {
+                    } else if ticket.person_wait().is_some() {
                         (
                             "⚠",
                             Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
@@ -538,6 +538,11 @@ impl WorkScreen {
                             dim,
                         ),
                     ];
+                    // A poll names its person without offering a manual move
+                    // (§FS-005-dispatch.9); the gate's action stays below.
+                    if let Some(person) = ticket.person_wait() {
+                        spans.push(Span::styled(format!(" · waiting on {person}"), style));
+                    }
                     // When it was asked for, where anything knows — a ticket
                     // ephor did not dispatch carries no age rather than a
                     // guessed one (§FS-005-dispatch.18).
@@ -811,6 +816,7 @@ mod tests {
             unread_workflows: 0,
             open_at: None,
             tickets: vec![TicketStatus {
+                reading: Default::default(),
                 running: false,
                 queued: false,
                 id: "fix-gate-1".to_string(),
@@ -1336,6 +1342,7 @@ mod tests {
     fn status_with_open_tickets() -> WorkStatus {
         let mut status = status(false);
         let open = |id: &str, state: &str| TicketStatus {
+            reading: Default::default(),
             running: false,
             queued: false,
             id: id.to_string(),
