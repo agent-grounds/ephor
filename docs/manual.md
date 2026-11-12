@@ -3630,14 +3630,14 @@ archive/<project>/<item-slug>/<UTC stamp>/
     states.yaml                  a copy of that root's machine
 ```
 
-A single plan's lock file stays at its old path, and a workspace keeps its
-`runtime/` directory and every lock where they were: what stays has no plan
-index, so nothing reads it as a plan. Every file the runtime keeps in a shared
-root for each of a single plan's tickets stays there too: under `runtime/`, its
-result, its logs, spawns and session reports, its snapshot sessions, its
-worktree reference, its exports and its accounting, and its entry in the
-snapshot cache under `.rhei/cache/snapshots/`. So does every file ephor's own
-machine and drafts keep there under `runtime/ephor/`: each ticket's report,
+A single plan's lock file stays at its old path, and a workspace keeps the
+runtime's own `.rhei/` directory and every lock where they were: what stays has
+no plan index, so nothing reads it as a plan. Every file the runtime keeps in a
+shared root for each of a single plan's tickets stays there too: under
+`runtime/`, its result, its logs, spawns and session reports, its snapshot
+sessions, its worktree reference, its exports and its accounting, and its entry
+in the snapshot cache under `.rhei/cache/snapshots/`. So does every file ephor's
+own machine and drafts keep there under `runtime/ephor/`: each ticket's report,
 verdict, failures and reply, and the plan's own reply, drafted or posted. A
 workspace takes the runtime's files with it, but a workflow's answer is drafted
 in the root it was laid in, and stays there. The record's `left` names each.
@@ -3972,8 +3972,7 @@ ephor work states
   `forget --done` reads the archived plans, `forget --missing` takes the entry
   only once its archive is gone, `forget --json` names a retired plan by
   `retired_to`, and `cancel` is refused for a ticket in a retired plan, naming
-  the archive. With no ticket, `cancel --item` says the matter's work was
-  retired and where it is kept.
+  the archive.
 
 ### 8.10 The ledger
 
