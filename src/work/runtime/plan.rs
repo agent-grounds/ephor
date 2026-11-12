@@ -156,8 +156,9 @@ pub struct StateInfo {
     /// The state's `poll:` declares `waiting_on:` — what this wait is for is
     /// a person's answer, not a machine's (§FS-005-dispatch.24). The other
     /// half of [`StateInfo::is_gating`]: both are work stopped until somebody
-    /// answers, and they differ only in who resumes it.
-    pub waits_on_person: bool,
+    /// answers, and they differ only in who resumes it. Retain the declared
+    /// label for the work reading (§FS-005-dispatch.9).
+    pub waiting_on: Option<String>,
     /// How long the state's `poll:` waits between its attempts, where the
     /// state declares one (§FS-005-dispatch.24.4). `None` is a state that does
     /// not poll at all.
@@ -357,7 +358,17 @@ impl WorkRoot {
     /// has to say so, and why a reading that only knew `gating` would call
     /// six hours of waiting on an author live work.
     pub fn waits_on_person(&self, state: &str) -> bool {
-        self.flag(state, |info| info.waits_on_person)
+        self.waiting_on(state).is_some()
+    }
+
+    /// Whose answer a poll declares it awaits (§FS-005-dispatch.9), read in
+    /// the adapter's grammar (§AR-007-runtime.1). Gates are a separate fact:
+    /// naming somebody here grants no manual transition or advance command.
+    pub fn waiting_on(&self, state: &str) -> Option<&str> {
+        self.states
+            .iter()
+            .find(|info| info.name == state)
+            .and_then(|info| info.waiting_on.as_deref())
     }
 
     /// How long a state's poll waits between attempts: `None` where the state
@@ -878,7 +889,7 @@ fn state_infos(yaml: &str) -> Vec<StateInfo> {
                 is_final: false,
                 is_gating: false,
                 needs_input: false,
-                waits_on_person: false,
+                waiting_on: None,
                 poll: None,
             });
         } else if indent > 2 {
@@ -904,11 +915,12 @@ fn state_infos(yaml: &str) -> Vec<StateInfo> {
             }
             // Only the poll's own key says who it waits on, the same key an
             // `interval:` is read from (§FS-005-dispatch.24.4).
-            let person_wait = waits_on_someone(trimmed)
-                && match indent {
-                    4 => trimmed.starts_with("poll:"),
-                    _ => in_poll && poll_keys == Some(indent),
-                };
+            let person_wait = match indent {
+                4 => trimmed.starts_with("poll:"),
+                _ => in_poll && poll_keys == Some(indent),
+            }
+            .then(|| waiting_on(trimmed))
+            .flatten();
             if let Some(last) = states.last_mut() {
                 if let Some(value) = flag("final:") {
                     last.is_final = value;
@@ -922,8 +934,8 @@ fn state_infos(yaml: &str) -> Vec<StateInfo> {
                 if indent == 4 && trimmed == "inputs:" {
                     last.needs_input = true;
                 }
-                if person_wait {
-                    last.waits_on_person = true;
+                if let Some(person) = person_wait {
+                    last.waiting_on = Some(person.to_string());
                 }
                 // How long the poll waits, read where the poll says it and
                 // unknown until it does (§FS-005-dispatch.24.4): an anchor, a
@@ -945,7 +957,7 @@ fn state_infos(yaml: &str) -> Vec<StateInfo> {
     states
 }
 
-/// Whether a line of a poll declares that it waits on somebody: the label its
+/// Whom a line of a poll declares that it waits on: the label its
 /// `waiting_on:` key gives, as an entry of the flow mapping a `poll:` line
 /// opens or as the key a block poll's line starts with, unquoted
 /// (§FS-005-dispatch.24). The key alone declares it (§FS-005-dispatch.24.4):
@@ -953,8 +965,8 @@ fn state_infos(yaml: &str) -> Vec<StateInfo> {
 /// one declares nobody, and neither does one inside another key's value. A
 /// blank label is not a declaration — the runtime refuses one, and reading it
 /// as a person wait would hand out capacity on a machine that will not run at
-/// all.
-fn waits_on_someone(line: &str) -> bool {
+/// all. Keep the label for display as well (§FS-005-dispatch.9).
+fn waiting_on(line: &str) -> Option<&str> {
     let line = uncommented(line);
     let label = match line.strip_prefix("poll:") {
         Some(rest) => rest
@@ -963,13 +975,9 @@ fn waits_on_someone(line: &str) -> bool {
             .and_then(|flow| flow_value(flow, "waiting_on")),
         None => line.strip_prefix("waiting_on:"),
     };
-    label.is_some_and(|label| {
-        !label
-            .trim()
-            .trim_matches(['"', '\''].as_slice())
-            .trim()
-            .is_empty()
-    })
+    label
+        .map(|label| label.trim().trim_matches(['"', '\''].as_slice()).trim())
+        .filter(|label| !label.is_empty())
 }
 
 /// A value with its trailing YAML comment left out: a `#` that opens the text

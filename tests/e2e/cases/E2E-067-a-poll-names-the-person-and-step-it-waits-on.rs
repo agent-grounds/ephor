@@ -162,7 +162,6 @@ fn assert_display(site: &Path, warning: Option<&str>) {
 }
 
 #[test]
-#[ignore = "red until #257: owner poll leads unstarted ship in row and location; implement removes this"]
 fn issue257_owner_poll_names_its_person_and_parked_step() {
     let tmp = poll_site(
         "    poll:\n      interval: 10m\n      max_attempts: 1008\n      waiting_on: owner\n",
@@ -171,21 +170,18 @@ fn issue257_owner_poll_names_its_person_and_parked_step() {
 }
 
 #[test]
-#[ignore = "red until #257: flow poll displays its actual person and step; implement removes this"]
 fn issue257_flow_poll_names_another_declared_person() {
     let tmp = poll_site("    poll: { interval: 10m, max_attempts: 1008, waiting_on: author }\n");
     assert_display(tmp.path(), Some("waiting on author"));
 }
 
 #[test]
-#[ignore = "red until #257: machine poll leads its unstarted dependent; implement removes this"]
 fn issue257_machine_poll_names_its_step_without_a_person_warning() {
     let tmp = poll_site("    poll:\n      interval: 10m\n      max_attempts: 1008\n");
     assert_display(tmp.path(), None);
 }
 
 #[test]
-#[ignore = "red until #257: commented machine poll leads its dependent without a person warning; implement removes this"]
 fn issue257_trailing_comment_does_not_declare_a_person() {
     let tmp = poll_site("    poll: { interval: 10m, max_attempts: 1008 }  # waiting_on: owner\n");
     assert_display(tmp.path(), None);

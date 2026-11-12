@@ -471,7 +471,6 @@ fn entry_for(root: &Path, plan_path: &Path) -> Entry {
 /// The ordinary-work fallback uses a live runtime witness and Prior facts,
 /// not the last open task or an assignee (§FS-005-dispatch.9).
 #[test]
-#[ignore = "red until #257: witnessed running work leads its unstarted dependent; implement removes this"]
 fn issue257_a_witnessed_running_step_leads_an_unstarted_claimed_dependent() {
     let tmp = tempfile::tempdir().unwrap();
     let root = tmp.path().join("panta");
@@ -985,6 +984,7 @@ fn a_plan_under_an_organization_root_is_enumerated_and_one_with_no_answer_is_ski
 
 fn ticket(id: &str, state: &str) -> TicketStatus {
     TicketStatus {
+        reading: Default::default(),
         running: false,
         queued: false,
         id: id.to_string(),
