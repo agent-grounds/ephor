@@ -156,6 +156,11 @@ pub struct ActionConfig {
     /// menu and the command line cannot disagree
     /// (§AR-005-capabilities.2).
     pub held: Option<String>,
+    /// Why ephor's own entry is not offered on this subject, where the reader
+    /// would look for it (§FS-004-quick-actions.10). Never configuration:
+    /// ephor derives it, and the row is gated on it, so it is shown with its
+    /// reason on the screen and on the command line rather than left out.
+    pub withheld: Option<String>,
     /// Ask before running it.
     pub confirm: bool,
     /// It runs beneath the screen as a job rather than taking the terminal
@@ -475,6 +480,7 @@ impl TryFrom<RawAction> for ActionConfig {
             root: raw.root,
             minted: None,
             held: None,
+            withheld: None,
             confirm: raw.confirm,
             background: raw.background,
             window: raw.window,

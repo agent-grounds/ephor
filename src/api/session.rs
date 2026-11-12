@@ -214,10 +214,9 @@ impl Session {
         };
         recognized.extend(from(crate::work::runtime::workflow::Source::Runtime));
         // A finished matter whose recorded work was never retired is offered
-        // retirement, checkout or not (§FS-004-quick-actions.10).
-        if item.is_finished() && self.unretired(&item.id) {
-            recognized.push(offers::retire_action(None));
-        }
+        // retirement, checkout or not, and where it is not, the entry says why
+        // (§FS-004-quick-actions.10).
+        recognized.extend(self.item_retire(item));
         let mut offered = self.offers(item, &facts);
         offered.extend(from(crate::work::runtime::workflow::Source::Project));
         let mut configured = offers::applicable(&self.actions, project, item, &facts);
@@ -477,14 +476,32 @@ impl Session {
     }
 
     /// Whether the ledger records work about `id` that no retirement has
-    /// taken (§FS-004-quick-actions.10). Read only for a finished matter.
+    /// taken (§FS-004-quick-actions.10).
     fn unretired(&self, id: &str) -> bool {
         crate::work::ledger::load()
             .is_ok_and(|ledger| crate::work::retire::has_unretired_work(&ledger, id))
     }
 
+    /// Retirement on a matter's menu (§FS-004-quick-actions.10): offered where
+    /// the item is finished in the cache and the ledger records work about it
+    /// never retired. Where it is one of the two and not the other the entry
+    /// stands with the note saying which, and a matter that is neither — open,
+    /// with nothing recorded — has nothing to say about retiring.
+    fn item_retire(&self, item: &Item) -> Option<ActionConfig> {
+        match (item.is_finished(), self.unretired(&item.id)) {
+            (true, true) => Some(offers::retire_action(None)),
+            (false, true) => Some(offers::retire_withheld(
+                offers::RETIRE_STILL_OPEN.to_string(),
+            )),
+            (true, false) => Some(offers::retire_withheld(offers::RETIRE_NO_WORK.to_string())),
+            (false, false) => None,
+        }
+    }
+
     /// Retirement on a branch row, where the branch identifies exactly one
-    /// finished matter with work never retired (§FS-004-quick-actions.10).
+    /// finished matter with work never retired; a branch carrying several
+    /// names each, so the reader can retire each by its item
+    /// (§FS-004-quick-actions.10).
     fn branch_retire(&self, project: &str, branch: &str) -> Option<ActionConfig> {
         let checkout = self.placement(project)?.workspace_for(branch)?;
         let ledger = crate::work::ledger::load().ok()?;
@@ -492,8 +509,10 @@ impl Session {
             crate::work::retire::matters_at(&ledger, project, Some(branch), &checkout)
                 .into_iter()
                 .collect();
-        let [matter] = matters.as_slice() else {
-            return None;
+        let matter = match matters.as_slice() {
+            [] => return None,
+            [matter] => matter,
+            several => return Some(offers::retire_withheld(offers::retire_several(several))),
         };
         let finished = self.item(matter).is_some_and(|item| item.is_finished());
         (finished && crate::work::retire::has_unretired_work(&ledger, matter))

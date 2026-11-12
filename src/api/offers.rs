@@ -171,6 +171,35 @@ pub fn retire_action(item: Option<&str>) -> ActionConfig {
     }
 }
 
+/// The retire entry where it is not offered, saying why in the reader's terms
+/// (§FS-004-quick-actions.10): the one row the offer would be, gated on its
+/// reason, so the screen greys it with the note and `actions run retire` refuses
+/// with it.
+pub fn retire_withheld(why: String) -> ActionConfig {
+    ActionConfig {
+        withheld: Some(why),
+        ..retire_action(None)
+    }
+}
+
+/// Why a matter's menu does not offer retiring: the item is not finished.
+pub const RETIRE_STILL_OPEN: &str =
+    "the item is still open: only a finished matter's work is retired";
+
+/// Why a finished matter's menu does not offer retiring: nothing recorded
+/// about it is left to put away.
+pub const RETIRE_NO_WORK: &str = "there is no recorded work about this item left to retire";
+
+/// Why a branch row does not offer retiring where the branch carries several
+/// matters: each of them, by the item that retires it.
+pub fn retire_several(matters: &[String]) -> String {
+    format!(
+        "the branch carries {} matters ({}); retire each by its item with --item",
+        matters.len(),
+        matters.join(", ")
+    )
+}
+
 /// One entry for both rebases, so the key the reader presses and the command a
 /// state machine runs stay one operation (§FS-005-dispatch.12) and the two
 /// offers cannot drift apart in how they are run.
@@ -750,6 +779,11 @@ pub fn gate_of(action: &ActionConfig, state: &WorkspaceState, can: &CapabilitySe
     // worn by the row and by the door (§FS-005-dispatch.33).
     if let Some(held) = &action.held {
         return Gate::Blocked(held.clone());
+    }
+    // ephor's own entry, shown where it is not offered so the reason is read
+    // where the entry would be (§FS-004-quick-actions.10).
+    if let Some(why) = &action.withheld {
+        return Gate::Blocked(why.clone());
     }
     // Naming also resolves a hand-off's selected work root. Its refusal wins
     // before checkout gating, including entries that need no checkout

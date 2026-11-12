@@ -1926,7 +1926,11 @@ with or without a checkout: a matter whose checkout is already gone is the
 commonest case
 ([§FS-004-quick-actions.10](functional-spec/FS-004-quick-actions.md#10-a-finished-matters-leftover-work-is-offered-retirement)).
 Under `ephor actions --project P --branch B` it is offered on a branch only
-where the branch belongs to exactly one such matter. It runs
+where the branch belongs to exactly one such matter. Where it is not offered,
+the row stands blocked with the reason, and `actions run retire` refuses with
+it: the item is still open; no recorded work about it is left to retire; or the
+branch carries several matters, named, so you retire each with `--item`. An open
+matter with nothing recorded has no row. It runs
 `ephor work retire --item ID` (§8.7.3). The cache only makes the offer: the verb
 asks the forge again, so an offer made from a stale cache is refused with the
 guard's own sentence. It asks first, so `actions run retire` needs `--yes`, and
