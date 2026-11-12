@@ -520,24 +520,23 @@ impl WorkStatus {
     /// One row per retirement, saying where its work went — a quiet row — or,
     /// where its archive is gone, that it is (§FS-005-dispatch.4).
     fn retired_lines(&self) -> Vec<WorkLine> {
-        let mut lines: Vec<WorkLine> = Vec::new();
-        let mut seen: Vec<&std::path::Path> = Vec::new();
-        for retired in &self.retired {
-            if seen.contains(&retired.archive.as_path()) {
-                continue;
-            }
-            seen.push(&retired.archive);
-            let gone = self
-                .retired
-                .iter()
-                .filter(|other| other.archive == retired.archive)
-                .find(|other| other.archive_missing);
-            lines.push(match gone {
-                Some(gone) => WorkLine::said(Tone::Waiting, "⚠", gone.said()),
-                None => WorkLine::said(Tone::Over, "⊟", retired.said()),
-            });
-        }
-        lines
+        self.retired_once()
+            .into_iter()
+            .map(|retired| match retired.archive_missing {
+                true => WorkLine::said(Tone::Waiting, "⚠", retired.said()),
+                false => WorkLine::said(Tone::Over, "⊟", retired.said()),
+            })
+            .collect()
+    }
+
+    /// The retired placements one per archive, as every surface says them
+    /// (§FS-005-dispatch.4).
+    pub fn retired_once(&self) -> Vec<&retired::Retired> {
+        retired::one_per_archive(
+            &self.retired,
+            |retired| &retired.archive,
+            |retired| retired.archive_missing,
+        )
     }
 
     /// A row that has something to say and a plan that could not be read says

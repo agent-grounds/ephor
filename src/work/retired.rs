@@ -78,6 +78,29 @@ pub fn entry_placement_stands(entry: &Entry) -> bool {
     !entry.dispatches.iter().any(is_retired)
 }
 
+/// One of `items` per archive, in the order first seen: the one saying its
+/// archive is gone where any placement in that archive does, and otherwise the
+/// first (§FS-005-dispatch.4). A retirement that took two placements went to
+/// one archive, so every surface saying where it went says it once.
+pub fn one_per_archive<'a, T>(
+    items: &'a [T],
+    archive: impl Fn(&T) -> &Path,
+    missing: impl Fn(&T) -> bool,
+) -> Vec<&'a T> {
+    let mut out: Vec<&T> = Vec::new();
+    for item in items {
+        if out.iter().any(|seen| archive(seen) == archive(item)) {
+            continue;
+        }
+        let gone = items
+            .iter()
+            .filter(|other| archive(other) == archive(item))
+            .find(|other| missing(other));
+        out.push(gone.unwrap_or(item));
+    }
+    out
+}
+
 /// The plan names this matter's retired dispatches recorded in `root`. The
 /// record keeps them as where the work was committed, so new work laid in that
 /// root takes none of them (§FS-005-dispatch.5).

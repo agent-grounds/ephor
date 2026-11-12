@@ -1171,7 +1171,8 @@
                 "at": { "type": "string", "format": "date-time" },
                 "root": { "type": "string" },
                 "checkout": { "type": "string" },
-                "branch": { "type": "string" }
+                "branch": { "type": "string" },
+                "retired_at": { "type": "string", "format": "date-time", "description": "When this workflow's plan was retired (FS-005-dispatch.36.5): it is then in the archive `retired` names, not in `root`. Absent where it was not retired." }
               }
             }
           }
