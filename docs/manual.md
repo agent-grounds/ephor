@@ -3627,11 +3627,14 @@ archive/<project>/<item-slug>/<UTC stamp>/
 
 A single plan's lock file stays at its old path, and a workspace keeps its
 `runtime/` directory and every lock where they were: what stays has no plan
-index, so nothing reads it as a plan. Its results and snapshot files stay in a
-shared root too, and the record's `left` names each. Every move is a rename, so
-the archive must be on the same filesystem as the plans, and outside every root,
-store, project and worktree a reader walks. A path git tracks is never moved.
-Each of those refuses before anything moves.
+index, so nothing reads it as a plan. Every file the runtime keeps in a shared
+root for each of a single plan's tickets stays there too: under `runtime/`, its
+result, its logs, spawns and session reports, its snapshot sessions, its
+worktree reference, its exports and its accounting, and its entry in the
+snapshot cache under `.rhei/cache/snapshots/`. The record's `left` names each.
+Every move is a rename, so the archive must be on the same filesystem as the
+plans, and outside every root, store, project and worktree a reader walks. A
+path git tracks is never moved. Each of those refuses before anything moves.
 
 **The record is written first.** `retirement.json` is written `pending` before
 the first move, the ledger save is the commit, and then the record says

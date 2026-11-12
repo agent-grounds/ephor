@@ -34,16 +34,37 @@ const PENDING_REMOVAL: &str = ".rhei/pending-removal.json";
 /// The suffix of every lock file the runtime keeps beside the file it guards.
 const LOCK_SUFFIX: &str = ".lock";
 
-/// Where a shared root keeps the runtime's per-session snapshot cache: one
-/// entry per task session, named after the task id
-/// (`<task>-<state>-<slug>-<nonce>`).
-const SNAPSHOT_SESSIONS: &str = "runtime/snapshot-sessions";
+/// The transition log's writer lock, which the runtime keeps at the root beside
+/// `runtime/` rather than in it, so a reset that replaces `runtime/` keeps it.
+const TRANSITION_LOG_LOCK: &str = "runtime.state-transitions.log.lock";
+
+/// The one lock every metrics writer takes, inside the metrics directory.
+const METRICS_LOCK: &str = "runtime/metrics/.lock";
+
+/// The runtime's directory of per-run files inside a root.
+const RUNTIME: &str = "runtime";
+
+/// Where a root keeps the runtime's snapshot cache by default: one entry per
+/// task, named after the task id.
+const SNAPSHOT_CACHE: &str = ".rhei/cache/snapshots";
 
 /// The index that makes a directory a workspace.
 const INDEX: &str = "index.rhei.md";
 
 /// The listing verb, and how long it gets: a local read.
 const RUNS_VERB: [&str; 2] = ["runs", "--json"];
+
+/// How the listing starts the line it prints on stderr for a run it could not
+/// decide about, which goes on with that run's summary line.
+const UNDECIDED: &str = "warning: could not check ";
+
+/// What stands in a summary line for a run whose entry could not be read at
+/// all, so it names no plan and could be any root's.
+const UNREADABLE_ENTRY: &str = "(unreadable entry)";
+
+/// The word a run's summary line puts before its count of parallel slots, two
+/// spaces after which comes the run's plan path.
+const PARALLEL: &str = " parallel ";
 
 /// One unit a move takes, as the runtime sees it.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -110,15 +131,19 @@ pub fn roots(units: &[Unit]) -> Vec<PathBuf> {
 
 /// Every writer lock guarding a file the move of `unit` takes, as a rule
 /// rather than a list (§FS-005-dispatch.36.3). A single file's own lock; for a
-/// workspace its index's and each task file's, whether present or not, and
-/// every lock already under it outside the runtime's own directory — which is
-/// how a lock the runtime adds for a file there later is held too.
+/// workspace its index's, each task file's, the transition log's and the
+/// metrics', whether present or not, where the runtime puts each, and every
+/// lock already under it outside the runtime's own directory — which is how a
+/// lock the runtime adds for a file there later is held too. The runtime keeps
+/// no lock for notes of its own, so none is made up; one present is held.
 pub fn writer_locks(unit: &Unit) -> Vec<PathBuf> {
     let mut locks = Vec::new();
     match unit {
         Unit::File(file) => locks.push(plan::sidecar_of(file)),
         Unit::Workspace(dir) => {
             locks.push(plan::sidecar_of(&dir.join(INDEX)));
+            locks.push(dir.join(TRANSITION_LOG_LOCK));
+            locks.push(dir.join(METRICS_LOCK));
             if let Ok(entries) = fs::read_dir(dir.join("tasks")) {
                 for entry in entries.flatten() {
                     let path = entry.path();
@@ -226,30 +251,116 @@ fn holds_staying(dir: &Path) -> std::io::Result<bool> {
 }
 
 /// What a moved single plan leaves in its shared root
-/// (§FS-005-dispatch.36.5): its lock file, its files under the root's results
-/// directory, and its entries in the runtime's snapshot-session cache.
+/// (§FS-005-dispatch.36.5): its lock file, and every file the runtime keeps
+/// for each of its tickets there, found by the runtime's own naming of them —
+/// the result, the logs, spawns and reports, the snapshot sessions, the
+/// worktree reference, the exports, the accounting, and the snapshot cache.
+/// The lock file first, then the rest sorted.
 pub fn left_behind(plan_file: &Path, plan_id: &str) -> Vec<PathBuf> {
     let mut left = vec![plan::sidecar_of(plan_file)];
-    let Some(root) = plan_file.parent() else {
+    let (Some(root), Ok(Some(read))) = (plan_file.parent(), plan::Plan::read(plan_file)) else {
         return left;
     };
-    let prefix = format!("{plan_id}.");
-    for dir in [
-        root.join(super::results::RESULTS),
-        root.join(SNAPSHOT_SESSIONS),
-    ] {
-        let Ok(entries) = fs::read_dir(&dir) else {
-            continue;
-        };
-        let mut found: Vec<PathBuf> = entries
-            .flatten()
-            .filter(|entry| entry.file_name().to_string_lossy().starts_with(&prefix))
-            .map(|entry| entry.path())
-            .collect();
-        found.sort();
-        left.extend(found);
+    let mut found = Vec::new();
+    for ticket in read.tickets() {
+        let task = format!("{plan_id}.{}", ticket.id);
+        for (dir, named) in kept_for(root, &task) {
+            let Ok(entries) = fs::read_dir(&dir) else {
+                continue;
+            };
+            found.extend(
+                entries
+                    .flatten()
+                    .filter(|entry| named.names(&entry.file_name().to_string_lossy()))
+                    .map(|entry| entry.path()),
+            );
+        }
     }
+    found.sort();
+    found.dedup();
+    left.extend(found);
     left
+}
+
+/// How the runtime names one task's entry in a directory.
+enum Named {
+    /// The one entry of this name.
+    Exact(String),
+    /// Every entry whose name starts with this.
+    Prefixed(String),
+}
+
+impl Named {
+    fn names(&self, name: &str) -> bool {
+        match self {
+            Named::Exact(exact) => name == exact,
+            Named::Prefixed(prefix) => name.starts_with(prefix.as_str()),
+        }
+    }
+}
+
+/// Every place the runtime keeps a file for the task `task` in `root`, and how
+/// it names it there: the runtime's own rules for what one task leaves in a
+/// root's `runtime/`, and its snapshot cache's default home and identity.
+fn kept_for(root: &Path, task: &str) -> Vec<(PathBuf, Named)> {
+    let runtime = root.join(RUNTIME);
+    let accounting = accounting_segment(task);
+    vec![
+        (
+            root.join(super::results::RESULTS),
+            Named::Exact(format!("{task}.md")),
+        ),
+        (
+            runtime.join("logs"),
+            Named::Prefixed(format!("task-{task}-")),
+        ),
+        (
+            runtime.join("spawns"),
+            Named::Prefixed(format!("task-{task}-")),
+        ),
+        // A session report is named after the log it renders.
+        (
+            runtime.join("reports"),
+            Named::Prefixed(format!("task-{task}-")),
+        ),
+        (
+            runtime.join("snapshot-sessions"),
+            Named::Prefixed(format!("{task}-")),
+        ),
+        (
+            runtime.join("worktree-refs"),
+            Named::Exact(format!("{task}.yaml")),
+        ),
+        (runtime.join("exports"), Named::Exact(task.to_string())),
+        (
+            runtime.join("accounting").join("captures"),
+            Named::Prefixed(format!("{accounting}-")),
+        ),
+        (
+            runtime.join("accounting").join("tasks"),
+            Named::Exact(format!("{accounting}.json")),
+        ),
+        (root.join(SNAPSHOT_CACHE), Named::Exact(task.to_string())),
+    ]
+}
+
+/// A task id as the runtime writes it into an accounting file name: letters,
+/// digits, `.`, `_` and `-` kept, every other byte as `%XX`, and `task` for an
+/// empty one.
+fn accounting_segment(task: &str) -> String {
+    let mut encoded = String::new();
+    for byte in task.bytes() {
+        match byte {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'.' | b'_' | b'-' => {
+                encoded.push(byte as char)
+            }
+            other => encoded.push_str(&format!("%{other:02X}")),
+        }
+    }
+    match encoded.is_empty() {
+        true => "task".to_string(),
+        false => encoded,
+    }
 }
 
 /// Why a move cannot have a root (§FS-005-dispatch.36.3): the root, and one
@@ -332,18 +443,20 @@ pub fn listed_live(config: &WorkConfig, roots: &[PathBuf]) -> Option<Refused> {
             ),
         });
     }
-    for root in roots {
-        let named = root.to_string_lossy();
-        if let Some(line) = stderr.lines().find(|line| line.contains(named.as_ref())) {
-            return Some(Refused {
-                root: root.clone(),
-                says: format!(
-                    "{} cannot be checked for a live run: {}",
-                    root.display(),
-                    line.trim()
-                ),
-            });
-        }
+    for line in stderr.lines() {
+        let root = match warned(line, roots) {
+            Warned::Nothing => continue,
+            Warned::Root(root) => root,
+            Warned::Every => first,
+        };
+        return Some(Refused {
+            root: root.clone(),
+            says: format!(
+                "{} cannot be checked for a live run: {}",
+                root.display(),
+                line.trim()
+            ),
+        });
     }
     let runs: Vec<serde_json::Value> = match serde_json::from_slice(&output.stdout) {
         Ok(runs) => runs,
@@ -375,6 +488,48 @@ pub fn listed_live(config: &WorkConfig, roots: &[PathBuf]) -> Option<Refused> {
         }
     }
     None
+}
+
+/// Which of the roots one line the listing printed on stderr leaves
+/// undecided (§FS-005-dispatch.36.3).
+#[derive(Debug, PartialEq, Eq)]
+enum Warned<'a> {
+    /// None: the line is not about a run it could not decide, or its run's
+    /// plan is in none of the roots.
+    Nothing,
+    /// The deepest root the undecided run's plan is in.
+    Root(&'a PathBuf),
+    /// Every root: the run names no plan that could be read, so it could be
+    /// any root's.
+    Every,
+}
+
+fn warned<'a>(line: &str, roots: &'a [PathBuf]) -> Warned<'a> {
+    let Some(about) = line.trim().strip_prefix(UNDECIDED) else {
+        return Warned::Nothing;
+    };
+    if about.starts_with(UNREADABLE_ENTRY) {
+        return Warned::Every;
+    }
+    let Some(plan) = summary_plan(about) else {
+        return Warned::Every;
+    };
+    roots
+        .iter()
+        .filter(|root| plan.starts_with(root))
+        .max_by_key(|root| root.components().count())
+        .map_or(Warned::Nothing, Warned::Root)
+}
+
+/// The plan path a run's summary line ends with, up to the `: ` the warning
+/// puts before its reason. The runtime writes it absolute, so one that is not
+/// is not a plan path read right.
+fn summary_plan(about: &str) -> Option<PathBuf> {
+    let (_, after) = about.split_once(PARALLEL)?;
+    let (_, plan) = after.trim_start().split_once("  ")?;
+    let plan = plan.split_once(": ").map_or(plan, |(plan, _)| plan);
+    let plan = PathBuf::from(plan.trim());
+    plan.is_absolute().then_some(plan)
 }
 
 /// Locks held for a move, released when dropped (§FS-005-dispatch.36.3).
@@ -483,7 +638,7 @@ mod tests {
         let workspace = shared.join("b-work");
         write(&workspace.join(INDEX), "# Rhei: b\n");
         write(&workspace.join("tasks/01-fix.md"), "### Task fix: x\n");
-        write(&workspace.join("runtime/metrics/.lock"), "");
+        write(&workspace.join("runtime.notes.md.lock"), "");
         write(&workspace.join(".rhei/run.lock"), "");
 
         let units = vec![Unit::of(&single)];
@@ -506,8 +661,12 @@ mod tests {
                 workspace.join(RUN_LOCK),
                 workspace.join("index.rhei.md.lock"),
                 workspace.join("runtime/metrics/.lock"),
+                workspace.join("runtime.notes.md.lock"),
+                workspace.join("runtime.state-transitions.log.lock"),
                 workspace.join("tasks/01-fix.md.lock"),
-            ]
+            ],
+            "the index's, the transition log's, the metrics' and each task's \
+             lock whether present or not, and a lock already present (notes)"
         );
 
         // Taken: an absent lock is created empty; a present one keeps its bytes.
@@ -515,9 +674,18 @@ mod tests {
         let roots = roots(&units);
         let held = take(&set, &roots, false).unwrap();
         assert_eq!(held.count(), set.len());
-        assert!(held
+        for absent in [
+            "tasks/01-fix.md.lock",
+            "runtime.state-transitions.log.lock",
+            "runtime/metrics/.lock",
+        ] {
+            let lock = workspace.join(absent);
+            assert!(held.created.contains(&lock), "{absent} is created");
+            assert_eq!(fs::read_to_string(&lock).unwrap(), "", "{absent} is empty");
+        }
+        assert!(!held
             .created
-            .contains(&workspace.join("tasks/01-fix.md.lock")));
+            .contains(&workspace.join("runtime.notes.md.lock")));
         assert_eq!(
             fs::read_to_string(workspace.join("index.rhei.md.lock")).unwrap(),
             "kept"
@@ -544,6 +712,148 @@ mod tests {
         assert!(held.created.is_empty());
         assert!(!plan::sidecar_of(&single).exists());
         assert!(!tmp.path().join(RUN_LOCK).exists());
+    }
+
+    /// A listing whose `runs --json` prints `warnings` on stderr and an empty
+    /// list, from a stub runner.
+    #[cfg(unix)]
+    fn listing(dir: &Path, warnings: &[String]) -> WorkConfig {
+        use std::os::unix::fs::PermissionsExt;
+        let said: String = warnings
+            .iter()
+            .map(|line| format!("echo '{line}' >&2\n"))
+            .collect();
+        let runner = dir.join("runtime-stub");
+        fs::write(&runner, format!("#!/bin/sh\n{said}echo '[]'\n")).unwrap();
+        fs::set_permissions(&runner, fs::Permissions::from_mode(0o755)).unwrap();
+        WorkConfig {
+            runner: Some(runner.display().to_string()),
+            ..WorkConfig::default()
+        }
+    }
+
+    /// A run the listing could not decide about is matched to a root by its
+    /// plan's path, component by component: a root whose name is a prefix of
+    /// the plan's directory is not its root (§FS-005-dispatch.36.3).
+    #[cfg(unix)]
+    #[test]
+    fn an_undecided_run_is_matched_to_a_root_by_its_plans_path() {
+        let tmp = tempfile::tempdir().unwrap();
+        let panta = tmp.path().join("panta");
+        let workspace = panta.join("w");
+        let roots = vec![panta.clone(), workspace.clone()];
+        let line = |plan: &Path| {
+            format!(
+                "warning: could not check r-1  running   headless   pid 41      \
+                 parallel 1  {}: {}/.rhei/run.descriptor could not be read: denied",
+                plan.display(),
+                tmp.path().display()
+            )
+        };
+        let neighbour = line(&tmp.path().join("panta2/p.rhei.md"));
+        assert_eq!(warned(&neighbour, &roots), Warned::Nothing);
+        let config = listing(tmp.path(), &[neighbour]);
+        assert_eq!(listed_live(&config, &roots), None, "panta2 is not panta");
+
+        let shared = line(&panta.join("p.rhei.md"));
+        assert_eq!(warned(&shared, &roots), Warned::Root(&panta));
+        let inner = line(&workspace.join("index.rhei.md"));
+        assert_eq!(warned(&inner, &roots), Warned::Root(&workspace));
+        let config = listing(tmp.path(), &[inner.clone()]);
+        assert_eq!(
+            listed_live(&config, &roots),
+            Some(Refused {
+                root: workspace.clone(),
+                says: format!(
+                    "{} cannot be checked for a live run: {inner}",
+                    workspace.display()
+                ),
+            })
+        );
+    }
+
+    /// A run whose registry entry could not be read names no plan, so it is
+    /// undecided for every root and refuses, quoting the line
+    /// (§FS-005-dispatch.36.3).
+    #[cfg(unix)]
+    #[test]
+    fn an_unreadable_entry_is_undecided_for_every_root() {
+        let tmp = tempfile::tempdir().unwrap();
+        let panta = tmp.path().join("panta");
+        let roots = vec![panta.clone()];
+        let line = format!(
+            "warning: could not check (unreadable entry)  {}/state/rhei/runs/r-2.json: \
+             expected value at line 1 column 1",
+            tmp.path().display()
+        );
+        assert_eq!(warned(&line, &roots), Warned::Every);
+        let config = listing(tmp.path(), &[line.clone()]);
+        let refused = listed_live(&config, &roots).expect("refused");
+        assert_eq!(refused.root, panta);
+        assert!(refused.says.ends_with(&line), "{}", refused.says);
+    }
+
+    /// A moved single plan's record names its lock file and every file the
+    /// runtime keeps for each of its tickets in the shared root, by the
+    /// runtime's own naming, and nothing of a neighbour's (§FS-005-dispatch.36.5).
+    #[test]
+    fn a_single_plan_leaves_every_file_the_runtime_keeps_for_its_tickets() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path().join("panta");
+        let plan = root.join("p.rhei.md");
+        write(&plan, "# Rhei: p\n\n### Task fix: x\n\n### Task fix-2: y\n");
+        let ours = [
+            "runtime/results/p.fix.md",
+            "runtime/logs/task-p.fix-implementing.log",
+            "runtime/spawns/task-p.fix-implementing.json",
+            "runtime/reports/task-p.fix-implementing.md",
+            "runtime/snapshot-sessions/p.fix-implementing-a-1/s.json",
+            "runtime/worktree-refs/p.fix.yaml",
+            "runtime/exports/p.fix/resolutions.md",
+            "runtime/accounting/captures/p.fix-1.json",
+            "runtime/accounting/tasks/p.fix.json",
+            ".rhei/cache/snapshots/p.fix/review/fix/1/a/record.json",
+            "runtime/results/p.fix-2.md",
+        ];
+        let theirs = [
+            "runtime/results/q.fix.md",
+            "runtime/results/p.fixed.md",
+            "runtime/logs/task-q.fix-implementing.log",
+            "runtime/logs/task-p.fixed-implementing.log",
+            ".rhei/cache/snapshots/q.fix/review/fix/1/a/record.json",
+            ".rhei/cache/snapshots/p.fixed/review/fix/1/a/record.json",
+        ];
+        for path in ours.iter().chain(theirs.iter()) {
+            write(&root.join(path), "");
+        }
+        let mut expected: Vec<PathBuf> = [
+            "runtime/results/p.fix.md",
+            "runtime/logs/task-p.fix-implementing.log",
+            "runtime/spawns/task-p.fix-implementing.json",
+            "runtime/reports/task-p.fix-implementing.md",
+            "runtime/snapshot-sessions/p.fix-implementing-a-1",
+            "runtime/worktree-refs/p.fix.yaml",
+            "runtime/exports/p.fix",
+            "runtime/accounting/captures/p.fix-1.json",
+            "runtime/accounting/tasks/p.fix.json",
+            ".rhei/cache/snapshots/p.fix",
+            "runtime/results/p.fix-2.md",
+        ]
+        .iter()
+        .map(|path| root.join(path))
+        .collect();
+        expected.sort();
+        expected.insert(0, plan::sidecar_of(&plan));
+        assert_eq!(left_behind(&plan, "p"), expected);
+    }
+
+    /// The runtime's accounting file names keep a task id's safe bytes and
+    /// percent-encode the rest.
+    #[test]
+    fn an_accounting_name_is_the_task_id_as_the_runtime_encodes_it() {
+        assert_eq!(accounting_segment("p.fix-1_a"), "p.fix-1_a");
+        assert_eq!(accounting_segment("p/fix 1"), "p%2Ffix%201");
+        assert_eq!(accounting_segment(""), "task");
     }
 
     #[test]

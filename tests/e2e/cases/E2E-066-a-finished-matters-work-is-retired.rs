@@ -766,6 +766,27 @@ fn the_retirement_is_recorded_beside_the_archive_and_in_the_ledger() {
     let site = finished(false);
     let plan = site.recipe_plan(ISSUE);
     let plan_id = site.entry(ISSUE)["plan_id"].as_str().unwrap().to_string();
+    let neighbour_id = site.entry(NEIGHBOUR)["plan_id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    // What the runtime keeps per task in the shared root, as it names it: a
+    // snapshot-cache entry, a log and a spawn of the plan's ticket, and a log
+    // of the neighbour's.
+    let root = site.shared_root();
+    let cache = root.join(format!(".rhei/cache/snapshots/{plan_id}.answer-1"));
+    let log = root.join(format!("runtime/logs/task-{plan_id}.answer-1-fix.log"));
+    let spawn = root.join(format!("runtime/spawns/task-{plan_id}.answer-1-fix.json"));
+    let theirs = root.join(format!("runtime/logs/task-{neighbour_id}.answer-1-fix.log"));
+    for file in [
+        cache.join("review/fix/1/a/record.json"),
+        log.clone(),
+        spawn.clone(),
+        theirs.clone(),
+    ] {
+        fs::create_dir_all(file.parent().unwrap()).unwrap();
+        fs::write(&file, "kept\n").unwrap();
+    }
 
     let value = site.retired(&["--item", ISSUE, "--why", "merged as #331"]);
 
@@ -791,6 +812,19 @@ fn the_retirement_is_recorded_beside_the_archive_and_in_the_ledger() {
     assert!(
         left.contains(&format!("{plan_id}.answer-1.md")),
         "so is the plan's own result left in the root's runtime/results:\n{left}"
+    );
+    let named = strings(&record["left"]);
+    for kept in [&cache, &log, &spawn] {
+        assert!(
+            named.iter().any(|said| Path::new(said) == kept.as_path()),
+            "{} stays where the runtime put it, and the record names it:\n{left}",
+            kept.display()
+        );
+        assert!(kept.exists(), "{} stays", kept.display());
+    }
+    assert!(
+        !named.iter().any(|said| Path::new(said) == theirs.as_path()),
+        "the neighbour's log is not this plan's:\n{left}"
     );
 
     let entry = site.entry(ISSUE);
