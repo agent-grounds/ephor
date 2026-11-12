@@ -78,6 +78,20 @@ pub fn entry_placement_stands(entry: &Entry) -> bool {
     !entry.dispatches.iter().any(is_retired)
 }
 
+/// The plan names this matter's retired dispatches recorded in `root`. The
+/// record keeps them as where the work was committed, so new work laid in that
+/// root takes none of them (§FS-005-dispatch.5).
+pub fn names_in(entry: &Entry, root: &Path) -> std::collections::BTreeSet<String> {
+    let wanted = canonical(root);
+    entry
+        .dispatches
+        .iter()
+        .filter(|dispatch| is_retired(dispatch))
+        .filter(|dispatch| canonical(dispatch.root.as_ref().unwrap_or(&entry.root)) == wanted)
+        .filter_map(|dispatch| dispatch.plan.clone())
+        .collect()
+}
+
 /// Every placement this matter's retirements took, oldest first, resolved
 /// against the disk (§FS-005-dispatch.4).
 pub fn placements(entry: &Entry) -> Vec<Retired> {
