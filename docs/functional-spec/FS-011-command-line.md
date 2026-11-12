@@ -508,6 +508,13 @@ end. A flag that parses,
 prints in its help and changes nothing is the fault [§FS-011-command-line.9](FS-011-command-line.md#9-a-scope-selector-is-honoured-or-refused) exists to end, and it
 does not become acceptable one rule later.
 
+`work retire` is one of those elsewheres by construction. It is about one
+matter, named by its item, its branch or the checkout it runs in, and it sweeps
+nothing ([§FS-005-dispatch.36.6](FS-005-dispatch.md#366-it-is-one-command-about-one-matter-an-action-and-an-answer-a-program-reads)), so `--act` is refused there by name
+with exit 2, and the selectors are refused as `work cancel` refuses them. When a
+verb that retires many matters at once comes, it is a sweep and is held to this
+gate; this one is not that verb.
+
 The classification is total on the command tree, as [§FS-011-command-line.9](FS-011-command-line.md#9-a-scope-selector-is-honoured-or-refused)'s is: every verb
 says whether it sweeps, and a variant added without a line does not compile.
 `update` and `ensure-agents` rewrite files in every managed workspace their
@@ -533,7 +540,9 @@ is under [§FS-011-command-line.9.1](FS-011-command-line.md#91-a-help-that-lists
 ungated, and says so on the help they share.
 `rebase`, which takes `--act` only where a selector makes it sweep, says that
 condition — with no selector it is about the one checkout it was given — rather
-than either half alone. The four verbs the gate can fire on, `work dispatch`,
+than either half alone. `work retire` says `work retire does not take --act.`
+and that it sweeps no set of projects, exactly as `work cancel` does, and its
+help says it takes no scope selector. The four verbs the gate can fire on, `work dispatch`,
 `work sync`, `work run` and `clean`, carry no such sentence. As with the
 selectors, the sentence is derived from the classification the refusal reads.
 

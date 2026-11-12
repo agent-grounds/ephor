@@ -616,6 +616,19 @@ cached in the ledger. A ledger that remembers "running" when the plan says
 the world, which is the one thing this tool must never do. A ledger entry whose
 plan has been deleted is reported as missing rather than repaired.
 
+**A retired placement is reported as retired, never as missing.** A plan that
+was retired ([§FS-005-dispatch.36](FS-005-dispatch.md#36-a-finished-matters-work-can-be-retired-and-the-record-says-where-it-went)) is not in its root
+because ephor put it somewhere and wrote down where, which is a different fact
+from a plan nobody can find. Every surface that reads a matter's placements
+reads the retired ones through the same reading, so none can disagree: the
+work list, the work view and the work screen say `retired → <archive>`, a
+retired placement is not open work, and its row is a quiet one. Where the
+archive is gone afterwards they say `retired; archive missing at <path>`, and
+from then on the rules for a missing plan apply to it, bringing the matter back
+with that reason. What the ledger keeps about a retirement is additive
+([§FS-005-dispatch.36.5](FS-005-dispatch.md#365-the-record-is-written-before-the-move-and-a-retirement-left-half-done-is-finished-or-undone)): the original placements stay as
+written, and an older ephor reads the entry and ignores what it does not know.
+
 ## 5. An item that moved reopens its work
 
 Work asked about a pull request is answered against the pull request as it was.
@@ -640,6 +653,18 @@ about the work and so is read from the plan rather than from the ledger
 ticket recording no `id` is no evidence of another matter and stays eligible. Not
 by opening a second plan: the point of the record is that one
 item's work reads in one place, in order.
+
+**Except after a retirement.** Retired work
+([§FS-005-dispatch.36](FS-005-dispatch.md#36-a-finished-matters-work-can-be-retired-and-the-record-says-where-it-went)) is in the archive, not in the
+root, and is never appended to. A retired dispatch is not work already handed
+over, so a matter whose every dispatch is retired is handed over again without
+`--again`, and the work is a **new plan**: a recipe plan where the old one was,
+or a laid workflow under a fresh id. Its first ticket — or a laid workflow's
+dossier — carries one paragraph saying that earlier work on this item was
+retired, when, where it is kept unchanged, the record, and the archived plans,
+and that nothing here waits on them. No `**Prior:**` points into the archive.
+The record of a retirement never suppresses new work: one item's work then
+reads in two places, and the new plan says where the other is.
 
 What is asked for is chosen against the item as it now is, preferring what was
 asked last while that still applies. A change moves between categories as it
@@ -2040,6 +2065,16 @@ appends afterwards — a reopen, a second ask — is ordered after the last
 ticket that is **not** cancelled
 ([§FS-005-dispatch.5](FS-005-dispatch.md#5-an-item-that-moved-reopens-its-work)), so ephor's own chain never
 hangs off abandoned work.
+
+**Retiring is not cancelling**
+([§FS-005-dispatch.36](FS-005-dispatch.md#36-a-finished-matters-work-can-be-retired-and-the-record-says-where-it-went)). Cancelling is a
+decision about a ticket, made while the matter is still live, and the runtime
+makes it. Retiring is about work the matter outlived: no transition is asked
+of the runtime, no callback or hook fires — on a closed issue they would
+comment, label or close against a matter that is over — no line of any plan is
+rewritten, and every task is archived in the state it was in. Cancelling is
+unchanged by it. A ticket in a retired plan cannot be cancelled, and the
+refusal says it was retired and where it went.
 
 ## 17. A move that needs nobody runs beneath the screen
 
@@ -5009,6 +5044,18 @@ being offered the same wrong hint by the same sentence. What is not fixed here
 is that such a report is made again on every turn: no snapshot is acknowledged
 where nothing is written, so the words change and their repetition does not.
 
+**A retired placement is read where it was put**
+([§FS-005-dispatch.36](FS-005-dispatch.md#36-a-finished-matters-work-can-be-retired-and-the-record-says-where-it-went)). It is not missing, so
+`--missing` does not take an entry for a retired placement whose archive can be
+read. It is still the matter's work, so `--done` reads the archived plans, and
+an archived task that is not final keeps the entry exactly as one in a root
+would: retiring put the work away, and it did not finish it. `--item` drops the
+entry as it drops any, and says where the archive stays, because the ledger
+entry was the last thing naming it outside the archive's own record. Where the
+archive itself is gone, the placement is missing again
+([§FS-005-dispatch.4](FS-005-dispatch.md#4-the-ledger-is-ephors-record-and-never-the-truth-about-the-work)) and `--missing` is
+the sweep for it.
+
 ### 35.1 What forget says it left is read from the same plans
 
 `work forget` says something about each entry it drops, and **what it says
@@ -5048,6 +5095,14 @@ Each item gains `plans`, one object per plan the prose names, carrying its
 plan was already gone: exactly where nothing is on disk at that path. An entry
 whose reading holds no plan has `plans` empty.
 
+**A retired plan is named where it went.** The report says that plan was
+*retired to* its archive path rather than that it stays or was already gone,
+and each such item in `plans` gains `retired_to`, the archive path, beside the
+`plan` it was retired from
+([§FS-005-dispatch.36](FS-005-dispatch.md#36-a-finished-matters-work-can-be-retired-and-the-record-says-where-it-went)). Its `missing` is
+`true` only where the archive itself is gone. Nothing an entry never retired
+reports changes.
+
 **The work view's heading is the same naming.** `work offers`
 ([§FS-011-command-line.5](FS-011-command-line.md#5-what-can-be-done-about-a-matter-before-anything-has-been))
 and the work screen name, under the matter's title, the plans the reading
@@ -5074,3 +5129,340 @@ nothing it already carries changes.
 **Nothing else changes.** Which entries `--done`, `--missing` and `--item` drop
 is the point above and is read as it was. Ephor still deletes no plan, and the
 line about a recipe plan that is on disk reads as it always did.
+
+## 36. A finished matter's work can be retired, and the record says where it went
+
+A matter finishes on the forge and its work does not always finish with it. The
+issue closed because the pull request that fixed it merged from a branch
+somebody else made; the checkout went; and the plan ephor laid about it is still
+in the work root, a ticket in it still at `fix`. That ticket counts as open
+work, so the matter stays on the feed with work rows beneath it
+([§FS-003-feed-categories.2](FS-003-feed-categories.md#2-recent)) for as long as anybody keeps the plan, and nothing
+ephor had would put it away. Cancelling
+([§FS-005-dispatch.16](FS-005-dispatch.md#16-work-that-should-not-go-on-is-cancelled-and-the-plan-says-so)) moves each ticket
+through the runtime, which runs the machine's hooks against an issue that is
+already closed. Forgetting
+([§FS-005-dispatch.35](FS-005-dispatch.md#35-what-a-ledger-entry-may-be-forgotten-for-is-read-from-the-plans)) drops
+ephor's record and leaves the plan where it was, now owned by nobody. And
+`--done` skips the entry, because a ticket is open.
+
+So **a finished matter's open work can be retired**: `ephor work retire` moves
+the plans that are that matter's, unchanged, out of the roots the readers walk
+and into an archive beside ephor's own data, under the runtime's own exclusion,
+and writes down what went where and why it was allowed. It is a third way of
+taking work back, beside cancelling and forgetting, and it is neither of them.
+No ticket changes state, no line of any plan is rewritten, no hook fires, and
+nothing is asked of the forge but questions. The ledger keeps the entry and
+says where its work went
+([§FS-005-dispatch.4](FS-005-dispatch.md#4-the-ledger-is-ephors-record-and-never-the-truth-about-the-work)), and the archive
+is byte for byte what was in the root, so nothing is lost by it
+([§GOAL-003-nothing-lost](../goals.md#goal-003-nothing-lost-the-watch-is-trusted-enough-to-retire-the-sweep)). It saves the reader the editor, the
+`mv` and the guess at whether a run was still on the root
+([§GOAL-001-fewest-moves](../goals.md#goal-001-fewest-moves-the-most-frequent-response-is-the-cheapest-one)).
+
+**Nothing retires on its own.** An issue closing is a condition retiring checks,
+never a trigger that starts it: a person, or whatever a person bound to the
+action, asks for it, one matter at a time. A sweep over many matters is a later
+verb, and it is held to `--act`
+([§FS-011-command-line.10](FS-011-command-line.md#10-a-mutating-verb-above-one-project-reports-and-acts-under---act)) when it comes.
+Removing the matter's checkout is a later move too, and it attaches after a
+retirement has committed.
+
+### 36.1 It is allowed only where the forge says the matter is over and nothing is open from its branches
+
+**The positive condition is the forge's word, asked at the moment of retiring.**
+The issue is closed, or a pull request the forge links as closing it has
+merged. For a pull-request matter the pull request itself has merged or closed.
+A branch name never proves it, and neither does the cached feed: the cache is
+what made the offer, and the forge is asked again before anything moves,
+through the closure capability
+([§FS-001-forge-interface.1](FS-001-forge-interface.md#1-capabilities)). A pull request closed without merging is
+over, and proves nothing about the issue.
+
+**The negative condition is that no pull request is still open from any branch
+the matter's work could be on**, and none is open that the forge links to the
+issue, whatever branch it comes from. A head is matched by name across owners,
+so a pull request from a fork whose branch has the same name counts.
+
+The branches checked are the matter's **candidates**, gathered in this order:
+
+1. **The branch of the matter's live worktree.** A worktree git lists for the
+   project is the matter's when its path is a checkout the record names and is
+   itself a worktree, or when it is on a branch the record names or on the head
+   branch of a pull request that closes the issue. That worktree is the matter's
+   checkout for everything below. Nothing else makes one the matter's.
+2. **Every branch the record names**, from the ledger, from the plans' own
+   branch metadata and from the lay records, **minus placeholders**, plus the
+   head branch of every pull request that closes the issue. A placeholder is
+   the project's default branch, or a recorded branch whose recorded checkout
+   is a directory of checkouts rather than a checkout: a dispatch that recorded
+   branch `fix` and checkout `<project>/fix`, where `<project>/fix/issue-249` is
+   the worktree. A placeholder is listed as discarded with the reason, and a
+   branch is never made up from the matter's number.
+3. **Every branch the caller names with `--pr-branch`**, recorded as supplied by
+   the caller. It adds a branch to check for open pull requests and nothing
+   else: it never makes a worktree the matter's checkout, and it never adds a
+   plan to take.
+
+Where step 1's worktree is on a branch nothing in step 2 names, the provenance
+conflicts and retiring refuses: `the checkout <path> is now on <branch>, which
+nothing records for this matter`.
+
+**An answer that is not whole is not an answer.** A lookup that fails, or that
+answers with errors, refuses with the provider's own words: `the forge did not
+say whether <item> is closed: <words>`. A list the forge cut short is incomplete
+and never read as empty: `the forge's list of open pull requests from <branch>
+was cut short; nothing was moved`. A matter with no usable candidate at all
+refuses and names the flag that supplies one: `no branch of <item> can be
+checked: the record names only '<branch>', a directory of checkouts, and the
+forge links no pull request; name one with --pr-branch`. A forge whose
+implementation does not declare the capability is refused in a sentence of its
+own, `the forge for <source> cannot say whether <item> is over`
+([§REQ-001-boundary.1](../requirements/REQ-001-boundary.md#1-the-anatomy)), and so is a matter that is neither an issue nor a
+pull request: `retire needs an issue or a pull request, and <item> is neither`.
+An open pull request is named with its owner and branch: `pull request #<n>
+from <owner>:<branch> is still open`.
+
+### 36.2 What is taken is every open plan the record and the checkout witness as this matter's
+
+**Where plans are looked for.** Every placement the ledger records for the
+matter, read exactly as every other surface reads them
+([§FS-005-dispatch.35](FS-005-dispatch.md#35-what-a-ledger-entry-may-be-forgotten-for-is-read-from-the-plans)) —
+ephor's recipe plan and each workflow laid beside it, one unit at a time, a
+directory workspace or a single plan file — and every plan in the work root of
+the matter's live checkout ([§FS-005-dispatch.36.1](FS-005-dispatch.md#361-it-is-allowed-only-where-the-forge-says-the-matter-is-over-and-nothing-is-open-from-its-branches)), as it is on disk. In a
+root shared with other matters only the units the record names are looked at:
+never the root's manifest, its machine, its runtime directory, or another
+matter's plan.
+
+**Witnesses.** Each plan found is judged by what says whose it is: the `id` its
+tickets record
+([§FS-005-dispatch.8](FS-005-dispatch.md#8-the-ticket-carries-the-item-as-data-not-only-as-prose)); the lay
+record `.ephor/<plan-id>/item.json`, read beside the plan and beside the
+dispatch's recorded root; and every ledger dispatch whose plan is that plan,
+with the entry's own plan path for a recipe plan.
+
+**The rule.** The witnesses must be a set that is not empty and names this
+matter and no other. Then:
+
+- An open plan that passes is taken.
+- An open plan with no witness refuses the whole move, unless `--admit` names
+  its exact path. `--admit` is accepted only beside `--item`, so the admission
+  itself names the matter. The plan is then taken and the record says it was
+  **admitted by the caller**, with the matter's id, its project, the resolved
+  path and the plan id.
+- A plan with a foreign witness, or with witnesses that name two matters,
+  refuses the whole move, `--admit` or not. Admission vouches for a plan nobody
+  claimed; it never overrules a plan somebody else did.
+- A readable plan whose every task is final stays where it is and is listed as
+  left final.
+- A plan that cannot be read refuses, naming it. It is never read as finished
+  ([§FS-005-dispatch.35](FS-005-dispatch.md#35-what-a-ledger-entry-may-be-forgotten-for-is-read-from-the-plans)).
+- A placement the record names that is already gone is listed as absent, and
+  nothing is moved for it.
+
+All of it is read again once the locks of
+[§FS-005-dispatch.36.3](FS-005-dispatch.md#363-it-holds-the-runtimes-own-exclusion-and-asks-the-runtime-to-move-nothing) are held, before the first move, and what is read
+then is what is moved. Nothing is written into a plan to make a binding that
+was not there.
+
+### 36.3 It holds the runtime's own exclusion, and asks the runtime to move nothing
+
+A plan that is moved while a run has it open is a run that loses its files
+mid-step, and asking a probe first and moving afterwards leaves the gap between
+them for a run to start in. So retiring **holds the locks the runtime itself
+holds** while it moves anything, and the runtime keeps them as it always does
+([§DA-011-retire-holds-the-runtimes-locks](../decisions/architectural/DA-011-retire-holds-the-runtimes-locks.md#da-011-retire-holds-the-runtimes-locks-retiring-holds-the-runtimes-own-locks-rather-than-asking-the-runtime)).
+
+**Which roots.** Each moved plan's execution root, and the root of every plan
+contained in it. A directory workspace's root is the workspace itself. A single
+plan file's root is the root it shares, so every workspace in that root is
+locked as well: a run on any matter in a shared root blocks retiring another
+matter's file there.
+
+**Which locks, as a rule and not a list.** Every lock the runtime keeps for a
+file the move takes. First each root's run lock, in the runtime's own canonical
+order, which is the sorted absolute paths of the roots; then every writer lock
+that guards a file the move takes. For a single plan file that is the file's
+own lock. For a directory workspace it is every lock under it that guards a file
+leaving with its content — its index, each task, the transition log, the notes,
+the metrics, and any lock the runtime adds for a file there later — because
+those files move with the content and their locks must be held while they do.
+A lock file that is absent is created empty, exactly as the runtime creates it,
+and never truncated. Every lock is taken non-blocking and exclusive, and held
+as an open handle until the ledger has committed or the move has rolled back
+([§FS-005-dispatch.36.5](FS-005-dispatch.md#365-the-record-is-written-before-the-move-and-a-retirement-left-half-done-is-finished-or-undone)).
+
+**What refuses.** A lock that is already taken refuses, naming the root:
+`<root> is held by a live run; retire again when it ends`. So does a root the
+runtime's own listing of runs reports live, or cannot decide about. A run
+descriptor left behind saying `running` is not a run: the lock and the
+runtime's own listing are what is asked, and a descriptor whose lock is free
+blocks nothing. A marker the runtime leaves for a recovery it forced, in any
+root, or for a removal it has pending, at the project root, refuses too, and
+both are looked for before the locks are taken and again after. Where the set
+of roots has changed once the locks are held, the new roots are locked and the
+set is read again, and a set that changes a second time refuses. With no runner
+bound, whether a run is live cannot be asked, and retiring is refused in the
+workable rung's words as cancelling is
+([§FS-005-dispatch.16](FS-005-dispatch.md#16-work-that-should-not-go-on-is-cancelled-and-the-plan-says-so)).
+
+**What it never does.** It never writes into a lock file, never breaks a lock,
+never stops a run, never runs a recovery, and never touches the runtime's
+per-account guards. And it never asks the runtime for a transition: every task
+in a retired plan is in the archive in the state it was in.
+
+### 36.4 The archive is ephor's data, outside every root, and nothing tracked moves into it
+
+**Where.** Under ephor's data directory, `$XDG_DATA_HOME/ephor/archive/`, which
+is `~/.local/share/ephor/archive/` by default. Not under the state directory:
+anything there is promised to be safe to delete, and the archive is the only
+copy of what it holds. One retirement is one directory,
+`archive/<project>/<item-slug>/<UTC stamp>/`, holding the record
+`retirement.json` and one directory for each root something came from, numbered
+in the order the roots were read and named after them (`1-<project>-panta/`).
+Each holds the moved plans, their lay records under `.ephor/<plan-id>/`, and a
+copy of that root's machine, so an archived plan can still be read as it was.
+The stamp keeps a second retirement, after a reopen, apart from the first.
+
+**Never inside anything a reader walks.** Before anything moves, the archive's
+canonical path is compared with every root the two plan readers walk — the task
+stores a refresh reads and the work roots the board reads — with every
+registered project's directory, and with every worktree git lists for them. An
+archive inside any of them, or inside a unit being moved, refuses, naming both.
+The archive is never declared a store.
+
+**What moves.** A single plan file moves, and its lock file stays at the old
+path for good, which is what the runtime expects to find there. A directory
+workspace's content moves, and its coordination state stays: the runtime's own
+directory inside it and every lock file stay where they are, and a directory
+that holds a lock file is entered and emptied of everything else. What stays
+has no plan index, so neither ephor nor the runtime reads it as a plan.
+
+**How it moves.** Every path is made canonical before it is compared or
+recorded, so a root reached through a symlink is one root. A plan that is itself
+a symlink is refused rather than moved. Each move is a rename inside one
+filesystem: every source's filesystem is compared with the archive's before
+the first move, and where they differ retiring refuses, naming both, and moves
+nothing. A rename that fails part way through all the same is rolled back.
+
+**Nothing tracked moves.** For each checkout holding a path the move would
+take, git is asked which of those paths it tracks, in the repository that
+contains them. A tracked path refuses, naming it: moving it would leave a
+change in somebody's checkout that retiring never meant to make. Where git
+fails for any reason but the path not being in a repository, tracking cannot be
+determined and retiring refuses. On a site whose work roots are ignored this
+never fires; it turns that assumption into a check.
+
+### 36.5 The record is written before the move, and a retirement left half-done is finished or undone
+
+**Order of writes.** Under the held locks: the record is written with state
+`pending` and every intended move, and flushed to disk; then the moves; then the
+ledger save, the atomic rename that is the commit point
+([§FS-005-dispatch.4](FS-005-dispatch.md#4-the-ledger-is-ephors-record-and-never-the-truth-about-the-work)); then the
+record is rewritten as `committed`.
+
+**A failure before the save** puts every moved path back, in reverse order,
+restores the in-memory ledger, marks the record `rolled-back`, and names any
+path it could not restore beside the original error.
+
+**A restore never replaces anything.** A move is restored only where its
+original path is free. One already back in its place counts as restored. Where
+the original path is occupied, that path is named as not restored and its copy
+stays in the archive. Ephor's own dispatcher writes a plan without the runtime's
+writer lock, so after a crash a sync may already have laid new work at the old
+path, and a restore that wrote over it would destroy the newer plan to save the
+older one.
+
+**Recovery.** Before anything else, the next `work retire` of the same matter
+looks for a `pending` record under that matter's archive directory, and takes
+the locks of the roots that record names. If the ledger already carries that
+retirement, the save happened and only the record's rewrite did not, and the
+record is marked `committed`. Otherwise every listed move is restored, under the
+rule above, and the record is marked `rolled-back`. If everything was restored,
+the retirement goes on from a fresh reading; otherwise it stops and names what
+it could not restore.
+
+**What the record says.** The matter and its project; when, from which surface,
+on which host, by whom, and the reason given; the eligibility as read — the
+issue's state and when it closed, each merged pull request with its head and
+how it was linked, each candidate branch with where it came from (`worktree`,
+`ledger`, `plan`, `lay record`, `closing pr`, `caller`), each discarded branch
+with why, and what was open; each guard and what it found, per root; each plan
+with where it came from, its outcome, where it went, its witnesses, the tasks
+still open in it and whether the caller admitted it; the machine copies carried;
+the moves; and in `left`, **every artifact of a moved plan that stays in a
+shared root**, not only its lock file: its files under the root's results
+directory and the runtime's snapshot cache stay where the runtime put them, and
+the record names each of them.
+
+**The ledger grows only additive fields.** The entry gains `retirements`, one
+per retirement, each with when, the record, the archive, and per plan where it
+came from and where it went, or that it was already absent. Each dispatch whose
+placement was taken gains `retired_at`. The dispatch's root, plan and branch
+stay as written, so the original placements are still the record of where the
+work was committed. An older ephor reads the ledger and ignores the new fields.
+
+### 36.6 It is one command about one matter, an action, and an answer a program reads
+
+**The command.** `ephor work retire --item <id>` names the matter.
+`ephor work retire --project <p> --branch <b>` names it by branch: the ledger
+entries that record the branch and the matters the open plans in that branch's
+checkout witness must resolve to exactly one, and where they name none or two,
+retiring refuses and names them, and says to pass `--item`. With neither, it is
+the checkout the caller stands in, resolved as `rebase` resolves it. Beside
+those, `--admit <path>` (only with `--item`,
+[§FS-005-dispatch.36.2](FS-005-dispatch.md#362-what-is-taken-is-every-open-plan-the-record-and-the-checkout-witness-as-this-matters)), `--pr-branch <name>`
+([§FS-005-dispatch.36.1](FS-005-dispatch.md#361-it-is-allowed-only-where-the-forge-says-the-matter-is-over-and-nothing-is-open-from-its-branches)), `--why <words>`, `--dry-run` and
+`--json`, in `work cancel`'s shape, so a reader who knows one knows the other.
+
+**A dry run resolves everything and writes nothing.** The forge is read, the
+placements, witnesses and tracked paths are resolved, and the locks are probed
+without waiting and released at once. No lock file that was absent is created,
+no archive directory, no record, no ledger change. The report is the same,
+saying `would move` where it would have said `moved`.
+
+**A refusal is an answer.** One sentence, naming what is in the way, reported
+inside the command's own shape with exit 1; nothing has moved and the ledger is
+unchanged. The machine-readable form names the guard that refused, from a closed
+vocabulary:
+
+| guard | what it refuses |
+|---|---|
+| `eligibility` | the positive condition does not hold |
+| `forge` | a lookup that failed or came back cut short; a forge without the capability; a matter that is neither issue nor pull request |
+| `open-pull-request` | a pull request still open from a candidate, or linked to the issue |
+| `branch` | no usable candidate; a checkout on a branch nothing records |
+| `witness` | a foreign or mixed witness; an open plan with no witness that was not admitted |
+| `unreadable` | a plan that cannot be read |
+| `live-root` | a lock already held; a root the runtime reports live or cannot decide; a recovery or removal marker; a root set that changed twice |
+| `tracked` | a tracked path, or tracking that cannot be determined |
+| `archive` | an archive inside a root, store, checkout or moved unit; another filesystem; a plan that is a symlink |
+| `recovery` | a pending retirement that could not be fully restored |
+| `runtime` | no runner bound |
+
+**It is one matter, and sweeps nothing.** Retiring is classified with the verbs
+that honour no scope selector and sweep no set of projects, so `--act` is
+refused by name with exit 2, and the selectors are refused exactly as
+`work cancel` refuses them
+([§FS-011-command-line.9](FS-011-command-line.md#9-a-scope-selector-is-honoured-or-refused),
+[§FS-011-command-line.10](FS-011-command-line.md#10-a-mutating-verb-above-one-project-reports-and-acts-under---act)).
+
+**Under `--json` it is a published shape**, `work-retire`, printed by
+`ephor schema views` with the others
+([§REQ-002-parity.4](../requirements/REQ-002-parity.md#4-the-machine-form-is-a-contract-not-a-dump)): `item`, `project`,
+`dry_run`, `retired`, `says`; `refused`, null or the guard, its sentence and the
+paths it names; `eligibility`, with the issue's state and when it closed, the
+merged pull requests, the candidate branches with where each came from, the
+discarded ones with why, and the open ones; `plans`, each with its path, its
+outcome — `moved`, `would-move`, `left-final` or `absent` — where it went, the
+tasks still open in it and whether the caller admitted it; `left`; `archive`;
+`record`; and `recovered`. A usage error such as `--act` is the existing outcome
+with `ok` false
+([§FS-011-command-line.7](FS-011-command-line.md#7---json-is-the-same-answer-not-a-second-one)).
+
+**And it is an action.** `retire` is a built-in action that runs this verb,
+offered on the matter and on its branch where
+[§FS-004-quick-actions.10](FS-004-quick-actions.md#10-a-finished-matters-leftover-work-is-offered-retirement) says. It asks first, so the screen confirms
+and `actions run retire` needs `--yes`
+([§FS-006-project-interface.9](FS-006-project-interface.md#9-offers-the-projects-actions)).

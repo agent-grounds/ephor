@@ -702,3 +702,39 @@ the failure was never the change's are asking for the same thing, so they ask
 for it the same way — one verb, one scope, one answer — and cannot drift into
 two ideas of what restarting means.
 
+
+## 10. A finished matter's leftover work is offered retirement
+
+A matter that finished on the forge while work laid about it never did is a
+row the reader can see and, until now, could do nothing about but open an
+editor ([§FS-005-dispatch.36](FS-005-dispatch.md#36-a-finished-matters-work-can-be-retired-and-the-record-says-where-it-went)). The verb that puts that work away is offered where
+the reader is standing when they see it: on the matter, and on the branch.
+
+**On the matter**, `retire` is offered wherever the item is finished in the
+cache and the ledger records work about it that has not been retired, with or
+without a checkout — a matter whose checkout is already gone is the commonest
+case, and an offer that needed a branch on disk would miss it. **On a branch**,
+under `ephor actions --project --branch`, it is offered only where the branch
+identifies exactly one such matter, because a branch action that has to guess
+which matter it is about is a branch action that guesses wrong
+([§FS-004-quick-actions.2](FS-004-quick-actions.md#2-offered-only-where-it-would-work)). The screen's action menu offers the same
+entry, read from the same offers.
+
+**Where it is not offered, the note says why**, in the reader's terms: the item
+is still open; there is no recorded work about it; or the branch carries two
+matters, named, so the reader can retire each by its item.
+
+**The offer is read from the cache, and the verb asks the forge.** What the
+cache says finished is what makes the entry worth showing, and it costs
+nothing to read. Whether retiring is allowed is the forge's answer at the
+moment of retiring
+([§FS-005-dispatch.36.1](FS-005-dispatch.md#361-it-is-allowed-only-where-the-forge-says-the-matter-is-over-and-nothing-is-open-from-its-branches)), so an offer made
+from a cache that has since gone stale is refused with the guard's own sentence
+rather than acted on.
+
+**It asks first.** Retiring moves files out of a work root, and the entry is
+marked to confirm: the screen asks before it runs, and `actions run retire`
+needs `--yes`, as every action that asks first does
+([§FS-006-project-interface.9](FS-006-project-interface.md#9-offers-the-projects-actions)). It does not run beneath the screen:
+what it reports — what moved, what was left, where the record is — is the
+answer the reader asked for, and it is printed where they asked.
