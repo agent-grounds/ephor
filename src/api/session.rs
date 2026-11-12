@@ -475,25 +475,24 @@ impl Session {
         actions
     }
 
-    /// Whether the ledger records work about `id` that no retirement has
-    /// taken (§FS-004-quick-actions.10).
-    fn unretired(&self, id: &str) -> bool {
-        crate::work::ledger::load()
-            .is_ok_and(|ledger| crate::work::retire::has_unretired_work(&ledger, id))
-    }
-
     /// Retirement on a matter's menu (§FS-004-quick-actions.10): offered where
     /// the item is finished in the cache and the ledger records work about it
-    /// never retired. Where it is one of the two and not the other the entry
-    /// stands with the note saying which, and a matter that is neither — open,
-    /// with nothing recorded — has nothing to say about retiring.
+    /// never retired. Where the item is open with such work, or finished with
+    /// all of its recorded work retired already, the entry stands with the note
+    /// saying which. A matter the ledger records no work about, or an open one
+    /// whose work was all retired, has nothing for retiring to be about and
+    /// carries no entry.
     fn item_retire(&self, item: &Item) -> Option<ActionConfig> {
-        match (item.is_finished(), self.unretired(&item.id)) {
+        let ledger = crate::work::ledger::load().ok()?;
+        let unretired = crate::work::retire::unretired_work(&ledger, &item.id)?;
+        match (item.is_finished(), unretired) {
             (true, true) => Some(offers::retire_action(None)),
             (false, true) => Some(offers::retire_withheld(
                 offers::RETIRE_STILL_OPEN.to_string(),
             )),
-            (true, false) => Some(offers::retire_withheld(offers::RETIRE_NO_WORK.to_string())),
+            (true, false) => Some(offers::retire_withheld(
+                offers::RETIRE_ALL_RETIRED.to_string(),
+            )),
             (false, false) => None,
         }
     }

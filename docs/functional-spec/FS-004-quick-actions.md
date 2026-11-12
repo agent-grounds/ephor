@@ -721,8 +721,10 @@ which matter it is about is a branch action that guesses wrong
 entry, read from the same offers.
 
 **Where it is not offered, the note says why**, in the reader's terms: the item
-is still open; there is no recorded work about it; or the branch carries two
-matters, named, so the reader can retire each by its item.
+is still open; the work recorded about it has all been retired already; or the
+branch carries two matters, named, so the reader can retire each by its item —
+while a matter the ledger records no work about, or an open one whose recorded
+work was all retired, has nothing for retiring to be about and carries no entry.
 
 **The offer is read from the cache, and the verb asks the forge.** What the
 cache says finished is what makes the entry worth showing, and it costs

@@ -2044,6 +2044,34 @@ fn where_retiring_is_not_offered_the_matter_menu_says_why() {
     );
 }
 
+/// §FS-004-quick-actions.10: a finished matter the ledger records no work
+/// about has nothing for retiring to be about, so its menu carries no retire
+/// entry at all, not even a withheld one.
+#[test]
+fn a_finished_matter_with_no_recorded_work_carries_no_retire_entry() {
+    let site = finished(false);
+    site.issue(
+        304,
+        json!({ "title": "Never worked", "state": "CLOSED", "closedAt": "2026-10-02T08:00:00Z" }),
+    );
+    site.refresh();
+    let never = "github-issues:acme/widget#304";
+    assert!(
+        site.entry(never).is_null(),
+        "nothing is recorded about #304"
+    );
+    let actions = json_of(&site.ok(&["actions", "--item", never, "--json"]));
+    assert!(
+        actions["offers"].is_array(),
+        "the matter's menu is read: {actions:#}"
+    );
+    assert_eq!(
+        retire_entry(&site, never),
+        None,
+        "a finished matter with no recorded work carries no retire row: {actions:#}"
+    );
+}
+
 /// §FS-004-quick-actions.10: a branch carrying two matters offers neither,
 /// and its note names each so the reader can retire each by its item.
 #[test]
