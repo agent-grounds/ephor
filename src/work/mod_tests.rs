@@ -472,6 +472,17 @@ fn entry_for(root: &Path, plan_path: &Path) -> Entry {
 /// not the last open task or an assignee (§FS-005-dispatch.9).
 #[test]
 fn issue257_a_witnessed_running_step_leads_an_unstarted_claimed_dependent() {
+    assert_issue257_running_step_leads_dependent("ticket.compose");
+}
+
+/// A fully qualified same-plan Prior denotes the same witnessed work
+/// as its local spelling (§FS-005-dispatch.9).
+#[test]
+fn issue257_a_qualified_running_prior_leads_an_unstarted_claimed_dependent() {
+    assert_issue257_running_step_leads_dependent("forge-demo-17.ticket.compose");
+}
+
+fn assert_issue257_running_step_leads_dependent(prior: &str) {
     let tmp = tempfile::tempdir().unwrap();
     let root = tmp.path().join("panta");
     fs::create_dir_all(root.join("runtime")).unwrap();
@@ -489,11 +500,13 @@ fn issue257_a_witnessed_running_step_leads_an_unstarted_claimed_dependent() {
     let path = root.join("forge-demo-17.rhei.md");
     fs::write(
         &path,
-        concat!(
-            "# Rhei: work\n\n### Task ticket: Supervise\n**State:** supervising\n\n",
-            "#### Step ticket.compose: Compose\n**State:** composing\n\n",
-            "#### Step ticket.publish: Publish\n**State:** publishing\n",
-            "**Prior:** ticket.compose\n**Assignee:** somebody\n",
+        format!(
+            "{}**Prior:** {prior}\n**Assignee:** somebody\n",
+            concat!(
+                "# Rhei: work\n\n### Task ticket: Supervise\n**State:** supervising\n\n",
+                "#### Step ticket.compose: Compose\n**State:** composing\n\n",
+                "#### Step ticket.publish: Publish\n**State:** publishing\n",
+            ),
         ),
     )
     .unwrap();

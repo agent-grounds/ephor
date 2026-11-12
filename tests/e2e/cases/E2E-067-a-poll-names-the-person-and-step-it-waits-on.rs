@@ -181,6 +181,23 @@ fn issue257_machine_poll_names_its_step_without_a_person_warning() {
     assert_display(tmp.path(), None);
 }
 
+/// Same-plan qualification must preserve the polling prerequisite edge
+/// for both the matter row and its one-task location (§FS-005-dispatch.9).
+#[test]
+fn issue257_qualified_machine_poll_prior_names_its_step_without_a_person_warning() {
+    let tmp = poll_site("    poll:\n      interval: 10m\n      max_attempts: 1008\n");
+    let path = plan(tmp.path());
+    let body = fs::read_to_string(&path).unwrap();
+    let local = format!("**Prior:** {AGORA}\n");
+    assert_eq!(body.matches(&local).count(), 1, "{body}");
+    fs::write(
+        &path,
+        body.replace(&local, &format!("**Prior:** {PLAN}.{AGORA}\n")),
+    )
+    .unwrap();
+    assert_display(tmp.path(), None);
+}
+
 #[test]
 fn issue257_trailing_comment_does_not_declare_a_person() {
     let tmp = poll_site("    poll: { interval: 10m, max_attempts: 1008 }  # waiting_on: owner\n");
