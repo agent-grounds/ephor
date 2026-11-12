@@ -254,6 +254,22 @@ pub fn has_unretired_work(ledger: &Ledger, item: &str) -> bool {
         .is_some_and(|entry| retired::standing(entry).next().is_some())
 }
 
+/// What the ledger gives retiring `item` to be about
+/// (§FS-004-quick-actions.10): whether any work recorded about it is not yet
+/// retired, or `None` where it records none left and none retired — nothing
+/// for a matter's menu to say about retiring.
+pub fn unretired_work(ledger: &Ledger, item: &str) -> Option<bool> {
+    let entry = ledger.entries.get(item)?;
+    match (
+        has_unretired_work(ledger, item),
+        entry.retirements.is_empty(),
+    ) {
+        (true, _) => Some(true),
+        (false, false) => Some(false),
+        (false, true) => None,
+    }
+}
+
 /// The work roots inside a checkout one entry records — its own and its
 /// dispatches' — and the checkout's own runtime project, where it has one
 /// (§FS-005-dispatch.36.2).

@@ -186,9 +186,10 @@ pub fn retire_withheld(why: String) -> ActionConfig {
 pub const RETIRE_STILL_OPEN: &str =
     "the item is still open: only a finished matter's work is retired";
 
-/// Why a finished matter's menu does not offer retiring: nothing recorded
-/// about it is left to put away.
-pub const RETIRE_NO_WORK: &str = "there is no recorded work about this item left to retire";
+/// Why a finished matter's menu does not offer retiring: the work recorded
+/// about it has all been retired already (§FS-004-quick-actions.10).
+pub const RETIRE_ALL_RETIRED: &str =
+    "there is no recorded work about this item left to retire: all of it was retired already";
 
 /// Why a branch row does not offer retiring where the branch carries several
 /// matters: each of them, by the item that retires it.
