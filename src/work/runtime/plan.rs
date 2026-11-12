@@ -7,6 +7,7 @@
 //! ephor's ledger would be a watch reporting on itself
 //! (§FS-005-dispatch.4).
 
+use std::collections::BTreeMap;
 use std::fs;
 use std::io::BufRead;
 use std::path::{Path, PathBuf};
@@ -1124,6 +1125,21 @@ impl PlanTicket {
     pub fn cancelled(&self) -> bool {
         self.state.as_deref() == Some(CANCELLED)
     }
+}
+
+/// Resolve a display prerequisite within its plan (§FS-005-dispatch.9).
+/// The runtime gives exact local ids precedence over plan-qualified references;
+/// only after a local miss may this plan's prefix be removed. Keep that grammar
+/// in the adapter (§AR-007-runtime.1), without resolving other plans here.
+pub(crate) fn local_prior_index(
+    plan_id: &str,
+    prior: &str,
+    indices: &BTreeMap<String, usize>,
+) -> Option<usize> {
+    indices
+        .get(prior)
+        .or_else(|| indices.get(prior.strip_prefix(plan_id)?.strip_prefix('.')?))
+        .copied()
 }
 
 pub struct Plan {
@@ -2583,6 +2599,38 @@ states:
             vec!["a-1", "2.3", "c-9"]
         );
         assert!(prior_ids("  ").is_empty());
+    }
+
+    /// Qualified display priors retain the runtime's local-first identity
+    /// rule, even when a local id resembles a qualified alias (§FS-005-dispatch.9).
+    #[test]
+    fn issue257_display_priors_resolve_qualified_ids_after_exact_local_ids() {
+        let mut indices = BTreeMap::from([("ticket.compose".to_string(), 4)]);
+        assert_eq!(
+            local_prior_index("forge-demo-17", "ticket.compose", &indices),
+            Some(4)
+        );
+        assert_eq!(
+            local_prior_index("forge-demo-17", "forge-demo-17.ticket.compose", &indices),
+            Some(4)
+        );
+        assert_eq!(
+            local_prior_index("forge-demo-17", "other-plan.ticket.compose", &indices),
+            None
+        );
+        assert_eq!(
+            local_prior_index("forge-demo-17", "forge-demo-170.ticket.compose", &indices),
+            None
+        );
+        assert_eq!(
+            local_prior_index("forge-demo-17", "forge-demo-17.missing", &indices),
+            None
+        );
+        indices.insert("forge-demo-17.ticket.compose".to_string(), 9);
+        assert_eq!(
+            local_prior_index("forge-demo-17", "forge-demo-17.ticket.compose", &indices),
+            Some(9)
+        );
     }
 
     #[test]

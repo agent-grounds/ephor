@@ -6980,7 +6980,7 @@ pub fn status_of_entry_seen(
                     prior: ticket
                         .prior
                         .iter()
-                        .filter_map(|id| indices.get(id.as_str()).copied())
+                        .filter_map(|id| plan::local_prior_index(&recorded.plan_id, id, &indices))
                         .collect(),
                 },
                 outcome_files,
