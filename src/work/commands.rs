@@ -112,60 +112,105 @@ fn gate(
     act.over(verb, width)
 }
 
-/// `ephor work states` — the machine ephor's tickets actually run under
-/// (§FS-005-dispatch.11).
+/// `ephor work states` — the site's state machine, or with `--project` the
+/// one that project's new work roots get (§FS-011-command-line.7,
+/// §FS-005-dispatch.6).
 ///
-/// Under `--json` it says *which* machine as well as what is in it, which is a
-/// fact the prose form never carried: a program reading a YAML document on
-/// standard output could not tell the one ephor ships from the one this site
-/// configured, and those are different answers to "what states can a ticket be
-/// in". The document rides in a field rather than being the whole output
-/// because it is not JSON and never will be — the machine is the runtime's
-/// language, not ephor's (§REQ-001-boundary.1).
+/// The machine is resolved by [`crate::work::StatesAnswer`], the same order a
+/// new root is installed from, so what is printed is byte for byte what ephor
+/// would install. Under `--json` it says *which* machine as well as what is in
+/// it, and for whom: a program reading a YAML document on standard output
+/// could not tell the one ephor ships from one this site or one project
+/// configured. The document rides in a field rather than being the whole
+/// output because it is not JSON and never will be — the machine is the
+/// runtime's language, not ephor's (§REQ-001-boundary.1).
 fn work_states(config: &StatusConfig, args: &crate::cli::WorkStatesArgs) -> Result<ExitCode> {
-    // The one configured for these projects when there is one, so what is
-    // printed is what tickets would actually run under.
-    let configured = config
-        .work
-        .states
-        .as_ref()
-        .or_else(|| {
-            config
-                .projects
-                .values()
-                .find_map(|project| project.work.states.as_ref())
-        })
-        .map(|path| crate::paths::resolve_path(path));
-    let (source, path, states) = match configured {
-        Some(path) => {
-            let text = std::fs::read_to_string(&path).map_err(|err| {
-                EphorError::Command(format!(
-                    "Cannot read the configured state machine {}: {err}",
-                    path.display()
-                ))
-            })?;
-            ("configured", Some(path.display().to_string()), text)
-        }
-        None => (
-            "shipped",
-            None,
-            crate::work::runtime::plan::SHIPPED_STATES.to_string(),
-        ),
-    };
+    if let Some(project) = &args.project {
+        known_project(config, project)?;
+    }
+    let answer = crate::work::StatesAnswer::resolve(
+        &config.work,
+        config
+            .projects
+            .iter()
+            .map(|(id, project)| (id.as_str(), &project.work)),
+        args.project.as_deref(),
+    )?;
+    let machine = &answer.machine;
     if args.json {
+        let overrides: Vec<serde_json::Value> = answer
+            .overrides
+            .iter()
+            .map(|over| {
+                serde_json::json!({
+                    "project": over.project,
+                    "path": over.path.display().to_string(),
+                })
+            })
+            .collect();
         println!(
             "{}",
             serde_json::to_string_pretty(&serde_json::json!({
-                "source": source,
-                "path": path,
-                "states": states,
+                "project": machine.project,
+                "tier": machine.tier.as_str(),
+                "source": machine.source(),
+                "path": machine.path.as_ref().map(|path| path.display().to_string()),
+                "states": machine.text,
+                "overrides": overrides,
             }))
             .unwrap_or_else(|_| "null".to_string())
         );
         return Ok(ExitCode::SUCCESS);
     }
-    print!("{states}");
+    // Standard output is the machine and nothing else, because it is what a
+    // reader redirects into a root's states.yaml; who overrides it goes to the
+    // error stream, once (§FS-011-command-line.7).
+    if machine.project.is_none() && !answer.overrides.is_empty() {
+        let named: Vec<String> = answer
+            .overrides
+            .iter()
+            .map(|over| {
+                format!(
+                    "{} (`{}`)",
+                    over.project,
+                    crate::work::states_command(Some(&over.project))
+                )
+            })
+            .collect();
+        let sets = match named.len() {
+            1 => "sets its",
+            _ => "set their",
+        };
+        eprintln!(
+            "note: this is not the machine every project's new work roots get: {} {sets} own",
+            named.join(", ")
+        );
+    }
+    print!("{}", machine.text);
     Ok(ExitCode::SUCCESS)
+}
+
+/// Refuse a `--project` the site has never heard of — neither registered nor
+/// configured — naming it (§FS-011-command-line.7). A registered project with
+/// no work block is known: it gets the site's machine, as its root would.
+fn known_project(config: &StatusConfig, project: &str) -> Result<()> {
+    if config.projects.contains_key(project) {
+        return Ok(());
+    }
+    let registered = crate::feed::commands::load_registry_doc()
+        .map(|registry| {
+            crate::registry::array_field(&registry, "projects")
+                .iter()
+                .any(|entry| crate::registry::id_of(entry) == project)
+        })
+        .unwrap_or(false);
+    match registered {
+        true => Ok(()),
+        false => Err(registry_error(format!(
+            "Unknown project '{project}': it is neither in the registry nor under `projects` \
+             in the site configuration, so it has no state machine to print."
+        ))),
+    }
 }
 
 /// The gate's own facts, folded into a sweep's reading

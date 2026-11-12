@@ -2428,7 +2428,10 @@ Add your own, or replace a shipped one by reusing its id:
 ```
 
 Per project, `projects.<id>.work` takes the same `root`, `states`, `recipes`,
-`max_concurrent` and `max_active` keys. Recipes accumulate outward in —
+`max_concurrent` and `max_active` keys. A project's `states` wins over the
+site's for that project's new work roots; `ephor work states --project <id>`
+prints the one it gets, and a bare `ephor work states` names every project that
+overrides the site's machine (§8.9). Recipes accumulate outward in —
 shipped, then the site's, then the organization's (below), then the project's —
 and one reusing an earlier id replaces that recipe *where it already stands*
 rather than moving to the end. The later writer decides what the recipe says;
@@ -3061,12 +3064,15 @@ name a hand from: a configured hand resolves to nothing, says so in the
 workable rung's own words, and the ticket is written all the same.
 
 ephor creates it when it is missing: the manifest, a `.gitignore` that ignores
-the directory itself so your repository stays clean, and the shipped state
-machine as `states.yaml`. **An existing `states.yaml` is never replaced** —
-edit it for a different agent, model or timeout. A project that already holds
-plans of its own and declares no machine is refused rather than filled in,
-since a state machine governs every plan in a project; `ephor work states`
-prints ephor's for installing deliberately.
+the directory itself so your repository stays clean, and a state machine as
+`states.yaml` — the project's `projects.<id>.work.states` where it sets one,
+else the site's `work.states`, else the shipped machine. **An existing
+`states.yaml` is never replaced** — edit it for a different agent, model or
+timeout. A project that already holds plans of its own and declares no machine
+is refused rather than filled in, since a state machine governs every plan in a
+project; `ephor work states --project <id>` prints the machine that project's
+new roots get, for installing deliberately, and the refusal names that command
+([§FS-011-command-line.7](functional-spec/FS-011-command-line.md#7---json-is-the-same-answer-not-a-second-one)).
 
 Fresh plans use the machine in the neighboring `states.yaml` and emit no
 `**States:**` declaration. Older plans carrying the declaration remain readable
@@ -3721,7 +3727,7 @@ ephor work run [--project P] [--item ID] [--due [--max-concurrent N] [--except R
 ephor work workflows [--project P] [WORKFLOW] [--json]
 ephor work lay ENTRY --item ID [--values FILE]… [--set INPUT=VALUE]… [--hand H] [--dry-run]
 ephor work forget [--item ID | --done | --missing]
-ephor work states
+ephor work states [--project P] [--json]
 ```
 
 - **`list`** reads each ticket's state out of its plan every time — every plan
@@ -3982,6 +3988,16 @@ ephor work states
   only once its archive is gone, `forget --json` names a retired plan by
   `retired_to`, and `cancel` is refused for a ticket in a retired plan, naming
   the archive.
+- **`states`** prints the site's state machine — its `work.states`, or the
+  shipped one when it sets none — or with `--project` the one that project's
+  new work roots get: its own `work.states`, else the site's, else the shipped
+  one. That is byte for byte what ephor installs into a new root of the
+  project; an existing root keeps its own `states.yaml`. Standard output is the
+  machine and nothing else, so it can be redirected into a root; without
+  `--project`, a `note:` on standard error names each project that overrides
+  the site's machine. `--json` adds `project`, `tier` (`project`, `site` or
+  `shipped`) and `overrides`, every overriding project with its path
+  ([§FS-011-command-line.7](functional-spec/FS-011-command-line.md#7---json-is-the-same-answer-not-a-second-one)).
 
 ### 8.10 The ledger
 
@@ -5992,7 +6008,9 @@ items it produced, and answer `failures` and `restart` for a gate. Implementing 
 ### 11.3 A state machine of your own
 
 `ephor work states > my-states.yaml`, edit, and either drop it in a work root
-as `states.yaml` or point `work.states` at it. Recipes then name its states in
+as `states.yaml` or point `work.states` — or one project's
+`projects.<id>.work.states` — at it. Start from `ephor work states --project
+<id>` where you are changing what one project already runs. Recipes then name its states in
 their `state` field; one naming a state the machine does not declare is refused
 by name rather than written.
 
@@ -6237,7 +6255,9 @@ over can answer this by naming the branch its work belongs on: give it
 
 **Dispatch says a recipe "starts in state 'x', which the machine … does not
 declare".** The work root's `states.yaml` governs. Either use a state it has,
-or install ephor's with `ephor work states > <root>/states.yaml`.
+or install ephor's with `ephor work states --project <id> > <root>/states.yaml`
+for a root of project `<id>` (the bare `ephor work states` where the root
+belongs to no one project).
 
 **Dispatch says a project "already holds plans of its own".** Another rhei
 project is at `work.root` with plans and no state machine. Point `work.root`

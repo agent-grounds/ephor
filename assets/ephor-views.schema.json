@@ -1693,16 +1693,33 @@
       "then": { "required": ["says"] }
     },
     "work-states": {
-      "description": "`ephor work states --json` (FS-005-dispatch.11) — the state machine tickets actually run under, and where it came from. The machine itself is the runtime's language rather than ephor's, so it rides in a field as text; what this reading adds is *which* machine is in force, which the document alone never said.",
+      "description": "`ephor work states --json` (FS-011-command-line.7, FS-005-dispatch.6) — the site's state machine, or with `--project` the one that project's new work roots get, and where it came from. The machine itself is the runtime's language rather than ephor's, so it rides in a field as text; what this reading adds is *which* machine is in force, and for whom, which the document alone never said.",
       "type": "object",
-      "required": ["source", "states"],
+      "required": ["source", "states", "project", "tier", "overrides"],
       "properties": {
         "source": {
           "enum": ["shipped", "configured"],
           "description": "`shipped` is the one ephor carries; `configured` is one this site named."
         },
         "path": { "type": ["string", "null"], "description": "Where the configured machine was read from. Null for the shipped one." },
-        "states": { "type": "string", "description": "The machine verbatim — the same bytes the prose form prints." }
+        "states": { "type": "string", "description": "The machine verbatim — the same bytes the prose form prints." },
+        "project": { "type": ["string", "null"], "description": "The project `--project` asked about; null for the site's answer." },
+        "tier": {
+          "enum": ["project", "site", "shipped"],
+          "description": "Which rung of the order answered: the project's own `work.states`, the site's, or the shipped machine."
+        },
+        "overrides": {
+          "type": "array",
+          "description": "Every project whose own `work.states` is set, sorted by id; empty when there is none.",
+          "items": {
+            "type": "object",
+            "required": ["project", "path"],
+            "properties": {
+              "project": { "type": "string" },
+              "path": { "type": "string" }
+            }
+          }
+        }
       }
     },
     "update": {

@@ -901,7 +901,9 @@ fn init_store(
     selected_root: Option<&std::path::Path>,
 ) -> Store {
     let result = match selected_root {
-        Some(root) => crate::work::ensure_store_at(&work.global(), work.per_project(), root),
+        Some(root) => {
+            crate::work::ensure_store_at(&work.global(), project, work.per_project(), root)
+        }
         None => crate::work::ensure_store(
             &work.global(),
             work.per_organization(),
