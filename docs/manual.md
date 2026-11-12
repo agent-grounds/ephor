@@ -101,7 +101,7 @@ Template paths inside the registry resolve relative to the registry file.
 
 ### 1.3 What ephor writes
 
-Everything, in one directory:
+Its state, in one directory:
 
 ```
 ~/.local/state/ephor/
@@ -117,6 +117,19 @@ Deleting any of it is safe. The feed comes back on the next `ephor refresh`;
 `work.json` coming back empty forgets which plans belong to which item, and
 the plans themselves stay where they are; `burn/` coming back empty costs one
 full scan of the transcripts it is built from.
+
+One thing is not state, and is kept apart for that reason: the archive that
+retiring moves a finished matter's leftover work into (§8.7.3).
+
+```
+~/.local/share/ephor/          $XDG_DATA_HOME/ephor
+  archive/<project>/<item>/<stamp>/   one retirement: its record and what it moved
+```
+
+**The archive is not safe to delete.** Retiring moved those plans rather than
+copying them, so the archive is the only copy, and the ledger's `retirements`
+point into it. Delete one and its work rows say `retired; archive missing at
+<path>`, and the work it held is gone.
 
 ---
 
@@ -1744,7 +1757,7 @@ Entries ephor has without being told, on an item where it already knows what
 the problem is ([§FS-004-quick-actions](functional-spec/FS-004-quick-actions.md#fs-004-quick-actions-a-problem-ephor-recognizes-arrives-with-the-action-for-it)).
 They lead the menu, and configuration adds to them rather than replacing them.
 
-Today, six:
+Today, seven:
 
 **`✗ see the CI failures`** on a pull request whose gate is red — the check
 list as the forge reports it, then every failed job's log, paged. It is offered
@@ -1906,6 +1919,19 @@ it out first, then runs what you picked in it. Configure a `checkout` command
 for the project and yours runs instead ([§7.2](#72-configured-actions)) — from
 here, from `ephor checkout`, and from the dispatch alike; the difference is only
 whether anyone expects to want their own.
+
+**`⌫ retire the leftover work of this finished matter`** on a matter the cache
+says is finished, while the ledger records work about it that was not retired,
+with or without a checkout: a matter whose checkout is already gone is the
+commonest case
+([§FS-004-quick-actions.10](functional-spec/FS-004-quick-actions.md#10-a-finished-matters-leftover-work-is-offered-retirement)).
+Under `ephor actions --project P --branch B` it is offered on a branch only
+where the branch belongs to exactly one such matter. It runs
+`ephor work retire --item ID` (§8.7.3). The cache only makes the offer: the verb
+asks the forge again, so an offer made from a stale cache is refused with the
+guard's own sentence. It asks first, so `actions run retire` needs `--yes`, and
+it runs where you asked rather than beneath the screen, because what moved and
+where the record is are the answer.
 
 ### 7.2 Configured actions
 
@@ -3519,6 +3545,118 @@ first and stay as actionable as ever; the finished files after them only open.
 finished ticket with no readable verdict, another verdict, or a cancellation
 adds nothing and reads exactly as it did.
 
+#### 8.7.3 Retiring a finished matter's work
+
+A matter can finish on the forge while the work laid about it never does. The
+issue closed because a pull request merged from a branch somebody else made,
+the checkout went, and the plan is still in the work root with a ticket at
+`fix`. That ticket is open work, so the matter stays on the feed with work rows
+under it for as long as the plan is kept. Cancelling runs the machine's hooks
+against an issue that is already closed, forgetting drops ephor's record and
+leaves the plan owned by nobody, and `forget --done` skips the entry because a
+ticket is open. **Retiring puts the work away**
+([§FS-005-dispatch.36](functional-spec/FS-005-dispatch.md#36-a-finished-matters-work-can-be-retired-and-the-record-says-where-it-went)):
+
+```text
+$ ephor work retire --item github-issues:acme/widget#301
+github-issues:acme/widget#301 — moved 1 plan(s) to /home/you/.local/share/ephor/archive/widget/github-issues-acme-widget-301-…/20261112T101500.123Z
+  moved /home/you/c/widget/fix/issue-301/panta/github-issues-acme-widget-301-….rhei.md → …/1-widget-panta/github-issues-acme-widget-301-….rhei.md
+    answer-1 · fix
+  left /home/you/c/widget/fix/issue-301/panta/github-issues-acme-widget-301-….rhei.md.lock
+  record /home/you/.local/share/ephor/archive/widget/github-issues-acme-widget-301-…/20261112T101500.123Z/retirement.json
+```
+
+The plans move unchanged. No ticket changes state, no line of a plan is
+rewritten, no hook fires, and the forge is only asked questions. The ledger
+keeps the entry and says where its work went (§8.10), so the work rows read
+`retired → <archive>` from then on. Nothing retires by itself: an issue closing
+is a condition retiring checks, never a trigger, and it is one matter at a time.
+
+**Which matter.** `--item ID` names it. `--project P --branch B` names it by
+branch, and so does standing in its checkout with neither: the ledger entries
+that record the branch and the matters the checkout's open plans belong to must
+come to exactly one, and where they come to none or two the command names them
+and asks for `--item`.
+
+**When it is allowed.** The forge is asked at the moment of retiring, never the
+cache
+([§FS-005-dispatch.36.1](functional-spec/FS-005-dispatch.md#361-it-is-allowed-only-where-the-forge-says-the-matter-is-over-and-nothing-is-open-from-its-branches)).
+An issue must be closed, or have a merged pull request the forge links as
+closing it. A pull request must no longer be open. And no pull request may
+still be open from any branch the work could be on, whoever pushed it: a fork
+whose branch has the same name counts. Those branches come from the checkout,
+from what the ledger, the plans and the lay records name, and from the heads of
+the pull requests that close the issue. The project's default branch, and a
+recorded branch whose recorded checkout is a directory of checkouts rather than
+a checkout, are set aside with the reason. `--pr-branch NAME` adds one more
+branch to check, and nothing else. A list the forge cut short is never read as
+empty.
+
+**What is taken.** Every open plan that something says is this matter's and
+nothing says is another's
+([§FS-005-dispatch.36.2](functional-spec/FS-005-dispatch.md#362-what-is-taken-is-every-open-plan-the-record-and-the-checkout-witness-as-this-matters)):
+the `id` its tickets record, its lay record under `.ephor/`, and the ledger
+dispatches whose plan it is. A plan nobody claims is refused unless
+`--admit PATH` names it, beside `--item`, and the record says it was admitted
+by you. `--admit` never takes a plan somebody else claims. A plan whose every
+ticket is final stays where it is, listed as `left final`. A placement already
+gone is listed as `already gone`. A plan that cannot be read refuses the whole
+move.
+
+**While a run is on it, nothing moves.** Retiring takes the runtime's own locks
+for every root it moves from, without waiting, and holds them until the ledger
+is saved
+([§FS-005-dispatch.36.3](functional-spec/FS-005-dispatch.md#363-it-holds-the-runtimes-own-exclusion-and-asks-the-runtime-to-move-nothing)).
+A lock already held, a root the runtime lists as live, or a recovery marker
+refuses: `<root> is held by a live run; retire again when it ends`. A plan in a
+root shared with other matters is blocked by a run on any of them. It never
+breaks a lock, stops a run, or asks the runtime for a transition.
+
+**Where it goes.** Under `$XDG_DATA_HOME/ephor/archive/`
+(`~/.local/share/ephor/archive/`), one directory per retirement
+([§FS-005-dispatch.36.4](functional-spec/FS-005-dispatch.md#364-the-archive-is-ephors-data-outside-every-root-and-nothing-tracked-moves-into-it)):
+
+```text
+archive/<project>/<item-slug>/<UTC stamp>/
+  retirement.json                the record
+  1-<project>-panta/             one directory per root, in the order read
+    <plan>.rhei.md               a single plan file, or a workspace's content
+    .ephor/<plan-id>/            its lay record
+    states.yaml                  a copy of that root's machine
+```
+
+A single plan's lock file stays at its old path, and a workspace keeps its
+`runtime/` directory and every lock where they were: what stays has no plan
+index, so nothing reads it as a plan. Its results and snapshot files stay in a
+shared root too, and the record's `left` names each. Every move is a rename, so
+the archive must be on the same filesystem as the plans, and outside every root,
+store, project and worktree a reader walks. A path git tracks is never moved.
+Each of those refuses before anything moves.
+
+**The record is written first.** `retirement.json` is written `pending` before
+the first move, the ledger save is the commit, and then the record says
+`committed`
+([§FS-005-dispatch.36.5](functional-spec/FS-005-dispatch.md#365-the-record-is-written-before-the-move-and-a-retirement-left-half-done-is-finished-or-undone)).
+A failure before the save puts everything back and marks it `rolled-back`. A
+retirement cut short is found by the next `work retire` of the same matter,
+which finishes it where the ledger already has it and undoes it where not. A
+restore never writes over a path something has taken since. The record names
+the matter, when, where, by whom and `--why`; what the forge said; every branch
+checked and every one set aside; what each guard found; and each plan with its
+witnesses, its open tickets and where it went.
+
+**A refusal is an answer.** One sentence, exit 1, and nothing moved. Under
+`--json` it is the `work-retire` shape with `refused` naming the guard:
+`eligibility`, `forge`, `open-pull-request`, `branch`, `witness`, `unreadable`,
+`live-root`, `tracked`, `archive`, `recovery` or `runtime`
+([§FS-005-dispatch.36.6](functional-spec/FS-005-dispatch.md#366-it-is-one-command-about-one-matter-an-action-and-an-answer-a-program-reads)).
+`--dry-run` asks the forge, reads every plan and probes every lock, and writes
+nothing, not even a lock file: it says `would move` where it would have moved.
+
+**It is a key too.** `⌫ retire the leftover work of this finished matter` is in
+the action menu of a finished matter that still has work, and of a branch that
+belongs to exactly one (§7.1). It asks before it runs.
+
 ### 8.8 By hand
 
 Recipes are for the work that repeats; most work does not. `a` on the work
@@ -3555,6 +3693,8 @@ ephor work dispatch [--project P] [--item ID] [--recipe R] [--kind K]
 ephor work ask --item ID [WORDS…] [--state S] [--dry-run]
 ephor work sync [--project P] [--dry-run] [--act] [-- RUNNER_ARGS…]
 ephor work cancel --item ID TICKET… [--why WORDS] [--dry-run]
+ephor work retire [--item ID | --project P --branch B] [--admit PATH]… [--pr-branch NAME]…
+                  [--why WORDS] [--dry-run]
 ephor work run [--project P] [--item ID] [--due [--max-concurrent N] [--except ROOT|ITEM]…]
                [--watch] [--force] [--act] [-- RHEI_ARGS…]
 ephor work workflows [--project P] [WORKFLOW] [--json]
@@ -3812,6 +3952,16 @@ ephor work states
   above it — its absence is ephor's own record of something gone, so it counts
   as finished rather than as unread, and `--done` takes the entry where nothing
   else of that matter's is open.
+- **`retire`** puts a finished matter's open work into an archive and keeps the
+  ledger entry, which says where it went (§8.7.3). It is the third way of
+  taking work back: `cancel` moves tickets through the runtime and keeps the
+  plan, `forget` drops the record and leaves the plan where it is, and `retire`
+  moves the plan and keeps the record. Once a matter's work is retired,
+  `forget --done` reads the archived plans, `forget --missing` takes the entry
+  only once its archive is gone, `forget --json` names a retired plan by
+  `retired_to`, and `cancel` is refused for a ticket in a retired plan, naming
+  the archive. With no ticket, `cancel --item` says the matter's work was
+  retired and where it is kept.
 
 ### 8.10 The ledger
 
@@ -3842,6 +3992,32 @@ tracking uses:
 A dispatch carrying a `plan` laid a workflow down beside the matter's own
 plan rather than a ticket inside it (§8.15); its `ticket` is empty because
 there is none.
+
+A retirement (§8.7.3) adds two fields and changes none. The entry gains
+`retirements`, one per retirement, oldest first, and each dispatch whose
+placement it took gains `retired_at`:
+
+```json
+"retirements": [
+  { "at": "2026-11-12T10:15:00.123Z",
+    "record": "/home/you/.local/share/ephor/archive/widget/…/20261112T101500.123Z/retirement.json",
+    "archive": "/home/you/.local/share/ephor/archive/widget/…/20261112T101500.123Z",
+    "plans": [
+      { "from": "/home/you/c/acme/widget/panta/github-prs-acme-widget-42-922ddbdc.rhei.md",
+        "to": "/home/you/.local/share/ephor/archive/widget/…/1-widget-panta/github-prs-acme-widget-42-922ddbdc.rhei.md" },
+      { "from": "/home/you/c/acme/widget/panta/github-prs-acme-widget-42-review-change-47d86789",
+        "absent": true } ] } ]
+```
+
+A dispatch keeps its `root`, `plan` and `branch` as written, so the ledger
+still says where the work was laid. Every reader takes a dispatch with
+`retired_at` as moved to where its retirement says: its row reads `retired →
+<archive>`, it is not open work, and it is not missing while the archive is
+there. Where the archive is gone the row says `retired; archive missing at
+<path>`, and the placement counts as missing from then on. A dispatch that was
+retired is not work already handed over, so new work about the matter is a new
+plan, whose first ticket says where the earlier work is kept. An older ephor
+reads the ledger and ignores both fields.
 
 It answers one question — has this been handed over? — and holds the
 fingerprint that answers the next: has the item moved since. An entry whose
@@ -5837,7 +6013,7 @@ ephor check | validate --manifest | schema                # the project interfac
 ephor actions [list] | actions run <id> | actions open <id>  # what may be done here
 ephor thread <id> | react | tick | reply | settle         # a conversation
 ephor reply <id> --resolve sent|not-sent                  # checked held outcome, no send
-ephor work list | offers | dispatch | ask | sync | cancel | lay | run | forget
+ephor work list | offers | dispatch | ask | sync | cancel | retire | lay | run | forget
 ephor work workflows | states                             # what the runtime carries
 ephor operations [attach <run>]                           # the board — alias: ops
 ephor burn [--window 1h|6h|24h|7d] [--by project|model|session|plan|matter]
@@ -5875,7 +6051,7 @@ A checkout is enough for those three, which is why CI can run them
 | `EPHOR_SCHEMA` | registry schema path |
 | `EPHOR_STATUS_CONFIG` | feed config path |
 | `EPHOR_HOME` | legacy config root (`$EPHOR_HOME/config/*.json`) |
-| `XDG_STATE_HOME`, `XDG_CONFIG_HOME` | where state and config live |
+| `XDG_STATE_HOME`, `XDG_CONFIG_HOME`, `XDG_DATA_HOME` | where state, config and the archive live |
 | `NO_COLOR` | plain output |
 | `PAGER`, `EDITOR` | used by quick actions, `e` on the work screen, and reading a job's log |
 
@@ -5888,6 +6064,7 @@ A checkout is enough for those three, which is why CI can run them
 | `~/.local/state/ephor/feed/*.json` | one cache per project |
 | `~/.local/state/ephor/seen.json` | unread tracking |
 | `~/.local/state/ephor/work.json` | the work ledger |
+| `~/.local/share/ephor/archive/<project>/<item>/<stamp>/` | one retirement: `retirement.json` and the work it moved (§8.7.3); the only copy, so never safe to delete |
 | `~/.local/state/ephor/replies/<row-digest>.json` | saved sends, confirmed draft identities and accepted thread generations (§8.12); forgetting work does not erase these |
 | `~/.local/state/ephor/replies/<row-digest>.lock` | persistent row lock inode; unlocked when the move exits |
 | `~/.local/state/ephor/jobs/<id>/` | one job: `job.json`, `log` (none for a windowed job), `lock`, `outcome.json` (§8.14) |
@@ -5924,6 +6101,7 @@ usable by the runtime it hands work to.
 | `s` — settle a conversation at its source | `ephor settle ID` (`--dry-run` says what it would ask) |
 | `w` — what is being done about it | `ephor work offers --item ID` |
 | `a` / `s` / `c` / `R` — ask, reopen, cancel, run | `ephor work ask` / `sync` / `cancel` / `run` |
+| `enter` / `1`–`9` on *retire* — put a finished matter's work away | `ephor work retire --item ID` (`--dry-run` says what would move) |
 | `z` — the tickets that are over | `ephor work offers --item ID --all` |
 | `c` — the gate spelled out | `ephor failures --item ID` |
 | `;` — the operations board | `ephor operations` |
@@ -5950,6 +6128,7 @@ accident. A command that changes something prints what it changed:
 ephor actions run rebase --item "$id" --json   # {"ok":true,"says":…,"steps":[…]}
 ephor rebase --project widget --json           # per repository: rebased, conflicted, dirty…
 ephor work dispatch --item "$id" --json        # {"opened":1,"items":[{"ticket":…}]}
+ephor work retire --item "$id" --json          # {"retired":true,"plans":[…],"record":…}
 ephor schema views                             # what every one of them may print
 ```
 
@@ -5977,6 +6156,12 @@ A command that is **refused** answers too. Under `--json` it prints
 happened prints — and keeps the exit code it had. The reason is on stderr as
 well, for whoever is watching; a script that reads only standard output still
 learns that the thing did not happen and why.
+
+`work retire` answers a refusal in its own shape instead. What stops it is a
+fact about the matter, so it prints `work-retire` with `retired` false and
+`refused` naming the guard, its sentence and the paths it names, and exits `1`
+([§FS-005-dispatch.36.6](functional-spec/FS-005-dispatch.md#366-it-is-one-command-about-one-matter-an-action-and-an-answer-a-program-reads)).
+Only a usage error, such as `--act`, is `{"ok": false}`.
 
 A repeated workflow action uses that refusal shape and exits `1`
 ([§FS-011-command-line.1](functional-spec/FS-011-command-line.md#1-what-may-be-done-here-listed-and-run)).
