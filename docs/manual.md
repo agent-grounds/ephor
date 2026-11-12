@@ -3635,7 +3635,11 @@ index, so nothing reads it as a plan. Every file the runtime keeps in a shared
 root for each of a single plan's tickets stays there too: under `runtime/`, its
 result, its logs, spawns and session reports, its snapshot sessions, its
 worktree reference, its exports and its accounting, and its entry in the
-snapshot cache under `.rhei/cache/snapshots/`. The record's `left` names each.
+snapshot cache under `.rhei/cache/snapshots/`. So does every file ephor's own
+machine and drafts keep there under `runtime/ephor/`: each ticket's report,
+verdict, failures and reply, and the plan's own reply, drafted or posted. A
+workspace takes the runtime's files with it, but a workflow's answer is drafted
+in the root it was laid in, and stays there. The record's `left` names each.
 Every move is a rename, so the archive must be on the same filesystem as the
 plans, and outside every root, store, project and worktree a reader walks. A
 path git tracks is never moved. Each of those refuses before anything moves.

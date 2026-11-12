@@ -250,34 +250,53 @@ fn holds_staying(dir: &Path) -> std::io::Result<bool> {
     Ok(false)
 }
 
-/// What a moved single plan leaves in its shared root
-/// (§FS-005-dispatch.36.5): its lock file, and every file the runtime keeps
-/// for each of its tickets there, found by the runtime's own naming of them —
-/// the result, the logs, spawns and reports, the snapshot sessions, the
-/// worktree reference, the exports, the accounting, and the snapshot cache.
+/// What a moved plan leaves in the root it shared (§FS-005-dispatch.36.5).
+///
+/// A single plan leaves its lock file; every file the runtime keeps for each
+/// of its tickets there, found by the runtime's own naming of them — the
+/// result, the logs, spawns and reports, the snapshot sessions, the worktree
+/// reference, the exports, the accounting, and the snapshot cache; and every
+/// file ephor's own states and drafts keep there for each ticket — its report,
+/// verdict, failures and reply — and for the plan, by ephor's naming of them.
 /// The lock file first, then the rest sorted.
-pub fn left_behind(plan_file: &Path, plan_id: &str) -> Vec<PathBuf> {
-    let mut left = vec![plan::sidecar_of(plan_file)];
-    let (Some(root), Ok(Some(read))) = (plan_file.parent(), plan::Plan::read(plan_file)) else {
-        return left;
-    };
+///
+/// A workspace is its own root, so it takes the runtime's files with it; what
+/// it leaves is what ephor keeps for it in the root it was laid in, a
+/// workflow's answer.
+pub fn left_behind(unit: &Path, plan_id: &str) -> Vec<PathBuf> {
+    let workspace = unit.is_dir();
     let mut found = Vec::new();
-    for ticket in read.tickets() {
-        let task = format!("{plan_id}.{}", ticket.id);
-        for (dir, named) in kept_for(root, &task) {
-            let Ok(entries) = fs::read_dir(&dir) else {
-                continue;
-            };
-            found.extend(
-                entries
-                    .flatten()
-                    .filter(|entry| named.names(&entry.file_name().to_string_lossy()))
-                    .map(|entry| entry.path()),
-            );
+    if let Some(root) = unit.parent() {
+        found.extend(
+            super::results::kept_for_plan(root, plan_id)
+                .into_iter()
+                .filter(|path| fs::symlink_metadata(path).is_ok()),
+        );
+        let read = match workspace {
+            true => None,
+            false => plan::Plan::read(unit).ok().flatten(),
+        };
+        for ticket in read.iter().flat_map(|read| read.tickets()) {
+            let task = format!("{plan_id}.{}", ticket.id);
+            for (dir, named) in kept_for(root, &task) {
+                let Ok(entries) = fs::read_dir(&dir) else {
+                    continue;
+                };
+                found.extend(
+                    entries
+                        .flatten()
+                        .filter(|entry| named.names(&entry.file_name().to_string_lossy()))
+                        .map(|entry| entry.path()),
+                );
+            }
         }
     }
     found.sort();
     found.dedup();
+    if workspace {
+        return found;
+    }
+    let mut left = vec![plan::sidecar_of(unit)];
     left.extend(found);
     left
 }
@@ -299,13 +318,18 @@ impl Named {
     }
 }
 
-/// Every place the runtime keeps a file for the task `task` in `root`, and how
-/// it names it there: the runtime's own rules for what one task leaves in a
-/// root's `runtime/`, and its snapshot cache's default home and identity.
+/// Every place a file is kept for the task `task` in `root`, and how it is
+/// named there: the runtime's own rules for what one task leaves in a root's
+/// `runtime/`, its snapshot cache's default home and identity, and ephor's own
+/// rule for what its states and drafts write for a task.
 fn kept_for(root: &Path, task: &str) -> Vec<(PathBuf, Named)> {
     let runtime = root.join(RUNTIME);
     let accounting = accounting_segment(task);
     vec![
+        (
+            super::results::artifacts(root),
+            Named::Prefixed(super::results::task_prefix(task)),
+        ),
         (
             root.join(super::results::RESULTS),
             Named::Exact(format!("{task}.md")),
@@ -793,9 +817,12 @@ mod tests {
         assert!(refused.says.ends_with(&line), "{}", refused.says);
     }
 
-    /// A moved single plan's record names its lock file and every file the
+    /// A moved single plan's record names its lock file, every file the
     /// runtime keeps for each of its tickets in the shared root, by the
-    /// runtime's own naming, and nothing of a neighbour's (§FS-005-dispatch.36.5).
+    /// runtime's own naming, and every file ephor's own states and drafts keep
+    /// there for each ticket and for the plan, by ephor's — and nothing of a
+    /// neighbour's, nor of a ticket whose id merely begins with one of its own
+    /// (§FS-005-dispatch.36.5).
     #[test]
     fn a_single_plan_leaves_every_file_the_runtime_keeps_for_its_tickets() {
         let tmp = tempfile::tempdir().unwrap();
@@ -814,6 +841,13 @@ mod tests {
             "runtime/accounting/tasks/p.fix.json",
             ".rhei/cache/snapshots/p.fix/review/fix/1/a/record.json",
             "runtime/results/p.fix-2.md",
+            "runtime/ephor/p.fix.report.md",
+            "runtime/ephor/p.fix.verdict.md",
+            "runtime/ephor/p.fix.failures.md",
+            "runtime/ephor/p.fix.reply.md",
+            "runtime/ephor/p.fix-2.reply.posted.md",
+            "runtime/ephor/p.reply.md",
+            "runtime/ephor/p.reply.posted.md",
         ];
         let theirs = [
             "runtime/results/q.fix.md",
@@ -822,6 +856,11 @@ mod tests {
             "runtime/logs/task-p.fixed-implementing.log",
             ".rhei/cache/snapshots/q.fix/review/fix/1/a/record.json",
             ".rhei/cache/snapshots/p.fixed/review/fix/1/a/record.json",
+            "runtime/ephor/q.fix.report.md",
+            "runtime/ephor/p.fixed.report.md",
+            "runtime/ephor/p.fix-20.verdict.md",
+            "runtime/ephor/q.reply.md",
+            "runtime/ephor/p-2.reply.md",
         ];
         for path in ours.iter().chain(theirs.iter()) {
             write(&root.join(path), "");
@@ -838,6 +877,13 @@ mod tests {
             "runtime/accounting/tasks/p.fix.json",
             ".rhei/cache/snapshots/p.fix",
             "runtime/results/p.fix-2.md",
+            "runtime/ephor/p.fix.report.md",
+            "runtime/ephor/p.fix.verdict.md",
+            "runtime/ephor/p.fix.failures.md",
+            "runtime/ephor/p.fix.reply.md",
+            "runtime/ephor/p.fix-2.reply.posted.md",
+            "runtime/ephor/p.reply.md",
+            "runtime/ephor/p.reply.posted.md",
         ]
         .iter()
         .map(|path| root.join(path))
@@ -847,8 +893,36 @@ mod tests {
         assert_eq!(left_behind(&plan, "p"), expected);
     }
 
+    /// A workspace takes the runtime's files with it, so all it leaves in the
+    /// root it was laid in is the workflow's answer ephor named there, as
+    /// drafted and as posted — and nothing of a neighbour's
+    /// (§FS-005-dispatch.36.5).
+    #[test]
+    fn a_workspace_leaves_only_the_answer_ephor_named_for_it_in_its_root() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path().join("panta");
+        let workspace = root.join("w");
+        write(&workspace.join(INDEX), "# Rhei: w\n\n### Task fix: x\n");
+        for path in [
+            "runtime/ephor/w.workflow.reply.md",
+            "runtime/ephor/w.workflow.reply.posted.md",
+            "runtime/ephor/v.workflow.reply.md",
+            "runtime/ephor/w-2.workflow.reply.md",
+        ] {
+            write(&root.join(path), "");
+        }
+        assert_eq!(
+            left_behind(&workspace, "w"),
+            vec![
+                root.join("runtime/ephor/w.workflow.reply.md"),
+                root.join("runtime/ephor/w.workflow.reply.posted.md"),
+            ]
+        );
+    }
+
     /// The runtime's accounting file names keep a task id's safe bytes and
-    /// percent-encode the rest.
+    /// percent-encode the rest: how `left` finds a task's accounting files
+    /// (§FS-005-dispatch.36.5).
     #[test]
     fn an_accounting_name_is_the_task_id_as_the_runtime_encodes_it() {
         assert_eq!(accounting_segment("p.fix-1_a"), "p.fix-1_a");
