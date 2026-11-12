@@ -5285,9 +5285,11 @@ file the move takes. First each root's run lock, in the runtime's own canonical
 order, which is the sorted absolute paths of the roots; then every writer lock
 that guards a file the move takes. For a single plan file that is the file's
 own lock. For a directory workspace it is every lock under it that guards a file
-leaving with its content — its index, each task, the transition log, the notes,
-the metrics, and any lock the runtime adds for a file there later — because
-those files move with the content and their locks must be held while they do.
+leaving with its content — its index's, each task's, the transition log's and
+the metrics', and every other lock already under it outside the runtime's own
+directory, which is how a lock the runtime adds for a file there later is held
+too — because those files move with the content and their locks must be held
+while they do.
 A lock file that is absent is created empty, exactly as the runtime creates it,
 and never truncated. Every lock is taken non-blocking and exclusive, and held
 as an open handle until the ledger has committed or the move has rolled back
