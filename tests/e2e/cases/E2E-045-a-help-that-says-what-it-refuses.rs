@@ -279,3 +279,33 @@ fn a_verb_that_refuses_act_says_so_in_its_help() {
         assert!(gated.contains(verb), "{verb} was not found gated");
     }
 }
+
+/// `work retire` is one matter and sweeps nothing (§FS-005-dispatch.36.6), so
+/// it is classified beside `work cancel`: its help refuses the selectors and
+/// `--act` in their refusals' words (§FS-011-command-line.10.1).
+#[test]
+#[ignore = "red until #249: work retire is classified as refusing the selectors and --act; implement removes this"]
+fn work_retire_refuses_the_selectors_and_act_in_its_help() {
+    let world = World::new();
+    let page = pages()
+        .into_iter()
+        .find(|page| page.path == ["work", "retire"])
+        .expect("`work retire` has a page of help");
+    let (verb, honours, sweeps) = classified(&page);
+    assert_eq!(verb, "work retire");
+    assert_eq!(
+        honours,
+        Honours::Nothing,
+        "it is about the one matter it is given"
+    );
+    assert_eq!(sweeps, Sweeps::Nothing, "it sweeps no set of projects");
+    let help = help_of(&world, &page.path);
+    let mut notes = act_notes(&verb, sweeps);
+    notes.extend(selector_note(&verb, honours));
+    for note in notes {
+        assert!(
+            help.contains(&note),
+            "work retire --help lacks: {note}\n{help}"
+        );
+    }
+}
