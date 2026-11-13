@@ -321,6 +321,12 @@ impl ForgeProvider {
         let request = Request::new(self.config.clone(), ctx);
         let declared = capabilities.fetches();
         let mut answers = Vec::new();
+        // A whole-source probe with no fetch capabilities completed with an
+        // empty answer (§FS-001-forge-interface.6.1). Under --only, an empty
+        // answers list instead means this block was not asked for any data.
+        if only.is_none() && declared.is_empty() {
+            answers.push((None, Ok(Vec::new())));
+        }
         for fetch in declared.iter().copied() {
             if only.is_some_and(|only| only != fetch) {
                 continue;
