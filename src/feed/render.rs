@@ -78,9 +78,18 @@ pub fn age(now: DateTime<Utc>, then: DateTime<Utc>) -> String {
     format!("{}d", hours / 24)
 }
 
-pub fn render_project(feed: &ProjectFeed, seen: &Seen, style: &Style, recent_days: u64) {
+/// One project's status reading, headed by its age: the oldest asking of its
+/// own histories, never the last refresh run that touched it
+/// (§FS-011-command-line.12, [`crate::feed::age`]).
+pub fn render_project(
+    feed: &ProjectFeed,
+    age_of: Option<DateTime<Utc>>,
+    seen: &Seen,
+    style: &Style,
+    recent_days: u64,
+) {
     let now = Utc::now();
-    match feed.fetched_at {
+    match age_of {
         Some(fetched) if age(now, fetched) == "now" => {
             println!("{}  (fetched just now)", style.bold(&feed.project))
         }

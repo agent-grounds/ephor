@@ -83,7 +83,13 @@ fn watching(ttl: u64) -> World {
     let world = World::new();
     world.organize(ORG, "Foundation");
     install_forges(&world);
-    world.configure(json!({
+    world.configure(settings(ttl));
+    world
+}
+
+/// What [`watching`] configures.
+fn settings(ttl: u64) -> Value {
+    json!({
         "defaults": { "ttl_seconds": ttl },
         "projects": { PROJECT: { "providers": bound_blocks() } },
         "work": { "recipes": [{
@@ -94,9 +100,39 @@ fn watching(ttl: u64) -> World {
             "state": "fix",
             "brief": "Answer {title}."
         }] }
-    }));
-    world
+    })
 }
+
+/// A runtime offering one workflow about a ticket, which `work lay` can lay
+/// down as a dry run: what a reader does next with a ticket just imported.
+const TICKET_RUNTIME: &str = r#"#!/usr/bin/env bash
+set -euo pipefail
+verb="$1"; shift
+case "$verb" in
+  templates)
+    cat <<'JSON'
+[ { "name": "work-ticket", "version": "1.0.0", "source": "user",
+    "path": "work-ticket", "description": "Work one ticket.",
+    "inputs": [ { "name": "ticket", "description": "The ticket.",
+      "type": "string", "required": true, "default": null, "validate": null,
+      "format": null, "positional": 1, "items": null, "properties": null } ] } ]
+JSON
+    ;;
+  instantiate)
+    output=""; dry=""
+    while [ "$#" -gt 0 ]; do
+      case "$1" in
+        --output) output="$2"; shift 2 ;;
+        --dry-run) dry=yes; shift ;;
+        *) shift ;;
+      esac
+    done
+    [ -n "$dry" ] || { echo "only a dry run is expected here" >&2; exit 1; }
+    echo "would render work-ticket into $output"
+    ;;
+  *) echo "unexpected: $verb" >&2; exit 1 ;;
+esac
+"#;
 
 fn log_path(world: &World) -> std::path::PathBuf {
     world.path().join("forge.log")
@@ -312,7 +348,6 @@ fn plain_refresh_is_unchanged() {
 /// its pull requests (§FS-011-command-line.12) and an unheld sweep refetches
 /// it before it reads (§FS-004-quick-actions.6.1).
 #[test]
-#[ignore = "red until #263: refresh takes no --source/--only, so a registered ticket costs a whole refresh; implement removes this"]
 fn registered_issue_import_skips_pr_work() {
     let world = watching(3);
     let first = run(&world, &["refresh", PROJECT, "--quiet"]);
@@ -371,6 +406,26 @@ fn registered_issue_import_skips_pr_work() {
     // The ticket can be acted on, and nothing else left the feed.
     let actions = run(&world, &["actions", "--item", TICKET_ITEM]);
     assert!(actions.status.success(), "{}", said(&actions));
+    // Work can be laid on it: the step this import was for
+    // (§FS-001-forge-interface.8).
+    world.stub("ticket-runtime", TICKET_RUNTIME);
+    let mut runtime = settings(3);
+    runtime["work"]["runner"] = json!("ticket-runtime");
+    world.configure(runtime);
+    let laid = run(
+        &world,
+        &[
+            "work",
+            "lay",
+            "work-ticket",
+            "--item",
+            TICKET_ITEM,
+            "--set",
+            &format!("ticket={TICKET}"),
+            "--dry-run",
+        ],
+    );
+    assert!(laid.status.success(), "{}", said(&laid));
     assert_eq!(ids(&rows(&world)), [ACME_PR, GDEV_PR, TICKET_ITEM]);
 
     // acme was not asked, so its answer is exactly what it was.
@@ -432,7 +487,6 @@ fn narrowed_equals_full() {
 /// never fetched, and `status` refetches it (§FS-011-command-line.12; the read
 /// marks are §FS-007-matters.5's).
 #[test]
-#[ignore = "red until #263: refresh takes no --source/--only, and a never-asked history is read as an empty one; implement removes this"]
 fn never_asked_is_not_gone() {
     let world = watching(600);
     register_ticket(&world);
@@ -493,7 +547,6 @@ fn never_asked_is_not_gone() {
 /// sweep must not skip its refetch, and acme's read marks stay
 /// (§FS-011-command-line.12, §FS-004-quick-actions.6.1).
 #[test]
-#[ignore = "red until #263: refresh takes no --source; implement removes this"]
 fn a_bound_source_with_no_history_is_never_asked() {
     let world = watching(600);
     let full = run(&world, &["refresh", PROJECT, "--quiet"]);
@@ -703,4 +756,63 @@ fn a_narrowed_refresh_reads_no_store_and_probes_no_pool() {
         );
         assert!(world.has_matter("rhei:window.1"), "{narrowing:?}");
     }
+}
+
+/// Only what a run asked is re-stamped (§FS-011-command-line.12). The site
+/// sources' write at the end of a refresh lands in every project's file, but
+/// stamps `fetched_at` only on the projects the run asked: refreshing one
+/// project no longer makes every other read as just fetched.
+#[test]
+fn a_site_write_stamps_only_the_projects_the_run_asked() {
+    const OTHER: &str = "other";
+    let world = World::new();
+    install_forges(&world);
+    let mut registry = world.registry_doc();
+    let mut other = registry["projects"][0].clone();
+    other["id"] = json!(OTHER);
+    other["root"] = json!(world.path().join(OTHER).to_string_lossy());
+    std::fs::create_dir_all(world.path().join(OTHER)).expect("the other project's root");
+    registry["projects"]
+        .as_array_mut()
+        .expect("a list")
+        .push(other);
+    write_json(&world.registry_path(), &registry);
+    world.configure(json!({
+        "sources": [{ "provider": "gdev", "block": "a", "repos": ["G"] }],
+        "projects": {
+            PROJECT: { "providers": [] },
+            OTHER: { "providers": [] }
+        }
+    }));
+    let cache = |project: &str| {
+        read_json(
+            &world
+                .path()
+                .join("state/ephor/feed")
+                .join(format!("{project}.json")),
+        )
+    };
+
+    let everything = run(&world, &["refresh", "--quiet"]);
+    assert!(everything.status.success(), "{}", said(&everything));
+    let before = cache(OTHER);
+    assert!(before["fetched_at"].is_string(), "{before:#}");
+
+    sleep(Duration::from_millis(50));
+    let one = run(&world, &["refresh", PROJECT, "--quiet"]);
+    assert!(one.status.success(), "{}", said(&one));
+    let after = cache(OTHER);
+    assert_ne!(
+        after["revision"], before["revision"],
+        "the site's write landed in the other project's file: {after:#}"
+    );
+    assert_eq!(
+        after["fetched_at"], before["fetched_at"],
+        "refreshing {PROJECT} made {OTHER} read as just fetched"
+    );
+    assert_ne!(
+        cache(PROJECT)["fetched_at"],
+        before["fetched_at"],
+        "the project the run asked is stamped"
+    );
 }

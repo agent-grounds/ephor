@@ -736,27 +736,74 @@ fn reading(config: &StatusConfig, project: &str, ttl: u64, held: bool) -> Readin
             "no refresh has ever produced a reading of what is under review here".to_string(),
         );
     }
-    // Only the slots that could have answered the question. A source that
+    // Only the histories that could have answered the question. A source that
     // reports messages, a status line, or the project's own tasks never
     // carries a pull request, so whatever became of it, it was never going to
     // tell this sweep whether a branch is under review — and one expired
     // credential on such a source would otherwise stop every rebase in the
     // project, hourly, forever (§FS-004-quick-actions.6.1).
-    let lost: Vec<&str> = feed
-        .providers
-        .iter()
-        .filter(|(name, _)| crate::feed::providers::may_carry_pull_requests(name))
-        .filter(|(_, slot)| slot.stale || !slot.ok)
-        .map(|(name, _)| name.as_str())
-        .collect();
+    let lost = unanswered_pull_requests(config, project, &feed);
     if !lost.is_empty() {
         return Reading::Unread(format!(
-            "the reading from {} is stale or failed, so what is under review here cannot be \
-             told from what is not",
+            "the reading from {} is stale, failed or never answered, so what is under review \
+             here cannot be told from what is not",
             lost.join(", ")
         ));
     }
     Reading::Read(feed.items().collect())
+}
+
+/// The sources whose pull requests this reading cannot vouch for
+/// (§FS-004-quick-actions.6.1): of every history that could have carried one —
+/// a forge's `pull-requests` and `notices`, a pull-request source's whole
+/// answer — each that is stale, failed or never answered. "Never answered" is
+/// judged from the project's bindings by the rule its age is
+/// ([`crate::feed::age`]), so a bound source with no history in the cache has
+/// not answered, however fresh the rest of the cache is. A site source's slot
+/// placed here is asked the same question of what it holds.
+fn unanswered_pull_requests<'a>(
+    config: &'a StatusConfig,
+    project: &str,
+    feed: &'a crate::feed::cache::ProjectFeed,
+) -> Vec<&'a str> {
+    let carries = |source: &str, capability: Option<&str>| {
+        crate::feed::providers::may_carry_pull_requests(source)
+            && matches!(capability, None | Some("pull-requests") | Some("notices"))
+    };
+    let bound = config
+        .projects
+        .get(project)
+        .map(crate::feed::age::bound)
+        .unwrap_or_default();
+    let own = crate::feed::age::own(Some(feed), &bound);
+    let site = feed
+        .providers
+        .iter()
+        .filter(|(name, _)| !own.iter().any(|own| own.source == name.as_str()));
+    let mut lost: Vec<&str> = Vec::new();
+    let unanswered = own
+        .iter()
+        .filter(|own| {
+            carries(
+                own.source,
+                own.history.and_then(|h| h.capability.as_deref()),
+            )
+        })
+        .filter(|own| !own.answered() || own.history.is_some_and(|history| history.stale))
+        .map(|own| own.source)
+        .chain(site.filter_map(|(name, slot)| {
+            slot.histories
+                .iter()
+                .filter(|history| carries(name, history.capability.as_deref()))
+                .any(|history| !history.answered() || history.stale)
+                .then_some(name.as_str())
+        }));
+    for source in unanswered {
+        if !lost.contains(&source) {
+            lost.push(source);
+        }
+    }
+    lost
 }
 
 /// Forty checkouts become one exit code, and conflict wins — the precedence
@@ -1105,6 +1152,95 @@ mod tests {
         assert!(!counted_from(&format!("{stem}-extra-1"), &stem));
         assert!(!counted_from(&stem.clone(), &stem));
         assert!(!counted_from(&format!("{stem}-"), &stem));
+    }
+
+    /// The sweep asks its question of the histories that could have carried
+    /// a pull request — a forge's `pull-requests` and `notices`, a native
+    /// pull-request source's whole answer — and any of them stale, failed or
+    /// never answered stops the project; "never answered" is judged from the
+    /// bindings, so a bound source with no history in the cache stops it too
+    /// (§FS-004-quick-actions.6.1, §FS-011-command-line.12).
+    #[test]
+    fn only_pull_request_histories_stale_failed_or_never_answered_stop_a_project() {
+        use crate::feed::cache::{ProjectFeed, ProviderSlot};
+        use crate::feed::history::History;
+        let config: StatusConfig = serde_json::from_value(json!({
+            "projects": { "widget": { "providers": [
+                { "provider": "gdev" },
+                { "provider": "acme" },
+                { "provider": "custom-status", "command": "true" }
+            ] } }
+        }))
+        .unwrap();
+        let answered = |capability: Option<&str>| History {
+            capability: capability.map(String::from),
+            asked_at: Some(chrono::Utc::now()),
+            answered_at: Some(chrono::Utc::now()),
+            ..History::default()
+        };
+        let slot = |histories: Vec<History>| ProviderSlot {
+            histories,
+            ..ProviderSlot::default()
+        };
+        let feed = |gdev: Vec<History>, acme: Option<Vec<History>>| ProjectFeed {
+            project: "widget".to_string(),
+            providers: [("gdev", Some(gdev)), ("acme", acme)]
+                .into_iter()
+                .filter_map(|(name, histories)| Some((name.to_string(), slot(histories?))))
+                .collect(),
+            ..ProjectFeed::default()
+        };
+        let whole = || Some(vec![answered(None)]);
+
+        // Every pull-request history answered; a failed `issues` and a
+        // custom status never asked stop nothing.
+        let issues_failed = History {
+            error: Some("gdev: HTTP 503".to_string()),
+            ..answered(Some("issues"))
+        };
+        let read = feed(
+            vec![answered(Some("pull-requests")), issues_failed],
+            whole(),
+        );
+        assert!(unanswered_pull_requests(&config, "widget", &read).is_empty());
+
+        // A stale `notices` stops it.
+        let notices_stale = History {
+            stale: true,
+            ..answered(Some("notices"))
+        };
+        let stale = feed(
+            vec![answered(Some("pull-requests")), notices_stale],
+            whole(),
+        );
+        assert_eq!(
+            unanswered_pull_requests(&config, "widget", &stale),
+            ["gdev"]
+        );
+
+        // A `pull-requests` never asked stops it.
+        let never = feed(
+            vec![
+                History {
+                    asked_at: None,
+                    answered_at: None,
+                    ..answered(Some("pull-requests"))
+                },
+                answered(Some("issues")),
+            ],
+            whole(),
+        );
+        assert_eq!(
+            unanswered_pull_requests(&config, "widget", &never),
+            ["gdev"]
+        );
+
+        // A bound forge with no history in the cache stops it.
+        let unbound = feed(vec![answered(Some("pull-requests"))], None);
+        assert_eq!(
+            unanswered_pull_requests(&config, "widget", &unbound),
+            ["acme"]
+        );
     }
 }
 
