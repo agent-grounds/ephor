@@ -157,15 +157,10 @@ fn refresh_projects(
     // cache it stamps (§FS-011-command-line.12).
     let mut asked: Vec<String> = Vec::new();
     for (project, project_config) in selected {
-        let probes = narrowing
-            .as_ref()
-            .and_then(|narrowing| narrowing.probes.get(project.as_str()))
-            .map(Vec::as_slice)
-            .unwrap_or_default();
         let ask = match &narrowing {
             None => Ask::Everything,
-            Some(narrowing) => match (narrowing.binding(project), narrowing.only) {
-                (Binding::Unbound, _) => {
+            Some(narrowing) => match narrowing.binding(project) {
+                Binding::Unbound => {
                     // Named, not silently dropped (§FS-011-command-line.9.2).
                     eprintln!(
                         "note: {project}: neither it nor the site binds a source named '{}'; \
@@ -175,16 +170,13 @@ fn refresh_projects(
                     continue;
                 }
                 // The site's binding is asked once, below, for every project.
-                (Binding::Site, _) => {
+                Binding::Site => {
                     asked.push(project.clone());
                     continue;
                 }
-                (Binding::Own, None) => Ask::Source(&narrowing.source),
-                (Binding::Own, Some(capability)) => Ask::Capability {
-                    source: &narrowing.source,
-                    capability,
-                    probes,
-                },
+                Binding::Own => narrowing
+                    .ask(project)
+                    .expect("a project that binds the source is asked it"),
             },
         };
         let outcome = refresh_project(

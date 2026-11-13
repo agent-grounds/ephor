@@ -3,8 +3,6 @@
 use std::collections::BTreeMap;
 use std::time::SystemTime;
 
-use chrono::{DateTime, Utc};
-
 use crate::feed::cache::{self, ProjectFeed};
 
 /// Only metadata is checked until a known project's file changes
@@ -27,13 +25,17 @@ impl Stamp {
     }
 }
 
-/// Observation never loads rows into the session. Newer valid fetch evidence
+/// Observation never loads rows into the session. Newer valid cache evidence
 /// survives missing/broken replacements and unrelated arrivals; the actual
 /// displayed feed decides whether it has caught up (§FS-001-forge-interface.7.1).
+///
+/// Newer is the cache's **revision**, bumped by every write, not its age: a
+/// refresh that asked one capability leaves the project's age where it was and
+/// still changes what the screen would show.
 #[derive(Default)]
 pub(super) struct CacheFreshness {
     observed: BTreeMap<String, Option<Stamp>>,
-    newest: BTreeMap<String, DateTime<Utc>>,
+    newest: BTreeMap<String, u64>,
 }
 
 impl CacheFreshness {
@@ -64,12 +66,10 @@ impl CacheFreshness {
             if feed.model != cache::MODEL || feed.project != *project {
                 continue;
             }
-            if let Some(fetched) = feed.fetched_at {
-                self.newest
-                    .entry(project.clone())
-                    .and_modify(|newest| *newest = (*newest).max(fetched))
-                    .or_insert(fetched);
-            }
+            self.newest
+                .entry(project.clone())
+                .and_modify(|newest| *newest = (*newest).max(feed.revision))
+                .or_insert(feed.revision);
         }
         before != self.outdated(feeds)
     }
@@ -79,10 +79,10 @@ impl CacheFreshness {
     fn outdated(&self, feeds: &[ProjectFeed]) -> Vec<String> {
         self.newest
             .iter()
-            .filter(|(project, fetched)| {
+            .filter(|(project, revision)| {
                 feeds
                     .iter()
-                    .any(|feed| feed.project == **project && feed.fetched_at < Some(**fetched))
+                    .any(|feed| feed.project == **project && feed.revision < **revision)
             })
             .map(|(project, _)| project.clone())
             .collect()

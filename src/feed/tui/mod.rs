@@ -21,6 +21,7 @@ mod human_gate;
 mod navigator;
 mod operations;
 mod prompt;
+mod refresh_picker;
 mod thread;
 mod work;
 
@@ -57,6 +58,7 @@ use human_gate::HumanGateScreen;
 use navigator::NavigatorState;
 use operations::OperationsScreen;
 use prompt::{Asking, Prompt, PromptOutcome};
+use refresh_picker::{PickerOutcome, RefreshPicker};
 use thread::ThreadScreen;
 use work::WorkScreen;
 
@@ -202,6 +204,9 @@ pub(crate) enum Action {
     },
     ToggleUnread,
     Refresh,
+    /// Choose one source, or one capability of it, and refresh only that
+    /// (§FS-011-command-line.9.2).
+    PickRefresh,
     /// Ask for the burn reading again, under whatever window and grouping the
     /// page now wants (§FS-013-burn.8). The page holds the two choices; the
     /// reading is the API's, and neither is computed while drawing.
@@ -261,6 +266,9 @@ struct App {
     saved: Option<Screen>,
     /// Open action menu, drawn over the active screen.
     menu: Option<ActionMenu>,
+    /// The `R` picker: which source, or which capability of it, to refresh
+    /// alone (§FS-011-command-line.9.2). Drawn over the screen like the menu.
+    refresh_picker: Option<RefreshPicker>,
     /// A line the reader is typing, drawn over everything else.
     prompt: Option<Prompt>,
     /// A workflow's inputs, being answered before it is laid down
@@ -331,6 +339,7 @@ impl App {
             screen: Screen::Navigator,
             saved: None,
             menu: None,
+            refresh_picker: None,
             prompt: None,
             answers: None,
             refresh: None,
@@ -470,6 +479,17 @@ impl App {
                     .expect("the answers are open")
                     .handle_key(key.code, key.modifiers);
                 self.answered(terminal, outcome)?;
+                continue;
+            }
+            if let Some(picker) = &mut self.refresh_picker {
+                match picker.handle_key(key.code) {
+                    PickerOutcome::Stay => {}
+                    PickerOutcome::Close => self.refresh_picker = None,
+                    PickerOutcome::Refresh(narrowed) => {
+                        self.refresh_picker = None;
+                        self.start_refresh(config, Some(narrowed));
+                    }
+                }
                 continue;
             }
             if let Some(menu) = &mut self.menu {
@@ -1064,7 +1084,8 @@ impl App {
                     doing: String::new(),
                 },
             )?,
-            Action::Refresh => self.start_refresh(config),
+            Action::Refresh => self.start_refresh(config, None),
+            Action::PickRefresh => self.pick_refresh(config),
         }
         Ok(false)
     }
@@ -2031,13 +2052,21 @@ impl App {
     /// one project in Detail, and otherwise every project this screen was
     /// opened over — which is the scope's list where a selector narrowed one
     /// (§FS-011-command-line.9), not the whole watch list.
-    fn start_refresh(&mut self, config: &StatusConfig) {
+    ///
+    /// `narrowed` is the `R` picker's choice: the same run, asking one source
+    /// or one capability of it, as `ephor refresh --source/--only` does over
+    /// the same projects (§FS-011-command-line.9.2).
+    fn start_refresh(
+        &mut self,
+        config: &StatusConfig,
+        narrowed: Option<crate::feed::refresh::Narrowed>,
+    ) {
         if self.refresh.is_some() {
             self.message = "Already refreshing".to_string();
             return;
         }
         let over = self.navigator.refresh_over(&self.ctx);
-        match crate::feed::refresh::BackgroundRefresh::start(config, &over) {
+        match crate::feed::refresh::BackgroundRefresh::start(config, &over, narrowed) {
             Ok(refresh) => {
                 // The header carries the run from here; what it says about the
                 // last thing that happened is finished with.
@@ -2045,6 +2074,20 @@ impl App {
                 self.refresh = Some(refresh);
             }
             Err(err) => self.message = err.to_string(),
+        }
+    }
+
+    /// Open the `R` picker over the projects `r` would refresh
+    /// (§FS-011-command-line.9.2).
+    fn pick_refresh(&mut self, config: &StatusConfig) {
+        if self.refresh.is_some() {
+            self.message = "Already refreshing".to_string();
+            return;
+        }
+        let over = self.navigator.refresh_over(&self.ctx);
+        match RefreshPicker::over(config, &self.ctx.feeds, &over) {
+            Some(picker) => self.refresh_picker = Some(picker),
+            None => self.message = "No source is bound here to refresh alone".to_string(),
         }
     }
 
@@ -2485,6 +2528,9 @@ impl App {
         if let Some(menu) = &self.menu {
             menu.draw(frame, body_area);
         }
+        if let Some(picker) = &self.refresh_picker {
+            picker.draw(frame, body_area);
+        }
         // Over the menu it was reached from, under the prompt like everything
         // else (§FS-005-dispatch.19).
         if let Some(answers) = &self.answers {
@@ -2503,6 +2549,8 @@ impl App {
         // on a row of answers depends on the row (§FS-004-quick-actions.2).
         } else if let Some(answers) = &self.answers {
             answers.footer()
+        } else if let Some(picker) = &self.refresh_picker {
+            picker.footer()
         } else if let Some(menu) = &self.menu {
             menu.footer()
         } else {
