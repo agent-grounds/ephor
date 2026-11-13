@@ -369,6 +369,10 @@ path = "tests/e2e/cases/E2E-068-work-states-names-the-projects-machine.rs"
 name = "e2e_069_a_live_workflow_names_its_held_task"
 path = "tests/e2e/cases/E2E-069-a-live-workflow-names-its-held-task.rs"
 
+[[test]]
+name = "e2e_070_a_refresh_asks_one_capability"
+path = "tests/e2e/cases/E2E-070-a-refresh-asks-one-capability.rs"
+
 [dependencies]
 clap = { version = "4", features = ["derive"] }
 serde = { version = "1", features = ["derive"] }
