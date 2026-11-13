@@ -3737,6 +3737,11 @@ ephor work states [--project P] [--json]
   do. `--open` hides work that is finished and current, so a matter whose laid
   workflow plan is still going is open work and is shown
   ([§FS-005-dispatch.35](functional-spec/FS-005-dispatch.md#35-what-a-ledger-entry-may-be-forgotten-for-is-read-from-the-plans)).
+  The one task a row names is a gate or a person wait first, then the task a
+  live run holds wherever it sits in the plan, and only with neither the last
+  open task — so a laid workflow whose supervisor is running reads as
+  supervising, not as its unstarted last step
+  ([§FS-005-dispatch.15.2](functional-spec/FS-005-dispatch.md#152-what-a-run-is-doing-is-read-from-the-runs-own-stream)).
 - **`dispatch`** is the sweep: every item that matches a recipe and has no work
   yet. It takes the *first* matching recipe unless `--recipe` names one. A
   recipe named for one `--item` that the item does not offer is refused with

@@ -1038,7 +1038,6 @@ fn work_status(tickets: Vec<TicketStatus>) -> WorkStatus {
 /// A witnessed supervisor need not occur in ship's prerequisite ancestry
 /// to lead the shared current-task reading (§FS-005-dispatch.15.2).
 #[test]
-#[ignore = "red until #258: a held task outside the last open prerequisite chain is current; implement removes this"]
 fn issue258_current_finds_a_live_slot_outside_the_last_open_ancestry() {
     let mut supervisor = ticket("ticket", "supervising");
     supervisor.running = true;

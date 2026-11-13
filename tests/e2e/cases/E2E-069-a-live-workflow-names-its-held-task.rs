@@ -75,7 +75,6 @@ fn listed(world: &World, json: bool) -> String {
 }
 
 #[test]
-#[ignore = "red until #258: a live supervisor outside ship's prerequisites leads the row and location; implement removes this"]
 fn issue258_a_live_workflow_names_its_held_supervisor() {
     let world = site();
     let root = world.forest().join("panta");
