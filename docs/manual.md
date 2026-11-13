@@ -409,7 +409,7 @@ the registry — that is where its root and branches come from.
 ### 4.1 Commands
 
 ```bash
-ephor refresh [PROJECT ...] [--quiet]      # fetch into the cache
+ephor refresh [PROJECT ...] [--source NAME [--only CAP]] [--quiet]   # fetch into the cache
 ephor status [PROJECT] [--refresh|--cached] [--max-age SECS] [--json] [--check]
 ephor feed [--project P ...] [--unread] [--kind pr|ci|issue|task|message|status] [--json]
 ephor mark-read PROJECT | --all | --id ITEM_ID [--kind K]   # --all: every watched project
@@ -427,13 +427,45 @@ ephor doctor [--project P] [--skip-self|--self-only] [--json]
   rewrites the shared slot in an out-of-scope project's feed file
   ([§FS-011-command-line.9](functional-spec/FS-011-command-line.md#9-a-scope-selector-is-honoured-or-refused)). Placing them inside the scope instead would
   file what one of them found about another project under *unattributed*.
+
+  `--source NAME` asks one source and nothing else: no other configured
+  source, no task store, no other site source, and no headroom probe. Each
+  selected project uses its own binding of that name where it has one, and the
+  site's otherwise, the way `failures --source` does; a site source is fetched
+  once and placed as a plain refresh places it. `--only CAP`, which needs
+  `--source`, narrows a forge reached out of process to one of its five
+  fetches — `pull-requests`, `branch-gates`, `issues`, `notices`, `messages` —
+  and asks it of every block that declares it. A ticket registered on a branch
+  a moment ago is then one `issues` call away from the feed:
+
+  ```bash
+  ephor refresh rhei --source gdev --only issues
+  ```
+
+  What the run did not ask keeps its reports and its times. A selected project
+  that binds no such source, where the site has none either, is skipped and
+  named. These are refused with exit `2` and the reason, before any data call
+  is made: `--only` without `--source`; `--only` naming anything but the five
+  fetches; `--only` on a native provider or a task store, which answer whole;
+  `--only` on a source any selected project reaches through the site's
+  binding, because a shared source is placed on all of its answer at once;
+  `--only` on a capability none of the source's blocks declares; and a
+  `--source` that nothing in scope binds. A plain `ephor refresh`, with
+  neither flag, asks and writes exactly what it did before
+  ([§FS-011-command-line.9.2](functional-spec/FS-011-command-line.md#92-a-refresh-narrowed-to-one-source-or-one-capability)).
 - **`status`** with no project prints one row per project (items, unread,
-  needs-response, failing). With a project, it prints that project's feed.
-  It refetches anything staler than the TTL — pass `--cached` when you want
-  the cache and nothing else, which is also much faster.
+  needs-response, failing). With a project, it prints that project's feed,
+  headed by its age. It refetches any project older than the TTL — pass
+  `--cached` when you want the cache and nothing else, which is also much
+  faster. A project's **age** is the oldest time any of its own sources was
+  asked, capability by capability ([§FS-001-forge-interface.6.1](functional-spec/FS-001-forge-interface.md#61-every-contribution-to-one-provider-answer-counts)); a
+  source the site shares does not count, so refreshing one project, or one
+  source of it, never makes another project read as just fetched. A source
+  the project binds that was never asked makes the project read *never
+  fetched* ([§FS-011-command-line.12](functional-spec/FS-011-command-line.md#12-a-feed-read-from-a-cache-past-its-ttl-says-so)).
 - **`feed`** is the flat cross-project stream, newest first, from the cache.
-  It never refetches; a project whose cache is older than the TTL, or that was
-  never fetched, is named on the error stream with its age and the
+  It never refetches; a project older than the TTL by that same age, or that
+  was never fetched, is named on the error stream with its age and the
   `ephor refresh` that cures it, and its rows are still printed
   ([§FS-011-command-line.12](functional-spec/FS-011-command-line.md#12-a-feed-read-from-a-cache-past-its-ttl-says-so)).
 - **`mark-read`** marks items read. An item is unread until then, and
@@ -481,13 +513,17 @@ ephor doctor [--project P] [--skip-self|--self-only] [--json]
 You may repeat a provider in a project's `providers` list or the site's
 `sources` list, for example to use different windows for open issues and role
 questions. Every block is fetched; their answers share the existing provider
-slot and overlapping subjects merge into one row. If any block fails, the
-combined answer is incomplete: ephor reports every distinct diagnosis and keeps
-the previous complete slot as stale, with its last-good timestamp, rather than
-showing a fresh subset as complete. An answered block (even an empty answer)
-beside a failure gives exit 4; all attempts failing gives exit 3. A later
-complete answer clears the failure and replaces the old slot, including when
-empty ([§FS-001-forge-interface.6.1](functional-spec/FS-001-forge-interface.md#61-every-contribution-to-one-provider-answer-counts)).
+slot and overlapping subjects merge into one row. The slot keeps the answer
+per **history**: one per capability a forge reached out of process declares
+(`pull-requests`, `branch-gates`, `issues`, `notices`, `messages`), each with
+its own asked and answered times, and one whole history for any other source.
+If any block fails, the combined answer is incomplete: ephor reports every
+distinct diagnosis and keeps each history's previous complete answer as stale,
+with its last-good timestamp, rather than showing a fresh subset as complete.
+An answered block (even an empty answer) beside a failure gives exit 4; all
+attempts failing gives exit 3. A later complete answer clears the failure and
+replaces the old history, including when empty
+([§FS-001-forge-interface.6.1](functional-spec/FS-001-forge-interface.md#61-every-contribution-to-one-provider-answer-counts)).
 
 A source that asks about specific repositories belongs to the project that
 owns them, and lives under `projects.<id>.providers`. A source that asks
@@ -506,6 +542,16 @@ conversations addressed to you in the other places people talk (§11.1). It is
 declared here for the same reason — a chat account serves every project you
 have — and is told no project when it is asked
 ([§FS-001-forge-interface.9](functional-spec/FS-001-forge-interface.md#9-a-source-is-bound-to-one-project-or-to-the-site-and-every-move-goes-back-to-the-source)).
+
+A shared source can be refreshed alone by its name, `ephor refresh --source
+chatgw`: it is fetched once and placed everywhere a plain refresh places it —
+in every project and in the unattributed bucket — and in each place only its
+own histories change. It cannot be narrowed further: `--only` on a source any
+selected project reaches through the site is refused, because where a finding
+belongs is decided on all of the source's answer at once — a pull request's
+threads carry the ticket keys and authors a bare notice lacks — and one
+capability alone could file under *unattributed* what the whole answer places
+on a project ([§FS-011-command-line.9.2](functional-spec/FS-011-command-line.md#92-a-refresh-narrowed-to-one-source-or-one-capability)).
 
 Where each of its findings belongs is then ephor's to decide, not the
 source's: one matching engine weighs what the conversation carries against
@@ -1644,6 +1690,7 @@ does not report one simply never shows it.
 | `[` `]` | previous / next project (Detail) |
 | `Esc` `h` | back |
 | `r` | refresh underneath the screen — the projects it was opened over, and in Detail only that project |
+| `R` | refresh one source, or one capability of it, over the same projects (below) |
 | `q`, `^C` | quit |
 
 **On a work row the keys are the work's**, and they displace the ones they
@@ -1668,6 +1715,17 @@ whole answer is the same lie as an empty section that only means "not asked
 yet". The projects are still asked one at a time, so the refresh costs your
 forges exactly what it did before. Pressing `r` again during a run says
 `Already refreshing` rather than starting a second one.
+
+`R` asks less. It opens a picker over the sources the projects in view are
+answered from — their own bindings first, then the site's — and, once you
+choose one, offers its whole answer and, for a forge reached out of process,
+each capability it declared: `gdev  issues only`. What it starts is the
+request `ephor refresh --source gdev --only issues` makes (§4.1), run beneath
+the screen exactly as `r` is; a choice the command line refuses is refused
+here with the same reason, before anything is asked, and the line the run
+leaves names the flags it ran with
+([§FS-011-command-line.9.2](functional-spec/FS-011-command-line.md#92-a-refresh-narrowed-to-one-source-or-one-capability)). `R` on the work screen and on the burn page keeps
+the meaning it has there.
 
 **Thread screen** — the recorded conversation in full, each message a card with
 its author, age, text, the files on it and its reactions:
@@ -4235,14 +4293,25 @@ project where the cache has aged past the TTL, the way a `status` reading is,
 and never once per branch. A run held at the gate freshens nothing: fetching
 calls the forge and rewrites the cache, and a run that is only reporting writes
 nothing, so it reads what the last `ephor refresh` left. Where there is still
-no current reading — no cached feed, or a stale or failed slot **of a source
-that could have carried a pull request** — **none of that project's checkouts
-is replayed**: it is reported as not reached and the sweep exits non-zero.
-*Could not tell* is not *no*, and the branch that question protects is exactly
-the one nobody is present to protect by hand. Which slots those are is read
-from the source's name: `github-prs`, `github-ci`, `github-threads` and any
-forge extension block, because an extension declares `pull_requests` among its
-capabilities and *could not tell* governs there too. A source that reports
+no current reading — no cached feed, or a history **that could have carried a
+pull request** that is stale, failed or never answered — **none of that
+project's checkouts is replayed**: it is reported as not reached and the sweep
+exits non-zero. *Could not tell* is not *no*, and the branch that question
+protects is exactly the one nobody is present to protect by hand. Which
+histories those are is read from the source's name and the capability: the
+whole answer of `github-prs`, `github-ci` and `github-threads`, and a forge
+extension's `pull-requests` and `notices`, because an extension declares
+`pull_requests` among its capabilities and *could not tell* governs there too.
+"Never answered" is judged from the project's bindings, as its age is
+([§FS-011-command-line.12](functional-spec/FS-011-command-line.md#12-a-feed-read-from-a-cache-past-its-ttl-says-so)): a bound source with no history in the
+cache has not answered, however fresh the rest of it is.
+
+**A narrowed refresh does not make pull requests safe to replay.** After
+`ephor refresh graal --source gdev --only issues` the project is still as old
+as its pull-request history, so an unheld sweep still finds it past the TTL
+and refetches it whole before it reads; a held sweep freshens nothing and
+refuses on a pull-request history that is stale, failed or never answered
+([§FS-011-command-line.9.2](functional-spec/FS-011-command-line.md#92-a-refresh-narrowed-to-one-source-or-one-capability)). A source that reports
 messages, a status line, or the project's own tasks stops nothing however it
 failed — it could never have answered the question, and one expired credential
 on such a source would otherwise stop every rebase in that project, hourly,
@@ -5861,6 +5930,16 @@ its own options. `capabilities` declares what the rest will answer, and ephor
 degrades to that — but a capability probe that *fails* is a broken forge, not a
 forge that does very little.
 
+Each of the five fetches — `pull-requests`, `branch-gates`, `issues`,
+`notices`, `messages` — is kept as a history of its own, with its own asked and
+answered times ([§FS-001-forge-interface.6.1](functional-spec/FS-001-forge-interface.md#61-every-contribution-to-one-provider-answer-counts)), so each can be
+refreshed alone: `ephor refresh --source <name> --only issues` probes
+`capabilities`, then asks `issues` of every block that declared it and nothing
+else ([§FS-011-command-line.9.2](functional-spec/FS-011-command-line.md#92-a-refresh-narrowed-to-one-source-or-one-capability)). There is nothing new to
+implement for it. The subcommand receives the request a full refresh sends,
+and a capability the extension did not declare is never asked; naming one is
+refused before any data call.
+
 A pull request the user is reviewing may carry `review`, the verdict *they*
 gave (`approved`, `changes-requested`, `commented`), declared as `"review":
 true`. Only the forge knows it: a reviewer list says who was asked, a
@@ -6156,6 +6235,7 @@ usable by the runtime it hands work to.
 | `m` / `d` / space — mark read | `ephor mark-read --id ID` |
 | `u` — only what is unread | `ephor feed --unread` |
 | `r` — fetch | `ephor refresh` |
+| `R` — fetch one source, or one capability of it | `ephor refresh --source NAME` (`--only CAP` for one capability) |
 | the branch rows | `ephor branches [PROJECT]` |
 
 Moving a cursor, folding a section, and opening your own pager, editor or
@@ -6174,6 +6254,15 @@ ephor work dispatch --item "$id" --json        # {"opened":1,"items":[{"ticket":
 ephor work retire --item "$id" --json          # {"retired":true,"plans":[…],"record":…}
 ephor schema views                             # what every one of them may print
 ```
+
+A refresh narrowed by `--source` says what it asked. Each project's entry in
+`ephor refresh --json` carries `answers`, one per history the run asked —
+`{"source": "gdev", "capability": "issues", "ok": true}` — with `capability`
+null for a source whose answer is one history; a history not listed was not
+asked and kept its answer and its age. The document's `skipped` names the
+selected projects that bind no source of that name. A plain refresh prints
+neither, so what it prints is what it printed before
+([§FS-011-command-line.9.2](functional-spec/FS-011-command-line.md#92-a-refresh-narrowed-to-one-source-or-one-capability)).
 
 The shapes are published: `ephor schema views` prints the schema, and it is
 the stability surface — a field is added freely, and renaming or removing one

@@ -373,8 +373,9 @@ fn ensure_fresh(config: &StatusConfig, project: &str, args: &StatusArgs) -> Resu
 }
 
 /// The same freshening a status reading makes, for a caller with no flags to
-/// read: the cached feed where it is younger than `ttl`, and one refresh of
-/// this project where it is not (§FS-004-quick-actions.6.1).
+/// read: the cached feed where the project's age is younger than `ttl`, and
+/// one refresh of this project where it is not (§FS-004-quick-actions.6.1,
+/// §FS-011-command-line.12).
 ///
 /// Here rather than at the caller so that the rebase sweep's reading of what a
 /// branch is under review by ages on the same terms `ephor status` does — one
