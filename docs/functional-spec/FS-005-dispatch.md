@@ -4140,7 +4140,8 @@ each with a name, how much of it is left as a fraction, and when it resets.
 Probing is fetching, so it runs where fetching runs — beneath the reading, on
 the same freshness discipline as every other source ([§FS-001-forge-interface.7](FS-001-forge-interface.md#7-a-fetch-runs-beneath-the-reading-never-in-front-of-it))
 — and never in front of a dispatch, which would put a network call between a
-reader and a ticket. How any one vendor is asked is volatile and stays outside
+reader and a ticket. A refresh narrowed to one source or one capability
+([§FS-011-command-line.9.2](FS-011-command-line.md#92-a-refresh-narrowed-to-one-source-or-one-capability)) asks only that, and probes no headroom. How any one vendor is asked is volatile and stays outside
 ephor: what ships is a worked example per vendor beside it, never a literal
 inside it ([§REQ-001-boundary.5](../requirements/REQ-001-boundary.md#5-no-product-literal-outside-its-adapter)).
 
