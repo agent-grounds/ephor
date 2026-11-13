@@ -840,6 +840,18 @@ pub struct RefreshArgs {
     #[arg(long)]
     pub quiet: bool,
 
+    /// Ask only this source: each selected project's own binding of that
+    /// name, or the site's where it has none. Every other source keeps its
+    /// answer and its age (§FS-011-command-line.9.2).
+    #[arg(long, value_name = "NAME")]
+    pub source: Option<String>,
+
+    /// With --source, ask only this capability of it: pull-requests,
+    /// branch-gates, issues, notices or messages. Refused on a native
+    /// provider, a task store and a site source, which answer whole.
+    #[arg(long, value_name = "CAP")]
+    pub only: Option<String>,
+
     /// Emit what each project fetched as JSON.
     #[arg(long)]
     pub json: bool,

@@ -106,7 +106,7 @@ fn site(tickets: &[Ticket]) -> World {
             .path()
             .join("state/ephor/feed")
             .join(format!("{PROJECT}.json")),
-        &json!({"model": 2, "project": PROJECT, "fetched_at": at,
+        &json!({"model": 3, "project": PROJECT, "fetched_at": at,
             "providers": {"gdev": {"fetched_at": at, "ok": true, "matters": [{
                 "key": ITEM, "kind": "pr", "placement": {"on": {"project": PROJECT}},
                 "source": "gdev", "title": "Gate cannot be collected", "needs_response": false,

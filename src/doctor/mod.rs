@@ -597,6 +597,7 @@ fn site(args: &DoctorArgs, style: &Style, say: &Narrator) -> Result<(Health, Opt
             project_config,
             &crate::feed::refresh::site_source_names(&config),
             &config.defaults,
+            &crate::feed::refresh::Ask::Everything,
         );
         say.done(&match &outcome {
             Ok(outcome) if outcome.failures.is_empty() => {
@@ -613,7 +614,7 @@ fn site(args: &DoctorArgs, style: &Style, say: &Narrator) -> Result<(Health, Opt
     let mut shared_refusals = Vec::new();
     if args.project.is_none() && !config.sources.is_empty() {
         say.starting(&format!("the shared sources ({})", config.sources.len()));
-        let shared = crate::feed::refresh::refresh_shared(&registry_doc, &config);
+        let shared = crate::feed::refresh::refresh_shared(&registry_doc, &config, None, &projects);
         say.done(&match &shared {
             Ok(outcome) if outcome.failures.is_empty() => {
                 format!("{} item(s) placed", outcome.item_count)

@@ -21,6 +21,49 @@ impl std::fmt::Display for ProviderError {
 
 pub type ProviderResult = Result<Vec<Item>, ProviderError>;
 
+/// One configuration block's answer, kept per history
+/// (§FS-001-forge-interface.6.1): what the block declared it answers, and each
+/// history asked of it with what came back, in the order asked.
+#[derive(Debug, Default)]
+pub struct Fetched {
+    /// The fetch subcommands the block declared at its probe, in
+    /// [`crate::forge::FETCHES`] order. None where the block's answer is one
+    /// history: a native provider, a task store, or a forge whose declaration
+    /// could not be read.
+    pub declared: Option<Vec<&'static str>>,
+    /// Each history asked — a fetch subcommand, or None for the whole answer —
+    /// and its answer. A block stops at its first failure, so a failure is
+    /// always last.
+    pub answers: Vec<(Option<&'static str>, Result<Vec<Item>, String>)>,
+}
+
+impl Fetched {
+    /// A block whose answer is one history.
+    pub fn whole(answer: Result<Vec<Item>, String>) -> Fetched {
+        Fetched {
+            declared: None,
+            answers: vec![(None, answer)],
+        }
+    }
+
+    /// The block as one contribution to its source's answer
+    /// (§FS-001-forge-interface.6.1): its first failure, or every item it
+    /// reported in the order asked. None where nothing was asked of it.
+    pub fn contribution(&self) -> Option<Result<Vec<Item>, String>> {
+        if self.answers.is_empty() {
+            return None;
+        }
+        let mut items = Vec::new();
+        for (_, answer) in &self.answers {
+            match answer {
+                Ok(answered) => items.extend(answered.iter().cloned()),
+                Err(why) => return Some(Err(why.clone())),
+            }
+        }
+        Some(Ok(items))
+    }
+}
+
 /// Everything a provider may need about the project it is fetching for.
 #[derive(Clone)]
 pub struct ProviderContext {
@@ -61,6 +104,13 @@ pub trait Provider: Send + Sync {
     }
 
     fn fetch(&self, ctx: &ProviderContext) -> ProviderResult;
+
+    /// The same answer kept per history (§FS-001-forge-interface.6.1). A
+    /// source with nothing finer to ask answers whole, which is what every
+    /// provider but a forge reached out of process is.
+    fn fetch_histories(&self, ctx: &ProviderContext) -> Fetched {
+        Fetched::whole(self.fetch(ctx).map_err(|err| err.0))
+    }
 
     /// Menu entries this provider offers on an item it produced, without the
     /// reader configuring anything (§FS-004-quick-actions.1). Here — and only

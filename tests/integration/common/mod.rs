@@ -59,7 +59,11 @@ pub fn ephor_cmd() -> assert_cmd::Command {
 pub fn strip_timestamps(value: &mut Value) {
     match value {
         Value::Object(map) => {
-            map.remove("fetched_at");
+            // When a source was asked and answered — the cache's and each
+            // history's — is the run's, not the fixture's.
+            for stamp in ["fetched_at", "asked_at", "answered_at"] {
+                map.remove(stamp);
+            }
             // custom-status has no upstream timestamp, so it stamps the moment
             // it ran — the one item field that is not derived from the fixture.
             if map.get("source").and_then(Value::as_str) == Some("custom-status") {
