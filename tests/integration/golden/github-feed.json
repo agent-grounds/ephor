@@ -1,8 +1,17 @@
 {
-  "model": 2,
+  "model": 3,
   "project": "demo",
   "providers": {
     "custom-status": {
+      "histories": [
+        {
+          "blocks": [
+            1
+          ],
+          "capability": null,
+          "stale": false
+        }
+      ],
       "matters": [
         {
           "fingerprint": {},
@@ -22,6 +31,15 @@
       "stale": false
     },
     "github-ci": {
+      "histories": [
+        {
+          "blocks": [
+            1
+          ],
+          "capability": null,
+          "stale": false
+        }
+      ],
       "matters": [
         {
           "events": [
@@ -74,6 +92,15 @@
       "stale": false
     },
     "github-prs": {
+      "histories": [
+        {
+          "blocks": [
+            1
+          ],
+          "capability": null,
+          "stale": false
+        }
+      ],
       "matters": [
         {
           "events": [
@@ -133,5 +160,6 @@
       "ok": true,
       "stale": false
     }
-  }
+  },
+  "revision": 1
 }

@@ -11,7 +11,8 @@ use crate::error::{registry_error, EphorError, Result};
 use crate::feed::cache::{self, ProjectFeed};
 use crate::feed::config::{load_config, StatusConfig};
 use crate::feed::model::ItemKind;
-use crate::feed::refresh::{refresh_project, site_source_names};
+use crate::feed::narrow::Binding;
+use crate::feed::refresh::{refresh_project, site_source_names, Ask};
 use crate::feed::render::{self, Style};
 use crate::registry;
 use crate::scope::Projects;
@@ -95,10 +96,17 @@ fn known_project<'a>(
     })
 }
 
+/// Refresh the selected projects — every source of each, or under `narrow`
+/// the one source or capability it names (§FS-011-command-line.9.2).
+///
+/// `narrow` is the source and the capability as given; it is resolved here,
+/// against the selected projects, and every refusal is decided before any
+/// data call.
 fn refresh_projects(
     config: &StatusConfig,
     projects: &[String],
     quiet: bool,
+    narrow: Option<(&str, Option<&'static str>)>,
 ) -> Result<RefreshTally> {
     let registry_doc = load_registry_doc()?;
     let selected: Vec<&String> = if projects.is_empty() {
@@ -112,6 +120,12 @@ fn refresh_projects(
             known_project(config, project).map(|project_config| (project, project_config))
         })
         .collect::<Result<Vec<_>>>()?;
+    let narrowing = match narrow {
+        Some((source, only)) => Some(crate::feed::narrow::resolve(
+            config, &selected, source, only,
+        )?),
+        None => None,
+    };
 
     // Shared sources are fetched once for the whole site and placed by the
     // engine (§AR-008-pipeline.1). Where one is still declared under a
@@ -138,14 +152,53 @@ fn refresh_projects(
     // shared fetch (§FS-001-forge-interface.6.1).
     let mut contributions = crate::feed::refresh::ContributionTally::default();
     let mut per_project: Vec<serde_json::Value> = Vec::new();
+    // The projects this run asks, own or through the site: the ones whose
+    // cache it stamps (§FS-011-command-line.12).
+    let mut asked: Vec<String> = Vec::new();
     for (project, project_config) in selected {
+        let probes = narrowing
+            .as_ref()
+            .and_then(|narrowing| narrowing.probes.get(project.as_str()))
+            .map(Vec::as_slice)
+            .unwrap_or_default();
+        let ask = match &narrowing {
+            None => Ask::Everything,
+            Some(narrowing) => match (narrowing.binding(project), narrowing.only) {
+                (Binding::Unbound, _) => {
+                    // Named, not silently dropped (§FS-011-command-line.9.2).
+                    eprintln!(
+                        "note: {project}: neither it nor the site binds a source named '{}'; \
+                         skipped",
+                        narrowing.source
+                    );
+                    continue;
+                }
+                // The site's binding is asked once, below, for every project.
+                (Binding::Site, _) => {
+                    asked.push(project.clone());
+                    continue;
+                }
+                (Binding::Own, None) => Ask::Source(&narrowing.source),
+                (Binding::Own, Some(capability)) => Ask::Capability {
+                    source: &narrowing.source,
+                    capability,
+                    probes,
+                },
+            },
+        };
         let outcome = refresh_project(
             &registry_doc,
             project,
             project_config,
             &site_sources,
             &config.defaults,
+            &ask,
         )?;
+        if narrowing.is_some() && outcome.asked.is_empty() {
+            // None of its blocks declares the capability: nothing was asked.
+            continue;
+        }
+        asked.push(project.clone());
         refreshed += 1;
         contributions.add(outcome.contributions);
         // A provider that did not deliver is an error, not a warning: its
@@ -165,7 +218,7 @@ fn refresh_projects(
         } else if !outcome.failures.is_empty() {
             degraded += 1;
         }
-        per_project.push(serde_json::json!({
+        let mut reading = serde_json::json!({
             "project": project,
             "items": outcome.item_count,
             "lost": outcome.contributions.total_failure(),
@@ -177,7 +230,13 @@ fn refresh_projects(
             // What a human surface says, `--json` says too
             // (§REQ-002-parity.3).
             "notes": outcome.notes,
-        }));
+        });
+        // Which histories a narrowed run asked; a plain run prints exactly
+        // the fields it printed before (§FS-011-command-line.7).
+        if narrowing.is_some() {
+            reading["answers"] = serde_json::json!(outcome.asked);
+        }
+        per_project.push(reading);
         if !quiet {
             println!("{project}: {} items", outcome.item_count);
         }
@@ -191,28 +250,40 @@ fn refresh_projects(
     // unbound pool, a verb that exits non-zero, and output that will not parse
     // are all *unknown* with the reason kept beside the pool
     // (§REQ-001-boundary.1).
-    probe_headroom(config, None);
+    // A narrowed run asks only what it names, and no pool
+    // (§FS-005-dispatch.29, §FS-011-command-line.9.2).
+    if narrowing.is_none() {
+        probe_headroom(config, None);
+    }
 
     // After the projects, not before: a per-project refresh writes its whole
     // feed, so a shared source's slot has to be folded in once the file it
-    // lands in has been rewritten (§AR-008-pipeline.1).
-    let shared = crate::feed::refresh::refresh_shared(&registry_doc, config)?;
-    contributions.add(shared.contributions);
-    for failure in &shared.failures {
-        eprintln!("error: sources: {}", failure.describe());
-    }
-    // Keep the public project/source-unit summary; the exit independently
-    // counts actual contributions (§FS-001-forge-interface.6.1).
-    if !config.sources.is_empty() {
+    // lands in has been rewritten (§AR-008-pipeline.1). A narrowed run asks
+    // the site only where a selected project resolved to its binding, and then
+    // only that source.
+    let site = match &narrowing {
+        None => !config.sources.is_empty(),
+        Some(narrowing) => narrowing.asks_the_site(),
+    };
+    if site {
+        let only = narrowing
+            .as_ref()
+            .map(|narrowing| narrowing.source.as_str());
+        let shared = crate::feed::refresh::refresh_shared(&registry_doc, config, only, &asked)?;
+        contributions.add(shared.contributions);
+        for failure in &shared.failures {
+            eprintln!("error: sources: {}", failure.describe());
+        }
+        // Keep the public project/source-unit summary; the exit
+        // independently counts actual contributions
+        // (§FS-001-forge-interface.6.1).
         refreshed += 1;
         if shared.contributions.total_failure() {
             total_failures += 1;
         } else if !shared.failures.is_empty() {
             degraded += 1;
         }
-    }
-    if !config.sources.is_empty() {
-        per_project.push(serde_json::json!({
+        let mut reading = serde_json::json!({
             "project": "sources",
             "items": shared.item_count,
             "lost": shared.contributions.total_failure(),
@@ -221,10 +292,14 @@ fn refresh_projects(
                 .iter()
                 .map(|failure| failure.describe())
                 .collect::<Vec<_>>(),
-        }));
-    }
-    if !quiet && shared.item_count > 0 {
-        println!("sources: {} items placed", shared.item_count);
+        });
+        if narrowing.is_some() {
+            reading["answers"] = serde_json::json!(shared.asked);
+        }
+        per_project.push(reading);
+        if !quiet && shared.item_count > 0 {
+            println!("sources: {} items placed", shared.item_count);
+        }
     }
 
     Ok(RefreshTally {
@@ -234,6 +309,8 @@ fn refresh_projects(
         contributions,
         projects: per_project,
         notes,
+        skipped: narrowing
+            .map(|narrowing| narrowing.skipped().into_iter().map(String::from).collect()),
     })
 }
 
@@ -281,6 +358,9 @@ struct RefreshTally {
     /// does: a row's fallback claim that can place nothing
     /// (§FS-008-attribution.4).
     notes: Vec<String>,
+    /// Under a narrowed run, the selected projects that bind no source of
+    /// that name, where the site binds none either (§FS-011-command-line.9.2).
+    skipped: Option<Vec<String>>,
 }
 
 /// Refresh when the cache is missing or older than the TTL (unless --cached).
@@ -333,6 +413,7 @@ fn refetch(config: &StatusConfig, project: &str, ttl: u64) -> Result<ProjectFeed
         project_config,
         &site_source_names(config),
         &config.defaults,
+        &Ask::Everything,
     )?;
     for failure in &outcome.failures {
         eprintln!("error: {project}: {}", failure.describe());
@@ -637,23 +718,31 @@ pub fn refresh(args: &RefreshArgs, scope: &Projects) -> Result<ExitCode> {
     // project's conversation under what nothing claimed
     // (§FS-011-command-line.9).
     let selected = scope.narrow(&projects, config.projects.keys())?;
+    // Below the projects, one source or one of its capabilities; the flags
+    // on their own are refused before anything is read
+    // (§FS-011-command-line.9.2).
+    let only = crate::feed::narrow::only(args.source.as_deref(), args.only.as_deref())?;
+    let narrow = args.source.as_deref().map(|source| (source, only));
     // Under `--json` the per-project lines would land on standard output
     // beside the reading (§FS-011-command-line.7), so they are withheld and
     // the whole tally is printed at the end instead.
-    let tally = refresh_projects(&config, &selected, args.quiet || args.json)?;
+    let tally = refresh_projects(&config, &selected, args.quiet || args.json, narrow)?;
     if args.json {
+        let mut reading = serde_json::json!({
+            "refreshed": tally.refreshed,
+            "degraded": tally.degraded,
+            "lost": tally.total_failures,
+            "projects": tally.projects,
+            // What the prose says on the error stream, said here too
+            // (§REQ-002-parity.3).
+            "notes": tally.notes,
+        });
+        if let Some(skipped) = &tally.skipped {
+            reading["skipped"] = serde_json::json!(skipped);
+        }
         println!(
             "{}",
-            serde_json::to_string_pretty(&serde_json::json!({
-                "refreshed": tally.refreshed,
-                "degraded": tally.degraded,
-                "lost": tally.total_failures,
-                "projects": tally.projects,
-                // What the prose says on the error stream, said here too
-                // (§REQ-002-parity.3).
-                "notes": tally.notes,
-            }))
-            .unwrap_or_else(|_| "null".to_string())
+            serde_json::to_string_pretty(&reading).unwrap_or_else(|_| "null".to_string())
         );
     }
     // Even an empty answer counts; an idle project or retained last-good

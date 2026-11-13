@@ -10,10 +10,11 @@ use chrono::{DateTime, Utc};
 use serde_json::Value;
 
 use crate::error::{registry_error, EphorError, Result};
-use crate::feed::cache::{load_feed, store_feed, ProjectFeed, ProviderSlot};
+use crate::feed::cache::{self, ProjectFeed, ProviderSlot};
 use crate::feed::config::{Defaults, ProjectFeedConfig, StatusConfig};
+use crate::feed::history::{self, Failure, Parts};
 use crate::feed::model::Item;
-use crate::feed::provider::ProviderContext;
+use crate::feed::provider::{Fetched, ProviderContext};
 use crate::feed::providers::build_provider;
 use crate::feed::reachability;
 use crate::paths;
@@ -54,6 +55,47 @@ pub struct RefreshOutcome {
     /// Actual answers and failures, including stores and empty answers
     /// (§FS-001-forge-interface.6.1).
     pub contributions: ContributionTally,
+    /// Every history the run asked, and whether it answered completely
+    /// (§FS-011-command-line.7). What `refresh --json` lists for a narrowed
+    /// run; a plain run lists nothing.
+    pub asked: Vec<Asked>,
+}
+
+/// One history a run asked (§FS-011-command-line.7).
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+pub struct Asked {
+    pub source: String,
+    /// The fetch subcommand, or null for a source whose answer is one history.
+    pub capability: Option<String>,
+    pub ok: bool,
+}
+
+/// What a refresh asks of one project (§FS-011-command-line.9.2).
+pub enum Ask<'a> {
+    /// Every source it binds and every task store it has: a plain refresh.
+    Everything,
+    /// One source it binds, every capability of it, committed whole.
+    Source(&'a str),
+    /// One capability of one forge it binds, committed alone. `probes` is
+    /// each block of that source, in configuration order, as probed before
+    /// any data call.
+    Capability {
+        source: &'a str,
+        capability: &'static str,
+        probes: &'a [std::result::Result<crate::forge::Capabilities, String>],
+    },
+}
+
+impl Ask<'_> {
+    /// Whether this configuration block is one the run asks.
+    fn asks(&self, block: &Value) -> bool {
+        match self {
+            Ask::Everything => true,
+            Ask::Source(source) | Ask::Capability { source, .. } => {
+                block.get("provider").and_then(Value::as_str) == Some(*source)
+            }
+        }
+    }
 }
 
 /// Refresh exits count attempts, never cached data or idle projects
@@ -119,55 +161,118 @@ impl ProviderAnswer {
     }
 }
 
+/// One source's answer to one run: each block's, in configuration order, and
+/// the contributions they make to it (§FS-001-forge-interface.6.1).
+#[derive(Default)]
+struct SourceAnswer {
+    blocks: Vec<Fetched>,
+    answer: ProviderAnswer,
+}
+
+impl SourceAnswer {
+    /// A block that was asked nothing — under `--only`, one that does not
+    /// declare the capability — contributes nothing, and keeps its place.
+    fn push(&mut self, fetched: Fetched) {
+        if let Some(contribution) = fetched.contribution() {
+            self.answer.record(contribution);
+        }
+        self.blocks.push(fetched);
+    }
+
+    /// Every capability any block declared, in fetch order; the whole answer
+    /// where none declared one (§FS-001-forge-interface.6.1). A forge block
+    /// answers whole only when it failed, so a complete answer is never both.
+    fn declared(&self) -> Vec<Option<&'static str>> {
+        let declared: Vec<Option<&'static str>> = crate::forge::FETCHES
+            .into_iter()
+            .filter(|fetch| {
+                self.blocks
+                    .iter()
+                    .filter_map(|block| block.declared.as_ref())
+                    .any(|declared| declared.contains(fetch))
+            })
+            .map(Some)
+            .collect();
+        match declared.is_empty() {
+            true => vec![None],
+            false => declared,
+        }
+    }
+
+    /// One history's reports, per block: what each block answered for it.
+    fn parts(&self, capability: Option<&str>) -> Parts {
+        self.blocks
+            .iter()
+            .map(|block| {
+                block
+                    .answers
+                    .iter()
+                    .filter(|(fetch, _)| *fetch == capability)
+                    .filter_map(|(_, answer)| answer.as_ref().ok())
+                    .flatten()
+                    .map(crate::matter::Matter::of_item)
+                    .collect()
+            })
+            .collect()
+    }
+}
+
 /// Ask all blocks concurrently, then reduce in configuration order rather
 /// than completion order, before either collector persists or attributes
 /// anything (§FS-001-forge-interface.6.1).
-fn collect_providers(configs: &[Value], ctx: &ProviderContext) -> BTreeMap<String, ProviderAnswer> {
+fn collect_sources(
+    configs: &[&Value],
+    ctx: &ProviderContext,
+    ask: impl Fn(usize, &Value, &ProviderContext) -> (String, Fetched) + Sync,
+) -> BTreeMap<String, SourceAnswer> {
     std::thread::scope(|scope| {
+        let ask = &ask;
         let jobs: Vec<_> = configs
             .iter()
-            .map(|config| scope.spawn(move || fetch_one(config, ctx)))
+            .enumerate()
+            .map(|(index, config)| scope.spawn(move || ask(index, config, ctx)))
             .collect();
-        let mut answers: BTreeMap<String, ProviderAnswer> = BTreeMap::new();
+        let mut answers: BTreeMap<String, SourceAnswer> = BTreeMap::new();
         for job in jobs {
-            let (name, contribution) = job.join().unwrap();
-            answers.entry(name).or_default().record(contribution);
+            let (name, fetched) = job.join().unwrap();
+            answers.entry(name).or_default().push(fetched);
         }
         answers
     })
 }
 
-/// Only a complete answer replaces a slot. An incomplete answer retains the
-/// whole last-good slot, timestamp and cursor (§FS-001-forge-interface.6.1).
-fn refreshed_slot(
+/// Commit a source a run asked whole (§FS-001-forge-interface.6.1): a complete
+/// answer replaces each history; an incomplete one keeps every history's
+/// last-good reports, time and cursor, and marks them.
+fn commit_source(
     previous: Option<&ProviderSlot>,
-    now: DateTime<Utc>,
-    matters: Vec<crate::matter::Matter>,
+    name: &str,
+    answer: &SourceAnswer,
     failure: Option<&ProviderFailure>,
+    now: DateTime<Utc>,
 ) -> ProviderSlot {
-    if let Some(failure) = failure {
-        ProviderSlot {
-            fetched_at: previous.and_then(|slot| slot.fetched_at),
-            ok: false,
-            error: Some(failure.message.clone()),
-            stale: previous.is_some_and(|slot| !slot.matters.is_empty()),
+    let declared = answer.declared();
+    let answered = match failure {
+        Some(failure) => Err(Failure {
+            message: &failure.message,
             unreachable: failure.unreachable,
-            matters: previous
-                .map(|slot| slot.matters.clone())
-                .unwrap_or_default(),
-            cursor: previous.and_then(|slot| slot.cursor.clone()),
-        }
-    } else {
-        ProviderSlot {
-            fetched_at: Some(now),
-            ok: true,
-            error: None,
-            stale: false,
-            unreachable: false,
-            matters,
-            cursor: previous.and_then(|slot| slot.cursor.clone()),
-        }
-    }
+        }),
+        None => Ok(declared
+            .iter()
+            .map(|capability| {
+                let mut parts = answer.parts(*capability);
+                if name == "custom-status" {
+                    let retained = previous.map(|slot| slot.matters.as_slice());
+                    parts = parts
+                        .into_iter()
+                        .map(|part| reconcile_custom_status_answer_matters(part, retained))
+                        .collect();
+                }
+                (*capability, parts)
+            })
+            .collect()),
+    };
+    history::commit_whole(previous, now, answered, &declared)
 }
 
 impl RefreshOutcome {
@@ -279,7 +384,7 @@ fn stores_to_read(
 
 /// Fetch all providers of one project concurrently and store the merged feed.
 /// Repeated blocks and stores form one complete answer per provider
-/// (§FS-001-forge-interface.6.1).
+/// (§FS-001-forge-interface.6.1), kept per history.
 ///
 /// `site_sources` names the sources bound for the site ([`site_source_names`]).
 /// They are not asked here, so the slots they placed in this project are kept
@@ -290,21 +395,39 @@ pub fn refresh_project(
     project_config: &ProjectFeedConfig,
     site_sources: &[String],
     defaults: &Defaults,
+    ask: &Ask,
 ) -> Result<RefreshOutcome> {
     let ctx = build_context(registry_doc, project_id, defaults)?;
-    let previous = load_feed(project_id)?.unwrap_or_default();
 
     // The same reducer handles configured blocks and discovered stores
-    // (§FS-001-forge-interface.6.1).
-    let mut results = collect_providers(&project_config.providers, &ctx);
+    // (§FS-001-forge-interface.6.1). A narrowed run asks the blocks of its
+    // one source and nothing else (§FS-011-command-line.9.2).
+    let blocks: Vec<&Value> = project_config
+        .providers
+        .iter()
+        .filter(|block| ask.asks(block))
+        .collect();
+    let mut results = match ask {
+        Ask::Capability {
+            capability, probes, ..
+        } => collect_sources(&blocks, &ctx, |index, block, ctx| {
+            ask_one(block, ctx, capability, probes.get(index))
+        }),
+        _ => collect_sources(&blocks, &ctx, |_, block, ctx| fetch_block(block, ctx)),
+    };
 
     let mut notes: Vec<String> = Vec::new();
 
     // Checkout sources read the forest itself, where there is one on disk
     // (§AR-008-pipeline.1). A task store is a project-native thing that
     // exists without ephor, so finding one is a capability rather than an
-    // obligation (§FS-006-project-interface.7).
-    if let Some(placement) = crate::branches::Placement::load(registry_doc, project_id) {
+    // obligation (§FS-006-project-interface.7). A narrowed run reads none
+    // (§FS-011-command-line.9.2).
+    let placement = match ask {
+        Ask::Everything => crate::branches::Placement::load(registry_doc, project_id),
+        _ => None,
+    };
+    if let Some(placement) = placement {
         let manifest = placement.manifest();
         for store in stores_to_read(&placement, manifest.as_ref()) {
             let name = store.kind.name().to_string();
@@ -313,7 +436,10 @@ pub fn refresh_project(
                 // included: a store with no open tasks has said so, and its
                 // slot saying so is what tells last refresh's tasks to go.
                 Ok((items, said)) => {
-                    results.entry(name).or_default().record(Ok(items));
+                    results
+                        .entry(name)
+                        .or_default()
+                        .push(Fetched::whole(Ok(items)));
                     // Reported once, where this source's own answer for this
                     // read is reported (§FS-005-dispatch.8).
                     notes.extend(
@@ -325,77 +451,156 @@ pub fn refresh_project(
                 // source that did not answer, rather than read as a store with
                 // nothing in it (§FS-001-forge-interface.6).
                 Err(why) => {
-                    results.entry(name).or_default().record(Err(why));
+                    results
+                        .entry(name)
+                        .or_default()
+                        .push(Fetched::whole(Err(why)));
                 }
             }
         }
     }
 
     let now = Utc::now();
-    let mut feed = ProjectFeed {
-        project: project_id.to_string(),
-        fetched_at: Some(now),
-        model: crate::feed::cache::MODEL,
-        providers: BTreeMap::new(),
-    };
     let mut failures = Vec::new();
     let mut contributions = ContributionTally::default();
-
-    for (name, answer) in results {
-        contributions.add(answer.contributions);
-        let failure = answer.failure(&name);
-        let matters = if failure.is_none() {
-            let matters: Vec<crate::matter::Matter> = answer
-                .items
-                .iter()
-                .map(crate::matter::Matter::of_item)
-                .collect();
-            if name == "custom-status" {
-                reconcile_custom_status_answer_matters(
-                    matters,
-                    previous
-                        .providers
-                        .get(&name)
-                        .map(|slot| slot.matters.as_slice()),
-                )
-            } else {
-                matters
+    let mut asked_histories = Vec::new();
+    // A narrowed run whose one capability none of this project's blocks
+    // declares asked this project nothing, and writes nothing to it.
+    if results.values().all(|answer| {
+        answer.answer.contributions.answered + answer.answer.contributions.failed == 0
+    }) && !matches!(ask, Ask::Everything)
+    {
+        return Ok(RefreshOutcome {
+            item_count: 0,
+            failures,
+            notes,
+            contributions,
+            asked: asked_histories,
+        });
+    }
+    // Written under the cache's lock, over the latest cache rather than the
+    // one this run started from, replacing only what this run asked
+    // (§AR-006-matters.4).
+    let item_count = cache::update(project_id, |feed| {
+        let mut asked = ProjectFeed::default();
+        for (name, answer) in &results {
+            contributions.add(answer.answer.contributions);
+            let failure = answer.answer.failure(name);
+            let previous = feed.providers.get(name);
+            let slot = match ask {
+                Ask::Capability { capability, .. } => {
+                    commit_capability(previous, answer, capability, failure.as_ref(), now)
+                }
+                _ => commit_source(previous, name, answer, failure.as_ref(), now),
+            };
+            asked_histories.extend(
+                slot.histories
+                    .iter()
+                    .filter(|history| history.asked_at == Some(now))
+                    .map(|history| Asked {
+                        source: name.clone(),
+                        capability: history.capability.clone(),
+                        ok: history.error.is_none(),
+                    }),
+            );
+            if let Some(failure) = failure {
+                failures.push(failure);
             }
-        } else {
-            Vec::new()
-        };
-        let slot = refreshed_slot(
-            previous.providers.get(&name),
-            now,
-            matters,
-            failure.as_ref(),
-        );
-        if let Some(failure) = failure {
-            failures.push(failure);
+            asked.providers.insert(name.clone(), slot);
         }
-        feed.providers.insert(name, slot);
-    }
-
-    let item_count = feed.items().count();
-    // A site source's slot here is `refresh_shared`'s to rewrite, so this run
-    // carries it over unasked: that is the slot a failure there marks stale
-    // (§FS-001-forge-interface.6 rule 5, §FS-001-forge-interface.9). A name no
-    // longer in `sources`, or one this project binds itself, is not carried.
-    for name in site_sources {
-        if feed.providers.contains_key(name) {
-            continue;
+        // A site source's slot here is `refresh_shared`'s to rewrite, so a
+        // plain run carries it over unasked: that is the slot a failure there
+        // marks stale (§FS-001-forge-interface.6 rule 5,
+        // §FS-001-forge-interface.9). A name no longer in `sources` is not
+        // carried, and one this project binds itself is the project's. A
+        // narrowed run touches no slot it did not ask
+        // (§FS-001-forge-interface.6.1).
+        if let Ask::Everything = ask {
+            feed.providers.retain(|name, _| site_sources.contains(name));
         }
-        if let Some(slot) = previous.providers.get(name) {
-            feed.providers.insert(name.clone(), slot.clone());
-        }
-    }
-    store_feed(&feed)?;
+        let item_count = asked.items().count();
+        feed.providers.append(&mut asked.providers);
+        feed.fetched_at = Some(now);
+        item_count
+    })?;
     Ok(RefreshOutcome {
         item_count,
         failures,
         notes,
         contributions,
+        asked: asked_histories,
     })
+}
+
+/// Ask one block for one capability, with the declaration its probe already
+/// read (§FS-011-command-line.9.2). A block whose probe failed contributes that
+/// failure to the capability's history: whether it declares the capability is
+/// not known, so a successful sibling cannot make the history complete. A
+/// block that does not declare it is asked nothing.
+fn ask_one(
+    block: &Value,
+    ctx: &ProviderContext,
+    capability: &str,
+    probe: Option<&std::result::Result<crate::forge::Capabilities, String>>,
+) -> (String, Fetched) {
+    let name = block
+        .get("provider")
+        .and_then(Value::as_str)
+        .unwrap_or("unknown")
+        .to_string();
+    let declared = match probe {
+        Some(Ok(declared)) => *declared,
+        Some(Err(why)) => return (name, Fetched::whole(Err(why.clone()))),
+        None => {
+            return (
+                name,
+                Fetched::whole(Err("the block was not probed".to_string())),
+            )
+        }
+    };
+    let provider = match crate::feed::providers::forge::ForgeProvider::external(block) {
+        Ok(provider) => provider,
+        Err(err) => return (name, Fetched::whole(Err(err.0))),
+    };
+    let raised;
+    let ctx = match provider_timeout(block) {
+        Some(timeout) => {
+            raised = ProviderContext {
+                timeout,
+                ..ctx.clone()
+            };
+            &raised
+        }
+        None => ctx,
+    };
+    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        provider.answer(ctx, Some(capability), Some(declared))
+    })) {
+        Ok(fetched) => (name, fetched),
+        Err(_) => (name, Fetched::whole(Err("provider panicked".to_string()))),
+    }
+}
+
+/// Commit the one capability a narrowed run asked of a source
+/// (§FS-001-forge-interface.6.1): its history is replaced or kept as
+/// last-good, and every capability any block declared that the slot has no
+/// history for is recorded never asked.
+fn commit_capability(
+    previous: Option<&ProviderSlot>,
+    answer: &SourceAnswer,
+    capability: &str,
+    failure: Option<&ProviderFailure>,
+    now: DateTime<Utc>,
+) -> ProviderSlot {
+    let declared: Vec<&str> = answer.declared().into_iter().flatten().collect();
+    let answered = match failure {
+        Some(failure) => Err(Failure {
+            message: &failure.message,
+            unreachable: failure.unreachable,
+        }),
+        None => Ok(answer.parts(Some(capability))),
+    };
+    history::commit_one(previous, now, capability, &declared, answered)
 }
 
 /// Missing activity belongs to the retained provider-slot/key observation,
@@ -513,6 +718,7 @@ impl BackgroundRefresh {
                         &project_config,
                         &site_sources,
                         &defaults,
+                        &Ask::Everything,
                     ) {
                         Ok(outcome) => Landed {
                             lost: outcome
@@ -674,15 +880,31 @@ pub const UNATTRIBUTED: &str = "unattributed";
 /// nothing about any one project and answers about all of them, so it is
 /// fetched once here and its findings are placed against every project's
 /// identity (§AR-003-attribution). What nothing claims is kept, visibly.
-/// Repeated blocks combine before placement; incomplete answers preserve
-/// whole-slot last-good data (§FS-001-forge-interface.6.1).
-pub fn refresh_shared(registry_doc: &Value, config: &StatusConfig) -> Result<RefreshOutcome> {
-    if config.sources.is_empty() {
+/// Repeated blocks combine before placement; an incomplete answer preserves
+/// the source's last-good history (§FS-001-forge-interface.6.1).
+///
+/// `only` narrows the run to one site source, asked whole and placed as a
+/// plain refresh places it; no other site source is asked or touched
+/// (§FS-011-command-line.9.2). Every home a source is written into keeps its
+/// own age, so `fetched_at` is stamped only on `asked`, the projects this run
+/// asked, and on the unattributed bucket, which is the site's own
+/// (§FS-011-command-line.12).
+pub fn refresh_shared(
+    registry_doc: &Value,
+    config: &StatusConfig,
+    only: Option<&str>,
+    asked: &[String],
+) -> Result<RefreshOutcome> {
+    let narrowed = |block: &&Value| {
+        only.is_none_or(|only| block.get("provider").and_then(Value::as_str) == Some(only))
+    };
+    if !config.sources.iter().any(|block| narrowed(&block)) {
         return Ok(RefreshOutcome {
             item_count: 0,
             failures: Vec::new(),
             notes: Vec::new(),
             contributions: ContributionTally::default(),
+            asked: Vec::new(),
         });
     }
 
@@ -698,7 +920,16 @@ pub fn refresh_shared(registry_doc: &Value, config: &StatusConfig) -> Result<Ref
 
     let ctx = site_context(&config.defaults);
 
-    let results = collect_providers(&config.sources, &ctx);
+    let blocks: Vec<&Value> = config.sources.iter().filter(narrowed).collect();
+    let results = collect_sources(&blocks, &ctx, |_, block, ctx| fetch_block(block, ctx));
+    let asked_histories: Vec<Asked> = results
+        .iter()
+        .map(|(name, answer)| Asked {
+            source: name.clone(),
+            capability: None,
+            ok: answer.answer.errors.is_empty(),
+        })
+        .collect();
     let now = Utc::now();
     let mut failures = Vec::new();
     let mut contributions = ContributionTally::default();
@@ -709,6 +940,7 @@ pub fn refresh_shared(registry_doc: &Value, config: &StatusConfig) -> Result<Ref
         BTreeMap::new();
 
     for (name, answer) in results {
+        let answer = answer.answer;
         contributions.add(answer.contributions);
         if let Some(failure) = answer.failure(&name) {
             failures.push(failure);
@@ -771,36 +1003,46 @@ pub fn refresh_shared(registry_doc: &Value, config: &StatusConfig) -> Result<Ref
         .cloned()
         .chain(std::iter::once(UNATTRIBUTED.to_string()))
         .collect();
-    let names = site_source_names(config);
+    let names: Vec<String> = site_source_names(config)
+        .into_iter()
+        .filter(|name| only.is_none_or(|only| only == name))
+        .collect();
     for home in homes {
-        let mut feed = load_feed(&home)?.unwrap_or(ProjectFeed {
-            project: home.clone(),
-            ..ProjectFeed::default()
-        });
-        let mine = placed.remove(&home).unwrap_or_default();
-        let mut touched = false;
-        for name in &names {
-            let matters = mine.get(name).cloned().unwrap_or_default();
-            let failed = failures.iter().find(|failure| &failure.provider == name);
-            if failed.is_some() {
-                // Last-good data waits out a failure here exactly as it does
-                // for a per-project source, and says why, and which kind of
-                // not, beside it (§FS-001-forge-interface.6). A home that
-                // never held this source's rows is not given a slot for its
-                // failure: the run already says it, once.
-                if !feed.providers.contains_key(name) {
+        let stamps = home == UNATTRIBUTED || asked.contains(&home);
+        let mut mine = placed.remove(&home).unwrap_or_default();
+        cache::update_if(&home, |feed| {
+            let mut touched = false;
+            for name in &names {
+                let matters = mine.remove(name).unwrap_or_default();
+                let failed = failures.iter().find(|failure| &failure.provider == name);
+                // A home that never held this source's rows is not given a slot
+                // for its failure: the run already says it, once.
+                if failed.is_some() && !feed.providers.contains_key(name) {
                     continue;
                 }
+                // A site source is placed on the combined evidence of its whole
+                // answer, so it is one history here, committed whole
+                // (§FS-011-command-line.9.2 refusal 4). Last-good data waits out
+                // a failure exactly as it does for a per-project source, and
+                // says why, and which kind of not, beside it
+                // (§FS-001-forge-interface.6).
+                let answered = match failed {
+                    Some(failure) => Err(Failure {
+                        message: &failure.message,
+                        unreachable: failure.unreachable,
+                    }),
+                    None => Ok(vec![(None, vec![matters])]),
+                };
+                let slot = history::commit_whole(feed.providers.get(name), now, answered, &[None]);
+                feed.providers.insert(name.clone(), slot);
+                touched = true;
             }
-            let slot = refreshed_slot(feed.providers.get(name), now, matters, failed);
-            feed.providers.insert(name.clone(), slot);
-            touched = true;
-        }
-        if touched {
-            feed.fetched_at = Some(now);
-            feed.model = crate::feed::cache::MODEL;
-            store_feed(&feed)?;
-        }
+            touched.then(|| {
+                if stamps {
+                    feed.fetched_at = Some(now);
+                }
+            })
+        })?;
     }
 
     Ok(RefreshOutcome {
@@ -809,6 +1051,7 @@ pub fn refresh_shared(registry_doc: &Value, config: &StatusConfig) -> Result<Ref
         // Shared sources are forge readers; no store answers here.
         notes: Vec::new(),
         contributions,
+        asked: asked_histories,
     })
 }
 
@@ -848,7 +1091,7 @@ pub fn site_context(defaults: &crate::feed::config::Defaults) -> ProviderContext
 /// Build one source and ask it, reporting a failure as data rather than
 /// letting it end the refresh. Project and site blocks share this invocation
 /// boundary and preserve each result (§FS-001-forge-interface.6.1).
-fn fetch_one(config: &Value, ctx: &ProviderContext) -> (String, Contribution) {
+fn fetch_block(config: &Value, ctx: &ProviderContext) -> (String, Fetched) {
     let raised;
     let ctx = match provider_timeout(config) {
         Some(timeout) => {
@@ -867,12 +1110,13 @@ fn fetch_one(config: &Value, ctx: &ProviderContext) -> (String, Contribution) {
                 let reason = provider
                     .unavailable_reason()
                     .unwrap_or_else(|| "unavailable (missing tool or secret)".to_string());
-                return (name, Err(reason));
+                return (name, Fetched::whole(Err(reason)));
             }
-            match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| provider.fetch(ctx))) {
-                Ok(Ok(items)) => (name, Ok(items)),
-                Ok(Err(err)) => (name, Err(err.0)),
-                Err(_) => (name, Err("provider panicked".to_string())),
+            match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                provider.fetch_histories(ctx)
+            })) {
+                Ok(fetched) => (name, fetched),
+                Err(_) => (name, Fetched::whole(Err("provider panicked".to_string()))),
             }
         }
         Err(err) => (
@@ -881,7 +1125,7 @@ fn fetch_one(config: &Value, ctx: &ProviderContext) -> (String, Contribution) {
                 .and_then(Value::as_str)
                 .unwrap_or("unknown")
                 .to_string(),
-            Err(err.0),
+            Fetched::whole(Err(err.0)),
         ),
     }
 }
@@ -1121,5 +1365,112 @@ mod tests {
             summarize(&lost, 0, Some("widget: not in the registry")),
             "Refreshed — NO DATA from 1: widget — widget: not in the registry"
         );
+    }
+
+    fn forge_item(id: &str) -> Item {
+        Item {
+            id: format!("gdev:{id}"),
+            project: "demo".to_string(),
+            source: "gdev".to_string(),
+            kind: crate::feed::model::ItemKind::Pr,
+            role: None,
+            title: id.to_string(),
+            url: None,
+            state: None,
+            needs_response: false,
+            updated_at: "2026-09-01T00:00:00Z".parse().unwrap(),
+            raw: Value::Null,
+        }
+    }
+
+    /// One block's answer, declaring pull requests and issues.
+    fn block(answers: Vec<(&'static str, std::result::Result<Vec<Item>, String>)>) -> Fetched {
+        Fetched {
+            declared: Some(vec!["pull-requests", "issues"]),
+            answers: answers
+                .into_iter()
+                .map(|(capability, answer)| (Some(capability), answer))
+                .collect(),
+        }
+    }
+
+    fn keys(slot: &ProviderSlot) -> Vec<String> {
+        slot.matters
+            .iter()
+            .map(|matter| matter.key.as_str().to_string())
+            .collect()
+    }
+
+    /// Repeated blocks of one source form one history per capability: each
+    /// block's answer to a capability is its part of that history, and a block
+    /// that answered a capability with nothing still answered it — its part is
+    /// empty, not missing. A capability asked alone is complete only when every
+    /// block answered it; one block failing keeps every block's last-good
+    /// (§FS-001-forge-interface.6.1, §AR-008-pipeline.2).
+    #[test]
+    fn repeated_blocks_combine_per_capability_and_an_empty_sibling_counts() {
+        let now: DateTime<Utc> = "2026-09-01T00:00:00Z".parse().unwrap();
+        let mut whole = SourceAnswer::default();
+        whole.push(block(vec![
+            ("pull-requests", Ok(vec![forge_item("G/7")])),
+            ("issues", Ok(vec![forge_item("GR-1")])),
+        ]));
+        whole.push(block(vec![
+            ("pull-requests", Ok(vec![forge_item("G/7")])),
+            ("issues", Ok(vec![])),
+        ]));
+        assert_eq!(whole.answer.contributions.answered, 2);
+        assert_eq!(whole.declared(), [Some("pull-requests"), Some("issues")]);
+        let full = commit_source(
+            None,
+            "gdev",
+            &whole,
+            whole.answer.failure("gdev").as_ref(),
+            now,
+        );
+        assert_eq!(keys(&full), ["gdev:G/7", "gdev:GR-1", "gdev:G/7"]);
+        assert_eq!(full.history(Some("pull-requests")).unwrap().blocks, [1, 1]);
+        let issues = full.history(Some("issues")).unwrap();
+        assert_eq!(issues.blocks, [1, 0], "the empty sibling is a part");
+        assert!(issues.answered());
+
+        // Asked alone, the first block's empty answer is an answer: the
+        // history is replaced, and the pull requests stay where they were.
+        let later = now + chrono::TimeDelta::seconds(60);
+        let mut one = SourceAnswer::default();
+        one.push(block(vec![("issues", Ok(vec![]))]));
+        one.push(block(vec![("issues", Ok(vec![forge_item("GR-2")]))]));
+        let narrowed = commit_capability(
+            Some(&full),
+            &one,
+            "issues",
+            one.answer.failure("gdev").as_ref(),
+            later,
+        );
+        assert_eq!(keys(&narrowed), ["gdev:G/7", "gdev:G/7", "gdev:GR-2"]);
+        let issues = narrowed.history(Some("issues")).unwrap();
+        assert_eq!(issues.blocks, [0, 1]);
+        assert_eq!(issues.answered_at, Some(later));
+        assert_eq!(
+            narrowed.history(Some("pull-requests")),
+            full.history(Some("pull-requests"))
+        );
+
+        // One block failing leaves the capability incomplete: the other
+        // block's answer replaces nothing.
+        let mut torn = SourceAnswer::default();
+        torn.push(block(vec![("issues", Ok(vec![forge_item("GR-3")]))]));
+        torn.push(block(vec![("issues", Err("gdev: HTTP 503".to_string()))]));
+        let failed = commit_capability(
+            Some(&narrowed),
+            &torn,
+            "issues",
+            torn.answer.failure("gdev").as_ref(),
+            later + chrono::TimeDelta::seconds(60),
+        );
+        assert_eq!(keys(&failed), keys(&narrowed));
+        let issues = failed.history(Some("issues")).unwrap();
+        assert!(issues.stale && issues.error.is_some());
+        assert_eq!(issues.answered_at, Some(later));
     }
 }

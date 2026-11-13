@@ -12,7 +12,7 @@ use serde_json::Value;
 use crate::feed::config::ActionConfig;
 use crate::feed::gate::{Failure, Gate, Scope};
 use crate::feed::model::Item;
-use crate::feed::provider::{Provider, ProviderContext, ProviderError, ProviderResult};
+use crate::feed::provider::{Fetched, Provider, ProviderContext, ProviderError, ProviderResult};
 use crate::forge::external::ExternalForge;
 use crate::forge::{policy, Capabilities, Forge, GateSubject, Request, Restarted};
 
@@ -258,74 +258,153 @@ impl Provider for ForgeProvider {
         self.forge.restart(&request, &repo, &subject, scope)
     }
 
+    /// Every history at once, flattened, failing on the first failure
+    /// (§FS-001-forge-interface.6.1).
     fn fetch(&self, ctx: &ProviderContext) -> ProviderResult {
-        let request = Request::new(self.config.clone(), ctx);
-        // The probe's own failure is reported verbatim: it is the first thing
-        // this forge does, so it is where an unreachable host, a crash or a
-        // missing dependency surfaces, and each of those needs its own answer.
-        let capabilities = self.forge.capabilities()?;
-        if capabilities == crate::forge::Capabilities::default() {
+        match self.answer(ctx, None, None).contribution() {
+            Some(Ok(items)) => Ok(items),
+            Some(Err(why)) => Err(ProviderError(why)),
+            None => Ok(Vec::new()),
+        }
+    }
+
+    fn fetch_histories(&self, ctx: &ProviderContext) -> Fetched {
+        self.answer(ctx, None, None)
+    }
+}
+
+impl ForgeProvider {
+    /// The `capabilities` probe alone, which is not a data call: what a
+    /// refresh narrowed to one capability asks before it may refuse
+    /// (§FS-011-command-line.9.2 refusal 5). An executable that is not there
+    /// fails the probe the way it fails a fetch.
+    pub fn probe(&self) -> Result<Capabilities, ProviderError> {
+        if !self.forge.available() {
+            return Err(ProviderError(
+                self.forge
+                    .unavailable_reason()
+                    .unwrap_or_else(|| "unavailable (missing tool or secret)".to_string()),
+            ));
+        }
+        self.forge.capabilities()
+    }
+
+    /// This block's answer, one history per fetch capability it declares
+    /// (§FS-001-forge-interface.6.1). `only` asks that one capability and no
+    /// other, and a block that does not declare it is asked nothing
+    /// (§FS-011-command-line.9.2); `probed` is the declaration already read,
+    /// so a narrowed run probes each block once.
+    ///
+    /// The probe's own failure is reported verbatim: it is the first thing
+    /// this forge does, so it is where an unreachable host, a crash or a
+    /// missing dependency surfaces, and each of those needs its own answer.
+    /// Without a declaration the block's answer is one history, its whole one.
+    pub fn answer(
+        &self,
+        ctx: &ProviderContext,
+        only: Option<&str>,
+        probed: Option<Capabilities>,
+    ) -> Fetched {
+        let capabilities = match probed.map(Ok).unwrap_or_else(|| self.forge.capabilities()) {
+            Ok(capabilities) => capabilities,
+            Err(err) => return Fetched::whole(Err(err.0)),
+        };
+        if capabilities == Capabilities::default() {
             // Declaring nothing is indistinguishable from answering nothing, so
             // treat it as the failure it almost always is: the executable ran,
             // but does not speak the protocol.
-            return Err(ProviderError(format!(
+            return Fetched::whole(Err(format!(
                 "{} declared no capabilities — is it answering `capabilities` with JSON?",
                 self.name
             )));
         }
-        let mut items: Vec<Item> = Vec::new();
+        let request = Request::new(self.config.clone(), ctx);
+        let declared = capabilities.fetches();
+        let mut answers = Vec::new();
+        for fetch in declared.iter().copied() {
+            if only.is_some_and(|only| only != fetch) {
+                continue;
+            }
+            let answer = self
+                .fetch_one(fetch, &request, ctx, &capabilities)
+                .map_err(|err| err.0);
+            let failed = answer.is_err();
+            answers.push((Some(fetch), answer));
+            // A block stops at its first failure, as it always has: the
+            // source is then incomplete whatever its later histories say.
+            if failed {
+                break;
+            }
+        }
+        Fetched {
+            declared: Some(declared),
+            answers,
+        }
+    }
 
-        if capabilities.pull_requests {
-            for pr in self.forge.pull_requests(&request)? {
-                items.push(policy::pull_request_item(self.name, &ctx.project_id, &pr));
-            }
-        }
-        // A watched branch is asked only of a forge that declared it can be
-        // (§FS-001-forge-interface.2), and whether it is a row is policy's
-        // (§FS-001-forge-interface.3).
-        if capabilities.branch_gate {
-            for branch in self.forge.branch_gates(&request)? {
-                items.extend(policy::branch_gate_item(
-                    self.name,
-                    &ctx.project_id,
-                    &branch,
-                ));
-            }
-        }
-        if capabilities.issues {
-            // The same switch the built-in issue source reads, from the same
-            // place: a source says whether an issue nobody has taken is work
-            // awaiting somebody (§FS-003-feed-categories.4), and an extension
-            // is configured no differently from anything else.
-            let unclaimed = match self.config.get("unclaimed").and_then(Value::as_bool) {
-                Some(true) => policy::Unclaimed::Awaits,
-                _ => policy::Unclaimed::Ignored,
-            };
-            for issue in self.forge.issues(&request)? {
-                items.push(policy::issue_item(
-                    self.name,
-                    &ctx.project_id,
-                    &issue,
-                    unclaimed,
-                ));
-            }
-        }
-        if capabilities.notices {
-            for notice in self.forge.notices(&request)? {
-                items.push(policy::notice_item(self.name, &ctx.project_id, &notice));
-            }
-        }
-        // The other places people talk, each conversation whole
-        // (§FS-001-forge-interface.1).
-        if capabilities.messages {
-            for conversation in self.forge.messages(&request)? {
-                let mut item = policy::conversation_item(self.name, &ctx.project_id, &conversation);
-                // Offered only where it would work (§FS-004-quick-actions.2):
-                // the probe above is the one place the declaration is in hand.
-                if capabilities.settle {
-                    crate::matter::offer_settle(&mut item);
+    /// One fetch subcommand, turned into items by policy.
+    fn fetch_one(
+        &self,
+        fetch: &str,
+        request: &Request,
+        ctx: &ProviderContext,
+        capabilities: &Capabilities,
+    ) -> ProviderResult {
+        let mut items: Vec<Item> = Vec::new();
+        match fetch {
+            "pull-requests" => {
+                for pr in self.forge.pull_requests(request)? {
+                    items.push(policy::pull_request_item(self.name, &ctx.project_id, &pr));
                 }
-                items.push(item);
+            }
+            // A watched branch is asked only of a forge that declared it can be
+            // (§FS-001-forge-interface.2), and whether it is a row is policy's
+            // (§FS-001-forge-interface.3).
+            "branch-gates" => {
+                for branch in self.forge.branch_gates(request)? {
+                    items.extend(policy::branch_gate_item(
+                        self.name,
+                        &ctx.project_id,
+                        &branch,
+                    ));
+                }
+            }
+            "issues" => {
+                // The same switch the built-in issue source reads, from the
+                // same place: a source says whether an issue nobody has taken
+                // is work awaiting somebody (§FS-003-feed-categories.4), and an
+                // extension is configured no differently from anything else.
+                let unclaimed = match self.config.get("unclaimed").and_then(Value::as_bool) {
+                    Some(true) => policy::Unclaimed::Awaits,
+                    _ => policy::Unclaimed::Ignored,
+                };
+                for issue in self.forge.issues(request)? {
+                    items.push(policy::issue_item(
+                        self.name,
+                        &ctx.project_id,
+                        &issue,
+                        unclaimed,
+                    ));
+                }
+            }
+            "notices" => {
+                for notice in self.forge.notices(request)? {
+                    items.push(policy::notice_item(self.name, &ctx.project_id, &notice));
+                }
+            }
+            // The other places people talk, each conversation whole
+            // (§FS-001-forge-interface.1).
+            _ => {
+                for conversation in self.forge.messages(request)? {
+                    let mut item =
+                        policy::conversation_item(self.name, &ctx.project_id, &conversation);
+                    // Offered only where it would work (§FS-004-quick-actions.2):
+                    // the probe is the one place the declaration is in hand.
+                    if capabilities.settle {
+                        crate::matter::offer_settle(&mut item);
+                    }
+                    items.push(item);
+                }
             }
         }
         Ok(items)

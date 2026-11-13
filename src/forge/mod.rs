@@ -97,6 +97,34 @@ pub struct Capabilities {
     pub branch_gate: bool,
 }
 
+/// The fetch subcommands, in the order a refresh asks them. Each is one
+/// history of a forge's answer (§FS-001-forge-interface.6.1), and the order is
+/// the one a slot's reports are read in (§AR-008-pipeline.2).
+pub const FETCHES: [&str; 5] = [
+    "pull-requests",
+    "branch-gates",
+    "issues",
+    "notices",
+    "messages",
+];
+
+impl Capabilities {
+    /// The fetch subcommands this declaration answers, in [`FETCHES`] order
+    /// (§FS-001-forge-interface.6.1).
+    pub fn fetches(&self) -> Vec<&'static str> {
+        FETCHES
+            .into_iter()
+            .filter(|fetch| match *fetch {
+                "pull-requests" => self.pull_requests,
+                "branch-gates" => self.branch_gate,
+                "issues" => self.issues,
+                "notices" => self.notices,
+                _ => self.messages,
+            })
+            .collect()
+    }
+}
+
 /// Both transports distinguish known acceptance from an explicitly unknown
 /// delivery and from a definite refusal, whose note is required
 /// (§FS-001-forge-interface.2, §FS-005-dispatch.13.3). An omitted status is

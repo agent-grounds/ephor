@@ -401,7 +401,6 @@ fn registered_issue_import_skips_pr_work() {
 /// the same keys and fingerprints, so work laid on a matter does not move
 /// (§FS-001-forge-interface.6.1, §FS-005-dispatch.5).
 #[test]
-#[ignore = "red until #263: refresh takes no --source/--only; implement removes this"]
 fn narrowed_equals_full() {
     let world = watching(600);
     register_ticket(&world);
@@ -549,7 +548,6 @@ fn a_bound_source_with_no_history_is_never_asked() {
 /// before any data call (§FS-011-command-line.9.2). `--source` alone on a site
 /// source still refreshes it whole and asks no other site source.
 #[test]
-#[ignore = "red until #263: refresh takes no --source/--only, so clap refuses every form alike; implement removes this"]
 fn narrowing_is_refused_before_any_data_call() {
     let world = watching(600);
     // A native provider beside the two forges: it has one history and nothing
@@ -628,4 +626,81 @@ fn narrowing_is_refused_before_any_data_call() {
         made.iter().all(|line| line.starts_with("gdev ")),
         "a site source named alone asked another site source: {made:#?}"
     );
+}
+
+/// A plan the project keeps in its own checkout: one open task.
+const PLAN: &str = "# Rhei: the retry window\n\n## Tasks\n\n\
+### Task 1: Widen the retry window\n**State:** pending\n";
+
+/// A narrowed refresh asks only the source it names: it reads no task store
+/// and probes no pool's headroom, both of which a plain refresh does
+/// (§FS-011-command-line.9.2, §FS-005-dispatch.29), and what it says it asked
+/// is the published shape (§FS-011-command-line.7).
+#[test]
+fn a_narrowed_refresh_reads_no_store_and_probes_no_pool() {
+    let world = World::new();
+    install_forges(&world);
+    let probed = world.path().join("headroom.log");
+    world.stub(
+        "north-headroom",
+        &format!(
+            "#!/usr/bin/env bash\necho probed >> '{}'\n{}",
+            probed.display(),
+            answering(
+                json!({ "v": 1, "data": { "windows": [
+                    { "name": "session", "remaining": 0.5, "resets_at": "2026-09-05T18:30:00Z" }
+                ] } }),
+                0
+            )
+            .trim_start_matches("#!/usr/bin/env bash\n")
+        ),
+    );
+    world.configure(json!({
+        "projects": { PROJECT: { "providers": bound_blocks() } },
+        "work": { "headroom": { "north": "north-headroom" } }
+    }));
+    world.file("panta/window.rhei.md", PLAN);
+
+    // The plain refresh reads the store and asks the pool: the control.
+    let plain = run(&world, &["refresh", PROJECT, "--quiet"]);
+    assert!(plain.status.success(), "{}", said(&plain));
+    assert!(world.has_matter("rhei:window.1"), "{:#?}", world.matters());
+    let asked_pool = || {
+        std::fs::read_to_string(&probed)
+            .unwrap_or_default()
+            .lines()
+            .count()
+    };
+    assert_eq!(asked_pool(), 1, "a plain refresh probes the pool");
+    let store_before = world.feed()["providers"]["rhei"].clone();
+
+    // The store moves on; a narrowed run must not see it.
+    world.file(
+        "panta/window.rhei.md",
+        &PLAN.replace("**State:** pending", "**State:** completed"),
+    );
+    for narrowing in [
+        &["--source", "gdev"][..],
+        &["--source", "gdev", "--only", "issues"],
+    ] {
+        let mut args = narrowing.to_vec();
+        args.push("--json");
+        let narrowed = refresh_narrowed(&world, &args);
+        assert_eq!(narrowed.status.code(), Some(0), "{}", said(&narrowed));
+        let reading = shaped("refresh", &narrowed);
+        let answers = reading["projects"][0]["answers"]
+            .as_array()
+            .unwrap_or_else(|| panic!("{narrowing:?} lists its answers: {reading:#}"));
+        assert!(
+            !answers.is_empty() && answers.iter().all(|answer| answer["source"] == "gdev"),
+            "{narrowing:?} answered for gdev alone: {reading:#}"
+        );
+        assert_eq!(asked_pool(), 1, "{narrowing:?} probed a pool's headroom");
+        assert_eq!(
+            world.feed()["providers"]["rhei"],
+            store_before,
+            "{narrowing:?} read the task store"
+        );
+        assert!(world.has_matter("rhei:window.1"), "{narrowing:?}");
+    }
 }

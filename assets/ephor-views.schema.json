@@ -875,9 +875,28 @@
                 "type": "array",
                 "items": { "type": "string" },
                 "description": "What a source answered but could not be carried whole — a key a plan wrote about one of its tasks that the bound refused (FS-005-dispatch.8). Not a failure: the source answered and its slot says so. Said here because a drop nobody is told about is how a selector stops matching for no reason a reader can see."
+              },
+              "answers": {
+                "type": "array",
+                "description": "Present only on a refresh narrowed by `--source` or `--only` (FS-011-command-line.9.2): one entry per history the run asked, in the order kept. A history not listed was not asked and kept its answer and its age (FS-001-forge-interface.6.1). A plain refresh prints no `answers`.",
+                "items": {
+                  "type": "object",
+                  "required": ["source", "capability", "ok"],
+                  "additionalProperties": false,
+                  "properties": {
+                    "source": { "type": "string", "description": "The source name, as configured." },
+                    "capability": { "type": ["string", "null"], "description": "The fetch subcommand — pull-requests, branch-gates, issues, notices or messages — or null for a source whose answer is one history: a native provider, a task store, a site source, or a forge whose declaration could not be read." },
+                    "ok": { "type": "boolean", "description": "It answered completely. False keeps its last-good answer, marked stale and failed." }
+                  }
+                }
               }
             }
           }
+        },
+        "skipped": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Present only on a narrowed refresh: the selected projects that bind no source of the `--source` name where the site binds none either, so nothing was asked for them (FS-011-command-line.9.2)."
         },
         "notes": {
           "type": "array",

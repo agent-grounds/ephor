@@ -1,6 +1,7 @@
 //! Cached feed state under `~/.local/state/ephor/`: one JSON document per
 //! project plus a global `seen.json` for unread tracking. Writes are atomic
-//! (tmp file + rename) so an interrupted refresh never corrupts state.
+//! (tmp file + rename) so an interrupted refresh never corrupts state, and a
+//! project's cache is written under its lock (§AR-006-matters.4).
 
 use std::collections::BTreeMap;
 use std::fs;
@@ -10,6 +11,7 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
 use crate::error::{EphorError, Result};
+use crate::feed::history::History;
 use crate::feed::model::Item;
 use crate::matter::Matter;
 use crate::paths;
@@ -17,26 +19,43 @@ use crate::paths;
 /// What model the stored matters are in. The cache is a cache
 /// (§AR-006-matters.4): a model change rebuilds it rather than migrating it,
 /// because everything in it can be fetched again. `seen` is the one part that
-/// survives, and it lives in its own file for exactly that reason.
-pub const MODEL: u32 = 2;
+/// survives, and it lives in its own file for exactly that reason. Model 3
+/// keeps a source's answer per history (§FS-001-forge-interface.6.1).
+pub const MODEL: u32 = 3;
 
 #[derive(Debug, Default, Serialize, Deserialize)]
 pub struct ProjectFeed {
     pub project: String,
+    /// When a refresh run last asked this project: *a refresh produced this
+    /// cache* (§AR-006-matters.4). Not the project's age, which is its
+    /// histories' (§FS-011-command-line.12).
     #[serde(default)]
     pub fetched_at: Option<DateTime<Utc>>,
     /// The model the matters below were stored in. An older one is dropped on
     /// load; a refresh fills it again.
     #[serde(default)]
     pub model: u32,
+    /// Bumped by every write of this file, so a reader can tell a newer cache
+    /// from the one it shows even where the project's age did not move
+    /// (§FS-001-forge-interface.7.1).
+    #[serde(default)]
+    pub revision: u64,
     #[serde(default)]
     pub providers: BTreeMap<String, ProviderSlot>,
 }
 
-/// Per-provider results. A failing provider keeps its last-good matters
-/// with `stale: true` so one flaky source never blanks the feed.
+/// Per-source results. A failing source keeps its last-good matters with
+/// `stale: true` so one flaky source never blanks the feed.
+///
+/// What a refresh keeps is `histories`, one per capability the source answers
+/// (§FS-001-forge-interface.6.1). Everything else here is what the slot as a
+/// whole reads as, derived from them on every write
+/// ([`crate::feed::history`]): the reports in the one order the merge reads
+/// them (§AR-008-pipeline.2), and whether the source answered.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ProviderSlot {
+    /// When every history last answered completely: the oldest of their
+    /// times, or none while any has never answered.
     #[serde(default)]
     pub fetched_at: Option<DateTime<Utc>>,
     #[serde(default)]
@@ -54,10 +73,36 @@ pub struct ProviderSlot {
     /// What this source reported, as matters (§AR-006-matters.1).
     #[serde(default)]
     pub matters: Vec<Matter>,
-    /// Incremental fetch cursor, for a source that reads a stream from where
-    /// it last stopped.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub cursor: Option<String>,
+    /// The source's answer per history (§AR-006-matters.4).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub histories: Vec<History>,
+}
+
+impl ProviderSlot {
+    /// The history answering `capability`, or the whole answer for None.
+    pub fn history(&self, capability: Option<&str>) -> Option<&History> {
+        self.histories
+            .iter()
+            .find(|history| history.capability.as_deref() == capability)
+    }
+
+    /// A slot that carries no histories — one written by hand rather than by a
+    /// refresh — reads as one whole answer, asked and answered when it says.
+    fn normalize(&mut self, stamped: Option<DateTime<Utc>>) {
+        if !self.histories.is_empty() {
+            return;
+        }
+        self.histories.push(History {
+            capability: None,
+            asked_at: self.fetched_at.or(stamped),
+            answered_at: self.fetched_at,
+            error: self.error.clone(),
+            stale: self.stale,
+            unreachable: self.unreachable,
+            cursor: None,
+            blocks: vec![self.matters.len()],
+        });
+    }
 }
 
 fn is_false(value: &bool) -> bool {
@@ -216,6 +261,11 @@ pub fn load_feed(project_id: &str) -> Result<Option<ProjectFeed>> {
             ..ProjectFeed::default()
         }));
     }
+    let mut feed = feed;
+    let stamped = feed.fetched_at;
+    for slot in feed.providers.values_mut() {
+        slot.normalize(stamped);
+    }
     // Test-only scheduling seam: replace a cache after its bytes were read,
     // before the caller can establish a later observation baseline.
     #[cfg(test)]
@@ -266,10 +316,57 @@ pub fn store_feed(feed: &ProjectFeed) -> Result<()> {
             project: feed.project.clone(),
             fetched_at: feed.fetched_at,
             model: MODEL,
+            revision: feed.revision,
             providers: feed.providers.clone(),
         })
         .unwrap(),
     )
+}
+
+/// Write one project's cache as a refresh does (§AR-006-matters.4): take the
+/// lock on the file, reload the latest cache, let `change` replace only what
+/// its run asked, bump the revision, and write it whole. Two refreshes of one
+/// project at once then cannot erase each other's answers: the second reads
+/// what the first wrote before it replaces anything.
+pub fn update<T>(project: &str, change: impl FnOnce(&mut ProjectFeed) -> T) -> Result<T> {
+    let changed = update_if(project, |feed| Some(change(feed)))?;
+    Ok(changed.expect("a change that always writes wrote"))
+}
+
+/// [`update`], for a change that may find nothing to write: None leaves the
+/// file, and its revision, as they were.
+pub fn update_if<T>(
+    project: &str,
+    change: impl FnOnce(&mut ProjectFeed) -> Option<T>,
+) -> Result<Option<T>> {
+    let path = feed_path(project);
+    let parent = path.parent().unwrap_or(&path).to_path_buf();
+    fs::create_dir_all(&parent)
+        .map_err(|err| EphorError::Command(format!("Cannot create {}: {err}", parent.display())))?;
+    let lock_path = path.with_extension("json.lock");
+    let lock = fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .create(true)
+        .truncate(false)
+        .open(&lock_path)
+        .map_err(|err| {
+            EphorError::Command(format!("Cannot open {}: {err}", lock_path.display()))
+        })?;
+    lock.lock().map_err(|err| {
+        EphorError::Command(format!("Cannot lock {}: {err}", lock_path.display()))
+    })?;
+    let mut feed = load_feed(project)?.unwrap_or_else(|| ProjectFeed {
+        project: project.to_string(),
+        ..ProjectFeed::default()
+    });
+    let Some(changed) = change(&mut feed) else {
+        return Ok(None);
+    };
+    feed.revision += 1;
+    store_feed(&feed)?;
+    drop(lock);
+    Ok(Some(changed))
 }
 
 /// What the reader last saw of one matter. Older stores recorded only when it
@@ -397,6 +494,7 @@ mod tests {
             project: "widget".to_string(),
             fetched_at: Some(Utc::now()),
             model: MODEL,
+            revision: 1,
             providers: BTreeMap::from([
                 (
                     "one".to_string(),
@@ -463,6 +561,7 @@ mod tests {
             project: "widget".to_string(),
             fetched_at: None,
             model,
+            revision: 0,
             providers: BTreeMap::new(),
         };
         feed.providers.insert(
@@ -585,5 +684,63 @@ mod tests {
         assert!(written["providers"]["github-prs"]["matters"][0]["key"]
             .as_str()
             .is_some());
+    }
+
+    /// Two refreshes of one project at once, each replacing only what it
+    /// asked, do not erase each other's answers: each writes under the lock
+    /// over what the other wrote, and every write bumps the revision
+    /// (§AR-006-matters.4, §FS-001-forge-interface.7.1).
+    #[test]
+    fn concurrent_writes_under_the_lock_keep_each_others_answers() {
+        // The cache lives where the environment says; the test runs again in a
+        // child whose state is its own, never the reader's.
+        if std::env::var_os("EPHOR_263_UNIT_CHILD").is_none() {
+            let root = tempfile::Builder::new()
+                .prefix("ephor-263-unit-")
+                .tempdir()
+                .unwrap();
+            let output = std::process::Command::new(std::env::current_exe().unwrap())
+                .args([
+                    "--exact",
+                    "feed::cache::tests::concurrent_writes_under_the_lock_keep_each_others_answers",
+                    "--nocapture",
+                ])
+                .env("EPHOR_263_UNIT_CHILD", "1")
+                .env("HOME", root.path())
+                .env("XDG_STATE_HOME", root.path().join("state"))
+                .current_dir(root.path())
+                .output()
+                .unwrap();
+            assert!(
+                output.status.success()
+                    && String::from_utf8_lossy(&output.stdout).contains("1 passed"),
+                "{}\n{}",
+                String::from_utf8_lossy(&output.stdout),
+                String::from_utf8_lossy(&output.stderr)
+            );
+            return;
+        }
+        const WRITERS: u64 = 8;
+        std::thread::scope(|scope| {
+            for writer in 0..WRITERS {
+                scope.spawn(move || {
+                    update("demo", |feed| {
+                        // Hold the cache across a read and a write, long enough
+                        // that an unlocked writer would overwrite a sibling.
+                        std::thread::sleep(std::time::Duration::from_millis(20));
+                        feed.providers
+                            .insert(format!("source-{writer}"), ProviderSlot::default());
+                    })
+                    .unwrap();
+                });
+            }
+        });
+        let feed = load_feed("demo").unwrap().unwrap();
+        assert_eq!(feed.providers.len() as u64, WRITERS, "{:?}", feed.providers);
+        assert_eq!(feed.revision, WRITERS, "every write bumps the revision");
+
+        // A change that finds nothing to write leaves the file and revision.
+        assert_eq!(update_if("demo", |_| None::<()>).unwrap(), None);
+        assert_eq!(load_feed("demo").unwrap().unwrap().revision, WRITERS);
     }
 }

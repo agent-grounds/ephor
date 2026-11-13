@@ -28,6 +28,8 @@ fn stored(project: &str, title: &str, fetched: DateTime<Utc>) -> ProjectFeed {
         project: project.into(),
         fetched_at: Some(fetched),
         model: cache::MODEL,
+        // A later store is a later write, as a refresh's is.
+        revision: fetched.timestamp_millis().max(0) as u64,
         providers: std::collections::BTreeMap::from([(
             "fixture".into(),
             cache::ProviderSlot {
