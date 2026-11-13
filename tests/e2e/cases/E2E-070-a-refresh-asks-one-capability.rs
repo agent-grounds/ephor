@@ -33,7 +33,10 @@
 #[path = "../support.rs"]
 mod support;
 
+use std::collections::BTreeMap;
 use std::process::Output;
+use std::thread::sleep;
+use std::time::Duration;
 
 use serde_json::{json, Value};
 
@@ -43,7 +46,10 @@ const FIXTURE: &str = concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/tests/e2e/fixtures/capability-forge.py"
 );
+const TICKET: &str = "GR-45248";
+const TICKET_ITEM: &str = "gdev:GR-45248";
 const GDEV_PR: &str = "gdev:G/7";
+const ACME_PR: &str = "acme:app/9";
 const ORG: &str = "foundation";
 
 /// The two forges as stubs on `PATH`, each handing its calls to the fixture
@@ -142,6 +148,23 @@ fn said(output: &Output) -> String {
     )
 }
 
+fn stderr(output: &Output) -> String {
+    String::from_utf8_lossy(&output.stderr).to_string()
+}
+
+/// Register a branch carrying the ticket, which is how the ticket reaches the
+/// forge's `issues` (§FS-001-forge-interface.2).
+fn register_ticket(world: &World) {
+    let mut registry = world.registry_doc();
+    registry["projects"][0]["branches"] = json!([{
+        "id": "fix-gr-45248",
+        "branch": format!("fix/{TICKET}"),
+        "ticket": TICKET,
+        "active": true
+    }]);
+    write_json(&world.registry_path(), &registry);
+}
+
 /// The feed's rows for the project, as a program reads them.
 fn rows(world: &World) -> Vec<Value> {
     let output = run(world, &["feed", "--workspace", PROJECT, "--json"]);
@@ -159,6 +182,44 @@ fn ids(rows: &[Value]) -> Vec<String> {
         .collect();
     ids.sort();
     ids
+}
+
+/// What `feed` says about the project's age on the error stream
+/// (§FS-011-command-line.12).
+fn age_line(world: &World) -> String {
+    let output = run(world, &["feed", "--workspace", PROJECT]);
+    assert!(output.status.success(), "{}", said(&output));
+    stderr(&output)
+}
+
+fn refresh_narrowed(world: &World, extra: &[&str]) -> Output {
+    let mut args = vec!["refresh", PROJECT];
+    args.extend_from_slice(extra);
+    run(world, &args)
+}
+
+/// The read marks the reader holds, by matter key.
+fn marks(world: &World) -> BTreeMap<String, Value> {
+    let path = world.path().join("state/ephor/seen.json");
+    serde_json::from_value(read_json(&path)).expect("seen.json is a map")
+}
+
+/// Make the cache on disk one written before #263: model 2, the last model
+/// that kept one answer per source. A model change drops the file's contents
+/// on load and the cache is rebuilt, so what it held does not matter — only
+/// that it is older (§FS-001-forge-interface.6.1).
+fn age_the_cache_model(world: &World) {
+    let path = world
+        .path()
+        .join("state/ephor/feed")
+        .join(format!("{PROJECT}.json"));
+    let mut cache = read_json(&path);
+    cache["model"] = json!(2);
+    write_json(&path, &cache);
+}
+
+fn sweep(world: &World) -> Output {
+    run(world, &["rebase", "--org", ORG, "--act"])
 }
 
 /// A plain refresh asks what it asked before #263, in the same order per
@@ -242,4 +303,329 @@ fn plain_refresh_is_unchanged() {
     let status = run(&world, &["status", PROJECT]);
     assert!(status.status.success(), "{}", said(&status));
     assert!(calls(&world).is_empty(), "{:#?}", calls(&world));
+}
+
+/// The reproducer. A ticket registered on a branch reaches the feed through
+/// one `issues` call to gdev, and nothing else is asked: no pull request, no
+/// branch gate, no notice, no acme (§FS-011-command-line.9.2). Everything not
+/// asked keeps its answer and its age, so the project still reads as old as
+/// its pull requests (§FS-011-command-line.12) and an unheld sweep refetches
+/// it before it reads (§FS-004-quick-actions.6.1).
+#[test]
+#[ignore = "red until #263: refresh takes no --source/--only, so a registered ticket costs a whole refresh; implement removes this"]
+fn registered_issue_import_skips_pr_work() {
+    let world = watching(3);
+    let first = run(&world, &["refresh", PROJECT, "--quiet"]);
+    assert!(first.status.success(), "{}", said(&first));
+    let acme_before = world.feed()["providers"]["acme"].clone();
+    assert!(!acme_before.is_null(), "acme answered: {:#}", world.feed());
+
+    register_ticket(&world);
+    let refused = run(&world, &["actions", "--item", TICKET_ITEM]);
+    assert_eq!(
+        refused.status.code(),
+        Some(2),
+        "the ticket is not in the feed yet: {}",
+        said(&refused)
+    );
+
+    // Past the TTL of the full refresh, so whether the narrowed one makes the
+    // project read fresh is visible.
+    sleep(Duration::from_secs(4));
+    clear(&world);
+    let narrowed = refresh_narrowed(&world, &["--source", "gdev", "--only", "issues", "--json"]);
+    assert_eq!(narrowed.status.code(), Some(0), "{}", said(&narrowed));
+
+    // Only gdev's probe and gdev's `issues`, carrying the registered ticket.
+    let made = calls(&world);
+    for line in &made {
+        assert!(
+            line == "gdev - capabilities"
+                || line == &format!("gdev a issues {TICKET}")
+                || line == &format!("gdev b issues {TICKET}"),
+            "a narrowed refresh asked more than gdev's issues: {made:#?}"
+        );
+    }
+    for block in ["a", "b"] {
+        assert_eq!(asked_by(&made, "gdev", block), ["issues"], "{made:#?}");
+    }
+
+    // The JSON says what was asked (§FS-011-command-line.7).
+    let reading = json_of(&narrowed);
+    let answers = reading["projects"][0]["answers"]
+        .as_array()
+        .unwrap_or_else(|| panic!("a narrowed refresh lists its answers: {reading:#}"));
+    assert!(
+        answers.iter().any(|answer| answer["source"] == "gdev"
+            && answer["capability"] == "issues"
+            && answer["ok"] == true),
+        "{reading:#}"
+    );
+    assert!(
+        answers
+            .iter()
+            .all(|answer| answer["source"] == "gdev" && answer["capability"] == "issues"),
+        "only gdev's issues were asked: {reading:#}"
+    );
+
+    // The ticket can be acted on, and nothing else left the feed.
+    let actions = run(&world, &["actions", "--item", TICKET_ITEM]);
+    assert!(actions.status.success(), "{}", said(&actions));
+    assert_eq!(ids(&rows(&world)), [ACME_PR, GDEV_PR, TICKET_ITEM]);
+
+    // acme was not asked, so its answer is exactly what it was.
+    assert_eq!(world.feed()["providers"]["acme"], acme_before);
+
+    // The project is as old as its oldest history — gdev's pull requests and
+    // acme, both from the first refresh — so `feed` still says so.
+    let age = age_line(&world);
+    assert!(
+        age.contains(&format!("{PROJECT} fetched")) && age.contains("past its"),
+        "a refresh that asked only issues made the project read fresh: {age:?}"
+    );
+
+    // And the sweep reads the same age: an unheld sweep refetches the project
+    // before it reads, so gdev's pull requests are asked again.
+    clear(&world);
+    let swept = sweep(&world);
+    let made = calls(&world);
+    assert!(
+        made.iter()
+            .any(|line| line.starts_with("gdev a pull-requests")),
+        "the sweep trusted pull requests nobody asked for again: {made:#?}\n{}",
+        said(&swept)
+    );
+}
+
+/// A narrowed refresh over the same answers is the same feed: the same rows,
+/// the same keys and fingerprints, so work laid on a matter does not move
+/// (§FS-001-forge-interface.6.1, §FS-005-dispatch.5).
+#[test]
+#[ignore = "red until #263: refresh takes no --source/--only; implement removes this"]
+fn narrowed_equals_full() {
+    let world = watching(600);
+    register_ticket(&world);
+    let full = run(&world, &["refresh", PROJECT, "--quiet"]);
+    assert!(full.status.success(), "{}", said(&full));
+    let dispatched = run(&world, &["work", "dispatch", "--item", GDEV_PR, "--json"]);
+    assert!(dispatched.status.success(), "{}", said(&dispatched));
+    assert_eq!(json_of(&dispatched)["opened"], 1, "{}", said(&dispatched));
+    let before = rows(&world);
+
+    let narrowed = refresh_narrowed(&world, &["--source", "gdev", "--only", "issues"]);
+    assert_eq!(narrowed.status.code(), Some(0), "{}", said(&narrowed));
+    assert_eq!(
+        rows(&world),
+        before,
+        "the narrowed refresh changed the feed"
+    );
+
+    let synced = run(&world, &["work", "sync", "--dry-run", "--json"]);
+    assert!(synced.status.success(), "{}", said(&synced));
+    let synced = json_of(&synced);
+    assert_eq!(synced["reopened"], 0, "{synced:#}");
+    assert_eq!(synced["opened"], 0, "{synced:#}");
+}
+
+/// A capability never asked is not an empty answer. On a cache rebuilt by the
+/// model change, a refresh of gdev's `issues` alone leaves gdev's pull requests
+/// and acme unknown: work does not move, read marks are kept, the project reads
+/// never fetched, and `status` refetches it (§FS-011-command-line.12; the read
+/// marks are §FS-007-matters.5's).
+#[test]
+#[ignore = "red until #263: refresh takes no --source/--only, and a never-asked history is read as an empty one; implement removes this"]
+fn never_asked_is_not_gone() {
+    let world = watching(600);
+    register_ticket(&world);
+    let full = run(&world, &["refresh", PROJECT, "--quiet"]);
+    assert!(full.status.success(), "{}", said(&full));
+    let dispatched = run(&world, &["work", "dispatch", "--item", GDEV_PR, "--json"]);
+    assert!(dispatched.status.success(), "{}", said(&dispatched));
+    let marked = run(&world, &["mark-read", "--all"]);
+    assert!(marked.status.success(), "{}", said(&marked));
+    assert!(marks(&world).contains_key(GDEV_PR) && marks(&world).contains_key(ACME_PR));
+
+    age_the_cache_model(&world);
+    clear(&world);
+    let narrowed = refresh_narrowed(&world, &["--source", "gdev", "--only", "issues"]);
+    assert_eq!(narrowed.status.code(), Some(0), "{}", said(&narrowed));
+    assert!(
+        calls(&world)
+            .iter()
+            .all(|line| line == "gdev - capabilities" || line.contains(" issues")),
+        "{:#?}",
+        calls(&world)
+    );
+
+    // Absent because never asked is not moved and not gone.
+    let synced = run(&world, &["work", "sync", "--dry-run", "--json"]);
+    assert!(synced.status.success(), "{}", said(&synced));
+    assert_eq!(json_of(&synced)["reopened"], 0, "{}", said(&synced));
+
+    let marked = run(&world, &["mark-read", "--all"]);
+    assert!(marked.status.success(), "{}", said(&marked));
+    let kept = marks(&world);
+    assert!(
+        kept.contains_key(GDEV_PR) && kept.contains_key(ACME_PR),
+        "mark-read pruned the read marks of matters nobody asked about: {kept:#?}"
+    );
+
+    let age = age_line(&world);
+    assert!(
+        age.contains(&format!("{PROJECT} never fetched")),
+        "a project with never-asked histories read as fetched: {age:?}"
+    );
+
+    clear(&world);
+    let status = run(&world, &["status", PROJECT]);
+    assert!(status.status.success(), "{}", said(&status));
+    assert!(
+        calls(&world)
+            .iter()
+            .any(|line| line.starts_with("gdev a pull-requests")),
+        "status read a project with a never-asked history as fresh: {:#?}",
+        calls(&world)
+    );
+}
+
+/// "Never asked" is judged from the project's bindings, not from what the
+/// cache holds. On a rebuilt cache, `--source gdev` alone asks all of gdev, but
+/// acme is bound and has no history: the project must not read fresh, the
+/// sweep must not skip its refetch, and acme's read marks stay
+/// (§FS-011-command-line.12, §FS-004-quick-actions.6.1).
+#[test]
+#[ignore = "red until #263: refresh takes no --source; implement removes this"]
+fn a_bound_source_with_no_history_is_never_asked() {
+    let world = watching(600);
+    let full = run(&world, &["refresh", PROJECT, "--quiet"]);
+    assert!(full.status.success(), "{}", said(&full));
+    let marked = run(&world, &["mark-read", "--all"]);
+    assert!(marked.status.success(), "{}", said(&marked));
+
+    age_the_cache_model(&world);
+    clear(&world);
+    let narrowed = refresh_narrowed(&world, &["--source", "gdev"]);
+    assert_eq!(narrowed.status.code(), Some(0), "{}", said(&narrowed));
+    let made = calls(&world);
+    assert!(
+        made.iter().all(|line| line.starts_with("gdev ")),
+        "--source gdev asked another source: {made:#?}"
+    );
+    for block in ["a", "b"] {
+        assert_eq!(
+            asked_by(&made, "gdev", block),
+            ["pull-requests", "branch-gates", "issues", "notices"],
+            "--source gdev asks every capability of gdev: {made:#?}"
+        );
+    }
+
+    let age = age_line(&world);
+    assert!(
+        age.contains(&format!("{PROJECT} never fetched")),
+        "acme is bound and was never asked, so the project is not fresh: {age:?}"
+    );
+
+    let marked = run(&world, &["mark-read", "--all"]);
+    assert!(marked.status.success(), "{}", said(&marked));
+    assert!(
+        marks(&world).contains_key(ACME_PR),
+        "mark-read pruned acme's read mark though acme was never asked: {:#?}",
+        marks(&world)
+    );
+
+    clear(&world);
+    let swept = sweep(&world);
+    assert!(
+        calls(&world)
+            .iter()
+            .any(|line| line.starts_with("acme - pull-requests")),
+        "the sweep skipped its refetch with a bound source never asked: {:#?}\n{}",
+        calls(&world),
+        said(&swept)
+    );
+}
+
+/// Every refusal of the narrowing flags exits 2 with its reason and is decided
+/// before any data call (§FS-011-command-line.9.2). `--source` alone on a site
+/// source still refreshes it whole and asks no other site source.
+#[test]
+#[ignore = "red until #263: refresh takes no --source/--only, so clap refuses every form alike; implement removes this"]
+fn narrowing_is_refused_before_any_data_call() {
+    let world = watching(600);
+    // A native provider beside the two forges: it has one history and nothing
+    // finer to ask. It is never called here, so it needs no stub.
+    let mut providers = bound_blocks();
+    providers
+        .as_array_mut()
+        .expect("a list")
+        .push(json!({ "provider": "github-prs", "repos": ["acme/app"] }));
+    world.configure(json!({ "projects": { PROJECT: { "providers": providers } } }));
+
+    let refuses = |args: &[&str], names: &str, probes: bool| {
+        clear(&world);
+        let output = refresh_narrowed(&world, args);
+        let text = said(&output);
+        assert_eq!(output.status.code(), Some(2), "{args:?} is refused: {text}");
+        assert!(
+            !stderr(&output).contains("unexpected argument"),
+            "{args:?} is refused for its reason, not as an unknown flag: {text}"
+        );
+        assert!(
+            stderr(&output).contains(names),
+            "{args:?}'s refusal names {names:?}: {text}"
+        );
+        let made = calls(&world);
+        assert!(
+            made.iter()
+                .all(|line| probes && line.ends_with(" capabilities")),
+            "{args:?} made a data call before refusing: {made:#?}"
+        );
+    };
+
+    refuses(&["--only", "issues"], "--source", false);
+    for name in ["capabilities", "failures", "restart", "everything"] {
+        refuses(&["--source", "gdev", "--only", name], name, false);
+    }
+    refuses(
+        &["--source", "github-prs", "--only", "pull-requests"],
+        "github-prs",
+        false,
+    );
+    refuses(&["--source", "nosuch"], "nosuch", false);
+    // acme declares no issues; knowing that takes its probe and nothing more.
+    refuses(&["--source", "acme", "--only", "issues"], "issues", true);
+
+    // A site binding: `--only` is refused, `--source` alone asks it whole.
+    let site = World::new();
+    install_forges(&site);
+    site.configure(json!({
+        "sources": [
+            { "provider": "gdev", "block": "a", "repos": ["G"] },
+            { "provider": "acme", "repos": ["app"] }
+        ],
+        "projects": { PROJECT: { "providers": [] } }
+    }));
+    clear(&site);
+    let output = refresh_narrowed(&site, &["--source", "gdev", "--only", "notices"]);
+    assert_eq!(output.status.code(), Some(2), "{}", said(&output));
+    assert!(
+        !stderr(&output).contains("unexpected argument") && stderr(&output).contains("gdev"),
+        "{}",
+        said(&output)
+    );
+    assert!(calls(&site).is_empty(), "{:#?}", calls(&site));
+
+    clear(&site);
+    let whole = refresh_narrowed(&site, &["--source", "gdev"]);
+    assert_eq!(whole.status.code(), Some(0), "{}", said(&whole));
+    let made = calls(&site);
+    assert_eq!(
+        asked_by(&made, "gdev", "a"),
+        ["pull-requests", "branch-gates", "issues", "notices"],
+        "{made:#?}"
+    );
+    assert!(
+        made.iter().all(|line| line.starts_with("gdev ")),
+        "a site source named alone asked another site source: {made:#?}"
+    );
 }
