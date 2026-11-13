@@ -7035,7 +7035,7 @@ pub fn status_of_entry_seen(
             held_in.push(recorded.path.clone());
         }
     }
-    // One selector for the badge and location (§FS-005-dispatch.9).
+    // One selector for the badge and location (§FS-005-dispatch.9, §FS-005-dispatch.15.2).
     let open_at = reading::current(&tickets).map(|at| OpenWork {
         plan: held_in[at].clone(),
         ticket: tickets[at].id.clone(),

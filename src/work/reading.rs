@@ -24,9 +24,15 @@ pub(super) fn gate(tickets: &[TicketStatus]) -> Option<usize> {
 }
 
 /// Person waits lead the reading (§FS-005-dispatch.9). Keep real gates first
-/// so their manual action remains beside the ticket it moves. Otherwise keep
-/// the existing last-open order unless its unfinished prerequisites establish
-/// running or polling work that it cannot displace. A claim proves neither.
+/// so their manual action remains beside the ticket it moves. After them, an
+/// unfinished task the live run holds leads, wherever it sits in the plan: a
+/// supervising parent need not be a prerequisite of its later steps to be what
+/// the run is doing (§FS-005-dispatch.15.2). When several are held, the last
+/// in plan order is named, the same reverse-plan order the rest of this
+/// reading keeps; a finished task never leads, whatever its stale slot says.
+/// Otherwise keep the existing last-open order unless its unfinished
+/// prerequisites establish polling work that it cannot displace. A claim
+/// proves neither.
 pub(super) fn current(tickets: &[TicketStatus]) -> Option<usize> {
     gate(tickets)
         .or_else(|| {
@@ -35,22 +41,24 @@ pub(super) fn current(tickets: &[TicketStatus]) -> Option<usize> {
                 .position(|ticket| ticket.person_wait().is_some())
         })
         .or_else(|| {
+            tickets
+                .iter()
+                .rposition(|ticket| !ticket.finished && ticket.running)
+        })
+        .or_else(|| {
             let last = tickets.iter().rposition(|ticket| !ticket.finished)?;
-            if tickets[last].running {
-                return Some(last);
-            }
-            active_prior(tickets, last).or(Some(last))
+            polling_prior(tickets, last).or(Some(last))
         })
 }
 
 /// Follow only unfinished prerequisite chains (§FS-005-dispatch.9), stopping
-/// at finished tasks. A live slot is stronger evidence than a polling state;
-/// equally evidenced prerequisites retain the existing reverse-plan order.
-/// Cycles in an unreadable readiness graph cannot make this reading loop.
-fn active_prior(tickets: &[TicketStatus], at: usize) -> Option<usize> {
+/// at finished tasks, for the polling state nearest the end of the plan; held
+/// work was already read from the live slot (§FS-005-dispatch.15.2). Cycles in
+/// an unreadable readiness graph cannot make this reading loop.
+fn polling_prior(tickets: &[TicketStatus], at: usize) -> Option<usize> {
     let mut pending = tickets[at].reading.prior.clone();
     let mut seen = BTreeSet::from([at]);
-    let mut active = Vec::new();
+    let mut polling = None;
     while let Some(prior) = pending.pop() {
         if !seen.insert(prior) {
             continue;
@@ -59,12 +67,10 @@ fn active_prior(tickets: &[TicketStatus], at: usize) -> Option<usize> {
         if ticket.finished {
             continue;
         }
-        if ticket.running || ticket.reading.polling {
-            active.push(prior);
+        if ticket.reading.polling {
+            polling = polling.max(Some(prior));
         }
         pending.extend(&ticket.reading.prior);
     }
-    active
-        .into_iter()
-        .max_by_key(|&prior| (tickets[prior].running, prior))
+    polling
 }
