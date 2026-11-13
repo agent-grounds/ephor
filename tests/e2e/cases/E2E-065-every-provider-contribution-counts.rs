@@ -1,6 +1,7 @@
 //! Every configured block and discovered store contributes to its provider's
 //! complete answer (§FS-001-forge-interface.6.1). Port of issue #253's forge
-//! reproducer, extended to site placement, failures and whole-slot last-good.
+//! reproducer, extended to site placement, failures, and the last-good every
+//! history of an incomplete answer keeps.
 
 #[path = "../support.rs"]
 mod support;

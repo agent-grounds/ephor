@@ -696,9 +696,9 @@ fn write_up(
 /// What the watch already knows about this project, freshened once
 /// (§FS-004-quick-actions.6.1).
 ///
-/// Where no current reading can be had — no cached feed, or a stale or failed
-/// slot of a source that could have carried a pull request — none of the
-/// project's checkouts is replayed at all. *Could not tell* is not *no*, and
+/// Where no current reading can be had — no cached feed, or a history that
+/// could have carried a pull request and is stale, failed or never answered —
+/// none of the project's checkouts is replayed at all. *Could not tell* is not *no*, and
 /// the branch this question protects is exactly the one nobody is present to
 /// protect by hand. One project that cannot be read stops that project and no
 /// other, because the drift this exists to correct goes on everywhere else.

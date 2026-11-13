@@ -125,6 +125,7 @@ branches, ticket inference, branch workspaces, and hook sets. The embedded
 ```bash
 ephor tui                                   # interactive inbox (alias: ephor inbox)
 ephor refresh [PROJECT ...] [--project P]... [--quiet] # fetch providers into the cache
+ephor refresh [PROJECT ...] --source NAME [--only CAP]  # ask one source, or one capability of it
 ephor status                                # summary table per project
 ephor status widget [--refresh|--cached] [--max-age SECS] [--json] [--check]
 ephor feed [--project P] [--unread] [--kind pr|ci|message|status] [--json]
@@ -140,6 +141,11 @@ working; deliberate forwarding is available through explicit bindings. See
   An item is unread until `mark-read`, and resurfaces when it changes again.
 - A failing provider keeps its last-good items marked `(stale)`; one flaky
   source never blanks the feed. Provider errors are warnings, not failures.
+- `--source NAME` asks one source and nothing else; `--only CAP` asks one of a
+  forge's five fetches (`pull-requests`, `branch-gates`, `issues`, `notices`,
+  `messages`), so a ticket registered a moment ago is one `issues` call away.
+  A project is as old as the oldest of its own sources' answers, so a
+  narrowed refresh leaves the rest reading exactly as old as they are.
 - `ephor status --check` exits 4 when unread needs-response items exist
   (usable from shell prompts).
 - Exit codes: 0 ok, 2 config/registry error, 3 all providers failed, 4 check.
@@ -198,6 +204,7 @@ ever recorded one.
 | `Esc`/`h` | back to the project list (detail view) |
 | `u` | toggle unread-only / everything |
 | `r` | refresh (detail view refreshes just that project) |
+| `R` | refresh one source, or one capability of it — the request `ephor refresh --source NAME [--only CAP]` makes |
 | `q` | quit |
 
 **Thread screen** (`Enter` on any item): the recorded threads in full —
