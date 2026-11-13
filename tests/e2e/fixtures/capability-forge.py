@@ -93,7 +93,7 @@ def issues():
 def main():
     log()
     if SUBCOMMAND == "capabilities":
-        print(json.dumps(CAPABILITIES[SOURCE]))
+        print(json.dumps(control().get("capabilities", {}).get(SOURCE, CAPABILITIES[SOURCE])))
         return 0
     if SOURCE in control().get("fail", []):
         print(f"{SOURCE}: HTTP 503 from the forge (issue #263 fixture)", file=sys.stderr)

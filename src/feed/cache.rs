@@ -76,9 +76,19 @@ pub struct ProviderSlot {
     /// The source's answer per history (§AR-006-matters.4).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub histories: Vec<History>,
+    /// Last successful fetch declaration per forge block, in configuration
+    /// order; None for a block never successfully probed. Data failure does
+    /// not roll this back (§FS-001-forge-interface.6.1). Empty for whole sources.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub declarations: Vec<Option<Vec<String>>>,
 }
 
 impl ProviderSlot {
+    /// Current freshness requirements, distinct from retained report ownership
+    /// (§FS-001-forge-interface.6.1).
+    pub fn required_histories(&self) -> impl Iterator<Item = &History> {
+        self.histories.iter().filter(|history| history.required())
+    }
     /// The history answering `capability`, or the whole answer for None.
     pub fn history(&self, capability: Option<&str>) -> Option<&History> {
         self.histories
@@ -94,6 +104,7 @@ impl ProviderSlot {
         }
         self.histories.push(History {
             capability: None,
+            retained_only: false,
             asked_at: self.fetched_at.or(stamped),
             answered_at: self.fetched_at,
             error: self.error.clone(),
@@ -139,11 +150,19 @@ impl ProjectFeed {
             .into_iter()
     }
 
-    pub fn is_stale(&self, item_source: &str) -> bool {
+    /// A merged matter keeps every contributing history's stale mark, without
+    /// inheriting unrelated failures (§FS-001-forge-interface.6.1).
+    pub fn is_stale(&self, item: &Item) -> bool {
+        // Keep placement's subject rule: the flat item does not carry a weak
+        // attribution claim, which can require its own row (§FS-008-attribution.3).
+        let subject = self
+            .reports()
+            .find(|matter| matter.key.as_str() == item.id)
+            .map(Matter::subject)
+            .unwrap_or_else(|| Matter::of_item(item).subject());
         self.providers
-            .get(item_source)
-            .map(|slot| slot.stale)
-            .unwrap_or(false)
+            .values()
+            .any(|slot| crate::feed::history::is_stale(slot, &subject))
     }
 
     /// How many sources answered at the last refresh — what the *observable*

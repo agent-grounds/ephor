@@ -375,7 +375,7 @@ impl NavigatorState {
                         .cloned(),
                 )
                 .map(|item| Row {
-                    stale: feed.is_stale(&item.source),
+                    stale: feed.is_stale(&item),
                     checked_out: ctx.item_checked_out(&item),
                     work: ctx.work.get(&item.id).cloned().unwrap_or_default(),
                     resurfacing: ctx.resurfacing.get(&item.id).cloned(),
@@ -590,6 +590,7 @@ impl NavigatorState {
             }
             KeyCode::Char('u') => Action::ToggleUnread,
             KeyCode::Char('r') => Action::Refresh,
+            // §FS-011-command-line.9.2: feed-screen source/capability picker.
             KeyCode::Char('R') => Action::PickRefresh,
             KeyCode::Char('j') | KeyCode::Down => {
                 self.tree_move(1);

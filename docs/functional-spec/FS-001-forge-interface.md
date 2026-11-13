@@ -503,6 +503,19 @@ a native provider, a task store, and a forge whose declaration has never been
 read. Every block of a source that declares a capability contributes to that
 capability's history, and a block that does not declare it is not asked for it.
 
+A successful declaration is kept even when the following data call fails.
+Repeated blocks keep their last successful declarations separately, and their
+union determines which histories are required; a failed probe changes no
+successful declaration. A block whose declaration has never been read cannot
+borrow a retained whole answer as proof that it answered. A newly declared capability without a complete answer
+remains unanswered. A removed capability stops being a freshness requirement,
+without deleting retained reports of a history the run did not ask. A retained
+whole history keeps its reports and metadata when the source is first asked by
+capability; its opaque reports are not assigned capabilities from their kinds.
+The new capability histories begin unanswered until each is asked. A displayed
+matter is stale if any history contributing a report of that subject is stale,
+rather than merely because another history of the same source failed.
+
 A history's combined answer is complete only if every contribution to it
 answered. An empty success counts as an answer. Any failed contribution makes
 that history incomplete: every distinct failure diagnosis remains visible, and

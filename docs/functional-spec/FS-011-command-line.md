@@ -213,8 +213,11 @@ fails the build like any other untruth.
 ([§FS-011-command-line.9.2](FS-011-command-line.md#92-a-refresh-narrowed-to-one-source-or-one-capability)): each project it reports carries `answers`, one
 entry per history the run asked, with its `source`, its `capability` (the fetch
 subcommand, or null for a source whose answer is one history) and `ok`. A
-history not listed was not asked and was kept as it was. A plain refresh prints
-exactly the fields it printed before, with no `answers`, so a parser of today's
+history not listed was not asked and was kept as it was. The top-level `skipped`
+field is an array of project ids selected by the run but skipped because neither
+their own configuration nor the site binds the named source. Both `answers` and
+`skipped` appear only on narrowed runs. A plain refresh prints
+exactly the fields it printed before, with neither field, so a parser of today's
 document meets the new field only on a run that is itself new
 ([§REQ-002-parity.4](../requirements/REQ-002-parity.md#4-the-machine-form-is-a-contract-not-a-dump)).
 
@@ -484,7 +487,11 @@ where it has one, and otherwise the site's
 plain refresh places it — in every project and in the unattributed bucket —
 and in each place only that source's histories change. A selected project with
 no binding of that name, where the site has none either, is skipped and named
-in the output. A name that nothing in scope binds is refused.
+in the output. A name that nothing in scope binds is refused. Discovered task
+stores cannot be selected by `--source`, with or without `--only`; a plain
+refresh reads them. A configured native source can still be selected by
+`--source` alone. A refusal for a task store recommends the supported plain
+refresh.
 
 **Refusals.** Each of these exits **2** with its reason on the error stream (and
 under `--json` as an outcome with `ok` false, [§FS-011-command-line.7](FS-011-command-line.md#7---json-is-the-same-answer-not-a-second-one)), and each
@@ -522,6 +529,10 @@ its reports and its times, so it reads exactly as old as it is
 Exit codes count the contributions the run asked, as a plain refresh's do. A
 plain `ephor refresh`, with neither flag, asks and writes exactly what it did
 before these flags existed.
+
+**The screen.** On the feed screen, `R` opens a picker for a source, then its
+whole answer or one capability, using the CLI's resolution and refusals for the
+same request. Plain `r` is unchanged, as is `R` on the work and burn screens.
 
 ## 10. A mutating verb above one project reports, and acts under `--act`
 

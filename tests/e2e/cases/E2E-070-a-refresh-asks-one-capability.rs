@@ -228,6 +228,290 @@ fn age_line(world: &World) -> String {
     stderr(&output)
 }
 
+/// A local Git history that can actually be replayed, so refusing a sweep is
+/// checked against the checkout's HEAD as well as its report
+/// (§FS-004-quick-actions.6.1).
+fn git(world: &World, dir: &std::path::Path, args: &[&str]) -> String {
+    let output = git_command()
+        .arg("-C")
+        .arg(dir)
+        .args(args)
+        .env("HOME", world.path())
+        .env("GIT_AUTHOR_NAME", "Fixture")
+        .env("GIT_AUTHOR_EMAIL", "fixture@example.invalid")
+        .env("GIT_COMMITTER_NAME", "Fixture")
+        .env("GIT_COMMITTER_EMAIL", "fixture@example.invalid")
+        .output()
+        .expect("local git runs");
+    assert!(output.status.success(), "git {args:?}: {}", said(&output));
+    String::from_utf8(output.stdout).unwrap().trim().to_string()
+}
+
+fn replayable_checkout(world: &World) -> std::path::PathBuf {
+    let origin = world.path().join("origin");
+    std::fs::create_dir(&origin).unwrap();
+    git(world, &origin, &["init", "-q", "-b", "main"]);
+    std::fs::write(origin.join("base.txt"), "base\n").unwrap();
+    git(world, &origin, &["add", "."]);
+    git(world, &origin, &["commit", "-qm", "initial"]);
+    let main = world.forest().join("main");
+    git(
+        world,
+        world.path(),
+        &[
+            "clone",
+            "-q",
+            origin.to_str().unwrap(),
+            main.to_str().unwrap(),
+        ],
+    );
+    let branch = world.forest().join("you/GR-45001-retry");
+    std::fs::create_dir_all(branch.parent().unwrap()).unwrap();
+    git(
+        world,
+        &main,
+        &[
+            "worktree",
+            "add",
+            "-qb",
+            "you/GR-45001-retry",
+            branch.to_str().unwrap(),
+        ],
+    );
+    std::fs::write(branch.join("mine.txt"), "mine\n").unwrap();
+    git(world, &branch, &["add", "."]);
+    git(world, &branch, &["commit", "-qm", "branch work"]);
+    std::fs::write(origin.join("advanced.txt"), "advanced\n").unwrap();
+    git(world, &origin, &["add", "."]);
+    git(world, &origin, &["commit", "-qm", "advance main"]);
+    git(world, &main, &["fetch", "-q", "origin"]);
+    let mut registry = world.registry_doc();
+    registry["projects"][0]["branches"] = json!([{
+        "id": "retry", "branch": "you/GR-45001-retry", "ticket": TICKET, "active": true
+    }]);
+    write_json(&world.registry_path(), &registry);
+    branch
+}
+
+/// A successful declaration followed by failed PR data cannot make a sweep
+/// trust the earlier issues-only answer (§FS-001-forge-interface.6.1,
+/// §FS-004-quick-actions.6.1).
+#[test]
+fn newly_declared_prs_that_fail_stop_an_actual_replay() {
+    let world = watching(600);
+    world.configure(json!({"projects": { PROJECT: { "providers": [
+        {"provider": "gdev", "repos": ["G"]}
+    ]}}}));
+    let branch = replayable_checkout(&world);
+    write_json(
+        &world.path().join("control.json"),
+        &json!({
+            "capabilities": {"gdev": {"issues": true}}
+        }),
+    );
+    world
+        .ephor()
+        .args(["refresh", PROJECT, "--quiet"])
+        .assert()
+        .success();
+    write_json(
+        &world.path().join("control.json"),
+        &json!({
+            "capabilities": {"gdev": {"issues": true, "pull_requests": true}}, "fail": ["gdev"]
+        }),
+    );
+    let failed = run(&world, &["refresh", PROJECT, "--json"]);
+    assert_eq!(failed.status.code(), Some(3), "{}", said(&failed));
+    let feed = world.feed();
+    let histories = feed["providers"]["gdev"]["histories"].as_array().unwrap();
+    let pulls = histories
+        .iter()
+        .find(|h| h["capability"] == "pull-requests")
+        .expect("new PR requirement persisted");
+    assert!(pulls["answered_at"].is_null(), "{pulls:#}");
+    assert!(pulls["error"].is_string(), "{pulls:#}");
+    // A new unanswered requirement cannot establish absence for mark pruning.
+    let seen = world.path().join("state/ephor/seen.json");
+    write_json(&seen, &json!({GDEV_PR: "2026-07-30T12:00:00Z"}));
+    world
+        .ephor()
+        .args(["mark-read", "--all"])
+        .assert()
+        .success();
+    assert!(marks(&world).contains_key(GDEV_PR));
+    let before = git(&world, &branch, &["rev-parse", "HEAD"]);
+    clear(&world);
+    let swept = run(&world, &["rebase", "--org", ORG, "--act", "--json"]);
+    assert_eq!(swept.status.code(), Some(1), "{}", said(&swept));
+    let reading = json_of(&swept);
+    assert_eq!(reading["projects"][0]["reached"], false, "{reading:#}");
+    assert_eq!(reading["replayed"], 0, "{reading:#}");
+    assert_eq!(git(&world, &branch, &["rev-parse", "HEAD"]), before);
+    assert!(!branch.join("advanced.txt").exists());
+    assert!(
+        calls(&world).is_empty(),
+        "a fresh failed reading needs no TTL refetch"
+    );
+}
+
+/// A removed declaration stops holding back age and mark-read, while a fresh
+/// issue beside failed PRs has its own stale mark (§FS-011-command-line.12,
+/// §FS-001-forge-interface.6.1).
+#[test]
+fn declaration_removal_and_mixed_freshness_are_read_per_history() {
+    let world = watching(600);
+    world.configure(json!({"projects": { PROJECT: { "providers": [{"provider": "gdev"}]}}}));
+    register_ticket(&world);
+    world
+        .ephor()
+        .args(["refresh", PROJECT, "--quiet"])
+        .assert()
+        .success();
+    fail(&world, &["gdev"]);
+    assert_eq!(
+        run(&world, &["refresh", PROJECT, "--json"]).status.code(),
+        Some(3)
+    );
+    fail(&world, &[]);
+    world
+        .ephor()
+        .args(["refresh", PROJECT, "--source", "gdev", "--only", "issues"])
+        .assert()
+        .success();
+    let status = run(&world, &["status", PROJECT, "--cached"]);
+    assert!(status.status.success(), "{}", said(&status));
+    let printed = String::from_utf8_lossy(&status.stdout);
+    let issue = printed
+        .lines()
+        .find(|line| line.contains("Ticket GR-45248"))
+        .unwrap();
+    let pr = printed
+        .lines()
+        .find(|line| line.contains("Retry window"))
+        .unwrap();
+    assert!(!issue.contains("(stale)"), "{issue}");
+    assert!(pr.contains("(stale)"), "{pr}");
+
+    // A rebuilt cache first learns issues alone; PRs have never been asked.
+    age_the_cache_model(&world);
+    world
+        .ephor()
+        .args(["refresh", PROJECT, "--source", "gdev", "--only", "issues"])
+        .assert()
+        .success();
+    assert!(age_line(&world).contains("never fetched"));
+    write_json(
+        &world.path().join("control.json"),
+        &json!({"capabilities": {"gdev": {"issues": true}}}),
+    );
+    world
+        .ephor()
+        .args(["refresh", PROJECT, "--source", "gdev", "--only", "issues"])
+        .assert()
+        .success();
+    assert!(!age_line(&world).contains("never fetched"));
+    clear(&world);
+    world.ephor().args(["status", PROJECT]).assert().success();
+    assert!(
+        calls(&world).is_empty(),
+        "removed PR requirement must not force a refetch"
+    );
+}
+
+/// A site forge produces a nonempty whole history through the real cache
+/// writer. Moving it to a project binding and asking issues cannot delete the
+/// unasked PR (§FS-001-forge-interface.6.1).
+#[test]
+fn moving_a_site_whole_answer_preserves_its_unasked_rows() {
+    for stale in [false, true] {
+        let world = watching(600);
+        world.register(json!({"territory": ["G"]}));
+        world.organize(ORG, "Foundation");
+        world.configure(json!({"sources": [{"provider": "gdev", "repos": ["G"]}],
+            "projects": {PROJECT: {"providers": []}}}));
+        world
+            .ephor()
+            .args(["refresh", PROJECT, "--quiet"])
+            .assert()
+            .success();
+        assert_eq!(ids(&rows(&world)), [GDEV_PR]);
+        if stale {
+            fail(&world, &["gdev"]);
+            assert_eq!(
+                run(&world, &["refresh", PROJECT, "--json"]).status.code(),
+                Some(3)
+            );
+        }
+        let previous = world.feed()["providers"]["gdev"].clone();
+        register_ticket(&world);
+        world.configure(
+            json!({"sources": [], "projects": {PROJECT: {"providers": [{"provider": "gdev"}]}}}),
+        );
+        fail(&world, &[]);
+        world
+            .ephor()
+            .args(["refresh", PROJECT, "--source", "gdev", "--only", "issues"])
+            .assert()
+            .success();
+        assert_eq!(ids(&rows(&world)), [GDEV_PR, TICKET_ITEM]);
+        let current = world.feed()["providers"]["gdev"].clone();
+        let retained = current["histories"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|h| h["capability"].is_null())
+            .unwrap();
+        let mut expected = previous["histories"][0].clone();
+        expected["retained_only"] = json!(true);
+        assert_eq!(*retained, expected);
+        assert_eq!(current["matters"][0], previous["matters"][0]);
+        let pulls = current["histories"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|h| h["capability"] == "pull-requests")
+            .unwrap();
+        assert!(pulls["asked_at"].is_null() && pulls["answered_at"].is_null());
+        // A selected empty answer removes the ticket rather than resurrecting
+        // it from the retained whole reports.
+        let mut registry = world.registry_doc();
+        registry["projects"][0]["branches"] = json!([]);
+        write_json(&world.registry_path(), &registry);
+        world
+            .ephor()
+            .args(["refresh", PROJECT, "--source", "gdev", "--only", "issues"])
+            .assert()
+            .success();
+        assert_eq!(ids(&rows(&world)), [GDEV_PR]);
+    }
+}
+
+/// Following the task-store refusal's remedy must lead to a supported request
+/// (§FS-011-command-line.9.2).
+#[test]
+fn task_store_refusals_recommend_the_plain_refresh_that_succeeds() {
+    let world = watching(600);
+    world.configure(json!({"projects": {PROJECT: {"providers": []}}}));
+    for flags in [
+        vec!["--source", "rhei", "--only", "issues", "--json"],
+        vec!["--source", "rhei", "--json"],
+    ] {
+        let refused = refresh_narrowed(&world, &flags);
+        assert_eq!(refused.status.code(), Some(2), "{}", said(&refused));
+        let outcome = json_of(&refused);
+        assert_eq!(outcome["ok"], false);
+        let reason = outcome["says"].as_str().unwrap();
+        assert!(reason.contains("plain `ephor refresh`"), "{reason}");
+        assert!(!reason.contains("alone refreshes it"), "{reason}");
+    }
+    world
+        .ephor()
+        .args(["refresh", PROJECT, "--json"])
+        .assert()
+        .success();
+    assert!(calls(&world).is_empty());
+}
+
 fn refresh_narrowed(world: &World, extra: &[&str]) -> Output {
     let mut args = vec!["refresh", PROJECT];
     args.extend_from_slice(extra);

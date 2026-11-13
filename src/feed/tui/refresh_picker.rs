@@ -215,7 +215,7 @@ fn capabilities(
                 .iter()
                 .filter(|feed| over.contains(&feed.project))
                 .filter_map(|feed| feed.providers.get(name))
-                .flat_map(|slot| &slot.histories)
+                .flat_map(|slot| slot.required_histories())
                 .any(|history| history.capability.as_deref() == Some(*fetch))
         })
         .collect();

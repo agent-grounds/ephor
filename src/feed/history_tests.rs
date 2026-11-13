@@ -70,7 +70,7 @@ fn a_slot_reads_by_block_then_capability_whichever_run_wrote_it() {
         Some(&full),
         at(60),
         "issues",
-        &["pull-requests", "issues"],
+        &[Some("pull-requests"), Some("issues")],
         Ok(vec![vec![report("a-issue")], vec![report("b-issue")]]),
     );
     assert_eq!(keys(&narrowed), ["a-pr", "a-issue", "b-pr", "b-issue"]);
@@ -94,7 +94,7 @@ fn an_empty_answer_to_one_capability_replaces_it() {
         Some(&full),
         at(60),
         "issues",
-        &["pull-requests", "issues"],
+        &[Some("pull-requests"), Some("issues")],
         Ok(vec![vec![], vec![]]),
     );
     assert_eq!(keys(&emptied), ["a-pr", "b-pr"]);
@@ -114,7 +114,7 @@ fn a_failed_answer_to_one_capability_keeps_its_last_good() {
         Some(&full),
         at(60),
         "issues",
-        &["pull-requests", "issues"],
+        &[Some("pull-requests"), Some("issues")],
         Err(FAILED),
     );
     assert_eq!(keys(&failed), keys(&full), "no report is lost or invented");
@@ -166,7 +166,7 @@ fn a_capability_not_asked_is_recorded_never_asked() {
         Some(&never_probed),
         at(60),
         "issues",
-        &["pull-requests", "issues", "notices"],
+        &[Some("pull-requests"), Some("issues"), Some("notices")],
         Ok(vec![vec![report("a-issue")]]),
     );
     let capabilities: Vec<Option<&str>> = narrowed
@@ -195,8 +195,230 @@ fn a_slot_whose_counts_do_not_add_up_keeps_every_report() {
         Some(&odd),
         at(60),
         "issues",
-        &["pull-requests", "issues"],
+        &[Some("pull-requests"), Some("issues")],
         Err(FAILED),
     );
     assert_eq!(narrowed.matters.len(), odd.matters.len());
+}
+
+/// Declarations survive whole-source rollback, independently of report
+/// ownership (§FS-001-forge-interface.6.1, §FS-011-command-line.12).
+#[test]
+fn a_failed_whole_answer_keeps_new_requirements_and_removed_reports() {
+    let issues = commit_whole(
+        None,
+        at(0),
+        Ok(vec![(Some("issues"), vec![vec![report("ticket")]])]),
+        &[Some("issues")],
+    );
+    let failed = commit_whole(
+        Some(&issues),
+        at(60),
+        Err(FAILED),
+        &[Some("pull-requests"), Some("issues")],
+    );
+    let pulls = failed.history(Some("pull-requests")).unwrap();
+    assert!(pulls.required() && !pulls.answered());
+    assert_eq!(pulls.asked_at, Some(at(60)));
+    assert_eq!(pulls.answered_at, None);
+    assert_eq!(pulls.error.as_deref(), Some(FAILED.message));
+    assert_eq!(keys(&failed), ["ticket"]);
+    assert_eq!(
+        failed.history(Some("issues")).unwrap().answered_at,
+        Some(at(0))
+    );
+
+    // The reverse change removes the requirement even on a failed full run.
+    let removed = commit_whole(Some(&failed), at(120), Err(FAILED), &[Some("issues")]);
+    assert!(!removed.history(Some("pull-requests")).unwrap().required());
+    assert_eq!(removed.required_histories().count(), 1);
+    assert_eq!(keys(&removed), ["ticket"]);
+
+    // Removing a declaration on a narrowed run never removes its old reports
+    // or lets an obsolete never-asked placeholder hold back age/mark-read.
+    for previous in [answered_whole(), failed] {
+        let narrowed = commit_one(
+            Some(&previous),
+            at(180),
+            "issues",
+            &[Some("issues")],
+            Ok(vec![vec![]]),
+        );
+        let old_pulls = previous.history(Some("pull-requests")).unwrap();
+        let mut retained = old_pulls.clone();
+        retained.retained_only = true;
+        assert_eq!(narrowed.history(Some("pull-requests")), Some(&retained));
+        let feed = crate::feed::cache::ProjectFeed {
+            providers: std::collections::BTreeMap::from([("gdev".to_string(), narrowed)]),
+            ..Default::default()
+        };
+        assert_eq!(crate::feed::age::age(Some(&feed), &["gdev"]), Some(at(180)));
+        assert!(!crate::feed::age::never_asked(Some(&feed), &["gdev"]));
+    }
+}
+
+/// A real whole history can hold opaque reports; a first capability commit
+/// preserves both healthy and failed last-good metadata, without inventing
+/// a PR answer (§FS-001-forge-interface.6.1).
+#[test]
+fn a_nonempty_whole_history_survives_the_first_capability_answer() {
+    let mut whole = commit_whole(
+        None,
+        at(0),
+        Ok(vec![(
+            None,
+            vec![vec![report("opaque-a")], vec![report("opaque-b")]],
+        )]),
+        &[None],
+    );
+    whole.histories[0].cursor = Some("position".to_string());
+    for previous in [
+        whole.clone(),
+        commit_whole(
+            Some(&whole),
+            at(60),
+            Err(Failure {
+                message: "destination unreachable",
+                unreachable: true,
+            }),
+            &[None],
+        ),
+    ] {
+        let narrowed = commit_one(
+            Some(&previous),
+            at(120),
+            "issues",
+            &[Some("pull-requests"), Some("issues")],
+            Ok(vec![vec![report("ticket")], vec![]]),
+        );
+        assert_eq!(keys(&narrowed), ["opaque-a", "ticket", "opaque-b"]);
+        let mut retained = previous.history(None).unwrap().clone();
+        retained.retained_only = true;
+        assert_eq!(narrowed.history(None), Some(&retained));
+        assert!(!narrowed.history(Some("pull-requests")).unwrap().asked());
+        assert!(!narrowed.history(Some("pull-requests")).unwrap().answered());
+        assert_eq!(
+            serde_json::to_value(&narrowed.matters[0]).unwrap(),
+            serde_json::to_value(&previous.matters[0]).unwrap()
+        );
+        assert_eq!(
+            serde_json::to_value(&narrowed.matters[2]).unwrap(),
+            serde_json::to_value(&previous.matters[1]).unwrap()
+        );
+
+        // A later empty selected answer replaces only its own reports. It
+        // cannot resurrect the previous selected answer from retained data.
+        let empty = commit_one(
+            Some(&narrowed),
+            at(180),
+            "issues",
+            &[Some("pull-requests"), Some("issues")],
+            Ok(vec![vec![], vec![]]),
+        );
+        assert_eq!(keys(&empty), ["opaque-a", "opaque-b"]);
+        assert_eq!(empty.history(None), Some(&retained));
+        assert!(empty.history(Some("issues")).unwrap().answered());
+    }
+}
+
+/// The stale marker follows contributing histories, including reports merged
+/// across capabilities and sources (§FS-001-forge-interface.6.1).
+#[test]
+fn a_fresh_issue_does_not_inherit_an_unrelated_pr_failure() {
+    let full = answered_whole();
+    let failed = commit_whole(
+        Some(&full),
+        at(60),
+        Err(FAILED),
+        &[Some("pull-requests"), Some("issues")],
+    );
+    let fresh = commit_one(
+        Some(&failed),
+        at(120),
+        "issues",
+        &[Some("pull-requests"), Some("issues")],
+        Ok(vec![vec![report("ticket")]]),
+    );
+    let mut feed = crate::feed::cache::ProjectFeed {
+        providers: std::collections::BTreeMap::from([("gdev".to_string(), fresh)]),
+        ..Default::default()
+    };
+    assert!(feed.is_stale(&report("a-pr").as_item()));
+    assert!(!feed.is_stale(&report("ticket").as_item()));
+    // An unrelated failure in a different source does not taint the ticket.
+    let other = commit_whole(
+        None,
+        at(0),
+        Ok(vec![(None, vec![vec![report("other")]])]),
+        &[None],
+    );
+    let stale = commit_whole(Some(&other), at(60), Err(FAILED), &[None]);
+    feed.providers.insert("other".to_string(), stale);
+    assert!(!feed.is_stale(&report("ticket").as_item()));
+    // But a stale contributor to this subject does, even if the merged row
+    // takes the fresh report's source and content.
+    let mut other_report = report("ticket");
+    other_report.source = "other".to_string();
+    let ticket = commit_whole(
+        None,
+        at(0),
+        Ok(vec![(None, vec![vec![other_report]])]),
+        &[None],
+    );
+    feed.providers.insert(
+        "other".to_string(),
+        commit_whole(Some(&ticket), at(60), Err(FAILED), &[None]),
+    );
+    let rows = feed.matters();
+    let ticket = rows
+        .iter()
+        .find(|matter| matter.key.as_str() == "ticket")
+        .unwrap();
+    assert!(feed.is_stale(&ticket.as_item()));
+    assert_eq!(
+        rows.iter()
+            .filter(|matter| matter.key.as_str() == "ticket")
+            .count(),
+        1
+    );
+
+    // A weakly placed site report stays its own subject even though its flat
+    // rendering also carries a repository and number (§FS-008-attribution.3).
+    let mut weak = report("weak");
+    weak.raw = serde_json::json!({"repo": "G", "number": "7"});
+    weak.placement =
+        crate::matter::Placement::claimed("widget", crate::attribution::Strength::Fallback);
+    let whole = commit_whole(
+        None,
+        at(0),
+        Ok(vec![(None, vec![vec![weak.clone()]])]),
+        &[None],
+    );
+    feed.providers.insert(
+        "site".to_string(),
+        commit_whole(Some(&whole), at(60), Err(FAILED), &[None]),
+    );
+    assert!(feed.is_stale(&weak.as_item()));
+}
+
+/// An attempted question following a failed probe is not a new successful
+/// declaration (§FS-001-forge-interface.6.1).
+#[test]
+fn a_failed_probe_cannot_declare_the_attempted_capability() {
+    let previous = commit_whole(
+        None,
+        at(0),
+        Ok(vec![(Some("issues"), vec![vec![]])]),
+        &[Some("issues")],
+    );
+    let failed = commit_one(
+        Some(&previous),
+        at(60),
+        "pull-requests",
+        &[Some("issues")],
+        Err(FAILED),
+    );
+    assert!(!failed.history(Some("pull-requests")).unwrap().required());
+    assert!(!failed.history(Some("pull-requests")).unwrap().answered());
+    assert_eq!(failed.required_histories().count(), 1);
 }
