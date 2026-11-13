@@ -272,13 +272,13 @@ impl NavigatorState {
             };
             return format!(
                 " j/k move  enter thread  {take}a watch the run  e read the plan  w work  H human review  \
-                 {make}x actions  o browser  {settle}m done  ; ops  r refresh  q quit"
+                 {make}x actions  o browser  {settle}m done  ; ops  r refresh  R one source  q quit"
             );
         }
         match self.mode {
-            Mode::Stream => format!(" j/k move  enter thread  c gate  w work  H human review  {make}o browser  x actions  {settle}m done  a all done  u unread  ; ops  tab projects  r refresh  q quit"),
-            Mode::Projects => " j/k move  enter view project  ; ops  tab stream  r refresh  q quit".to_string(),
-            Mode::Detail => format!(" j/k move  enter thread  c gate  w work  H human review  {make}o browser  x actions  {settle}m done  [/] project  esc back  u unread  ; ops  r refresh  q quit"),
+            Mode::Stream => format!(" j/k move  enter thread  c gate  w work  H human review  {make}o browser  x actions  {settle}m done  a all done  u unread  ; ops  tab projects  r refresh  R one source  q quit"),
+            Mode::Projects => " j/k move  enter view project  ; ops  tab stream  r refresh  R one source  q quit".to_string(),
+            Mode::Detail => format!(" j/k move  enter thread  c gate  w work  H human review  {make}o browser  x actions  {settle}m done  [/] project  esc back  u unread  ; ops  r refresh  R one source  q quit"),
         }
     }
 
@@ -590,6 +590,7 @@ impl NavigatorState {
             }
             KeyCode::Char('u') => Action::ToggleUnread,
             KeyCode::Char('r') => Action::Refresh,
+            KeyCode::Char('R') => Action::PickRefresh,
             KeyCode::Char('j') | KeyCode::Down => {
                 self.tree_move(1);
                 Action::None

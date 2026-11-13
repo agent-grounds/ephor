@@ -78,7 +78,7 @@ fn due_tick(app: &mut App) -> bool {
 
 /// The subprocess isolates every cache/job/work path without mutating the
 /// parent test process's environment. Returns true in the supervising parent.
-fn isolated(name: &str) -> bool {
+pub(super) fn isolated(name: &str) -> bool {
     if std::env::var_os("EPHOR_244_UNIT_CHILD").is_none() {
         let root = tempfile::Builder::new()
             .prefix("ephor-244-unit-")
@@ -266,4 +266,38 @@ fn issue_244_cache_replaced_during_initial_read_is_still_outdated() {
         "replacement during initial read lost its outdated-display warning:\n{current}"
     );
     assert!(current.contains("OLD cache row") && !current.contains("NEW cache row"));
+}
+
+/// A newer cache is a later write, not a younger age: a refresh that asked one
+/// capability leaves the project as old as it was, and the screen still says
+/// the cache it shows is behind (§FS-001-forge-interface.7.1,
+/// §FS-011-command-line.12).
+#[test]
+fn a_later_write_at_the_same_age_is_still_newer() {
+    if isolated("feed::tui::cache_freshness_tests::a_later_write_at_the_same_age_is_still_newer") {
+        return;
+    }
+    let fetched = Utc::now() - chrono::Duration::minutes(1);
+    stored("demo", "Before the narrowed refresh", fetched);
+    let config: StatusConfig =
+        serde_json::from_value(json!({ "projects": { "demo": { "providers": [] } } })).unwrap();
+    let mut app = App::load(&config, &crate::scope::Projects::every()).unwrap();
+    assert!(!drawn(&mut app).0.contains("Displayed feed outdated:"));
+
+    // The same age, written again under the lock, as a narrowed refresh does.
+    cache::update("demo", |feed| {
+        feed.providers
+            .get_mut("fixture")
+            .expect("the fixture's slot")
+            .matters
+            .clear();
+    })
+    .unwrap();
+    let written = cache::load_feed("demo").unwrap().unwrap();
+    assert_eq!(written.fetched_at, Some(fetched), "the age did not move");
+    due_tick(&mut app);
+    assert!(
+        drawn(&mut app).0.contains(WARNING),
+        "a later write at the same age read as nothing new"
+    );
 }

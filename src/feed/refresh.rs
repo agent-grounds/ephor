@@ -21,6 +21,7 @@ use crate::paths;
 use crate::registry::{self, Workspace};
 
 /// One provider that did not deliver, and whether it is the reader's to fix.
+#[derive(Clone)]
 pub struct ProviderFailure {
     pub provider: String,
     pub message: String,
@@ -43,6 +44,7 @@ impl ProviderFailure {
     }
 }
 
+#[derive(Default)]
 pub struct RefreshOutcome {
     pub item_count: usize,
     pub failures: Vec<ProviderFailure>,
@@ -643,6 +645,9 @@ pub struct Landed {
     /// Why the project could not be asked at all — a registry that does not
     /// describe it, a context that would not build. None of its providers ran.
     pub failed: Option<String>,
+    /// Why a narrowed run asked nothing at all: its refusal, decided before
+    /// any data call (§FS-011-command-line.9.2). The run ends with it.
+    pub refused: Option<String>,
 }
 
 /// A refresh running beneath the interface (§FS-001-forge-interface.7).
@@ -673,6 +678,30 @@ pub struct BackgroundRefresh {
     /// from the lost providers: it is a sentence about configuration, and a
     /// name on its own does not say what to go and fix.
     failed: Option<String>,
+    /// What a narrowed run asks, as the command line spells it, so the line it
+    /// leaves names the same request `ephor refresh` would make
+    /// (§FS-011-command-line.9.2, §REQ-002-parity.1).
+    asking: Option<String>,
+    /// Why a narrowed run asked nothing.
+    refused: Option<String>,
+}
+
+/// A refresh narrowed to one source, or to one capability of it
+/// (§FS-011-command-line.9.2).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Narrowed {
+    pub source: String,
+    pub only: Option<&'static str>,
+}
+
+impl Narrowed {
+    /// The flags `ephor refresh` takes for the same request.
+    pub fn flags(&self) -> String {
+        match self.only {
+            None => format!("--source {}", self.source),
+            Some(only) => format!("--source {} --only {only}", self.source),
+        }
+    }
 }
 
 /// The projects a background run will ask, in the configuration's own order.
@@ -694,53 +723,138 @@ fn jobs_over(config: &StatusConfig, over: &[String]) -> Vec<(String, ProjectFeed
 impl BackgroundRefresh {
     /// Start a run and give the screen straight back. `over` is which projects
     /// to ask: the one the detail view shows, or every project the screen was
-    /// opened over.
+    /// opened over. `narrowed` asks one source of them, or one capability of
+    /// it, exactly as `ephor refresh --source/--only` does: the same
+    /// resolution, the same refusals before any data call, the same request
+    /// per project, and a site binding asked once after the projects
+    /// (§FS-011-command-line.9.2).
     ///
     /// The registry is read here, on the caller's thread: it is a local file,
     /// and a registry that will not parse is an answer the keystroke can have
     /// rather than one that arrives later looking like a refresh that lost
     /// everything.
-    pub fn start(config: &StatusConfig, over: &[String]) -> Result<Self> {
+    pub fn start(
+        config: &StatusConfig,
+        over: &[String],
+        narrowed: Option<Narrowed>,
+    ) -> Result<Self> {
         let registry_doc = crate::feed::commands::load_registry_doc()?;
-        let defaults = config.defaults.clone();
-        let site_sources = site_source_names(config);
-        let jobs = jobs_over(config, over);
+        let config = config.clone();
+        let site_sources = site_source_names(&config);
+        let jobs = jobs_over(&config, over);
         let queue: Vec<String> = jobs.iter().map(|(project, _)| project.clone()).collect();
+        let asking = narrowed.as_ref().map(Narrowed::flags);
 
         let (sender, landed) = mpsc::channel();
         let worker = std::thread::Builder::new()
             .name("ephor-refresh".to_string())
             .spawn(move || {
-                for (project, project_config) in jobs {
-                    let report = match refresh_project(
-                        &registry_doc,
-                        &project,
-                        &project_config,
-                        &site_sources,
-                        &defaults,
-                        &Ask::Everything,
-                    ) {
-                        Ok(outcome) => Landed {
-                            lost: outcome
-                                .failures
-                                .iter()
-                                .map(|failure| format!("{project}/{}", failure.provider))
-                                .collect(),
-                            unreachable: outcome.unreachable_count(),
-                            failed: None,
-                            project,
-                        },
-                        Err(err) => Landed {
-                            lost: vec![project.clone()],
-                            unreachable: 0,
-                            failed: Some(err.to_string()),
-                            project,
+                let landed = |project: &str, outcome: Result<RefreshOutcome>| match outcome {
+                    Ok(outcome) => Landed {
+                        lost: outcome
+                            .failures
+                            .iter()
+                            .map(|failure| format!("{project}/{}", failure.provider))
+                            .collect(),
+                        unreachable: outcome.unreachable_count(),
+                        failed: None,
+                        refused: None,
+                        project: project.to_string(),
+                    },
+                    Err(err) => Landed {
+                        lost: vec![project.to_string()],
+                        unreachable: 0,
+                        failed: Some(err.to_string()),
+                        refused: None,
+                        project: project.to_string(),
+                    },
+                };
+                let narrowing = match &narrowed {
+                    None => None,
+                    Some(narrowed) => {
+                        let selected: Vec<(&String, &ProjectFeedConfig)> = jobs
+                            .iter()
+                            .map(|(project, project_config)| (project, project_config))
+                            .collect();
+                        match crate::feed::narrow::resolve(
+                            &config,
+                            &selected,
+                            &narrowed.source,
+                            narrowed.only,
+                        ) {
+                            Ok(narrowing) => Some(narrowing),
+                            Err(refusal) => {
+                                let _ = sender.send(Landed {
+                                    project: String::new(),
+                                    lost: Vec::new(),
+                                    unreachable: 0,
+                                    failed: None,
+                                    refused: Some(refusal.to_string()),
+                                });
+                                return;
+                            }
+                        }
+                    }
+                };
+                // The projects this run asks, own or through the site, and the
+                // ones that report only once the site's binding has answered.
+                let mut asked: Vec<String> = Vec::new();
+                let mut through_site: Vec<String> = Vec::new();
+                for (project, project_config) in &jobs {
+                    let ask = match &narrowing {
+                        None => Ask::Everything,
+                        Some(narrowing) => match narrowing.ask(project) {
+                            Some(ask) => ask,
+                            None => {
+                                if narrowing.binding(project) == crate::feed::narrow::Binding::Site
+                                {
+                                    asked.push(project.clone());
+                                    through_site.push(project.clone());
+                                    continue;
+                                }
+                                // Neither it nor the site binds the source:
+                                // asked nothing, and it lands as it was.
+                                if sender
+                                    .send(landed(project, Ok(RefreshOutcome::default())))
+                                    .is_err()
+                                {
+                                    return;
+                                }
+                                continue;
+                            }
                         },
                     };
+                    let outcome = refresh_project(
+                        &registry_doc,
+                        project,
+                        project_config,
+                        &site_sources,
+                        &config.defaults,
+                        &ask,
+                    );
+                    asked.push(project.clone());
                     // A reader who left took the receiver with them. There is
                     // nobody to report to, and the rest of the run is work
                     // nobody asked for any more.
-                    if sender.send(report).is_err() {
+                    if sender.send(landed(project, outcome)).is_err() {
+                        return;
+                    }
+                }
+                let Some(narrowing) = narrowing.filter(|narrowing| narrowing.asks_the_site())
+                else {
+                    return;
+                };
+                let shared =
+                    refresh_shared(&registry_doc, &config, Some(&narrowing.source), &asked);
+                for project in through_site {
+                    let outcome = match &shared {
+                        Ok(shared) => Ok(RefreshOutcome {
+                            failures: shared.failures.clone(),
+                            ..RefreshOutcome::default()
+                        }),
+                        Err(err) => Err(EphorError::Command(err.to_string())),
+                    };
+                    if sender.send(landed(&project, outcome)).is_err() {
                         return;
                     }
                 }
@@ -755,6 +869,8 @@ impl BackgroundRefresh {
             lost: Vec::new(),
             unreachable: 0,
             failed: None,
+            asking,
+            refused: None,
         })
     }
 
@@ -766,6 +882,14 @@ impl BackgroundRefresh {
         loop {
             match self.landed.try_recv() {
                 Ok(report) => {
+                    if let Some(refusal) = &report.refused {
+                        // Refused before any data call: the run is over, and
+                        // nothing in it was lost.
+                        self.refused = Some(refusal.clone());
+                        self.finished = self.queue.len();
+                        arrived.push(report);
+                        continue;
+                    }
                     self.finished += 1;
                     self.unreachable += report.unreachable;
                     self.lost.extend(report.lost.iter().cloned());
@@ -805,9 +929,13 @@ impl BackgroundRefresh {
     /// asked now, and how far through the run it is
     /// (§FS-001-forge-interface.7).
     pub fn progress(&self) -> String {
+        let asking = match &self.asking {
+            Some(asking) => format!(" {asking}"),
+            None => String::new(),
+        };
         match self.queue.get(self.finished) {
             Some(project) => format!(
-                "Refreshing {project} ({}/{})…",
+                "Refreshing {project}{asking} ({}/{})…",
                 self.finished + 1,
                 self.queue.len()
             ),
@@ -815,9 +943,17 @@ impl BackgroundRefresh {
         }
     }
 
-    /// The one line a finished run leaves behind.
+    /// The one line a finished run leaves behind. A narrowed run names what it
+    /// asked, in the flags `ephor refresh` takes for it.
     pub fn summary(&self) -> String {
-        summarize(&self.lost, self.unreachable, self.failed.as_deref())
+        if let Some(refusal) = &self.refused {
+            return format!("Not refreshed — {refusal}");
+        }
+        let line = summarize(&self.lost, self.unreachable, self.failed.as_deref());
+        match &self.asking {
+            Some(asking) => line.replacen("Refreshed", &format!("Refreshed {asking}"), 1),
+            None => line,
+        }
     }
 
     /// Reap the worker once the run is done. It has already sent everything it

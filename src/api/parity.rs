@@ -224,6 +224,13 @@ pub const ABILITIES: &[Ability] = &[
         keys: &["r"],
         command: "refresh",
     },
+    // `R` on the feed screen asks one source, or one capability of it — the
+    // same request, under the same refusals (§FS-011-command-line.9.2).
+    Ability {
+        what: "fetch what one source, or one capability of it, has now",
+        keys: &["R"],
+        command: "refresh --source",
+    },
 ];
 
 /// Keys that move a cursor, change a mode, or hand something the command line

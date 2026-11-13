@@ -14,6 +14,7 @@ use serde_json::Value;
 
 use crate::error::{registry_error, Result};
 use crate::feed::config::{ProjectFeedConfig, StatusConfig};
+use crate::feed::refresh::Ask;
 use crate::forge::{Capabilities, FETCHES};
 
 /// Where one selected project's narrowed refresh is answered from
@@ -64,6 +65,29 @@ impl Narrowing {
             .find(|(selected, _)| selected == project)
             .map(|(_, binding)| *binding)
             .unwrap_or(Binding::Unbound)
+    }
+
+    /// What a project that binds the source itself is asked: the source
+    /// whole, or its one capability with the declarations already probed.
+    /// None where the project is asked through the site's binding, or skipped
+    /// (§FS-011-command-line.9.2). The command line and the feed screen both
+    /// ask through this, so one request reads the same from either.
+    pub fn ask(&self, project: &str) -> Option<Ask<'_>> {
+        if self.binding(project) != Binding::Own {
+            return None;
+        }
+        Some(match self.only {
+            None => Ask::Source(&self.source),
+            Some(capability) => Ask::Capability {
+                source: &self.source,
+                capability,
+                probes: self
+                    .probes
+                    .get(project)
+                    .map(Vec::as_slice)
+                    .unwrap_or_default(),
+            },
+        })
     }
 }
 
