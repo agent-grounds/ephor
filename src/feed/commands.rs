@@ -8,6 +8,7 @@ use serde_json::Value;
 
 use crate::cli::{FailuresArgs, FeedArgs, MarkReadArgs, RefreshArgs, StatusArgs};
 use crate::error::{registry_error, EphorError, Result};
+use crate::feed::age;
 use crate::feed::cache::{self, ProjectFeed};
 use crate::feed::config::{load_config, StatusConfig};
 use crate::feed::model::ItemKind;
@@ -366,9 +367,10 @@ struct RefreshTally {
 /// Refresh when the cache is missing or older than the TTL (unless --cached).
 fn ensure_fresh(config: &StatusConfig, project: &str, args: &StatusArgs) -> Result<ProjectFeed> {
     let ttl = args.max_age.unwrap_or(config.defaults.ttl_seconds);
+    let bound = age::bound(known_project(config, project)?);
     let cached = cache::load_feed(project)?;
 
-    if args.cached || (younger_than(cached.as_ref(), ttl) && !args.refresh) {
+    if args.cached || (age::younger_than(cached.as_ref(), &bound, ttl) && !args.refresh) {
         return cached.ok_or_else(|| {
             EphorError::Command(format!(
                 "No cached feed for '{project}'; run `ephor refresh {project}`."
@@ -386,22 +388,13 @@ fn ensure_fresh(config: &StatusConfig, project: &str, args: &StatusArgs) -> Resu
 /// branch is under review by ages on the same terms `ephor status` does — one
 /// call per project per sweep, and never one per branch.
 pub fn freshened(config: &StatusConfig, project: &str, ttl: u64) -> Result<ProjectFeed> {
+    let bound = age::bound(known_project(config, project)?);
     let cached = cache::load_feed(project)?;
-    if younger_than(cached.as_ref(), ttl) {
+    if age::younger_than(cached.as_ref(), &bound, ttl) {
         return cached
             .ok_or_else(|| EphorError::Command(format!("No cached feed for '{project}'.")));
     }
     refetch(config, project, ttl)
-}
-
-/// Whether this cache was fetched inside the window. A cache no refresh ever
-/// produced has no day on it and is not fresh — which is a different answer
-/// from "nothing to report".
-fn younger_than(cached: Option<&ProjectFeed>, ttl: u64) -> bool {
-    cached
-        .and_then(|feed| feed.fetched_at)
-        .map(|fetched| (Utc::now() - fetched).num_seconds() < ttl as i64)
-        .unwrap_or(false)
 }
 
 fn refetch(config: &StatusConfig, project: &str, ttl: u64) -> Result<ProjectFeed> {
@@ -505,7 +498,9 @@ pub fn status(args: &StatusArgs, scope: &Projects) -> Result<ExitCode> {
     }
 
     if args.project.is_some() {
-        render::render_project(&feeds[0], &seen, &style, recent_days);
+        let bound = age::bound(known_project(&config, &feeds[0].project)?);
+        let age = age::age(Some(&feeds[0]), &bound);
+        render::render_project(&feeds[0], age, &seen, &style, recent_days);
     } else {
         // Summary table across all configured projects.
         let now = Utc::now();
@@ -595,11 +590,15 @@ pub fn feed(args: &FeedArgs, scope: &Projects) -> Result<ExitCode> {
         };
         let ttl = config.defaults.ttl_seconds;
         for project in selected {
-            known_project(&config, project)?;
+            let bound = age::bound(known_project(&config, project)?);
             let cached = cache::load_feed(project)?;
             // The cache `status` would refetch is named, by status's own rule (§FS-011-command-line.12).
-            if !younger_than(cached.as_ref(), ttl) {
-                past_ttl.push(past_its_ttl(project, cached.as_ref(), ttl));
+            if !age::younger_than(cached.as_ref(), &bound, ttl) {
+                past_ttl.push(past_its_ttl(
+                    project,
+                    age::age(cached.as_ref(), &bound),
+                    ttl,
+                ));
             }
             if let Some(feed) = cached {
                 feeds.push(feed);
@@ -676,10 +675,11 @@ pub fn feed(args: &FeedArgs, scope: &Projects) -> Result<ExitCode> {
 }
 
 /// What `feed` says of a project whose cache `status` would refetch: how long
-/// ago it was fetched and the TTL it is past, or that no refresh ever produced
-/// it, and the command that cures either (§FS-011-command-line.12).
-fn past_its_ttl(project: &str, cached: Option<&ProjectFeed>, ttl: u64) -> String {
-    let Some(fetched) = cached.and_then(|feed| feed.fetched_at) else {
+/// ago it was fetched — its age, the oldest asking of its own histories — and
+/// the TTL it is past, or that it was never fetched, and the command that
+/// cures either (§FS-011-command-line.12).
+fn past_its_ttl(project: &str, age: Option<chrono::DateTime<Utc>>, ttl: u64) -> String {
+    let Some(fetched) = age else {
         return format!("{project} never fetched; run `ephor refresh {project}`");
     };
     // The age as `status` heads the same cache; "just now" is reachable only
@@ -1104,9 +1104,14 @@ pub fn mark_read(args: &MarkReadArgs, scope: &Projects) -> Result<ExitCode> {
 
     let mut marked = 0usize;
     let mut live_ids: std::collections::HashSet<String> = std::collections::HashSet::new();
+    // A matter missing from a history never asked is unknown, not gone
+    // (§FS-011-command-line.12), judged from the bindings by the age's rule.
+    let mut unknown = false;
     for project in &selected {
-        known_project(&config, project)?;
-        let Some(feed) = cache::load_feed(project)? else {
+        let bound = age::bound(known_project(&config, project)?);
+        let cached = cache::load_feed(project)?;
+        unknown |= age::never_asked(cached.as_ref(), &bound);
+        let Some(feed) = cached else {
             continue;
         };
         let prints: std::collections::HashMap<String, cache::Mark> = feed
@@ -1143,8 +1148,14 @@ pub fn mark_read(args: &MarkReadArgs, scope: &Projects) -> Result<ExitCode> {
     // Only where the sweep really covered every watched project: a run
     // narrowed by `--org` read some of the feeds, and pruning from those
     // would forget that another organization's items were ever read
-    // (§FS-011-command-line.9).
-    if args.id.is_none() && kind_filter.is_none() && config.projects.len() == selected.len() {
+    // (§FS-011-command-line.9). And only where every one of their own
+    // histories was asked: what a history never asked would have reported is
+    // not known to be gone (§FS-007-matters.5).
+    if args.id.is_none()
+        && kind_filter.is_none()
+        && config.projects.len() == selected.len()
+        && !unknown
+    {
         seen.retain(|id, _| live_ids.contains(id));
     }
 

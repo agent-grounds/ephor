@@ -65,16 +65,29 @@ fn refreshed() -> World {
     world
 }
 
-/// Rewrite the cache's `fetched_at` to five days ago, as if nobody had
-/// refreshed the project since.
+/// Rewrite the cache's times to five days ago, as if nobody had refreshed the
+/// project since: when a refresh last asked it, and when each of its histories
+/// was asked and answered — the project's age is the oldest of those
+/// (§FS-011-command-line.12).
 fn aged(world: &World) {
     let path = world
         .path()
         .join("state/ephor/feed")
         .join(format!("{PROJECT}.json"));
     let mut feed = read_json(&path);
-    feed["fetched_at"] =
-        json!((Utc::now() - Duration::days(5)).to_rfc3339_opts(SecondsFormat::Secs, true));
+    let then = json!((Utc::now() - Duration::days(5)).to_rfc3339_opts(SecondsFormat::Secs, true));
+    feed["fetched_at"] = then.clone();
+    for slot in feed["providers"]
+        .as_object_mut()
+        .expect("the cache keeps its sources")
+        .values_mut()
+    {
+        slot["fetched_at"] = then.clone();
+        for history in slot["histories"].as_array_mut().into_iter().flatten() {
+            history["asked_at"] = then.clone();
+            history["answered_at"] = then.clone();
+        }
+    }
     write_json(&path, &feed);
 }
 

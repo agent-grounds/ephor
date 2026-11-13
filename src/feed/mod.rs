@@ -1,6 +1,7 @@
 //! Per-project information stream: cached feed of PRs, CI, messages, and
 //! custom status, fetched by pluggable providers.
 
+pub mod age;
 pub mod cache;
 pub mod commands;
 pub mod config;
