@@ -259,7 +259,21 @@ everything else about a source is: a source that reports messages, a status
 line, or the project's own tasks could not have answered this question however
 it failed, so it stops nothing, while a forge that ephor does not implement
 itself blocks — it declares pull requests among its capabilities, and *could not
-tell* governs there too. For the same reason an open pull request whose draft
+tell* governs there too.
+
+Since a source's answer is kept per capability ([§FS-001-forge-interface.6.1](FS-001-forge-interface.md#61-every-contribution-to-one-provider-answer-counts)),
+the question is asked of **histories**, not of whole slots: the ones that could
+have carried a pull request are a forge's `pull-requests` and `notices`, and a
+native pull-request source's whole answer. Any of them that is stale, failed or
+never answered stops the project, and "never answered" is judged from the
+project's bindings, as its age is ([§FS-011-command-line.12](FS-011-command-line.md#12-a-feed-read-from-a-cache-past-its-ttl-says-so)): a bound source with
+no history in the cache has not answered, however fresh the rest of the cache
+is. The freshening above reads the same age `status` reads, so a refresh
+narrowed to a source's `issues` ([§FS-011-command-line.9.2](FS-011-command-line.md#92-a-refresh-narrowed-to-one-source-or-one-capability)) makes nothing about
+pull requests current: an unheld sweep still finds the project past its TTL and
+refetches it whole before it reads. A held sweep freshens nothing, as before,
+and refuses only on a history that is stale, failed or never answered. For the
+same reason an open pull request whose draft
 state is unknown protects the branch: only a pull request *known* to be out of
 draft passes it over, and a draft one does not protect, because a draft is not
 yet anybody's to review. One project that cannot be read stops that project and

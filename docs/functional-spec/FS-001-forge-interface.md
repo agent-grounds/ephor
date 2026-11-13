@@ -493,23 +493,51 @@ Site answers are combined before attribution, so each subject reaches its
 proper project or the unattributed bucket. Several discovered task stores of
 one kind obey the same contribution rule.
 
-The combined answer is complete only if every contribution answered. An empty
-success counts as an answer. Any failed contribution makes the whole slot
-incomplete: every distinct failure diagnosis remains visible, and a successful
-sibling cannot clear a failure. An incomplete answer retains the previous
-complete slot as last-good, marks its items stale and its failure explicit,
-and preserves its last-good timestamp. A fresh successful subset must not
-replace it or masquerade as a complete current answer. With no previous data,
-failure is still explicit and no last-good items are invented. This is a
-whole-slot rule, with no per-block cache history.
+Completeness and last-good are judged per **history**: one source's answer to
+one capability. A forge reached out of process has a history for each fetch
+capability it declared at its last successful `capabilities` probe —
+`pull-requests`, `branch-gates`, `issues`, `notices`, `messages`, the
+subcommands of [§FS-001-forge-interface.2](FS-001-forge-interface.md#2-two-transports-one-interface) —
+and a source with nothing finer to ask has a single history, its whole answer:
+a native provider, a task store, and a forge whose declaration has never been
+read. Every block of a source that declares a capability contributes to that
+capability's history, and a block that does not declare it is not asked for it.
+
+A history's combined answer is complete only if every contribution to it
+answered. An empty success counts as an answer. Any failed contribution makes
+that history incomplete: every distinct failure diagnosis remains visible, and
+a successful sibling cannot clear a failure. An incomplete answer retains the
+history's previous complete answer as last-good, marks its items stale and its
+failure explicit, and preserves its last-good time. A fresh successful subset
+must not replace it or masquerade as a complete current answer. With no
+previous data, failure is still explicit and no last-good items are invented.
+
+Each history keeps two times. **`asked_at`** is when a refresh last asked it,
+whether or not the answer was complete; **`answered_at`** is when it last
+answered completely. A history that was never asked has neither, and is
+recorded as never asked rather than as an empty answer: what it would have
+reported is unknown, not absent.
+
+What a refresh asks decides what it commits. A plain refresh, or one narrowed
+to a source alone ([§FS-011-command-line.9.2](FS-011-command-line.md#92-a-refresh-narrowed-to-one-source-or-one-capability)),
+asks every history of each source it asks and commits each such source
+**whole**, as before: where any contribution of the source failed, every
+history of that source keeps its last-good answer, is marked stale and failed,
+and is still stamped asked. A refresh narrowed to one capability asks and
+commits that one history: a complete answer replaces it, an empty one
+included, and a failed or partial one keeps its last-good answer and marks it.
+A history the run did not ask is not touched — its reports, its times, its
+error and its stale mark stay as they were.
 
 Refresh outcome accounting counts contributions, not just provider names:
 at least one answer and at least one failure is partial failure (exit 4),
 including an empty answer; every attempted contribution failing is total
 failure (exit 3). No failed contribution permits exit 0. The next complete
-answer replaces last-good data and clears the slot's error and stale state,
+answer replaces last-good data and clears the history's error and stale state,
 including when the complete answer is empty. Provider names, configuration
-acceptance, binding and move resolution, and the cache format stay the same.
+acceptance, binding and move resolution, and the forge protocol stay the same;
+the cache's shape changes and an older cache is rebuilt
+([the cache model](../architecture/AR-006-matters.md#4-the-cache-is-a-cache)).
 
 ## 7. A fetch runs beneath the reading, never in front of it
 
@@ -557,7 +585,9 @@ at once than were being asked before it.
 A successful refresh in another process can leave an open interactive feed
 showing an earlier snapshot. During its periodic local observation, the screen
 checks only the known session projects' feed-cache files. When a valid cache
-has a later fetch time than the snapshot actually displayed, the feed screen
+carries a later cache revision than the snapshot actually displayed — every
+write of a project's cache bumps its revision, so a refresh that asked one
+capability and left the project's age where it was still counts — the feed screen
 visibly says **`Displayed feed outdated: <projects> — newer cache available;
 press r to refresh`**, naming every affected project. The indication appears
 without a keypress or another forge fetch; observation on the existing periodic
@@ -580,7 +610,8 @@ provider calls, recursive directory scan, or unconditional redraw. A changed
 file may be read to establish that a newer valid cache exists. A missing,
 unreadable, malformed or incompatible cache is not that evidence; it neither
 crashes the screen nor erases last-good rows or an already established warning.
-No CLI/JSON shape, cache schema, provider interface or refresh scope changes.
+No CLI/JSON shape, provider interface or refresh scope changes for it; the
+cache carries the revision it compares.
 
 ## 8. A refresh is asked in the cheapest form the forge offers
 

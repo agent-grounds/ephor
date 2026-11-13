@@ -209,6 +209,15 @@ actually print rather than to what they are named: a shape published as one
 thing while its command prints another is a contract nobody can hold, and it
 fails the build like any other untruth.
 
+`refresh --json` says which histories a **narrowed** run asked
+([§FS-011-command-line.9.2](FS-011-command-line.md#92-a-refresh-narrowed-to-one-source-or-one-capability)): each project it reports carries `answers`, one
+entry per history the run asked, with its `source`, its `capability` (the fetch
+subcommand, or null for a source whose answer is one history) and `ok`. A
+history not listed was not asked and was kept as it was. A plain refresh prints
+exactly the fields it printed before, with no `answers`, so a parser of today's
+document meets the new field only on a run that is itself new
+([§REQ-002-parity.4](../requirements/REQ-002-parity.md#4-the-machine-form-is-a-contract-not-a-dump)).
+
 Three commands print a document that is somebody else's rather than ephor's:
 `ephor feed` and `ephor status` print the matters a source reported, and
 `ephor list` prints the registry's own rows. Those shapes are declared where
@@ -458,6 +467,62 @@ help names the form that refuses, as its refusal does — `validate --manifest
 takes no scope selector: …` — and says nothing of the kind about the verb
 without it.
 
+### 9.2 A refresh narrowed to one source or one capability
+
+The project selectors narrow which projects a `refresh` reads. Below them,
+`--source NAME` narrows which source it asks, and `--only CAP`, which needs
+`--source`, narrows that source to one capability. A ticket registered on a
+branch a moment ago is then one `issues` call away from the feed rather than a
+whole refresh of every pull request's threads and gates away from it
+([§GOAL-004-handover](../goals.md#goal-004-handover-routine-moves-leave-the-persons-hands), [§FS-001-forge-interface.8](FS-001-forge-interface.md#8-a-refresh-is-asked-in-the-cheapest-form-the-forge-offers)): the cost of the refresh is
+bounded by the question asked.
+
+**Resolution.** `--source NAME` resolves the way `failures --source` and
+`restart --source` do: each selected project uses its own binding of that name
+where it has one, and otherwise the site's
+([§FS-001-forge-interface.9](FS-001-forge-interface.md#9-a-source-is-bound-to-one-project-or-to-the-site-and-every-move-goes-back-to-the-source)). A site binding is fetched once and placed as a
+plain refresh places it — in every project and in the unattributed bucket —
+and in each place only that source's histories change. A selected project with
+no binding of that name, where the site has none either, is skipped and named
+in the output. A name that nothing in scope binds is refused.
+
+**Refusals.** Each of these exits **2** with its reason on the error stream (and
+under `--json` as an outcome with `ok` false, [§FS-011-command-line.7](FS-011-command-line.md#7---json-is-the-same-answer-not-a-second-one)), and each
+is decided **before any data call** — no `pull-requests`, `branch-gates`,
+`issues`, `notices` or `messages` reaches any source:
+
+1. `--only` without `--source`.
+2. `--only` naming anything but one of the five fetch subcommands —
+   `pull-requests`, `branch-gates`, `issues`, `notices`, `messages` — including
+   the other subcommands of the protocol, `capabilities`, `failures` and
+   `restart`.
+3. `--only` on a source that is not a forge reached out of process: a native
+   provider or a task store has one history, its whole answer, and nothing
+   finer to ask.
+4. `--only` on a source that resolves to the site's binding, for any selected
+   project. A site source's subject is placed on the combined evidence of
+   every capability's reports — a pull request's threads carry the ticket keys
+   and authors a bare notice lacks — so one capability alone could file under
+   the unattributed bucket what a full answer places on a project.
+   `--source NAME` alone still refreshes a site source whole.
+5. `--only` naming a capability none of the source's blocks declares. Knowing
+   that takes the source's `capabilities` probe, which is not a data call; a
+   probe that fails is a fetch failure (exit 3 or 4), not a refusal.
+6. `--source` naming nothing any selected project or the site binds.
+
+**What a narrowed run asks.** `--source NAME` asks every capability of that
+source and commits it whole; `--only CAP` asks that one capability of every
+block that declares it — a block that does not declare it is not called for it
+— and commits that one history ([§FS-001-forge-interface.6.1](FS-001-forge-interface.md#61-every-contribution-to-one-provider-answer-counts)). Nothing else is
+asked: no other configured source, no task store, no other site source, and no
+headroom probe ([§FS-005-dispatch.29](FS-005-dispatch.md#29-headroom-is-reported-to-ephor-and-vetoes-a-member-it-never-reorders)). Every history the run did not ask keeps
+its reports and its times, so it reads exactly as old as it is
+([§FS-011-command-line.12](FS-011-command-line.md#12-a-feed-read-from-a-cache-past-its-ttl-says-so)).
+
+Exit codes count the contributions the run asked, as a plain refresh's do. A
+plain `ephor refresh`, with neither flag, asks and writes exactly what it did
+before these flags existed.
+
 ## 10. A mutating verb above one project reports, and acts under `--act`
 
 A selector that is honoured decides which projects a verb **reads**
@@ -684,6 +749,36 @@ and the command that cures it — ``demo fetched 5d ago, past its 10m TTL; run
 `ephor refresh demo` `` — or, with no cache, that it was never fetched and the
 same command. The judgement is the one `ephor status` makes when it decides to
 refetch: a cache is past its TTL by the same rule, never a second one.
+
+**A project's age is the oldest `asked_at` over its own declared histories**
+([§FS-001-forge-interface.6.1](FS-001-forge-interface.md#61-every-contribution-to-one-provider-answer-counts)): every capability each source the project binds
+declared, and its task stores. The site's sources do not count — `status`
+refetches only a project's own sources, so an old site history would make every
+`status` call refetch a project its own refresh can never make fresh — and a
+capability a source did not declare does not count either. A history never
+asked makes the project read *never fetched*, and "never asked" is judged from
+the project's **bindings**, not from what the cache holds: a bound source with
+no history in the cache counts as never asked, so a cache rebuilt by a model
+change and then refreshed for one source still reads not fresh until every
+bound source has been asked. A source that keeps failing is still asked on
+every plain refresh and stamped asked, so it never holds a project past its
+TTL; its failure stays visible through `stale` and `error`.
+
+A project whose refresh asks nothing — no source of its own and no task store,
+a legal configuration — has no history to be aged by, and takes its age from
+the last refresh run that asked it, which is when `fetched_at` was stamped
+([the cache model](../architecture/AR-006-matters.md#4-the-cache-is-a-cache)). Otherwise it would read never fetched forever, `status`
+would refetch it on every call, and the command this line prints would cure
+nothing.
+
+Only what a run asked is re-stamped. The site sources' write at the end of a
+refresh puts their histories into every project's file, but stamps `fetched_at`
+only on the projects the run asked: `ephor refresh graal` no longer makes every
+other project read as just fetched, and each reads as old as it is. A refresh
+narrowed by [§FS-011-command-line.9.2](FS-011-command-line.md#92-a-refresh-narrowed-to-one-source-or-one-capability) stamps the histories it asked and no
+other, so after `ephor refresh graal --source gdev --only issues` the project
+still reads as old as its pull-request history, and `feed` still prints this
+line for it.
 
 Every cached row is still printed, standard output does not change — the prose
 rows, and the `feed --json` document a program parses

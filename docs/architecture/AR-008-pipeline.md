@@ -28,10 +28,22 @@ too — the bucket is part of the store, not a log line
 Fetch retains every same-name contribution before this stage: repeated project
 blocks, repeated site blocks, and discovered stores combine under
 [§FS-001-forge-interface.6.1](../functional-spec/FS-001-forge-interface.md#61-every-contribution-to-one-provider-answer-counts).
-A provider name identifies the persisted slot, not a single fetch attempt.
-Only a complete combined answer replaces that slot; an incomplete one follows
-the whole-slot last-good rule before attribution or persistence can publish a
-successful subset as current.
+A provider name identifies the persisted slot, not a single fetch attempt, and
+a slot holds one **history** per capability the source answers — or one, its
+whole answer, where the source has nothing finer to ask. What is stored is one
+history per source and capability, and only a complete combined answer for that
+capability replaces it; an incomplete one follows the last-good rule before
+attribution or persistence can publish a successful subset as current. A run
+that did not ask a history leaves it as it was.
+
+The merge reads a slot's reports in one fixed order — by source name, then by
+configuration block in the order the configuration lists them, then by
+capability in the order the forge interface asks them (`pull-requests`,
+`branch-gates`, `issues`, `notices`, `messages`) — whichever run wrote each
+history. That is the order a slot held them in when it was one answer, and it
+matters: the same-subject merge keeps the first report on a tie and prints the
+fingerprint after it, so a narrowed refresh over the same answers leaves every
+matter with the key and fingerprint a full refresh would have given it.
 
 Attribution runs here and nowhere else. It is the expensive stage — an
 item's evidence is its whole recorded conversation joined into one string,

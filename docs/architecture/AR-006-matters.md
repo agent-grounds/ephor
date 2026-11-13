@@ -94,3 +94,27 @@ refreshes and nothing else is derived from it that cannot be re-fetched.
 Model changes rebuild it; `seen` state (read, done) is the one part carried
 across rebuilds, keyed by matter key, because it is the reader's and not
 the world's.
+
+A project's cache holds, per source, the **histories** of
+[§FS-001-forge-interface.6.1](../functional-spec/FS-001-forge-interface.md#61-every-contribution-to-one-provider-answer-counts): for each one its reports, `asked_at`,
+`answered_at`, `stale`, `error`, `unreachable` and `cursor`. Moving to
+histories is a model change (2 to 3), so a cache written before it is rebuilt
+like any other, and until a refresh asks a history it is recorded as never
+asked. The project keeps two more facts beside them. `fetched_at` survives and
+means what its other readers already take it to mean — *a refresh produced this
+cache*: it is stamped on every project a refresh run asks, plain or narrowed,
+and on no other, so the sweep's "no refresh has ever produced a reading", the
+screen's "No cached data" and the counts of sources answering and asked keep
+their meaning. It is no longer the project's age; that is
+[§FS-011-command-line.12](../functional-spec/FS-011-command-line.md#12-a-feed-read-from-a-cache-past-its-ttl-says-so)'s rule, read through one method rather than off this
+field. And a **revision**, bumped by every write of the file, is what the screen
+compares ([§FS-001-forge-interface.7.1](../functional-spec/FS-001-forge-interface.md#71-a-displayed-snapshot-older-than-the-cache-says-so)). A write takes a lock on the project's
+cache file, reloads the latest cache, and replaces only what its run asked, so
+two concurrent refreshes cannot erase each other's answers.
+
+Absent is not gone. A matter that no history reports is gone only when every
+history that could have reported it was asked and answered completely; a read
+mark is deleted only for a matter that a complete reading no longer reports. A
+history never asked holds back the deletion of every read mark, by the same
+judgement of "never asked" [§FS-011-command-line.12](../functional-spec/FS-011-command-line.md#12-a-feed-read-from-a-cache-past-its-ttl-says-so) makes — from the project's
+bindings, so a bound source with no history in the cache is never asked.
