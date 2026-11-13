@@ -263,3 +263,7 @@ fn probe(block: &Value) -> std::result::Result<Capabilities, String> {
         declared => Ok(declared),
     }
 }
+
+#[cfg(test)]
+#[path = "narrow_tests.rs"]
+mod tests;
