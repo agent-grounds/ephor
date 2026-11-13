@@ -265,6 +265,12 @@ fn replayable_checkout(world: &World) -> std::path::PathBuf {
             main.to_str().unwrap(),
         ],
     );
+    git(world, &main, &["config", "user.name", "Fixture"]);
+    git(
+        world,
+        &main,
+        &["config", "user.email", "fixture@example.invalid"],
+    );
     let branch = world.forest().join("you/GR-45001-retry");
     std::fs::create_dir_all(branch.parent().unwrap()).unwrap();
     git(
@@ -286,6 +292,7 @@ fn replayable_checkout(world: &World) -> std::path::PathBuf {
     git(world, &origin, &["commit", "-qm", "advance main"]);
     git(world, &main, &["fetch", "-q", "origin"]);
     let mut registry = world.registry_doc();
+    registry["projects"][0]["branch_root_template"] = json!("{project_root}/{branch}");
     registry["projects"][0]["branches"] = json!([{
         "id": "retry", "branch": "you/GR-45001-retry", "ticket": TICKET, "active": true
     }]);
@@ -351,6 +358,287 @@ fn newly_declared_prs_that_fail_stop_an_actual_replay() {
     assert!(
         calls(&world).is_empty(),
         "a fresh failed reading needs no TTL refetch"
+    );
+}
+
+/// Aggregate model-3 histories cannot prove an appended block's declaration
+/// (§FS-001-forge-interface.6.1). Both whole and capability-only refreshes must
+/// refuse an actual replay until that block answers (§FS-004-quick-actions.6.1).
+#[test]
+fn an_unknown_block_cannot_borrow_legacy_histories_to_allow_replay() {
+    for legacy in [false, true] {
+        for narrowed in [false, true] {
+            let world = watching(600);
+            let mut config = json!({"projects": {PROJECT: {"providers": [
+                {"provider": "gdev", "block": "a"}
+            ]}}});
+            world.configure(config.clone());
+            let branch = replayable_checkout(&world);
+            write_json(
+                &world.path().join("control.json"),
+                &json!({"capabilities": {"gdev": {"issues": true}}}),
+            );
+            world
+                .ephor()
+                .args(["refresh", PROJECT, "--json"])
+                .assert()
+                .success();
+            let previous = world.feed();
+            assert_eq!(previous["model"], 3);
+            if legacy {
+                // Generate the cache normally, removing only the optional
+                // fields absent before fix-1; reports/times are untouched.
+                let mut cache = previous.clone();
+                let slot = &mut cache["providers"]["gdev"];
+                slot.as_object_mut().unwrap().remove("declarations");
+                for history in slot["histories"].as_array_mut().unwrap() {
+                    history.as_object_mut().unwrap().remove("retained_only");
+                }
+                write_json(&world.path().join("state/ephor/feed/demo.json"), &cache);
+            }
+            let failed_probe = world.stub(
+                "failed-probe",
+                "#!/bin/sh\necho 'new block probe unavailable' >&2\nexit 1\n",
+            );
+            config["projects"][PROJECT]["providers"]
+                .as_array_mut()
+                .unwrap()
+                .push(json!({"provider": "gdev", "block": "b", "command": failed_probe}));
+            world.configure(config.clone());
+            let output = if narrowed {
+                refresh_narrowed(&world, &["--source", "gdev", "--only", "issues", "--json"])
+            } else {
+                run(&world, &["refresh", PROJECT, "--json"])
+            };
+            assert_eq!(
+                output.status.code(),
+                Some(4),
+                "legacy={legacy}, narrowed={narrowed}: {}",
+                said(&output)
+            );
+            let saved = world.feed()["providers"]["gdev"].clone();
+            assert_eq!(
+                saved["declarations"],
+                json!([["issues"], null]),
+                "{saved:#}"
+            );
+            assert_eq!(saved["matters"], previous["providers"]["gdev"]["matters"]);
+            let unknown = saved["histories"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|h| h["capability"].is_null())
+                .expect("unknown whole requirement");
+            assert_ne!(unknown["retained_only"], true, "{unknown:#}");
+            assert!(unknown["answered_at"].is_null(), "{unknown:#}");
+            let issues = saved["histories"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|h| h["capability"] == "issues")
+                .unwrap();
+            assert_eq!(
+                issues["answered_at"],
+                previous["providers"]["gdev"]["histories"][0]["answered_at"]
+            );
+            assert_eq!(issues["stale"], true);
+            write_json(
+                &world.path().join("state/ephor/seen.json"),
+                &json!({GDEV_PR: "2026-07-30T12:00:00Z"}),
+            );
+            world
+                .ephor()
+                .args(["mark-read", "--all"])
+                .assert()
+                .success();
+            assert!(marks(&world).contains_key(GDEV_PR));
+            let before = git(&world, &branch, &["rev-parse", "HEAD"]);
+            let swept = run(&world, &["rebase", "--org", ORG, "--act", "--json"]);
+            assert_eq!(swept.status.code(), Some(1), "{}", said(&swept));
+            let reading = json_of(&swept);
+            assert_eq!(reading["projects"][0]["reached"], false, "{reading:#}");
+            assert_eq!(reading["replayed"], 0, "{reading:#}");
+            assert_eq!(git(&world, &branch, &["rev-parse", "HEAD"]), before);
+            assert!(!branch.join("advanced.txt").exists());
+
+            // The unknown block eventually probes and answers successfully.
+            // Narrowed recovery suffices; no permanent unknown placeholder.
+            config["projects"][PROJECT]["providers"][1]
+                .as_object_mut()
+                .unwrap()
+                .remove("command");
+            world.configure(config);
+            let recovered =
+                refresh_narrowed(&world, &["--source", "gdev", "--only", "issues", "--json"]);
+            assert!(recovered.status.success(), "{}", said(&recovered));
+            let saved = world.feed()["providers"]["gdev"].clone();
+            assert_eq!(saved["declarations"], json!([["issues"], ["issues"]]));
+            assert!(saved["histories"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .all(|h| h["capability"] == "issues"));
+            assert!(!age_line(&world).contains("never fetched"));
+            let swept = run(&world, &["rebase", "--org", ORG, "--act", "--json"]);
+            assert!(swept.status.success(), "{}", said(&swept));
+            let reading = json_of(&swept);
+            assert_eq!(reading["projects"][0]["reached"], true, "{reading:#}");
+            assert_eq!(reading["replayed"], 1, "{reading:#}");
+            assert_ne!(git(&world, &branch, &["rev-parse", "HEAD"]), before);
+            assert!(branch.join("advanced.txt").exists());
+        }
+    }
+}
+
+/// A whole-source empty success replaces withdrawn rows, records an asking
+/// and counts as success (§FS-001-forge-interface.6.1), including for a
+/// source-only refresh (§FS-011-command-line.9.2).
+#[test]
+fn a_source_with_only_non_fetch_capabilities_commits_empty_success() {
+    let world = watching(600);
+    register_ticket(&world);
+    world
+        .ephor()
+        .args(["refresh", PROJECT, "--json"])
+        .assert()
+        .success();
+    let previous = world.feed();
+    assert_eq!(ids(&rows(&world)), [ACME_PR, GDEV_PR, TICKET_ITEM]);
+    write_json(
+        &world.path().join("control.json"),
+        &json!({"capabilities": {"gdev": {"restart": true}}}),
+    );
+    clear(&world);
+    let output = refresh_narrowed(&world, &["--source", "gdev", "--json"]);
+    assert!(output.status.success(), "{}", said(&output));
+    let reading = json_of(&output);
+    assert_eq!(reading["refreshed"], 1, "{reading:#}");
+    assert_eq!(reading["degraded"], 0);
+    assert_eq!(reading["lost"], 0);
+    assert_eq!(reading["skipped"], json!([]));
+    assert_eq!(reading["projects"][0]["project"], PROJECT);
+    assert_eq!(reading["projects"][0]["items"], 0);
+    assert_eq!(
+        reading["projects"][0]["answers"],
+        json!([
+            {"source": "gdev", "capability": null, "ok": true}
+        ])
+    );
+    assert_eq!(
+        calls(&world),
+        ["gdev - capabilities", "gdev - capabilities"]
+    );
+    let saved = world.feed();
+    assert_eq!(
+        saved["revision"].as_u64(),
+        Some(previous["revision"].as_u64().unwrap() + 1)
+    );
+    assert_ne!(saved["fetched_at"], previous["fetched_at"]);
+    assert_eq!(saved["providers"]["acme"], previous["providers"]["acme"]);
+    let slot = &saved["providers"]["gdev"];
+    assert_eq!(slot["declarations"], json!([[], []]));
+    assert_eq!(slot["matters"], json!([]));
+    let histories = slot["histories"].as_array().unwrap();
+    assert_eq!(histories.len(), 1);
+    assert!(histories[0]["capability"].is_null());
+    assert_eq!(histories[0]["asked_at"], saved["fetched_at"]);
+    assert_eq!(histories[0]["answered_at"], saved["fetched_at"]);
+    assert_eq!(histories[0]["stale"], false);
+    assert!(histories[0]["error"].is_null());
+    assert_eq!(ids(&rows(&world)), [ACME_PR]);
+}
+
+/// Empty whole-source contributions count independently of failing siblings;
+/// repeated blocks still roll back whole (§FS-001-forge-interface.6.1).
+#[test]
+fn empty_success_keeps_plain_refresh_partial_failure_accounting() {
+    for same_source in [false, true] {
+        let world = watching(600);
+        world.configure(json!({"projects": {PROJECT: {"providers": [
+            {"provider": "gdev", "block": "a"}
+        ]}}}));
+        register_ticket(&world);
+        world
+            .ephor()
+            .args(["refresh", PROJECT, "--json"])
+            .assert()
+            .success();
+        let previous = world.feed();
+        write_json(
+            &world.path().join("control.json"),
+            &json!({"capabilities": {"gdev": {"restart": true}}}),
+        );
+        let broken = world.stub(
+            "broken-probe",
+            "#!/bin/sh\necho 'probe failed' >&2\nexit 1\n",
+        );
+        world.configure(json!({"projects": {PROJECT: {"providers": [
+            {"provider": "gdev", "block": "a"},
+            {"provider": if same_source { "gdev" } else { "broken" }, "command": broken}
+        ]}}}));
+        let output = run(&world, &["refresh", PROJECT, "--json"]);
+        assert_eq!(
+            output.status.code(),
+            Some(4),
+            "same_source={same_source}: {}",
+            said(&output)
+        );
+        let reading = json_of(&output);
+        assert_eq!(reading["refreshed"], 1);
+        assert_eq!(reading["degraded"], 1);
+        assert_eq!(reading["lost"], 0);
+        assert_eq!(reading["projects"][0]["lost"], false);
+        assert!(reading.get("skipped").is_none());
+        assert!(reading["projects"][0].get("answers").is_none());
+        let saved = world.feed();
+        if same_source {
+            assert_eq!(
+                saved["providers"]["gdev"]["matters"],
+                previous["providers"]["gdev"]["matters"]
+            );
+            assert_eq!(saved["providers"]["gdev"]["stale"], true);
+            assert_eq!(ids(&rows(&world)), [GDEV_PR, TICKET_ITEM]);
+        } else {
+            assert!(rows(&world).is_empty());
+            assert_eq!(
+                saved["providers"]["gdev"]["histories"][0]["answered_at"],
+                saved["fetched_at"]
+            );
+        }
+    }
+}
+
+/// A non-fetch block is skipped by --only, while a capable sibling is asked;
+/// whole-source empty success must not invent a data call for that block
+/// (§FS-011-command-line.9.2, §FS-001-forge-interface.6.1).
+#[test]
+fn a_non_fetch_block_is_not_asked_for_a_siblings_selected_capability() {
+    let world = watching(600);
+    register_ticket(&world);
+    let probe_log = world.path().join("non-fetch.log");
+    let non_fetch = world.stub("non-fetch", &format!(
+        "#!/bin/sh\necho \"$1\" >> '{}'\n[ \"$1\" = capabilities ] || exit 1\nprintf '%s\\n' '{{\"restart\":true}}'\n",
+        probe_log.display(),
+    ));
+    world.configure(json!({"projects": {PROJECT: {"providers": [
+        {"provider": "gdev", "block": "a"},
+        {"provider": "gdev", "command": non_fetch}
+    ]}}}));
+    let output = refresh_narrowed(&world, &["--source", "gdev", "--only", "issues", "--json"]);
+    assert!(output.status.success(), "{}", said(&output));
+    assert_eq!(
+        std::fs::read_to_string(probe_log).unwrap(),
+        "capabilities\n"
+    );
+    assert_eq!(asked_by(&calls(&world), "gdev", "a"), ["issues"]);
+    assert_eq!(ids(&rows(&world)), [TICKET_ITEM]);
+    let saved = world.feed();
+    assert_eq!(saved["providers"]["gdev"]["declarations"][1], json!([]));
+    assert_eq!(
+        json_of(&output)["projects"][0]["answers"],
+        json!([
+            {"source": "gdev", "capability": "issues", "ok": true}
+        ])
     );
 }
 

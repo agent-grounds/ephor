@@ -507,7 +507,12 @@ A successful declaration is kept even when the following data call fails.
 Repeated blocks keep their last successful declarations separately, and their
 union determines which histories are required; a failed probe changes no
 successful declaration. A block whose declaration has never been read cannot
-borrow a retained whole answer as proof that it answered. A newly declared capability without a complete answer
+borrow a retained whole answer as proof that it answered. An older cache's
+source-wide histories cannot prove any block's declaration either. While any
+block has no proven declaration, retain the known source-wide requirements
+alongside its unknown whole requirement. Once every block has a proven
+declaration, their union alone determines the required histories.
+A newly declared capability without a complete answer
 remains unanswered. A removed capability stops being a freshness requirement,
 without deleting retained reports of a history the run did not ask. A retained
 whole history keeps its reports and metadata when the source is first asked by
@@ -517,7 +522,10 @@ matter is stale if any history contributing a report of that subject is stale,
 rather than merely because another history of the same source failed.
 
 A history's combined answer is complete only if every contribution to it
-answered. An empty success counts as an answer. Any failed contribution makes
+answered. An empty success counts as an answer. A successful whole-source
+probe declaring only non-fetch capabilities is an empty successful contribution,
+not an unasked block: it replaces withdrawn reports and counts as success.
+Any failed contribution makes
 that history incomplete: every distinct failure diagnosis remains visible, and
 a successful sibling cannot clear a failure. An incomplete answer retains the
 history's previous complete answer as last-good, marks its items stale and its

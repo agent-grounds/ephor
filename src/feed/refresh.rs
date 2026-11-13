@@ -182,8 +182,7 @@ impl SourceAnswer {
     }
 
     /// Every capability any block declared, in fetch order; the whole answer
-    /// where none declared one (§FS-001-forge-interface.6.1). A forge block
-    /// answers whole only when it failed, so a complete answer is never both.
+    /// where none declared one (§FS-001-forge-interface.6.1).
     fn declared(&self) -> Vec<Option<&'static str>> {
         let declared: Vec<Option<&'static str>> = crate::forge::FETCHES
             .into_iter()
@@ -203,8 +202,8 @@ impl SourceAnswer {
 
     /// Probes commit independently of data (§FS-001-forge-interface.6.1).
     /// A failed block keeps its last declaration, including when its sibling
-    /// successfully adds or removes a capability. Older model-3 slots lack
-    /// block declarations: keep their known requirements until a probe answers.
+    /// successfully adds or removes a capability. Aggregate histories in an
+    /// older model-3 slot cannot prove any individual block's declaration.
     fn declarations(&self, previous: Option<&ProviderSlot>) -> Vec<Option<Vec<String>>> {
         self.blocks
             .iter()
@@ -215,17 +214,7 @@ impl SourceAnswer {
                     .as_ref()
                     .map(|declared| declared.iter().map(|fetch| fetch.to_string()).collect())
                     .or_else(|| {
-                        previous.and_then(|slot| {
-                            if slot.declarations.is_empty() {
-                                let known: Vec<String> = slot
-                                    .required_histories()
-                                    .filter_map(|history| history.capability.clone())
-                                    .collect();
-                                (!known.is_empty()).then_some(known)
-                            } else {
-                                slot.declarations.get(index).cloned().flatten()
-                            }
-                        })
+                        previous.and_then(|slot| slot.declarations.get(index).cloned().flatten())
                     })
             })
             .collect()
@@ -250,10 +239,16 @@ impl SourceAnswer {
 }
 
 /// The union of last successful block declarations; an unknown block still
-/// requires a whole reading (§FS-001-forge-interface.6.1).
-fn requirements(declarations: &[Option<Vec<String>>]) -> Vec<Option<&'static str>> {
+/// requires a whole reading (§FS-001-forge-interface.6.1). Keep aggregate
+/// requirements while any block is unknown, without assigning them to a block.
+/// Once all blocks are known, only their declarations govern requirements.
+fn requirements(
+    declarations: &[Option<Vec<String>>],
+    previous: Option<&ProviderSlot>,
+) -> Vec<Option<&'static str>> {
     let mut required = Vec::new();
-    if declarations.iter().any(Option::is_none) {
+    let unknown = declarations.iter().any(Option::is_none);
+    if unknown {
         required.push(None);
     }
     required.extend(
@@ -264,6 +259,10 @@ fn requirements(declarations: &[Option<Vec<String>>]) -> Vec<Option<&'static str
                     .iter()
                     .flatten()
                     .any(|declared| declared.iter().any(|cap| cap == fetch))
+                    || (unknown
+                        && previous
+                            .and_then(|slot| slot.history(Some(fetch)))
+                            .is_some_and(|history| history.required()))
             })
             .map(Some),
     );
@@ -315,7 +314,7 @@ fn commit_source(
         Vec::new()
     };
     let declared = if forge {
-        requirements(&declarations)
+        requirements(&declarations, previous)
     } else {
         answer.declared()
     };
@@ -662,7 +661,7 @@ fn commit_capability(
     now: DateTime<Utc>,
 ) -> ProviderSlot {
     let declarations = answer.declarations(previous);
-    let declared = requirements(&declarations);
+    let declared = requirements(&declarations, previous);
     let answered = match failure {
         Some(failure) => Err(Failure {
             message: &failure.message,
@@ -1780,5 +1779,84 @@ mod tests {
             .iter()
             .any(|own| !own.answered()));
         assert!(crate::feed::age::never_asked(Some(&feed), &["gdev"]));
+    }
+
+    /// Legacy aggregate histories retain requirements and reports without
+    /// proving a block declaration (§FS-001-forge-interface.6.1). Repeated
+    /// failed probes stay unknown; successful recovery releases old requirements.
+    #[test]
+    fn aggregate_requirements_survive_unknown_probes_without_becoming_declarations() {
+        let now = Utc::now();
+        let later = now + chrono::TimeDelta::seconds(60);
+        let mut original = SourceAnswer::default();
+        original.push(block(vec![
+            ("pull-requests", Ok(vec![forge_item("G/7")])),
+            ("issues", Ok(vec![forge_item("ticket")])),
+        ]));
+        let mut legacy = commit_source(None, "gdev", &original, None, now);
+        legacy.declarations.clear();
+        legacy.histories[0].cursor = Some("keep-cursor".to_string());
+        let issues = || Fetched {
+            declared: Some(vec!["issues"]),
+            answers: vec![(Some("issues"), Ok(Vec::new()))],
+        };
+        let mut unknown = SourceAnswer::default();
+        unknown.push(issues());
+        unknown.push(Fetched::whole(Err("probe failed".to_string())));
+        let mut recovered = SourceAnswer::default();
+        recovered.push(issues());
+        recovered.push(issues());
+        for whole in [false, true] {
+            let commit = |previous: Option<&ProviderSlot>, answer: &SourceAnswer| {
+                let failure = answer.answer.failure("gdev");
+                if whole {
+                    commit_source(previous, "gdev", answer, failure.as_ref(), later)
+                } else {
+                    commit_capability(previous, answer, "issues", failure.as_ref(), later)
+                }
+            };
+            let mut saved = legacy.clone();
+            for _ in 0..2 {
+                saved = commit(Some(&saved), &unknown);
+                assert_eq!(
+                    saved.declarations,
+                    vec![Some(vec!["issues".to_string()]), None]
+                );
+                assert!(saved.history(None).unwrap().required());
+                assert!(!saved.history(None).unwrap().answered());
+                let pulls = saved.history(Some("pull-requests")).unwrap();
+                assert!(pulls.required(), "aggregate PR knowledge stays required");
+                assert_eq!(pulls.answered_at, Some(now));
+                assert_eq!(pulls.cursor.as_deref(), Some("keep-cursor"));
+                if !whole {
+                    assert_eq!(
+                        Some(pulls),
+                        legacy.history(Some("pull-requests")),
+                        "unasked metadata"
+                    );
+                }
+                assert_eq!(keys(&saved), keys(&legacy), "last-good reports");
+            }
+            let saved = commit(Some(&saved), &recovered);
+            assert_eq!(
+                saved.declarations,
+                vec![Some(vec!["issues".to_string()]); 2]
+            );
+            assert!(
+                saved.history(None).is_none(),
+                "unknown placeholder released"
+            );
+            assert!(saved.history(Some("issues")).unwrap().answered());
+            assert_eq!(saved.required_histories().count(), 1);
+            if !whole {
+                let pulls = saved.history(Some("pull-requests")).unwrap();
+                assert!(!pulls.required());
+                assert_eq!(pulls.answered_at, Some(now));
+                assert_eq!(pulls.cursor.as_deref(), Some("keep-cursor"));
+                assert_eq!(keys(&saved), vec!["gdev:G/7"]);
+            } else {
+                assert!(saved.matters.is_empty());
+            }
+        }
     }
 }
