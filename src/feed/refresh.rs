@@ -201,6 +201,36 @@ impl SourceAnswer {
         }
     }
 
+    /// Probes commit independently of data (§FS-001-forge-interface.6.1).
+    /// A failed block keeps its last declaration, including when its sibling
+    /// successfully adds or removes a capability. Older model-3 slots lack
+    /// block declarations: keep their known requirements until a probe answers.
+    fn declarations(&self, previous: Option<&ProviderSlot>) -> Vec<Option<Vec<String>>> {
+        self.blocks
+            .iter()
+            .enumerate()
+            .map(|(index, block)| {
+                block
+                    .declared
+                    .as_ref()
+                    .map(|declared| declared.iter().map(|fetch| fetch.to_string()).collect())
+                    .or_else(|| {
+                        previous.and_then(|slot| {
+                            if slot.declarations.is_empty() {
+                                let known: Vec<String> = slot
+                                    .required_histories()
+                                    .filter_map(|history| history.capability.clone())
+                                    .collect();
+                                (!known.is_empty()).then_some(known)
+                            } else {
+                                slot.declarations.get(index).cloned().flatten()
+                            }
+                        })
+                    })
+            })
+            .collect()
+    }
+
     /// One history's reports, per block: what each block answered for it.
     fn parts(&self, capability: Option<&str>) -> Parts {
         self.blocks
@@ -217,6 +247,30 @@ impl SourceAnswer {
             })
             .collect()
     }
+}
+
+/// The union of last successful block declarations; an unknown block still
+/// requires a whole reading (§FS-001-forge-interface.6.1).
+fn requirements(declarations: &[Option<Vec<String>>]) -> Vec<Option<&'static str>> {
+    let mut required = Vec::new();
+    if declarations.iter().any(Option::is_none) {
+        required.push(None);
+    }
+    required.extend(
+        crate::forge::FETCHES
+            .into_iter()
+            .filter(|fetch| {
+                declarations
+                    .iter()
+                    .flatten()
+                    .any(|declared| declared.iter().any(|cap| cap == fetch))
+            })
+            .map(Some),
+    );
+    if required.is_empty() {
+        required.push(None);
+    }
+    required
 }
 
 /// Ask all blocks concurrently, then reduce in configuration order rather
@@ -253,7 +307,18 @@ fn commit_source(
     failure: Option<&ProviderFailure>,
     now: DateTime<Utc>,
 ) -> ProviderSlot {
-    let declared = answer.declared();
+    let forge =
+        !crate::feed::providers::built_in(name) && crate::seams::tasks::Kind::parse(name).is_none();
+    let declarations = if forge {
+        answer.declarations(previous)
+    } else {
+        Vec::new()
+    };
+    let declared = if forge {
+        requirements(&declarations)
+    } else {
+        answer.declared()
+    };
     let answered = match failure {
         Some(failure) => Err(Failure {
             message: &failure.message,
@@ -274,7 +339,9 @@ fn commit_source(
             })
             .collect()),
     };
-    history::commit_whole(previous, now, answered, &declared)
+    let mut slot = history::commit_whole(previous, now, answered, &declared);
+    slot.declarations = declarations;
+    slot
 }
 
 impl RefreshOutcome {
@@ -594,7 +661,8 @@ fn commit_capability(
     failure: Option<&ProviderFailure>,
     now: DateTime<Utc>,
 ) -> ProviderSlot {
-    let declared: Vec<&str> = answer.declared().into_iter().flatten().collect();
+    let declarations = answer.declarations(previous);
+    let declared = requirements(&declarations);
     let answered = match failure {
         Some(failure) => Err(Failure {
             message: &failure.message,
@@ -602,7 +670,9 @@ fn commit_capability(
         }),
         None => Ok(answer.parts(Some(capability))),
     };
-    history::commit_one(previous, now, capability, &declared, answered)
+    let mut slot = history::commit_one(previous, now, capability, &declared, answered);
+    slot.declarations = declarations;
+    slot
 }
 
 /// Missing activity belongs to the retained provider-slot/key observation,
@@ -1608,5 +1678,107 @@ mod tests {
         let issues = failed.history(Some("issues")).unwrap();
         assert!(issues.stale && issues.error.is_some());
         assert_eq!(issues.answered_at, Some(later));
+    }
+
+    /// Each successful block declaration survives data failure; a failed probe
+    /// keeps that block's earlier declaration without preventing successful
+    /// siblings from removing theirs (§FS-001-forge-interface.6.1).
+    #[test]
+    fn repeated_block_declarations_commit_independently_of_data() {
+        let now = Utc::now();
+        let issues = || Fetched {
+            declared: Some(vec!["issues"]),
+            answers: vec![(Some("issues"), Ok(vec![forge_item("ticket")]))],
+        };
+        let mut first = SourceAnswer::default();
+        first.push(issues());
+        first.push(issues());
+        let first = commit_source(None, "gdev", &first, None, now);
+
+        let mut added = SourceAnswer::default();
+        added.push(block(vec![(
+            "pull-requests",
+            Err("data failed".to_string()),
+        )]));
+        added.push(issues());
+        let added = commit_source(
+            Some(&first),
+            "gdev",
+            &added,
+            added.answer.failure("gdev").as_ref(),
+            now,
+        );
+        assert!(added.history(Some("pull-requests")).unwrap().required());
+        assert!(!added.history(Some("pull-requests")).unwrap().answered());
+        assert_eq!(keys(&added), keys(&first), "whole-source rollback");
+
+        // A failed probe of the PR-bearing block keeps its PR requirement.
+        let mut probe_failed = SourceAnswer::default();
+        probe_failed.push(Fetched::whole(Err("probe failed".to_string())));
+        probe_failed.push(issues());
+        for whole in [true, false] {
+            let commit = |previous, answer: &SourceAnswer| {
+                let failure = answer.answer.failure("gdev");
+                if whole {
+                    commit_source(previous, "gdev", answer, failure.as_ref(), now)
+                } else {
+                    commit_capability(previous, answer, "issues", failure.as_ref(), now)
+                }
+            };
+            let kept = commit(Some(&added), &probe_failed);
+            assert_eq!(kept.declarations, added.declarations);
+            assert!(kept.history(Some("pull-requests")).unwrap().required());
+            assert!(!kept.history(Some("pull-requests")).unwrap().answered());
+
+            // That same block now removes PRs successfully. The other block's
+            // failed probe keeps its issues-only declaration, not a PR one.
+            let mut removed = SourceAnswer::default();
+            removed.push(issues());
+            removed.push(Fetched::whole(Err("probe failed".to_string())));
+            let removed = commit(Some(&kept), &removed);
+            assert!(!removed.history(Some("pull-requests")).unwrap().required());
+            assert_eq!(removed.required_histories().count(), 1);
+            assert_eq!(
+                removed.declarations,
+                vec![Some(vec!["issues".to_string()]); 2]
+            );
+        }
+
+        // No earlier successful declaration for the failed block: do not
+        // invent one from its sibling. Its whole question remains unanswered.
+        let unknown = commit_source(
+            None,
+            "gdev",
+            &probe_failed,
+            probe_failed.answer.failure("gdev").as_ref(),
+            now,
+        );
+        assert_eq!(unknown.declarations[0], None);
+        assert!(!unknown.history(None).unwrap().answered());
+        assert!(unknown.history(None).unwrap().required());
+
+        // A previously site-bound whole answer retains its metadata, but a
+        // new unknown block still has no complete declaration/answer to vouch
+        // for it. The shared reading must expose that to age, marks and sweep.
+        let whole = history::commit_whole(None, now, Ok(vec![(None, vec![vec![]])]), &[None]);
+        let unknown = commit_capability(
+            Some(&whole),
+            &probe_failed,
+            "issues",
+            probe_failed.answer.failure("gdev").as_ref(),
+            now,
+        );
+        assert!(
+            unknown.history(None).unwrap().answered(),
+            "retained metadata stays intact"
+        );
+        let feed = ProjectFeed {
+            providers: BTreeMap::from([("gdev".to_string(), unknown)]),
+            ..Default::default()
+        };
+        assert!(crate::feed::age::own(Some(&feed), &["gdev"])
+            .iter()
+            .any(|own| !own.answered()));
+        assert!(crate::feed::age::never_asked(Some(&feed), &["gdev"]));
     }
 }

@@ -196,7 +196,7 @@ pub fn render_item_line(
     if let Some(mark) = item.files_mark() {
         title = format!("{title}  {mark}");
     }
-    if feed.is_stale(&item.source) {
+    if feed.is_stale(item) {
         title = style.dim(&format!("{title} (stale)"));
     } else if item.needs_response {
         title = style.bold(&format!("{title}  ← needs response"));

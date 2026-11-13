@@ -122,20 +122,21 @@ pub fn resolve(
     source: &str,
     only: Option<&'static str>,
 ) -> Result<Narrowing> {
-    // Refusal 3, by name: ephor's own providers and a task store have one
+    // Discovered stores are read by plain refresh (§FS-011-command-line.9.2).
+    if crate::seams::tasks::Kind::parse(source).is_some() {
+        return Err(registry_error(format!(
+            "'{source}' is a task store, discovered rather than bound; it cannot be selected \
+             by `--source`, with or without `--only`. A plain `ephor refresh` reads it."
+        )));
+    }
+    // Refusal 3, by name: ephor's own providers have one
     // history, their whole answer.
     if let Some(only) = only {
-        let store = crate::seams::tasks::Kind::parse(source).is_some();
-        if store || crate::feed::providers::built_in(source) {
+        if crate::feed::providers::built_in(source) {
             return Err(registry_error(format!(
                 "`--only {only}` asks one capability of a forge reached out of process; \
-                 '{source}' is {}, whose answer is one history with nothing finer to ask. \
-                 `--source {source}` alone refreshes it.",
-                if store {
-                    "a task store"
-                } else {
-                    "a native provider"
-                }
+                 '{source}' is a native provider, whose answer is one history with nothing \
+                 finer to ask. `--source {source}` alone refreshes it."
             )));
         }
     }
@@ -160,12 +161,8 @@ pub fn resolve(
         .iter()
         .all(|(_, binding)| *binding == Binding::Unbound)
     {
-        let task_store = match crate::seams::tasks::Kind::parse(source) {
-            Some(_) => " A task store is bound by no configuration; a plain refresh reads it.",
-            None => "",
-        };
         return Err(registry_error(format!(
-            "No selected project and not the site binds a source named '{source}'.{task_store}"
+            "No selected project and not the site binds a source named '{source}'."
         )));
     }
     let mut narrowing = Narrowing {

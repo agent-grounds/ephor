@@ -23,6 +23,10 @@ pub struct History {
     /// source's whole answer.
     #[serde(default)]
     pub capability: Option<String>,
+    /// Retained report ownership, no longer a current declaration requirement
+    /// (§FS-001-forge-interface.6.1). Its reports and metadata still survive.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub retained_only: bool,
     /// When a refresh last asked it, whether or not the answer was complete.
     /// None is *never asked*: what it would have reported is unknown, not
     /// absent (§FS-001-forge-interface.6.1).
@@ -69,6 +73,10 @@ impl History {
     /// Whether its last asking answered completely.
     pub fn answered(&self) -> bool {
         self.asked() && self.error.is_none() && self.answered_at.is_some()
+    }
+
+    pub fn required(&self) -> bool {
+        !self.retained_only
     }
 
     /// The fixed place of a history among its slot's: the whole answer, then
@@ -129,6 +137,65 @@ fn split(slot: &ProviderSlot) -> Vec<Parts> {
     parts
 }
 
+/// Whether a stale history contributes a report of this subject, including
+/// retained whole reports (§FS-001-forge-interface.6.1). Use report ownership,
+/// never the item's kind or the source-wide failure flag.
+pub fn is_stale(slot: &ProviderSlot, subject: &str) -> bool {
+    let held: usize = slot
+        .histories
+        .iter()
+        .flat_map(|history| &history.blocks)
+        .sum();
+    if held != slot.matters.len() {
+        return (slot.stale || slot.histories.iter().any(|history| history.stale))
+            && slot
+                .matters
+                .iter()
+                .any(|matter| matter.subject() == subject);
+    }
+    let blocks = slot
+        .histories
+        .iter()
+        .map(|history| history.blocks.len())
+        .max()
+        .unwrap_or(0);
+    let mut offset = 0;
+    for block in 0..blocks {
+        for history in &slot.histories {
+            let end = offset + history.blocks.get(block).copied().unwrap_or(0);
+            if history.stale
+                && slot.matters[offset..end]
+                    .iter()
+                    .any(|matter| matter.subject() == subject)
+            {
+                return true;
+            }
+            offset = end;
+        }
+    }
+    false
+}
+
+/// Reconcile requirements without confusing them with retained report ownership
+/// (§FS-001-forge-interface.6.1). Empty obsolete whole placeholders can go;
+/// nonempty whole answers remain opaque, with their original metadata.
+fn reconcile(pairs: &mut Vec<(History, Parts)>, declared: &[Option<&str>]) {
+    for (history, _) in pairs.iter_mut() {
+        history.retained_only = !declared.contains(&history.capability.as_deref());
+    }
+    pairs.retain(|(history, parts)| {
+        history.required() || history.capability.is_some() || parts.iter().any(|p| !p.is_empty())
+    });
+    for &capability in declared {
+        if !pairs
+            .iter()
+            .any(|(history, _)| history.capability.as_deref() == capability)
+        {
+            pairs.push((History::of(capability), Vec::new()));
+        }
+    }
+}
+
 /// Lay histories and their reports into one slot: block by block, and within
 /// a block history by history in fixed order, whichever run wrote each
 /// (§AR-008-pipeline.2). What the slot as a whole reads as follows from its
@@ -177,10 +244,12 @@ fn summarize(histories: Vec<History>, matters: Vec<Matter>) -> ProviderSlot {
     }
     let fetched_at = match histories
         .iter()
+        .filter(|history| history.required())
         .all(|history| history.answered_at.is_some())
     {
         true => histories
             .iter()
+            .filter(|history| history.required())
             .filter_map(|history| history.answered_at)
             .min(),
         false => None,
@@ -197,6 +266,7 @@ fn summarize(histories: Vec<History>, matters: Vec<Matter>) -> ProviderSlot {
                 .all(|history| history.unreachable),
         matters,
         histories,
+        ..ProviderSlot::default()
     }
 }
 
@@ -246,7 +316,7 @@ pub fn commit_whole(
         }
         Err(failure) => failure,
     };
-    let kept: Vec<(History, Parts)> = match previous.filter(|slot| !slot.histories.is_empty()) {
+    let mut kept: Vec<(History, Parts)> = match previous.filter(|slot| !slot.histories.is_empty()) {
         Some(slot) => slot.histories.iter().cloned().zip(split(slot)).collect(),
         None if declared.is_empty() => vec![(History::of(None), Vec::new())],
         None => declared
@@ -254,6 +324,7 @@ pub fn commit_whole(
             .map(|capability| (History::of(*capability), Vec::new()))
             .collect(),
     };
+    reconcile(&mut kept, declared);
     assemble(
         kept.into_iter()
             .map(|(history, parts)| (failed(history, &parts, now, failure), parts))
@@ -266,32 +337,25 @@ pub fn commit_whole(
 /// replaces that history, an empty one included; a failed or partial one keeps
 /// its last-good answer and marks it. Every other history is left exactly as
 /// it was, and a capability `declared` names that the slot has no history for
-/// yet is recorded as never asked rather than as an empty answer. A whole
-/// answer from a source never probed gives way to the declaration.
+/// yet is recorded as never asked rather than as an empty answer. A nonempty
+/// whole answer retains its opaque reports and metadata beside the declaration.
 pub fn commit_one(
     previous: Option<&ProviderSlot>,
     now: DateTime<Utc>,
     capability: &str,
-    declared: &[&str],
+    declared: &[Option<&str>],
     answer: Result<Parts, Failure>,
 ) -> ProviderSlot {
     let mut pairs: Vec<(History, Parts)> = match previous {
-        Some(slot) => slot
-            .histories
-            .iter()
-            .cloned()
-            .zip(split(slot))
-            .filter(|(history, _)| history.capability.is_some())
-            .collect(),
+        Some(slot) => slot.histories.iter().cloned().zip(split(slot)).collect(),
         None => Vec::new(),
     };
-    for fetch in declared.iter().chain(std::iter::once(&capability)) {
-        if !pairs
-            .iter()
-            .any(|(history, _)| history.capability.as_deref() == Some(*fetch))
-        {
-            pairs.push((History::of(Some(fetch)), Vec::new()));
-        }
+    reconcile(&mut pairs, declared);
+    if !pairs
+        .iter()
+        .any(|(history, _)| history.capability.as_deref() == Some(capability))
+    {
+        pairs.push((History::of(Some(capability)), Vec::new()));
     }
     if let Some((history, parts)) = pairs
         .iter_mut()
@@ -309,6 +373,9 @@ pub fn commit_one(
             }
             Err(failure) => *history = failed(history.clone(), parts, now, failure),
         }
+        // An attempted capability is not a successful declaration. Where a
+        // probe failed, the last successful declarations still govern.
+        history.retained_only = !declared.contains(&Some(capability));
     }
     assemble(pairs)
 }

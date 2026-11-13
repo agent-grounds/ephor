@@ -64,10 +64,21 @@ pub fn own<'a>(feed: Option<&'a ProjectFeed>, bound: &[&'a str]) -> Vec<Own<'a>>
     for &source in bound {
         match feed.and_then(|feed| feed.providers.get(source)) {
             Some(slot) if !slot.histories.is_empty() => {
-                own.extend(slot.histories.iter().map(|history| Own {
+                own.extend(slot.required_histories().map(|history| Own {
                     source,
                     history: Some(history),
-                }))
+                }));
+                // An unknown block cannot borrow a healthy opaque whole
+                // answer from before this declaration (§FS-001-forge-interface.6.1).
+                // A failed whole asking has its own stamped failure instead.
+                if slot.declarations.iter().any(Option::is_none)
+                    && slot.history(None).is_some_and(History::answered)
+                {
+                    own.push(Own {
+                        source,
+                        history: None,
+                    });
+                }
             }
             _ => own.push(Own {
                 source,
@@ -79,7 +90,7 @@ pub fn own<'a>(feed: Option<&'a ProjectFeed>, bound: &[&'a str]) -> Vec<Own<'a>>
     // what the cache holds of one is the project's own.
     for (name, slot) in feed.into_iter().flat_map(|feed| &feed.providers) {
         if !bound.contains(&name.as_str()) && crate::seams::tasks::Kind::parse(name).is_some() {
-            own.extend(slot.histories.iter().map(|history| Own {
+            own.extend(slot.required_histories().map(|history| Own {
                 source: name.as_str(),
                 history: Some(history),
             }));

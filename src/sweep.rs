@@ -792,8 +792,7 @@ fn unanswered_pull_requests<'a>(
         .filter(|own| !own.answered() || own.history.is_some_and(|history| history.stale))
         .map(|own| own.source)
         .chain(site.filter_map(|(name, slot)| {
-            slot.histories
-                .iter()
+            slot.required_histories()
                 .filter(|history| carries(name, history.capability.as_deref()))
                 .any(|history| !history.answered() || history.stale)
                 .then_some(name.as_str())

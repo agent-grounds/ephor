@@ -1097,13 +1097,15 @@ pub fn mark_read(args: &MarkReadArgs, scope: &Projects) -> Result<ExitCode> {
 
     let mut marked = 0usize;
     let mut live_ids: std::collections::HashSet<String> = std::collections::HashSet::new();
-    // A matter missing from a history never asked is unknown, not gone
-    // (§FS-011-command-line.12), judged from the bindings by the age's rule.
+    // A missing matter needs a complete reading before its mark can go
+    // (§AR-006-matters.4), judged from bindings by the age's shared reading.
     let mut unknown = false;
     for project in &selected {
         let bound = age::bound(known_project(&config, project)?);
         let cached = cache::load_feed(project)?;
-        unknown |= age::never_asked(cached.as_ref(), &bound);
+        unknown |= age::own(cached.as_ref(), &bound)
+            .iter()
+            .any(|history| !history.answered());
         let Some(feed) = cached else {
             continue;
         };
@@ -1142,8 +1144,8 @@ pub fn mark_read(args: &MarkReadArgs, scope: &Projects) -> Result<ExitCode> {
     // narrowed by `--org` read some of the feeds, and pruning from those
     // would forget that another organization's items were ever read
     // (§FS-011-command-line.9). And only where every one of their own
-    // histories was asked: what a history never asked would have reported is
-    // not known to be gone (§FS-007-matters.5).
+    // histories answered completely: a newly declared unanswered history
+    // cannot establish absence (§AR-006-matters.4).
     if args.id.is_none()
         && kind_filter.is_none()
         && config.projects.len() == selected.len()

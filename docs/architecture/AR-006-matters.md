@@ -97,7 +97,12 @@ the world's.
 
 A project's cache holds, per source, the **histories** of
 [§FS-001-forge-interface.6.1](../functional-spec/FS-001-forge-interface.md#61-every-contribution-to-one-provider-answer-counts): for each one its reports, `asked_at`,
-`answered_at`, `stale`, `error`, `unreachable` and `cursor`. Moving to
+`answered_at`, `stale`, `error`, `unreachable` and `cursor`. The cache
+separates current declaration requirements from retained report
+ownership: each history records whether it is required, and each forge block's
+last successful declaration survives a later data failure or failed probe.
+An unasked whole history can retain opaque reports beside newly declared
+capability histories, without claiming that those capabilities answered. Moving to
 histories is a model change (2 to 3), so a cache written before it is rebuilt
 like any other, and until a refresh asks a history it is recorded as never
 asked. The project keeps two more facts beside them. `fetched_at` survives and
