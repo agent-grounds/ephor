@@ -129,13 +129,11 @@ fn empty_update(all: bool) {
 }
 
 #[test]
-#[ignore = "red until #265: empty update needs human narration; implement removes this"]
 fn empty_selection_update_names_zero_without_all() {
     empty_update(false);
 }
 
 #[test]
-#[ignore = "red until #265: empty update --all needs human narration; implement removes this"]
 fn empty_selection_update_names_zero_with_all() {
     empty_update(true);
 }
@@ -152,13 +150,11 @@ fn empty_agents(all: bool) {
 }
 
 #[test]
-#[ignore = "red until #265: empty ensure-agents needs human narration; implement removes this"]
 fn empty_selection_ensure_agents_names_zero_without_all() {
     empty_agents(false);
 }
 
 #[test]
-#[ignore = "red until #265: empty ensure-agents --all needs human narration; implement removes this"]
 fn empty_selection_ensure_agents_names_zero_with_all() {
     empty_agents(true);
 }
@@ -201,13 +197,11 @@ fn excluded_entry(active: bool, filters: &[&str]) {
 }
 
 #[test]
-#[ignore = "red until #265: inactive entries need truthful zero narration; implement removes this"]
 fn empty_selection_inactive_entries_are_not_missing_declarations() {
     excluded_entry(false, &[]);
 }
 
 #[test]
-#[ignore = "red until #265: filtered entries need truthful zero narration; implement removes this"]
 fn empty_selection_filtered_entries_are_not_missing_declarations() {
     excluded_entry(true, &["--all", "--tag", "excluded"]);
 }
