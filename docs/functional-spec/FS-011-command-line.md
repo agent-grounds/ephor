@@ -407,9 +407,11 @@ output as an outcome with `ok` false ([§FS-011-command-line.7](FS-011-command-l
 [§REQ-002-parity.3](../requirements/REQ-002-parity.md#3-every-reading-answers-a-program)). It is decided before any registry is read, so the
 verbs that need no registry — `schema`, `check`, `validate --manifest` — still
 need none in order to refuse. Both halves of the rule exit **2**, the code this
-command line gives a configuration refusal: a refused selector and a selection
-that came out empty are one rule answering, and a caller learns "the scope was
-refused" from one comparison rather than two.
+command line gives a configuration refusal: a refused selector and a refused
+empty project scope are one rule answering, and a caller learns "the scope was
+refused" from one comparison rather than two. An accepted scope yielding zero
+managed branch entries is a successful outcome instead
+([§FS-011-command-line.9.3](FS-011-command-line.md#93-an-empty-managed-branch-selection-is-said)).
 
 The selectors are the first case of this rule rather than the whole of it.
 Every value a command takes arrives in one of two spellings — the flag a reader
@@ -533,6 +535,32 @@ before these flags existed.
 **The screen.** On the feed screen, `R` opens a picker for a source, then its
 whole answer or one capability, using the CLI's resolution and refusals for the
 same request. Plain `r` is unchanged, as is `R` on the work and burn screens.
+
+### 9.3 An empty managed branch selection is said
+
+When `update` or registry-mode `ensure-agents` accepts the scope but selects
+zero managed branch entries, its human outcome names the command, says that
+zero managed branch entries were selected, and explains the selection's
+branch-entry scope. A project with no `release_branches` or `branches` entries
+contributes no workspace: its main checkout is not an implicit entry, and
+`update` does not update it. `--all` widens to every branch entry, not to every
+project or its implicit main checkout; the explanation makes that limit clear
+both with and without `--all`.
+
+The explanation must remain true when entries exist but inactive entries or
+scope filters leave none selected. It may describe the selection rules without
+claiming that no project declares branches; a claim about missing declarations
+must be supported by the selected scope.
+
+This accepted empty outcome retains exit 0. Under `--json` it remains exactly
+one structured outcome: `count: 0` and `updated: []` for `update`, or
+`count: 0` and `written: []` for `ensure-agents`, with no human prose in JSON
+standard output ([§FS-011-command-line.7](FS-011-command-line.md#7---json-is-the-same-answer-not-a-second-one)). Successful nonempty writes add no prose outcome;
+existing repository and hook progress is unchanged.
+Existing selector and explicit project/workspace-ID refusals retain their
+reasons and exit codes; an unresolved explicit ID does not become an accepted
+zero result. Validation, including schema-only validation, and ad-hoc
+`ensure-agents --type` keep their existing behavior.
 
 ## 10. A mutating verb above one project reports, and acts under `--act`
 
