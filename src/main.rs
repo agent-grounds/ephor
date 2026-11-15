@@ -277,6 +277,7 @@ fn run(cli: Cli) -> Result<ExitCode> {
             let written = agents::write_agents_file(&registry, &registry_path, &workspace)?;
             Ok(wrote(
                 args.json,
+                "ensure-agents",
                 "written",
                 vec![serde_json::json!({
                     "workspace": workspace.id,
@@ -322,7 +323,7 @@ fn run(cli: Cli) -> Result<ExitCode> {
                             "path": path.display().to_string(),
                         }));
                     }
-                    return Ok(wrote(args.json, "written", written));
+                    return Ok(wrote(args.json, "ensure-agents", "written", written));
                 }
                 Command::Update(args) => {
                     let mut updated = Vec::new();
@@ -341,7 +342,7 @@ fn run(cli: Cli) -> Result<ExitCode> {
                                 .to_string(),
                         }));
                     }
-                    return Ok(wrote(args.json, "updated", updated));
+                    return Ok(wrote(args.json, "update", "updated", updated));
                 }
                 _ => unreachable!(),
             }
@@ -382,9 +383,11 @@ fn run(cli: Cli) -> Result<ExitCode> {
 /// workspace and used to say nothing at all — success was an exit code and a
 /// changed disk, so a program that ran one had to go and look to find out what
 /// it had touched. Under `--json` the rows say which workspace and which file;
-/// with no flag the silence stands, because that is what a person running it in
-/// a loop over forty workspaces asked for.
-fn wrote(json: bool, field: &str, rows: Vec<Value>) -> ExitCode {
+/// with no flag nonempty writes stay quiet, because that is what a person
+/// running it in a loop over forty workspaces asked for. Accepted empty branch
+/// selections instead explain the zero result and the branch-entry scope
+/// (§FS-011-command-line.9.3).
+fn wrote(json: bool, command: &str, field: &str, rows: Vec<Value>) -> ExitCode {
     if json {
         println!(
             "{}",
@@ -393,6 +396,13 @@ fn wrote(json: bool, field: &str, rows: Vec<Value>) -> ExitCode {
                 field: rows,
             }))
             .unwrap_or_else(|_| "null".to_string())
+        );
+    } else if rows.is_empty() {
+        println!(
+            "ephor {command}: 0 managed branch entries selected. \
+             Only declared release_branches and branches entries are managed; \
+             a project's main checkout is not an implicit entry. \
+             --all widens to every declared branch entry, not to projects or their main checkouts."
         );
     }
     ExitCode::SUCCESS
