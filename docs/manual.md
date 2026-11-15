@@ -282,6 +282,19 @@ entry, not only the active ones. It is their own flag and goes after the verb,
 because it asks about branch entries rather than about projects
 ([§FS-011-command-line.9](functional-spec/FS-011-command-line.md#9-a-scope-selector-is-honoured-or-refused)).
 
+`update` and registry-mode `ensure-agents` say when an accepted scope selects
+zero managed branch entries, naming the command and explaining that only
+declared branch entries are managed. A project with empty `branches` and
+`release_branches` contributes no workspace; its main checkout is not selected
+implicitly and `update` leaves it alone. `--all` includes inactive branch
+entries too, but does not add projects or their implicit main checkouts.
+Entries may also be excluded by filters or inactivity, so a zero count need
+not mean that no branches were declared. This empty outcome exits 0; `--json`
+still prints only `{"count": 0, "updated": []}` or
+`{"count": 0, "written": []}` respectively. Successful nonempty writes add no
+prose outcome; repository and hook progress is unchanged. Existing scope refusals still refuse
+([§FS-011-command-line.9.3](functional-spec/FS-011-command-line.md#93-an-empty-managed-branch-selection-is-said)).
+
 The three selectors are declared once and reach every command's help, so every
 command either honours them or refuses them by name with exit 2: no verb parses
 a selector and changes nothing. The verbs that honour them are `list`,

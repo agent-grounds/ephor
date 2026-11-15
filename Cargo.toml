@@ -373,6 +373,10 @@ path = "tests/e2e/cases/E2E-069-a-live-workflow-names-its-held-task.rs"
 name = "e2e_070_a_refresh_asks_one_capability"
 path = "tests/e2e/cases/E2E-070-a-refresh-asks-one-capability.rs"
 
+[[test]]
+name = "e2e_071_an_empty_branch_selection_is_said"
+path = "tests/e2e/cases/E2E-071-an-empty-branch-selection-is-said.rs"
+
 [dependencies]
 clap = { version = "4", features = ["derive"] }
 serde = { version = "1", features = ["derive"] }
