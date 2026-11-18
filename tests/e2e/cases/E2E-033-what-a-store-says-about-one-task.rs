@@ -26,6 +26,16 @@
 //! having answered, and the drop is said out loud. A task that vanished from
 //! the feed because somebody wrote prose about it would be the worse failure,
 //! and a drop nobody was told about is how a selector silently stops matching.
+//!
+//! The last two scenarios pin what the bound is *not* about: the runtime's own
+//! bookkeeping, which it writes into the very block a plan's author writes in
+//! (§FS-005-dispatch.8.1). A plan the runtime has worked carries its visit
+//! counters, its supervision phase and its budget identity there, and none of
+//! it is the store's word. Every refresh used to report the nested ones as
+//! drops no author could act on, even under `--quiet`, burying the one drop an
+//! author could; and the scalar one rode into `meta` as though the author had
+//! written it. The notes and the surfaces are pinned together, so a filter on
+//! what a refresh prints cannot pass for the subtraction.
 
 #[path = "../support.rs"]
 mod support;
@@ -433,4 +443,271 @@ fn a_key_the_bound_refuses_is_dropped_and_the_drop_is_named() {
             "the refresh dropped a key without saying '{expected}':\n{said}"
         );
     }
+}
+
+/// A plan the runtime has already worked, as it leaves one: task `review`'s
+/// block holds nothing an author wrote, only the runtime's own bookkeeping in
+/// the shapes it writes it in, and task `handover`'s holds an author's scalar
+/// and an author's list. The list is the control — a drop an author can fix,
+/// which must still be said.
+const WORKED: &str = "# Rhei: work\n\n\
+---\n\
+metadata:\n\
+\x20 tasks:\n\
+\x20   review:\n\
+\x20     budgetTicketId: 6e48ae55-6626-4549-b64b-71e379740485\n\
+\x20     stateVisits:\n\
+\x20       supervising: 15\n\
+\x20     pollNextAttemptAt:\n\
+\x20       polling: '2026-11-18T19:00:00Z'\n\
+\x20     providerLimits:\n\
+\x20       implement:\n\
+\x20         until: '2026-11-18T20:00:00Z'\n\
+\x20     supervision:\n\
+\x20       phase: released\n\
+\x20   handover:\n\
+\x20     context: acme-labs\n\
+\x20     owners:\n\
+\x20       - ana\n\
+\x20       - bo\n\
+---\n\n\
+## Tasks\n\n\
+### Task review: Review the shipped spec\n**State:** open\n\n\
+Everything said about this task was written by the runtime.\n\n\
+### Task handover: Hand the signing key over\n**State:** open\n\n\
+A person wrote the owners as a list.\n";
+
+/// The task holding only the runtime's bookkeeping, and the author's control.
+const WORKED_REVIEW: &str = "rhei:work.review";
+const WORKED_HANDOVER: &str = "rhei:work.handover";
+
+/// The names the runtime writes into a task's block, spelled out by hand
+/// rather than read from ephor's snapshot of them (§FS-005-dispatch.8.1).
+const THE_RUNTIME_WRITES: [&str; 5] = [
+    "stateVisits",
+    "pollNextAttemptAt",
+    "providerLimits",
+    "supervision",
+    "budgetTicketId",
+];
+
+/// The one scalar among them, which the bound alone would have carried.
+const BUDGET: &str = "6e48ae55-6626-4549-b64b-71e379740485";
+
+fn worked(work: Option<Value>) -> World {
+    let world = World::new();
+    world.file("panta/work.rhei.md", WORKED);
+    let mut config = json!({});
+    if let Some(work) = work {
+        config["work"] = work;
+    }
+    world.configure(config);
+    world
+}
+
+/// 7. The runtime's bookkeeping is declined, not dropped: refresh after refresh,
+/// with and without `--quiet`, no note names any of its keys, and the one key an
+/// author lost is still said, once (§FS-005-dispatch.8.1). Both tasks stay
+/// matters and the store's slot stays `ok`, so the silence is the subtraction
+/// rather than a store nobody read.
+#[test]
+#[ignore = "red until #267: every refresh notes the runtime's own keys as dropped; implement removes this"]
+fn the_runtimes_own_bookkeeping_is_never_said_to_be_dropped() {
+    let world = worked(None);
+    for quiet in [false, false, true, true] {
+        let mut args = vec!["refresh", PROJECT];
+        if quiet {
+            args.push("--quiet");
+        }
+        let output = world.ephor().args(&args).output().expect("refresh runs");
+        assert!(
+            output.status.success(),
+            "a store that answered failed the refresh:\n{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let said = String::from_utf8_lossy(&output.stderr);
+        let theirs: Vec<&str> = said
+            .lines()
+            .filter(|line| {
+                line.contains(WORKED_REVIEW)
+                    || THE_RUNTIME_WRITES.iter().any(|name| line.contains(name))
+            })
+            .collect();
+        assert!(
+            theirs.is_empty(),
+            "`ephor {}` reported the runtime's own bookkeeping:\n{}",
+            args.join(" "),
+            theirs.join("\n")
+        );
+        let authors: Vec<&str> = said
+            .lines()
+            .filter(|line| line.contains("'owners'"))
+            .collect();
+        assert!(
+            authors.len() == 1 && authors[0].contains(WORKED_HANDOVER),
+            "`ephor {}` did not say the author's dropped list exactly once:\n{said}",
+            args.join(" ")
+        );
+    }
+
+    assert_eq!(
+        world.matter(WORKED_REVIEW)["title"],
+        "Review the shipped spec"
+    );
+    let handover = world.matter(WORKED_HANDOVER);
+    assert_eq!(handover["title"], "Hand the signing key over");
+    assert_eq!(
+        handover["raw"]["meta"],
+        json!({ "context": "acme-labs" }),
+        "the author's scalar was not kept: {:#?}",
+        handover["raw"]
+    );
+    assert_eq!(world.feed()["providers"]["rhei"]["ok"], json!(true));
+}
+
+/// 8. And the scalar among them reaches nothing a matter's `meta` reaches: not
+/// `--json`, not a selector, not a `{meta.<key>}` template, not a summons
+/// (§FS-005-dispatch.8.1). This is the half a filter on the printed notes
+/// would never have touched — `budgetTicketId` broke no part of the bound, so
+/// it was never noted, and it rode in as though the author had written it.
+#[test]
+#[ignore = "red until #267: budgetTicketId reaches meta, the selector, templates and the summons; implement removes this"]
+fn the_runtimes_scalar_bookkeeping_reaches_no_surface() {
+    let recipe = |id: &str, when: Value, brief: &str| {
+        let mut recipe = slice_recipe();
+        recipe["id"] = json!(id);
+        recipe["when"] = when;
+        recipe["root"] = json!(format!("{{root}}/books/{id}"));
+        recipe["brief"] = json!(brief);
+        recipe
+    };
+    let world = worked(Some(json!({
+        "recipes": [
+            recipe(
+                "budgeted",
+                json!({ "kinds": ["task"], "meta": { "budgetTicketId": BUDGET } }),
+                "{title}",
+            ),
+            recipe("asked", json!({ "kinds": ["task"] }), "budget {meta.budgetTicketId}."),
+        ]
+    })));
+    refresh(&world);
+
+    // `--json`: the matter is there, and nothing about it carries the
+    // runtime's identifier — not as `meta`, not anywhere else in it.
+    let printed = world
+        .ephor()
+        .args(["feed", "--project", PROJECT, "--json"])
+        .output()
+        .expect("the feed prints");
+    let feed = shaped("feed", &printed);
+    let review = feed
+        .as_array()
+        .expect("the feed prints an array")
+        .iter()
+        .find(|item| item["id"] == WORKED_REVIEW || item["key"] == WORKED_REVIEW)
+        .unwrap_or_else(|| panic!("no {WORKED_REVIEW} in {feed:#?}"));
+    assert!(
+        !review.to_string().contains(BUDGET),
+        "the runtime's budget identity reached the feed as the store's word: {:#?}",
+        review["raw"]
+    );
+
+    // A selector: a recipe asking for that identifier selects nothing.
+    let output = world
+        .ephor()
+        .args([
+            "work",
+            "dispatch",
+            "--project",
+            PROJECT,
+            "--dry-run",
+            "--json",
+        ])
+        .output()
+        .expect("dispatch runs");
+    assert!(
+        output.status.success(),
+        "the dry run failed:\n{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let swept = shaped("work-dispatch", &output);
+    let would = |recipe: &str| -> Vec<String> {
+        swept["items"]
+            .as_array()
+            .expect("items")
+            .iter()
+            .filter(|row| row["outcome"] == "would-open" && row["recipe"] == recipe)
+            .filter_map(|row| row["item"].as_str().map(str::to_string))
+            .collect()
+    };
+    assert!(
+        would("budgeted").is_empty(),
+        "a selector matched the runtime's budget identity: {swept:#?}"
+    );
+    // The sweep did read both matters: the entry asking nothing of `meta`
+    // would open work for each of them.
+    let mut asked = would("asked");
+    asked.sort();
+    assert_eq!(
+        asked,
+        vec![WORKED_HANDOVER.to_string(), WORKED_REVIEW.to_string()],
+        "the sweep did not see both matters: {swept:#?}"
+    );
+
+    // A template: the brief names the key, and the ticket carries the gap.
+    let output = world
+        .ephor()
+        .args([
+            "work",
+            "dispatch",
+            "--item",
+            WORKED_REVIEW,
+            "--recipe",
+            "asked",
+        ])
+        .output()
+        .expect("dispatch runs");
+    assert!(
+        output.status.success(),
+        "the dispatch failed:\n{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let plan = laid_in(&world.forest().join("books").join("asked"));
+    assert!(
+        !plan.contains(BUDGET),
+        "a `{{meta.budgetTicketId}}` template rendered the runtime's identifier:\n{plan}"
+    );
+
+    // A summons: no variable, no entry in the enumeration, nothing in the
+    // passthrough.
+    world
+        .ephor()
+        .args([
+            "actions",
+            "run",
+            "--item",
+            WORKED_REVIEW,
+            "--command",
+            "printf '%s\\n' \"${EPHOR_META_BUDGETTICKETID-<unset>}\" > budget.txt; \
+             printf '%s\\n' \"${EPHOR_META_KEYS-<unset>}\" > keys.txt; \
+             printf '%s\\n' \"${EPHOR_RAW-<unset>}\" > raw.txt",
+        ])
+        .assert()
+        .success();
+    assert_eq!(
+        world.read(&format!("{PROJECT}/budget.txt")).trim(),
+        "<unset>",
+        "the summons set a variable for the runtime's budget identity"
+    );
+    let listed = world.read(&format!("{PROJECT}/keys.txt"));
+    assert!(
+        !listed.lines().any(|key| key.trim() == "budgetTicketId"),
+        "EPHOR_META_KEYS listed the runtime's budget identity: {listed:?}"
+    );
+    let raw = world.read(&format!("{PROJECT}/raw.txt"));
+    assert!(
+        !raw.contains(BUDGET),
+        "EPHOR_RAW carried the runtime's budget identity: {raw}"
+    );
 }
