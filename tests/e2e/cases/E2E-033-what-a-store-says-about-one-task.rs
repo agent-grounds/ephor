@@ -511,7 +511,6 @@ fn worked(work: Option<Value>) -> World {
 /// matters and the store's slot stays `ok`, so the silence is the subtraction
 /// rather than a store nobody read.
 #[test]
-#[ignore = "red until #267: every refresh notes the runtime's own keys as dropped; implement removes this"]
 fn the_runtimes_own_bookkeeping_is_never_said_to_be_dropped() {
     let world = worked(None);
     for quiet in [false, false, true, true] {
@@ -571,7 +570,6 @@ fn the_runtimes_own_bookkeeping_is_never_said_to_be_dropped() {
 /// would never have touched — `budgetTicketId` broke no part of the bound, so
 /// it was never noted, and it rode in as though the author had written it.
 #[test]
-#[ignore = "red until #267: budgetTicketId reaches meta, the selector, templates and the summons; implement removes this"]
 fn the_runtimes_scalar_bookkeeping_reaches_no_surface() {
     let recipe = |id: &str, when: Value, brief: &str| {
         let mut recipe = slice_recipe();
