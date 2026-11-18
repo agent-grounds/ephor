@@ -991,7 +991,9 @@ inside the directory it reads — so the names ephor itself writes there are
 **subtracted on the way in**, derived from the list this section already names
 rather than kept as a second copy of it that can fall behind. Without the
 subtraction the next read hands ephor's own words back as though the store had
-said them.
+said them. The runtime's own names are subtracted beside them, from the one
+copy this point keeps on purpose
+([§FS-005-dispatch.8.1](FS-005-dispatch.md#81-the-runtimes-own-bookkeeping-is-declined-the-same-way-from-a-snapshot)).
 
 **A subtracted name is declined, not dropped, and is reported to nobody.** The
 two look alike and are opposites. A broken bound is a thing the store *said* and
@@ -1002,6 +1004,55 @@ anyway would be the noisier mistake as well as the wronger one: ephor's own work
 root is a store like any other, so every ticket it has laid would report every
 name it wrote, on every refresh, and the drops that do mean something would be
 buried under them. The bound's own drops stay reported, exactly as above.
+
+### 8.1 The runtime's own bookkeeping is declined the same way, from a snapshot
+
+ephor is not the only writer in that namespace. The runtime it hands work to
+keeps its own per-task bookkeeping there too — how often a task entered each
+state, when a poll may try again, a parked provider limit, a supervisor's phase,
+a ticket's budget identity — and none of it is the store's word either. So the
+names the runtime binding writes into a task's block are **subtracted on the way
+in as well, before the bound**, exactly as ephor's own are: declined, not
+dropped, and reported to nobody. That holds whatever shape the value has. A
+nested counter is not a bound drop, because nobody who could act on the note
+wrote it, and a scalar is not carried either, because carrying it would hand the
+runtime's identifier to every selector, `{meta.<key>}` template and summons as
+though the store had said it. For the shipped binding the names are exactly
+five: `stateVisits`, `pollNextAttemptAt`, `providerLimits`, `supervision` and
+`budgetTicketId`.
+
+**This list is a copy, the kind of copy this section otherwise refuses**, and it
+is one on purpose. ephor's own names are derived from the writer that writes
+them, so they cannot fall behind it. The runtime's names have no writer on
+ephor's side of the seam to derive them from: the seam is a contract in
+materials and never linked code
+([§REQ-001-boundary.1](../requirements/REQ-001-boundary.md#1-the-anatomy)), so
+ephor can neither read the runtime's own register in-process nor make reading a
+store depend on a runner being installed to ask. What the binding holds is
+therefore a **snapshot** of the runtime's register, kept with the binding that
+knows the runtime's grammar and nowhere above it
+([§REQ-001-boundary.5](../requirements/REQ-001-boundary.md#5-no-product-literal-outside-its-adapter)), and
+recorded with the revision it was taken from:
+[the register as it stood at `49e7e745ec3b`](https://github.com/agent-grounds/rhei/blob/49e7e745ec3bd4cbf759ba52a83c846a1643bcfa/crates/rhei-core/src/metadata.rs#L48),
+which its own specification
+[declares as the whole set of keys the runtime writes](https://github.com/agent-grounds/rhei/blob/49e7e745ec3bd4cbf759ba52a83c846a1643bcfa/docs/functional-spec/rhei-transitions.spec.md#25-keys-rhei-writes).
+Updating the snapshot means reading that register again and moving the
+recorded revision with it.
+
+**A key the runtime adds after the snapshot is read as it is today until the
+snapshot is updated.** The subtraction is by name and the snapshot does not have
+the name, so the key meets the bound like any word of the store's: a nested
+value is reported as a drop, and a scalar is carried into `meta`. That is the
+cost of a copy, said here so that a note naming a runtime key nobody wrote reads
+as a snapshot that has fallen behind rather than as the rule failing.
+
+**An author who writes one of the five names has it declined silently.** The
+subtraction is by the exact name, never by the shape of the value, and the
+runtime's use of the name wins over the author's: the key is taken out with the
+rest of the bookkeeping, no note says so, and an author wanting the word to
+reach a selector, a template or a summons chooses another name. These names are
+not reservations — a plan that writes one still validates, and the runtime
+still reads the key as its own.
 
 ## 9. Work that stops for a person says so where the person is looking
 

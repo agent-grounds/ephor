@@ -3158,6 +3158,10 @@ states:
     /// will take, an identifier rather than prose, 1 KiB. The offending key
     /// goes, the rest is carried, and each drop says which part of the bound
     /// it broke.
+    ///
+    /// Every key here is one an author wrote. The runtime's own bookkeeping is
+    /// no part of the bound: it is declined before the bound sees it
+    /// (§FS-005-dispatch.8.1), and that is pinned on its own below.
     #[test]
     fn the_bound_drops_the_key_and_carries_the_rest() {
         let tmp = tempfile::tempdir().unwrap();
@@ -3173,8 +3177,6 @@ metadata:
       live: true
       owners:
         - ana
-      stateVisits:
-        fix: 2
       essay: ESSAY
       'rollout pct': 50
       handover: |
@@ -3193,7 +3195,6 @@ metadata:
         );
         for (key, why) in [
             ("owners", "not a scalar"),
-            ("stateVisits", "not a scalar"),
             ("essay", "at most"),
             ("rollout pct", "a shell will take"),
             ("handover", "prose"),
@@ -3244,6 +3245,138 @@ metadata:
             read.dropped.is_empty(),
             "a name ephor wrote here was reported as though the store had lost it:\n{}",
             read.dropped.join("\n")
+        );
+    }
+
+    /// The runtime's register as the test spells it, by hand and apart from the
+    /// binding's own snapshot (§FS-005-dispatch.8.1): a test that read the
+    /// snapshot back would pass for a snapshot that had lost a name.
+    const THE_RUNTIME_WRITES: [&str; 5] = [
+        "stateVisits",
+        "pollNextAttemptAt",
+        "providerLimits",
+        "supervision",
+        "budgetTicketId",
+    ];
+
+    /// The runtime's own bookkeeping is declined before the bound, whatever
+    /// its value looks like (§FS-005-dispatch.8.1). Each of the five names is
+    /// tried once as a scalar and once as a nested map, beside a word the
+    /// author did write: none is carried, none is reported, and the author's
+    /// word is. The name decides and the shape never does, so the scalar
+    /// `budgetTicketId` is held back as surely as the nested `stateVisits` is
+    /// kept out of the notes — and an author who wrote one of these names
+    /// has it declined the same way, because nothing on disk tells the two
+    /// writers apart.
+    #[test]
+    #[ignore = "red until #267: the runtime's names are carried or reported as bound drops; implement removes this"]
+    fn the_runtimes_own_bookkeeping_is_declined_whatever_its_shape() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut wrong = Vec::new();
+        for name in THE_RUNTIME_WRITES {
+            for (shape, value) in [
+                ("a scalar", " kept-by-the-runtime\n".to_string()),
+                ("a nested map", "\n        fix: 2\n".to_string()),
+            ] {
+                let read = read_meta(
+                    tmp.path(),
+                    &format!(
+                        "# Rhei: work\n\n---\nmetadata:\n  tasks:\n    1:\n      {name}:{value}      context: acme-labs\n---\n"
+                    ),
+                    "work",
+                    "1",
+                );
+                if carried(&read) != serde_json::json!({ "context": "acme-labs" }) {
+                    wrong.push(format!(
+                        "'{name}' as {shape} was carried: {}",
+                        carried(&read)
+                    ));
+                }
+                if !read.dropped.is_empty() {
+                    wrong.push(format!(
+                        "'{name}' as {shape} was reported: {}",
+                        read.dropped.join("; ")
+                    ));
+                }
+            }
+        }
+        assert!(
+            wrong.is_empty(),
+            "the runtime's own bookkeeping came back as the store's words:\n{}",
+            wrong.join("\n")
+        );
+
+        // A task whose block holds nothing but the runtime's bookkeeping, in
+        // the shapes the runtime leaves in a running plan, said nothing: absent
+        // rather than an empty map, and no note (§AR-006-matters).
+        let only = read_meta(
+            tmp.path(),
+            "\
+# Rhei: work
+
+---
+metadata:
+  tasks:
+    review:
+      budgetTicketId: 6e48ae55-6626-4549-b64b-71e379740485
+      stateVisits:
+        supervising: 15
+      pollNextAttemptAt:
+        polling: '2026-11-18T19:00:00Z'
+      providerLimits:
+        implement:
+          until: '2026-11-18T20:00:00Z'
+      supervision:
+        phase: released
+---
+",
+            "work",
+            "review",
+        );
+        assert_eq!(
+            only,
+            TaskMeta::default(),
+            "a task holding only the runtime's bookkeeping said something"
+        );
+    }
+
+    /// The snapshot is a copy, and a copy can fall behind
+    /// (§FS-005-dispatch.8.1): a key the runtime adds that the snapshot has
+    /// not got yet is read exactly as before, a nested value reported as a
+    /// bound drop and a scalar carried, until somebody updates the snapshot.
+    /// This holds today and must go on holding — it is what keeps the
+    /// subtraction by name rather than by a guess at what runtime bookkeeping
+    /// looks like.
+    #[test]
+    fn a_runtime_key_the_snapshot_has_not_got_is_read_as_any_other() {
+        let tmp = tempfile::tempdir().unwrap();
+        let read = read_meta(
+            tmp.path(),
+            "\
+# Rhei: work
+
+---
+metadata:
+  tasks:
+    1:
+      context: acme-labs
+      leaseHolder: runner-7
+      checkpointLedger:
+        supervising: 2
+---
+",
+            "work",
+            "1",
+        );
+        assert_eq!(
+            carried(&read),
+            serde_json::json!({ "context": "acme-labs", "leaseHolder": "runner-7" }),
+            "a scalar the snapshot does not name was not carried"
+        );
+        assert_eq!(
+            read.dropped,
+            vec!["dropped 'checkpointLedger' — the value is not a scalar".to_string()],
+            "a nested value the snapshot does not name was not reported as a drop"
         );
     }
 

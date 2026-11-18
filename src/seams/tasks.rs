@@ -439,8 +439,10 @@ mod tests {
 
     /// The bound: a value that is not a scalar, a value over the cap, and a key
     /// no shell will take are each dropped, and the rest of the map is carried
-    /// (§FS-005-dispatch.8). The runtime's own counters are a nested map, so the
-    /// bound drops them before any subtraction has to think about them.
+    /// (§FS-005-dispatch.8). Every key here is one an author wrote; the
+    /// runtime's own bookkeeping never reaches the bound, because it is declined
+    /// before it (§FS-005-dispatch.8.1), and the test after this one pins that
+    /// together with what the refresh says.
     #[test]
     fn a_key_the_bound_refuses_is_dropped_and_the_rest_is_carried() {
         let tmp = tempfile::tempdir().unwrap();
@@ -449,7 +451,7 @@ mod tests {
             tmp.path(),
             "panta",
             &format!(
-                "# Rhei: work\n\n                 ---\n                 metadata:\n                 \x20 tasks:\n                 \x20   1:\n                 \x20     context: acme-labs\n                 \x20     owners:\n                 \x20       - ana\n                 \x20     stateVisits:\n                 \x20       fix: 2\n                 \x20     essay: {long}\n                 \x20     'rollout pct': 50\n                 ---\n\n                 ## Tasks\n\n                 ### Task 1: Widen the retry window\n**State:** pending\n"
+                "# Rhei: work\n\n                 ---\n                 metadata:\n                 \x20 tasks:\n                 \x20   1:\n                 \x20     context: acme-labs\n                 \x20     owners:\n                 \x20       - ana\n                 \x20     essay: {long}\n                 \x20     'rollout pct': 50\n                 ---\n\n                 ## Tasks\n\n                 ### Task 1: Widen the retry window\n**State:** pending\n"
             ),
         );
         let items = read(
@@ -466,6 +468,111 @@ mod tests {
             serde_json::json!({ "context": "acme-labs" }),
             "the bound kept the wrong keys: {:#?}",
             items[0].raw["meta"]
+        );
+    }
+
+    /// The runtime's own bookkeeping is declined before the bound, and what the
+    /// refresh says and what the matters carry are pinned together, so neither
+    /// a note filter nor a value filter alone passes (§FS-005-dispatch.8.1).
+    /// `review` holds nothing but bookkeeping and carries no `meta` at all;
+    /// `handover` holds an author's list beside the runtime's counters, and the
+    /// list is the one note the read says. The alias rule is unchanged by the
+    /// subtraction (§FS-006-project-interface.7): the bare id still wins over
+    /// the plan-qualified spelling, so task 3's aliased list is never read, and
+    /// a block found only under the alias is subtracted the same way.
+    #[test]
+    #[ignore = "red until #267: the runtime's names reach meta and the drop notes; implement removes this"]
+    fn the_runtimes_bookkeeping_is_declined_and_only_the_authors_drop_is_said() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = plan_dir(
+            tmp.path(),
+            "panta",
+            "# Rhei: work\n\n\
+             ---\n\
+             metadata:\n\
+             \x20 tasks:\n\
+             \x20   review:\n\
+             \x20     budgetTicketId: 6e48ae55-6626-4549-b64b-71e379740485\n\
+             \x20     stateVisits:\n\
+             \x20       supervising: 15\n\
+             \x20     pollNextAttemptAt:\n\
+             \x20       polling: '2026-11-18T19:00:00Z'\n\
+             \x20     providerLimits:\n\
+             \x20       implement:\n\
+             \x20         until: '2026-11-18T20:00:00Z'\n\
+             \x20     supervision:\n\
+             \x20       phase: released\n\
+             \x20   handover:\n\
+             \x20     context: acme-labs\n\
+             \x20     owners:\n\
+             \x20       - ana\n\
+             \x20       - bo\n\
+             \x20     stateVisits:\n\
+             \x20       review: 2\n\
+             \x20     budgetTicketId: 0b9f3c1e-5d1a-4c2e-9a7f-2f1e8d6c4b3a\n\
+             \x20   work.3:\n\
+             \x20     context: aliased\n\
+             \x20     owners:\n\
+             \x20       - cy\n\
+             \x20   3:\n\
+             \x20     context: canonical\n\
+             \x20     supervision:\n\
+             \x20       phase: released\n\
+             \x20     budgetTicketId: 7c2d1e0f-3b4a-4f5e-8d6c-1a2b3c4d5e6f\n\
+             \x20   work.4:\n\
+             \x20     context: aliased\n\
+             \x20     stateVisits:\n\
+             \x20       fix: 1\n\
+             \x20     budgetTicketId: 9e8d7c6b-5a4f-4e3d-2c1b-0a9f8e7d6c5b\n\
+             ---\n\n\
+             ## Tasks\n\n\
+             ### Task review: Review the shipped spec\n**State:** pending\n\n\
+             ### Task handover: Hand the signing key over\n**State:** pending\n\n\
+             ### Task 3: Rotate the staging certificate\n**State:** pending\n\n\
+             ### Task 4: Renew the lease\n**State:** pending\n",
+        );
+        let (items, notes) = read_reporting(
+            &Store {
+                kind: Kind::Plans,
+                path: dir,
+            },
+            "widget",
+        )
+        .expect("the store answered");
+        let raw = |id: &str| {
+            items
+                .iter()
+                .find(|item| item.id == id)
+                .unwrap_or_else(|| panic!("no {id} in {items:#?}"))
+                .raw
+                .clone()
+        };
+        let carried: Vec<(&str, serde_json::Value)> = [
+            "rhei:work.review",
+            "rhei:work.handover",
+            "rhei:work.3",
+            "rhei:work.4",
+        ]
+        .into_iter()
+        .map(|id| (id, raw(id).get("meta").cloned().unwrap_or_default()))
+        .collect();
+        assert_eq!(
+            carried,
+            vec![
+                ("rhei:work.review", serde_json::Value::Null),
+                (
+                    "rhei:work.handover",
+                    serde_json::json!({ "context": "acme-labs" })
+                ),
+                ("rhei:work.3", serde_json::json!({ "context": "canonical" })),
+                ("rhei:work.4", serde_json::json!({ "context": "aliased" })),
+            ],
+            "the runtime's bookkeeping reached a matter's meta"
+        );
+        assert_eq!(
+            notes,
+            vec!["rhei:work.handover: dropped 'owners' — the value is not a scalar".to_string()],
+            "the read reported something other than the one key an author lost"
         );
     }
 
