@@ -1176,6 +1176,36 @@ pub struct TaskMeta {
     pub dropped: Vec<String>,
 }
 
+/// The names the runtime writes into a task's own block for its bookkeeping
+/// (§FS-005-dispatch.8.1): how often the task entered each state, when a poll
+/// may try again, a parked provider limit, a supervisor's phase, the ticket's
+/// budget identity. None of it is the store's word.
+///
+/// A snapshot, and so the one copy §FS-005-dispatch.8 keeps on purpose: the
+/// seam is a contract in materials (§REQ-001-boundary.1), so there is no
+/// writer on this side of it to derive the list from, and it is kept in the
+/// binding that knows the runtime's grammar and nowhere above it
+/// (§REQ-001-boundary.5). Taken from
+/// [the runtime's register at `49e7e745ec3b`](https://github.com/agent-grounds/rhei/blob/49e7e745ec3bd4cbf759ba52a83c846a1643bcfa/crates/rhei-core/src/metadata.rs#L48);
+/// updating it means reading that register again and moving the revision here
+/// with it. A name the runtime adds after that revision is read as any other
+/// key until this list has it.
+const RUNTIME_BOOKKEEPING: [&str; 5] = [
+    "stateVisits",
+    "pollNextAttemptAt",
+    "providerLimits",
+    "supervision",
+    "budgetTicketId",
+];
+
+/// Whether the runtime keeps its own bookkeeping under this name in a task's
+/// block (§FS-005-dispatch.8.1). By the exact name and never by the shape of
+/// the value, so an author who writes one of these names has it declined
+/// with the rest, and a runtime key the snapshot lacks still meets the bound.
+fn runtime_bookkeeping(key: &str) -> bool {
+    RUNTIME_BOOKKEEPING.contains(&key)
+}
+
 /// One entry of the store's task map, under a key it may have written as a
 /// bare number as readily as a string.
 fn entry<'a>(tasks: &'a serde_yaml::Value, key: &str) -> Option<&'a serde_yaml::Value> {
@@ -1582,7 +1612,8 @@ impl Plan {
     /// What the plan says about one of its own tasks
     /// (§FS-006-project-interface.7): the block the store keeps under this
     /// task's id in its own frontmatter, held to §FS-005-dispatch.8's bound
-    /// and with the names ephor writes there itself subtracted.
+    /// and with the names ephor writes there itself subtracted, and the
+    /// runtime's own bookkeeping with them (§FS-005-dispatch.8.1).
     ///
     /// The documented key is the task's own id; `<plan id>.<task id>` is
     /// accepted as an alias, and the bare id wins where a plan writes both.
@@ -1623,6 +1654,12 @@ impl Plan {
             // did say and has lost. The list is derived from the two functions
             // that write it, never copied.
             if crate::work::dossier::written_into_a_ticket(&key) {
+                continue;
+            }
+            // The runtime's own bookkeeping is declined the same way and for the
+            // same reason, by name and before the bound, so a nested counter is
+            // no drop and a scalar is not carried (§FS-005-dispatch.8.1).
+            if runtime_bookkeeping(&key) {
                 continue;
             }
             match bounded(&key, value) {
@@ -3269,7 +3306,6 @@ metadata:
     /// has it declined the same way, because nothing on disk tells the two
     /// writers apart.
     #[test]
-    #[ignore = "red until #267: the runtime's names are carried or reported as bound drops; implement removes this"]
     fn the_runtimes_own_bookkeeping_is_declined_whatever_its_shape() {
         let tmp = tempfile::tempdir().unwrap();
         let mut wrong = Vec::new();

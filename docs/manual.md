@@ -1037,6 +1037,30 @@ bury the drops that do mean something. If you meant to say `context` and wrote
 `state`, the key is gone and the refresh is quiet about it — that list is the
 one to check.
 
+**The runtime's own bookkeeping is taken out the same way.** The runtime that
+works a plan keeps its own per-task bookkeeping in that same block — how often a
+task entered each state, when a poll may try again, a parked provider limit, a
+supervisor's phase, a ticket's budget identity — under five names:
+`stateVisits`, `pollNextAttemptAt`, `providerLimits`, `supervision` and
+`budgetTicketId`. They are declined silently and before the bound, whatever
+their value looks like
+([§FS-005-dispatch.8.1](functional-spec/FS-005-dispatch.md#81-the-runtimes-own-bookkeeping-is-declined-the-same-way-from-a-snapshot)):
+a nested counter is not reported as a drop, because nobody who could act on the
+note wrote it, and a scalar is not carried, so none of the five reaches `meta`
+— not a recipe's `when`, not a `{meta.<key>}` template, not the `EPHOR_META_*`
+environment, not `raw.meta` under `--json`. That is a change for one key you
+may have seen: `budgetTicketId`, a scalar, used to be carried into a `rhei`
+task's `meta`, and is no longer there.
+
+The subtraction is by the exact name, so if you wrote one of those five names
+for a word of your own, it is declined with the runtime's and nothing tells you;
+choose another name. The five are a snapshot of the runtime's own register,
+recorded with the revision it was taken from, because ephor reads the runtime's
+files and never links its code. A key the runtime starts writing after that
+revision is read exactly as it was before — a nested value reported as a drop, a
+scalar carried — until the snapshot catches up, so a drop note naming a runtime
+key nobody wrote is the snapshot falling behind rather than the rule failing.
+
 Finding a store is a capability, never an obligation: it buys the *tasks* rung
 and nothing about a project without one degrades
 ([§7.5](#75-why-something-is-not-offered)).

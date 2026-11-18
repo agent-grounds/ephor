@@ -481,7 +481,6 @@ mod tests {
     /// the plan-qualified spelling, so task 3's aliased list is never read, and
     /// a block found only under the alias is subtracted the same way.
     #[test]
-    #[ignore = "red until #267: the runtime's names reach meta and the drop notes; implement removes this"]
     fn the_runtimes_bookkeeping_is_declined_and_only_the_authors_drop_is_said() {
         let tmp = tempfile::tempdir().unwrap();
         let dir = plan_dir(
