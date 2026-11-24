@@ -341,6 +341,12 @@ The admission decides how many start
 a full site lays everything and starts what fits.
 
 `ephor work process --all` is the same move, and `--dry-run` is its preview.
+It lays work in every project its rows belong to, so it is a sweep and is held
+to the gate every sweep is ([§FS-011-command-line.10](FS-011-command-line.md#10-a-mutating-verb-above-one-project-reports-and-acts-under---act)): above one project it
+prints the preview, writes nothing and names `--act`, and `--project` and the
+selectors narrow which projects' rows it takes
+([§FS-011-command-line.9](FS-011-command-line.md#9-a-scope-selector-is-honoured-or-refused)). On the screen the preview is the confirmation, and
+`Enter` on it is the reader's act.
 
 ### 7.6 Running names what waits for a slot
 

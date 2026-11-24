@@ -316,7 +316,7 @@ runs over the whole site and nothing in what it prints says so
 The three project selectors — `--workspace`, `--tag`, `--org` — name a set of
 projects, read from the registry. The verbs that read a set of projects honour
 them: `list`, `status`, `feed`, `refresh`, `mark-read`, `branches`, the screen,
-`work list`, `work dispatch`, `work sync`, `work run`, and the managed-workspace
+`work list`, `work dispatch`, `work sync`, `work run`, `work process`, and the managed-workspace
 verbs `validate`, `ensure-agents` and `update` — and `rebase`, on the condition
 below. Every other verb refuses each
 selector it was given, naming itself and the flag and saying which selectors it
@@ -629,7 +629,7 @@ is smaller than a project belongs on the same side of it.
 `--act` is global, declared beside the selectors and for their reason: a flag
 each verb had to remember is a flag the next mutating verb forgets, and in the
 selector forgetting is impossible. It is accepted exactly where the gate can
-fire — `work dispatch`, `work sync`, `work run`, `clean`, and `rebase` where a
+fire — `work dispatch`, `work sync`, `work run`, `work process`, `clean`, and `rebase` where a
 selector makes it sweep — and refused **by name** everywhere else, exiting **2** like a
 refused selector. A `rebase` that sweeps nothing is one of those elsewheres: the
 gate cannot fire on one checkout, so the flag would parse and change nothing,
@@ -672,8 +672,8 @@ ungated, and says so on the help they share.
 condition — with no selector it is about the one checkout it was given — rather
 than either half alone. `work retire` says `work retire does not take --act.`
 and that it sweeps no set of projects, exactly as `work cancel` does, and its
-help says it takes no scope selector. The four verbs the gate can fire on, `work dispatch`,
-`work sync`, `work run` and `clean`, carry no such sentence. As with the
+help says it takes no scope selector. The five verbs the gate can fire on, `work dispatch`,
+`work sync`, `work run`, `work process` and `clean`, carry no such sentence. As with the
 selectors, the sentence is derived from the classification the refusal reads.
 
 ## 11. A report reaches a terminal as prose and a file as markdown
