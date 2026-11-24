@@ -396,7 +396,8 @@ ephor ensure-agents --type monorepo --root ~/tmp/scratch \
     "github_user": "you",             // skips one `gh api user` per refresh
     "recent_days": 7,                 // how long finished work stays under Recent
     "browser": "xdg-open",            // explicit opener; omit for automatic (§4.5)
-    "window": "tmux"                  // where a program of its own runs (§8.16)
+    "window": "tmux",                 // where a program of its own runs (§8.16)
+    "start_screen": "waiting"         // what `ephor tui` opens on: waiting or overview (§6)
   },
   "sources": [ /* §4.3 — fetched once, placed by ephor */ ],
   "actions": [ /* §7 */ ],
@@ -1582,8 +1583,46 @@ its whole value is that you can believe it.
 ## 6. The inbox
 
 ```bash
-ephor tui        # alias: ephor inbox
+ephor tui              # alias: ephor inbox; opens on the Waiting screen
+ephor tui --overview   # opens on the feed itself, for this launch
+ephor waiting          # the Waiting screen as a command; --json for a program
 ```
+
+**The Waiting screen** is what the inbox opens on
+([§FS-019-waiting](functional-spec/FS-019-waiting.md#fs-019-waiting-ephor-opens-on-what-waits-on-the-reader-and-every-matter-is-one-key-away)). It answers the question a person opens ephor with — what
+needs me now — in three sections, in this order:
+
+- **Waiting on you**: every ticket parked at a gate, under every work root the
+  operations board finds (§8.13), plans ephor never dispatched included, named
+  by the ticket's own heading; and every poll that declares it waits on you —
+  `you`, `owner`, or `author` / `reviewer` on a matter the feed says you wrote
+  or are reviewing. A poll row says `waiting on <person> · not yours to move
+  here`: it moves itself when its answer lands. A poll on anyone or anything
+  else (the forge, a release tag) waits on the world and stays on the board.
+- **New**: every matter the feed shows that is not finished and that the
+  ledger records no work about — nothing has been done about it yet. A matter
+  carrying a label some selector of yours excludes by name, such as
+  `"labels": ["!human-discussion"]` on a recipe or an action, is **held**: it
+  is listed apart, once, with the label, and offered nothing.
+- **Running**: every live run, with the tickets it holds and how long it has
+  been going, counted from the start the run published.
+
+How long a gate has waited and what it holds back are shown only where the
+runtime reports them; no file timestamp stands in. An empty section is one
+line, and an empty screen says `Nothing is waiting on you.` and still shows
+what is running. Reading the work roots takes as long as the operations board
+does, so the first frame says `Reading what waits on you…` until it lands. The footer always opens with
+`overview: 143 matters · 12 changed since you looked`, so a quiet screen is
+never mistaken for a quiet feed.
+
+The **overview** is the feed itself, below, unchanged and one key away: `O`
+opens it from any screen, and `O` on it comes back to Waiting. `Esc` from a
+screen comes back to whichever of the two you were last on. Set
+`defaults.start_screen` to `"overview"` to open on the feed instead (§4).
+
+`ephor waiting` prints the same reading. It reads the cache and the disk,
+fetches nothing and writes nothing, and answers for the whole site, so the
+scope selectors are refused.
 
 Everything is organized per organization → project → category → branch. Items
 nest under the branch they belong to: the branch the forge recorded for them
@@ -1703,6 +1742,23 @@ does not report one simply never shows it.
 
 ### 6.3 Keys
 
+**Waiting** — the first screen; one cursor over all three sections:
+
+| Key | Does |
+|---|---|
+| `j` `k`, arrows | move |
+| `g` `G` | first / last |
+| `Enter` `l` | on a gate, its review — the screen `H` opens (§8.7.2); on a poll, the matter's thread or the plan; on a new matter, its thread; on a running row, attach (§8.16) |
+| `e` | read the plan behind a gate, poll or running row |
+| `O` | the overview — and from the overview, back here |
+| `;` `$` | the operations board and the burn page, as from any screen |
+| `r` | refresh underneath the screen |
+| `Esc` | nothing: this is the floor |
+| `q`, `^C` | quit |
+
+A gate whose plan no matter on the feed is about cannot be reviewed by matter;
+`Enter` says so, and `e` reads the plan.
+
 **Navigator** — Stream (everything), Projects (one row per project), Detail
 (one project and its branches):
 
@@ -1724,6 +1780,7 @@ does not report one simply never shows it.
 | `u` | unread-only ↔ everything |
 | `;` | the operations board (§8.13) — from any screen |
 | `$` | the burn page (§9) — from any screen |
+| `O` | the Waiting screen — and from any other screen, the overview |
 | `[` `]` | previous / next project (Detail) |
 | `Esc` `h` | back |
 | `r` | refresh underneath the screen — the projects it was opened over, and in Detail only that project |

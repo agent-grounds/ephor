@@ -123,7 +123,8 @@ branches, ticket inference, branch workspaces, and hook sets. The embedded
 ## Status feed
 
 ```bash
-ephor tui                                   # interactive inbox (alias: ephor inbox)
+ephor tui [--overview]                      # interactive inbox (alias: ephor inbox)
+ephor waiting [--json]                      # what waits on you, what is new, what runs
 ephor refresh [PROJECT ...] [--project P]... [--quiet] # fetch providers into the cache
 ephor refresh [PROJECT ...] --source NAME [--only CAP]  # ask one source, or one capability of it
 ephor status                                # summary table per project
@@ -152,7 +153,14 @@ working; deliberate forwarding is available through explicit bindings. See
 
 ### Inbox TUI
 
-Everything in `ephor tui` is organized per organization (with its checkout
+`ephor tui` opens on the **Waiting** screen: the tickets parked at a gate and
+the polls that wait on you, the matters nothing has been done about yet, and
+the runs going now — the same reading `ephor waiting` prints. The feed itself,
+below, is the overview, one key (`O`) away; `defaults.start_screen:
+"overview"` or `ephor tui --overview` opens on it instead
+([docs/manual.md §6](docs/manual.md#6-the-inbox)).
+
+Everything in the overview is organized per organization (with its checkout
 folder from the registry's `organizations[].root`, e.g. Widget — `~/c/g`,
 Foundation — `~/f`), then per project, then per type (Status / My Pull
 Requests / Reviewing / CI / Messages), then per branch — items nest under the registry
