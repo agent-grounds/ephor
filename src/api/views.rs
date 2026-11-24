@@ -892,7 +892,8 @@ pub struct OnYou {
     /// `<plan>.<ticket>`.
     pub ticket: String,
     /// The ticket's own heading, and the plan's title only where the ticket
-    /// has none.
+    /// has none; on a gate the runtime lists, the title its brief gives
+    /// (§FS-019-waiting.1.1.1).
     pub title: String,
     pub state: String,
     pub project: String,
@@ -913,6 +914,15 @@ pub struct OnYou {
     /// where the feed carries one (§FS-019-waiting.4).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub review: Option<String>,
+    /// On a gate the runtime lists: when the ticket began waiting, and `null`
+    /// where the runtime listed it and does not know. Absent where the
+    /// runtime listed nothing about it (§FS-019-waiting.1.1.1).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub since: Option<Option<DateTime<Utc>>>,
+    /// On a gate the runtime lists: how many unfinished tasks cannot move
+    /// until it does (§FS-019-waiting.1.1.1).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub holds: Option<u64>,
 }
 
 /// A matter nothing has been done about yet (§FS-019-waiting.1.2).
@@ -1126,4 +1136,39 @@ pub struct Decided {
     pub laid: usize,
     /// Matters recorded as needing no rhei since local midnight.
     pub dismissed: usize,
+}
+
+/// `ephor guide` (§FS-020-guide.4): the topics, and for a named topic its
+/// text. For `gate`, the runtime's own request and answer schemas, or the
+/// sentence saying why there are none.
+#[derive(Debug, Clone, Serialize)]
+pub struct Guide {
+    /// The topic asked for; absent where none was.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub topic: Option<String>,
+    pub topics: Vec<GuideTopic>,
+    /// What the text form prints: the list of topics, or the topic's text.
+    pub text: String,
+    /// On `gate`: the schemas the bound runtime printed, carried unchanged.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub schemas: Option<GuideSchemas>,
+    /// On `gate`: why there are no schemas, where there are none.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub schemas_unavailable: Option<String>,
+}
+
+/// One topic `ephor guide` explains (§FS-020-guide.1).
+#[derive(Debug, Clone, Serialize)]
+pub struct GuideTopic {
+    pub name: String,
+    /// The one line that says what it explains.
+    pub summary: String,
+}
+
+/// The bound runtime's own schemas for a gate's request and its answer; ephor
+/// keeps no copy of either (§FS-020-guide.4).
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct GuideSchemas {
+    pub request: Value,
+    pub answer: Value,
 }

@@ -17,6 +17,7 @@ pub mod accounting;
 pub mod events;
 pub mod exclusion;
 pub mod gate;
+pub mod guide;
 pub mod human_gate;
 pub mod plan;
 pub mod results;

@@ -562,6 +562,29 @@ pub fn operations(args: &OperationsArgs) -> Result<ExitCode> {
 /// `ephor waiting` (§FS-019-waiting.6): the first screen as a command — the
 /// same reading, its three sections, the held line and the overview line, in
 /// the screen's order. It reads the cache and the disk and writes nothing.
+/// `ephor guide [topic]` (§FS-020-guide): the guide's text, or its view. It
+/// needs no site configuration to answer: without one, the runner is the
+/// default binding's, which is the one an agent on a fresh machine would get.
+pub fn guide(args: &crate::cli::GuideArgs) -> Result<ExitCode> {
+    let work = if crate::feed::config::config_path().exists() {
+        load_config()?.work
+    } else {
+        crate::work::recipe::WorkConfig::default()
+    };
+    let view = crate::api::guide::guide(&work, args.topic.as_deref())?;
+    if args.json {
+        emit(&view);
+        return Ok(ExitCode::SUCCESS);
+    }
+    print!("{}", view.text);
+    if let Some(why) = &view.schemas_unavailable {
+        println!("\nNo schemas: {}.", why.trim_end_matches('.'));
+    } else if view.schemas.is_some() {
+        println!("\n`ephor guide gate --json` carries the request and answer schemas.");
+    }
+    Ok(ExitCode::SUCCESS)
+}
+
 pub fn waiting(args: &crate::cli::WaitingArgs) -> Result<ExitCode> {
     let config = load_config()?;
     let mut session = Session::open(&config)?;

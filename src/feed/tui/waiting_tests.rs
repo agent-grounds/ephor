@@ -42,6 +42,8 @@ fn gate(ticket: &str, review: Option<&str>) -> views::OnYou {
         waiting_on: None,
         movable: true,
         review: review.map(str::to_string),
+        since: None,
+        holds: None,
     }
 }
 
@@ -59,6 +61,8 @@ fn poll() -> views::OnYou {
         waiting_on: Some("author".to_string()),
         movable: false,
         review: None,
+        since: None,
+        holds: None,
     }
 }
 
@@ -170,6 +174,31 @@ fn the_screen_is_three_sections_in_order_under_a_counting_header() {
     // (§FS-019-waiting.1.3).
     assert!(text.contains("implement  fix/issue-3"), "{text}");
     assert!(!text.contains(crate::api::waiting::QUIET), "{text}");
+}
+
+/// A gate the runtime listed says on its row how long it has waited and what
+/// it holds, and an unknown start reads as unknown (§FS-019-waiting.1.1.1).
+#[test]
+fn a_listed_gate_says_how_long_it_has_waited_and_what_it_holds() {
+    let mut old = gate("widget-7.ask-1", None);
+    old.since = Some(Some(Utc::now() - chrono::Duration::days(3)));
+    old.holds = Some(4);
+    let mut unknown = gate("widget-7.ask-2", None);
+    unknown.since = Some(None);
+    unknown.holds = Some(1);
+    let screen = WaitingScreen::new(
+        reading(vec![old, unknown], Vec::new(), Vec::new()),
+        BTreeMap::new(),
+    );
+    let text = screen.text();
+    assert!(
+        text.contains("human-gate · waited 3d · holds 4 tasks"),
+        "{text}"
+    );
+    assert!(
+        text.contains("human-gate · waited unknown · holds 1 task"),
+        "{text}"
+    );
 }
 
 /// The header says how old the feed under the reading is, and a run between

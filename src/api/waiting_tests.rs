@@ -7,7 +7,7 @@ use std::path::PathBuf;
 use chrono::{TimeZone, Utc};
 use serde_json::json;
 
-use super::{names_reader, reading, unprocessed};
+use super::{listed, names_reader, reading, unprocessed};
 use crate::api::read::{Asked, BoardReading, Running};
 use crate::feed::model::{Item, ItemKind, ItemRole};
 use crate::work::recipe::WorkConfig;
@@ -337,4 +337,147 @@ fn decided_today_counts_marks_and_dismissals_since_local_midnight() {
         .insert("e".to_string(), dismissal(yesterday));
     let decided = super::decided(&ledger, now);
     assert_eq!((decided.laid, decided.dismissed), (2, 1));
+}
+
+/// Three gates under two roots and a poll, as the enumeration finds them.
+fn three_gates_and_a_poll() -> crate::api::views::Waiting {
+    let board = BoardReading {
+        running: vec![
+            Running {
+                op: operation(
+                    "widget",
+                    "/w/widget-7/panta",
+                    false,
+                    vec![
+                        ticket("widget-7", "ask-1", "needs-human", Doing::Waiting, "First"),
+                        ticket("widget-7", "ask-2", "needs-human", Doing::Waiting, "Second"),
+                    ],
+                ),
+                item: None,
+                plan: None,
+            },
+            Running {
+                op: operation(
+                    "widget",
+                    "/w/widget-8/panta",
+                    false,
+                    vec![ticket(
+                        "widget-8",
+                        "ask-1",
+                        "review",
+                        Doing::Waiting,
+                        "Third",
+                    )],
+                ),
+                item: None,
+                plan: None,
+            },
+        ],
+        asks: vec![ask("you", None)],
+        refusal: None,
+        matters: BTreeMap::new(),
+    };
+    read(board)
+}
+
+fn gate(ticket: &str, state: &str, since: Option<&str>, holds: u64) -> Listed {
+    serde_json::from_value(json!({
+        "ticket": ticket, "state": state, "title": format!("Brief of {ticket}"),
+        "since": since, "holds": holds
+    }))
+    .unwrap()
+}
+
+use crate::work::runtime::gate::Listed;
+
+/// The runtime's listing is asked once per root that holds a gate row, and
+/// lends a row its brief's title, its start and what it holds only where it
+/// names that ticket in that state. It adds no row, and a root it cannot list
+/// keeps the enumeration's rows as they were. Known starts lead, oldest first;
+/// an unknown start is not zero, and sorts behind them with every row the
+/// listing said nothing about (§FS-019-waiting.1.1.1).
+#[test]
+fn a_listing_names_each_gate_and_puts_the_oldest_first() {
+    let mut waiting = three_gates_and_a_poll();
+    let asked = std::cell::RefCell::new(Vec::new());
+    listed(&mut waiting.on_you, &|root| {
+        asked.borrow_mut().push(root.to_path_buf());
+        match root.to_str() {
+            Some("/w/widget-7/panta") => Some(vec![
+                gate("widget-7.ask-1", "needs-human", None, 0),
+                gate(
+                    "widget-7.ask-2",
+                    "needs-human",
+                    Some("2026-11-22T10:00:00Z"),
+                    6,
+                ),
+                // Not found by the enumeration, so never a row.
+                gate(
+                    "widget-7.ask-9",
+                    "needs-human",
+                    Some("2026-11-01T10:00:00Z"),
+                    1,
+                ),
+            ]),
+            Some("/w/widget-8/panta") => Some(vec![
+                // Listed in another state: the row is left as it was.
+                gate(
+                    "widget-8.ask-1",
+                    "elsewhere",
+                    Some("2026-11-20T10:00:00Z"),
+                    2,
+                ),
+            ]),
+            _ => None,
+        }
+    });
+    assert_eq!(
+        *asked.borrow(),
+        vec![
+            PathBuf::from("/w/widget-7/panta"),
+            PathBuf::from("/w/widget-8/panta")
+        ],
+        "one listing per root that holds a gate, and none for the poll's"
+    );
+    let rows: Vec<(&str, &str)> = waiting
+        .on_you
+        .iter()
+        .map(|row| (row.ticket.as_str(), row.title.as_str()))
+        .collect();
+    assert_eq!(
+        rows,
+        vec![
+            ("widget-7.ask-2", "Brief of widget-7.ask-2"),
+            ("widget-7.ask-1", "Brief of widget-7.ask-1"),
+            ("widget-8.ask-1", "Third"),
+            ("widget-9.approve-1", "Approve the plan"),
+        ]
+    );
+    let now = Utc.with_ymd_and_hms(2026, 11, 24, 12, 0, 0).unwrap();
+    let says: Vec<String> = waiting.on_you.iter().map(|row| row.says_at(now)).collect();
+    assert_eq!(
+        says,
+        vec![
+            "needs-human · waited 2d · holds 6 tasks",
+            "needs-human · waited unknown · holds nothing",
+            "review",
+            "waiting on you · not yours to move here",
+        ]
+    );
+    let view = serde_json::to_value(&waiting.on_you).unwrap();
+    assert_eq!(view[0]["since"], "2026-11-22T10:00:00Z");
+    assert_eq!(view[0]["holds"], 6);
+    assert!(view[1]["since"].is_null() && view[1].get("since").is_some());
+    assert!(view[2].get("since").is_none() && view[2].get("holds").is_none());
+}
+
+/// A runtime that lists nothing leaves every row exactly as the enumeration
+/// gave it, in the enumeration's order (§FS-019-waiting.1.1.1).
+#[test]
+fn without_a_listing_the_rows_stay_as_the_enumeration_gave_them() {
+    let before = serde_json::to_value(&three_gates_and_a_poll().on_you).unwrap();
+    let mut waiting = three_gates_and_a_poll();
+    listed(&mut waiting.on_you, &|_| None);
+    assert_eq!(serde_json::to_value(&waiting.on_you).unwrap(), before);
+    assert_eq!(waiting.on_you[0].says(), "needs-human");
 }

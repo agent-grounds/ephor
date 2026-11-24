@@ -522,6 +522,11 @@ const SWEEP: &[(&str, &[&str])] = &[
     ("branches", &["branches", "--json"]),
     ("operations", &["operations", "--json"]),
     ("waiting", &["waiting", "--json"]),
+    // This world's runtime prepares no gate briefs, so `gate` carries the
+    // sentence why instead of schemas (§FS-020-guide.4).
+    ("guide", &["guide", "--json"]),
+    ("guide", &["guide", "gate", "--json"]),
+    ("guide", &["guide", "matter", "--json"]),
     ("burn", &["burn", "--json"]),
     (
         "burn",
