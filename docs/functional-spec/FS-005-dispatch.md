@@ -629,6 +629,22 @@ with that reason. What the ledger keeps about a retirement is additive
 ([§FS-005-dispatch.36.5](FS-005-dispatch.md#365-the-record-is-written-before-the-move-and-a-retirement-left-half-done-is-finished-or-undone)): the original placements stay as
 written, and an older ephor reads the entry and ignores what it does not know.
 
+**What a person decided on the Waiting screen is recorded beside the work, and
+is not work.** Processing a new matter ([§FS-019-waiting.7](FS-019-waiting.md#7-a-new-matter-is-processed-where-it-is-shown)) keeps two
+records of its own, keyed by the matter's feed id like the entries:
+
+- a **dismissal**, about a matter a person decided needs no rhei: the reason,
+  when, and the matter's fingerprint at that moment
+  ([§FS-019-waiting.7.4](FS-019-waiting.md#74-x-records-that-a-matter-needs-no-rhei)); and
+- a **processing mark**, about a matter a person processed: which entry was
+  confirmed, for which kind of matter, when, and, while the start it asked for
+  has not happened, that the work is queued and the admission's sentence for
+  why ([§FS-019-waiting.7.6](FS-019-waiting.md#76-running-names-what-waits-for-a-slot)).
+
+Both are additive, in the sense above. Neither is the state of any work: a
+dismissal holds back no recipe and no action, and a queued mark says only that
+a start was asked for, never what the work is doing.
+
 ## 5. An item that moved reopens its work
 
 Work asked about a pull request is answered against the pull request as it was.
@@ -678,6 +694,13 @@ past it.
 Reopening is a decision, not a reflex. It is offered where it applies and
 performed when asked for — by a person or by whatever runs the sync — and never
 as a side effect of merely looking at the feed.
+
+**A dismissal is lifted by the same comparison.** A matter a person recorded as
+needing no rhei ([§FS-019-waiting.7.4](FS-019-waiting.md#74-x-records-that-a-matter-needs-no-rhei)) is new again the moment its
+fingerprint differs from the one the dismissal took. That is read, never
+written: the dismissal stays in the ledger as the record of what was decided
+about the matter as it then was, and a reading that finds the matter moved
+simply no longer counts it.
 It is also offered at a stale draft ([§FS-005-dispatch.13.2](FS-005-dispatch.md#132-a-stale-draft-is-shown-against-what-moved-since-it-was-drafted)), and for work bound
 to a conversation the reopened ticket says what changed in the review's terms,
 by author and position (`dana edited [0]`), rather than that there is new
@@ -3602,6 +3625,24 @@ A poll whose interval cannot be read holds its slot for the same reason. And
 the ceilings gate starts, not what is under way already: free roots resuming
 together — an author answering, a build finishing — can carry active work above
 `max_active` until one finishes, capacity here being live work, not attempts.
+
+### 24.5 Work processed from Waiting waits for its slot
+
+A person who processes a matter from the Waiting screen
+([§FS-019-waiting.7.2](FS-019-waiting.md#72-confirming-lays-it-records-it-and-starts-it)) asked for its work to be laid and started. **The start
+is the sweep's**, narrowed to the roots holding that matter's work: the same
+admission, the same ceilings, the same pools, the same back-off, and the spend
+ceiling binding as it binds a sweep. Nothing about who pressed the key widens
+what may run at once, because the work loses nothing by waiting for a slot and
+a site's ceilings are the one place its capacity is written.
+
+What the admission does not start is **queued**, and the processing mark says
+so ([§FS-005-dispatch.4](FS-005-dispatch.md#4-the-ledger-is-ephors-record-and-never-the-truth-about-the-work)). Every later sweep reads a queued matter's work as
+work that asked to run itself, exactly as if its entry said `autorun`, so the
+next `ephor work run --due` with room for it starts it. The sweep that starts
+it clears the mark. A queued matter's work is judged like any other: a gate
+still holds its own tree, a private matter is still never started by a sweep,
+and a plan that is over is not due whatever the mark says.
 
 ## 25. Work about a matter with no branch can mint the branch it needs
 
