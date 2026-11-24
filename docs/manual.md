@@ -348,7 +348,8 @@ Nothing was written: work dispatch reaches 4 projects, and above one it
 reports what it would do. Pass --act to do it.
 ```
 
-The three verbs it applies to are `work dispatch`, `work sync` and `work run`.
+The four verbs it applies to are `work dispatch`, `work sync`, `work run` and
+`work process --all`.
 The report is each verb's own dry run — `work run`, which has none, prints the
 work roots and the tickets it would run — and under `--json` it is that
 reading with `gated` and `says` added to it.
@@ -1614,6 +1615,36 @@ what is running. Reading the work roots takes as long as the operations board
 does, so the first frame says `Reading what waits on you…` until it lands. The footer always opens with
 `overview: 143 matters · 12 changed since you looked`, so a quiet screen is
 never mistaken for a quiet feed.
+
+**Processing a new matter** happens on the row
+([§FS-019-waiting.7](functional-spec/FS-019-waiting.md#7-a-new-matter-is-processed-where-it-is-shown)). Every new row says what it would be assigned —
+`→ fix-gate`, `→ implement · makes its checkout · 1 more` — which is the first
+entry `ephor actions --item <id>` would hand it over with. A matter no entry
+hands over is offered the runtime's `triage` workflow, and says `→ triage · not
+available` where the runtime offers none. A held matter is offered nothing.
+
+| Key | On a new row |
+|---|---|
+| `Enter` | the processing screen: the proposal, why it is the one, and what a dry run says it would lay; `Enter` there lays it, records it and asks for a start |
+| `a` | choose another entry, or a workflow no entry names |
+| `x` | record that it needs no rhei, with a reason; lifted when the matter moves |
+| `A` | preview every unambiguous row, then process them all on `Enter` |
+| `l` | open the matter itself, as `Enter` on the overview does |
+
+The start is the sweep's own admission: `max_concurrent`, `max_active`, a pool
+and the spend ceiling decide whether it starts now. Work they hold back is laid
+all the same and **queued**, named in one line under Running —
+`queued 2 · app/101, app/104 · global work.max_active 4 is full …` — until a
+sweep starts it, whatever its recipe asked. Confirm the same entry for three
+matters of one kind and the footer names the setting that would do it without
+you: `fix-gate confirmed for 3 pull requests · "autorun": true and "dispatch" on
+fix-gate would do it without you`. Adopting it is yours to write (§8.9).
+
+```bash
+ephor work process --item ID [--entry E] [--set INPUT=VALUE]… [--dry-run]
+ephor work process --all [--project P]… [--dry-run] [--act]
+ephor work dismiss --item ID --reason WORDS
+```
 
 The **overview** is the feed itself, below, unchanged and one key away: `O`
 opens it from any screen, and `O` on it comes back to Waiting. `Esc` from a
@@ -3878,6 +3909,9 @@ ephor work run [--project P] [--item ID] [--due [--max-concurrent N] [--except R
                [--watch] [--force] [--act] [-- RHEI_ARGS…]
 ephor work workflows [--project P] [WORKFLOW] [--json]
 ephor work lay ENTRY --item ID [--values FILE]… [--set INPUT=VALUE]… [--hand H] [--dry-run]
+ephor work process (--item ID [--entry E] [--set INPUT=VALUE]… | --all [--project P]… [--act])
+                   [--dry-run] [--json]
+ephor work dismiss --item ID --reason WORDS [--json]
 ephor work forget [--item ID | --done | --missing]
 ephor work states [--project P] [--json]
 ```
@@ -4117,6 +4151,20 @@ ephor work states [--project P] [--json]
   entry says which branch its work belongs on (§8.18) and that workspace is not
   there, `lay` makes it before writing — and `--dry-run` makes nothing at all
   and names the workspace it would have made.
+- **`process`** is what `Enter` on a new Waiting row does (§6): the matter's
+  proposal — or the entry `--entry` names — laid exactly as `actions run` or
+  `lay` would lay it, recorded against the matter, and then a start asked of
+  the sweep's own admission for that matter's roots alone. What the admission
+  holds back is laid all the same, says `queued` and the admission's own
+  reason, and the next sweep starts it whatever its recipe asked
+  ([§FS-005-dispatch.24.5](functional-spec/FS-005-dispatch.md#245-work-processed-from-waiting-waits-for-its-slot)). A held matter, one with work already, and a workflow with
+  an input nobody answered are refused, the last naming the `--set` it wants.
+  `--all` is `A`: every unambiguous new row, with the others listed as left
+  for you; above one project it is a sweep and acts only under `--act`.
+- **`dismiss`** records that a matter needs no rhei, with the reason, which
+  takes it out of New. Nothing is written to lift it: the matter moving lifts
+  it, by the same comparison that reopens work
+  ([§FS-019-waiting.7.4](functional-spec/FS-019-waiting.md#74-x-records-that-a-matter-needs-no-rhei)).
 - **`forget`** drops ledger entries only. Ephor deletes no plan: they are the
   record of what was done. What it prints about each entry is read from that
   entry's plans and from the disk, not from the entry's own path: a plan still
