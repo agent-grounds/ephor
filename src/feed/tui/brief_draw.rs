@@ -8,7 +8,7 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{List, ListItem, ListState, Paragraph, Wrap};
 use serde_json::Value;
 
-use crate::work::runtime::gate::{Question, Verdict};
+use crate::work::runtime::gate::{say_holds, Question, Verdict};
 
 use super::answers::fit;
 use super::brief::{BriefScreen, Focus, Stop};
@@ -81,13 +81,14 @@ impl BriefScreen {
             frame.render_widget(Paragraph::new(lines).wrap(Wrap { trim: false }), area);
             return;
         }
-        let mut top = vec![Line::from(Span::styled(
-            format!(
-                "matter {} · ticket {} · visit {}",
-                self.item.title, self.ticket, self.brief.visit
-            ),
-            dim(),
-        ))];
+        let mut facts = format!(
+            "matter {} · ticket {} · visit {}",
+            self.item.title, self.ticket, self.brief.visit
+        );
+        if let Some(holds) = self.holds {
+            facts.push_str(&format!(" · {}", say_holds(holds)));
+        }
+        let mut top = vec![Line::from(Span::styled(facts, dim()))];
         if let Some(summary) = &self.brief.summary {
             top.push(Line::from(""));
             top.extend(summary.lines().map(|line| Line::from(line.to_string())));
@@ -383,7 +384,10 @@ impl BriefScreen {
                 "answer recorded at",
                 verdict.answer_path.clone().unwrap_or_else(unknown),
             ),
-        ] {
+        ]
+        .into_iter()
+        .chain(self.holds.map(|holds| ("releases", releases(holds))))
+        {
             lines.push(Line::from(vec![
                 Span::styled(format!("  {what:<20}"), dim()),
                 Span::raw(says),
@@ -425,6 +429,16 @@ impl BriefScreen {
                 .join(", "),
             _ => "—".to_string(),
         }
+    }
+}
+
+/// What leaving the gate lets go of, on the confirmation
+/// (§FS-005-dispatch.9.3).
+fn releases(holds: u64) -> String {
+    match holds {
+        0 => "no held task".to_string(),
+        1 => "1 held task; the next run picks it up".to_string(),
+        held => format!("{held} held tasks; the next run picks them up"),
     }
 }
 

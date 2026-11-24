@@ -49,6 +49,17 @@ pub struct Gate {
     /// own words; the gate stays reviewable as before (§FS-005-dispatch.9.3).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub unbriefed: Option<String>,
+    /// How many unfinished tasks cannot move until the ticket leaves the
+    /// gate, where the runtime listed it; absent where it did not, never zero
+    /// (§FS-005-dispatch.9.3).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub holds: Option<u64>,
+    /// Every file the review lists for this ticket, in the order it found
+    /// them, a file another gate listed first included: the review names each
+    /// file once, under the first ticket that found it, and this keeps whose
+    /// it also is (§FS-005-dispatch.9.3).
+    #[serde(skip)]
+    pub files: Vec<PathBuf>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -241,11 +252,13 @@ pub fn review_plan(
             destinations,
             brief: None,
             unbriefed: None,
+            holds: None,
+            files: Vec::new(),
         });
-        review.add_file(format!("{ticket} · plan"), path.to_path_buf(), None);
-        review.add_file(format!("{ticket} · task"), task_path.to_path_buf(), None);
+        review.add_gate_file(format!("{ticket} · plan"), path.to_path_buf(), None);
+        review.add_gate_file(format!("{ticket} · task"), task_path.to_path_buf(), None);
         if let Some(machine) = &machine {
-            review.add_file(format!("{ticket} · state machine"), machine.clone(), None);
+            review.add_gate_file(format!("{ticket} · state machine"), machine.clone(), None);
         }
         review.add_links(task_path, &ticket);
         for (kind, artifacts) in [("input", &state.inputs), ("output", &state.outputs)] {
@@ -256,7 +269,7 @@ pub fn review_plan(
                     .replace("{state}", &state.name);
                 let problem = (expanded.contains('{') || expanded.contains('}'))
                     .then(|| "unresolved artifact template".to_string());
-                review.add_file(
+                review.add_gate_file(
                     format!(
                         "{ticket} · {kind} {}{}",
                         artifact.name,
@@ -270,7 +283,7 @@ pub fn review_plan(
         let result = root.join("runtime/results").join(format!("{ticket}.md"));
         if result.exists() {
             review.add_links(&result, &ticket);
-            review.add_file(format!("{ticket} · result"), result, None);
+            review.add_gate_file(format!("{ticket} · result"), result, None);
         }
     }
     Ok(review)
@@ -307,6 +320,17 @@ impl Review {
         });
     }
 
+    /// A file of the gate just pushed: listed once in the review, and kept on
+    /// the gate whoever listed it first.
+    fn add_gate_file(&mut self, name: String, path: PathBuf, problem: Option<String>) {
+        if let Some(gate) = self.gates.last_mut() {
+            if !gate.files.contains(&path) {
+                gate.files.push(path.clone());
+            }
+        }
+        self.add_file(name, path, problem);
+    }
+
     fn add_links(&mut self, source: &Path, ticket: &str) {
         let root = source.parent().unwrap_or(Path::new("."));
         let artifact = Artifact {
@@ -335,7 +359,7 @@ impl Review {
             {
                 continue;
             }
-            self.add_file(
+            self.add_gate_file(
                 format!("{ticket} · linked file"),
                 root.join(destination),
                 None,

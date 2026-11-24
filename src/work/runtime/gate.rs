@@ -35,12 +35,12 @@ pub const SCHEMA_VERB: &str = "work.gate.schema";
 /// Listing every gate under one work root (§FS-019-waiting.1.1.1).
 pub const LIST_VERB: &str = "work.gate.list";
 
-/// The version of the listing the binding reads.
-const LIST_VERSION: u64 = 1;
-
-/// The version of the answer document the binding reads. The binding's
-/// grammar, so it is spelled here and nowhere above.
-const ANSWER_VERSION: u64 = 1;
+/// The version of every gate document the binding reads — brief, verdict,
+/// listing, schemas — and of the answer document it writes. The binding's
+/// grammar, so it is spelled here and nowhere above. A document in any other
+/// version is refused as unreadable, never read by guesswork
+/// (§AR-007-runtime.1).
+const VERSION: u64 = 1;
 
 /// The ids the runtime gives its own stand-in questions: choosing a
 /// destination and giving a reason. A required question of any other id is
@@ -165,6 +165,10 @@ impl Brief {
 /// knew when it refused, and nothing here guesses the rest.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct Verdict {
+    /// The verdict whole, as the runtime printed it, so the command line can
+    /// print every field it gave under its own names (§FS-005-dispatch.9.3).
+    #[serde(skip)]
+    pub whole: Value,
     pub ok: bool,
     #[serde(default)]
     pub dry_run: bool,
@@ -215,7 +219,7 @@ impl Verdict {
 /// copied unchanged, and the answers by question id (§FS-005-dispatch.9.3).
 pub fn document(brief: &Brief, answers: &BTreeMap<String, Value>) -> Value {
     serde_json::json!({
-        "version": ANSWER_VERSION,
+        "version": VERSION,
         "request_digest": brief.digest,
         "answers": answers,
     })
@@ -262,6 +266,25 @@ fn probe(runner: &str) -> bool {
         return false;
     };
     answer.is_done() && prints_schemas(answer.output.as_deref().unwrap_or(""))
+}
+
+/// Whether a document the runner printed is in the version this binding
+/// reads; the error says which version it was instead (§AR-007-runtime.1).
+fn versioned(document: &Value) -> std::result::Result<(), String> {
+    match document.get("version").and_then(Value::as_u64) {
+        Some(VERSION) => Ok(()),
+        Some(other) => Err(format!("version {other}")),
+        None => Err("no version".to_string()),
+    }
+}
+
+/// A document the runner printed, read in the one version this binding reads
+/// (§AR-007-runtime.1). The error is the reason, for the caller's sentence.
+fn read<T: serde::de::DeserializeOwned>(output: &str) -> std::result::Result<(T, Value), String> {
+    let document: Value = serde_json::from_str(output).map_err(|err| err.to_string())?;
+    versioned(&document)?;
+    let read = serde_json::from_value(document.clone()).map_err(|err| err.to_string())?;
+    Ok((read, document))
 }
 
 /// Whether the schema verb's output is the document of schemas it promises.
@@ -345,12 +368,14 @@ pub fn show(config: &WorkConfig, gate: &Gate) -> Result<Brief> {
     if !answer.is_done() {
         return Err(sentence(config, SHOW_VERB, &answer));
     }
-    serde_json::from_str(answer.output.as_deref().unwrap_or("")).map_err(|err| {
-        EphorError::Command(format!(
-            "cannot read the brief {} gave: {err}",
-            super::runner(config)
-        ))
-    })
+    read(answer.output.as_deref().unwrap_or(""))
+        .map(|(brief, _)| brief)
+        .map_err(|why| {
+            EphorError::Command(format!(
+                "cannot read the brief {} gave: {why}",
+                super::runner(config)
+            ))
+        })
 }
 
 /// Every gate of a review with its brief, where the runner prepares briefs;
@@ -365,6 +390,42 @@ pub fn brief_review(config: &WorkConfig, review: &mut Review) {
         match show(config, gate) {
             Ok(brief) => gate.brief = Some(brief),
             Err(err) => gate.unbriefed = Some(err.to_string()),
+        }
+    }
+    held(review, &|gate| list_plan(config, gate).ok());
+}
+
+/// What each briefed gate holds, from the runner's listing of the gate's
+/// plan: one listing per plan, never one per gate, matched by ticket and
+/// state. A gate the listing does not name, or whose plan could not be
+/// listed, carries no count rather than zero (§FS-005-dispatch.9.3).
+pub(crate) fn held(review: &mut Review, list: &dyn Fn(&Gate) -> Option<Vec<Listed>>) {
+    let mut plans: Vec<usize> = Vec::new();
+    for (index, gate) in review.gates.iter().enumerate() {
+        let first = review.gates[..index]
+            .iter()
+            .all(|seen| seen.plan != gate.plan || seen.machine != gate.machine);
+        if gate.brief.is_some() && first {
+            plans.push(index);
+        }
+    }
+    for index in plans {
+        let Some(listed) = list(&review.gates[index]) else {
+            continue;
+        };
+        let (plan, machine) = (
+            review.gates[index].plan.clone(),
+            review.gates[index].machine.clone(),
+        );
+        for gate in review
+            .gates
+            .iter_mut()
+            .filter(|gate| gate.brief.is_some() && gate.plan == plan && gate.machine == machine)
+        {
+            gate.holds = listed
+                .iter()
+                .find(|listed| listed.ticket == gate.ticket && listed.state == gate.state)
+                .map(|listed| listed.holds);
         }
     }
 }
@@ -388,10 +449,19 @@ pub struct Listed {
     pub holds: u64,
 }
 
-/// The listing's envelope.
+/// What a gate holds, in the one phrase every surface says it with:
+/// `holds nothing`, `holds 1 task`, `holds 6 tasks` (§FS-019-waiting.1.1.1).
+pub fn say_holds(holds: u64) -> String {
+    match holds {
+        0 => "holds nothing".to_string(),
+        1 => "holds 1 task".to_string(),
+        held => format!("holds {held} tasks"),
+    }
+}
+
+/// The listing's envelope; its version is checked by [`read`].
 #[derive(Deserialize)]
 struct Listing {
-    version: u64,
     gates: Vec<Listed>,
 }
 
@@ -405,22 +475,35 @@ pub fn list(config: &WorkConfig, root: &Path) -> Result<Vec<Listed>> {
         root.to_string_lossy().into_owned(),
         "--json".to_string(),
     ];
-    let answer = summon(config, LIST_VERB, root, &args)?;
+    listing(config, root, &args)
+}
+
+/// Every gate in one gate's plan, read under the machine the review read it
+/// with: what [`held`] asks for a review (§FS-005-dispatch.9.3).
+fn list_plan(config: &WorkConfig, gate: &Gate) -> Result<Vec<Listed>> {
+    let mut args = vec!["list".to_string(), gate.plan.to_string_lossy().into_owned()];
+    if let Some(machine) = &gate.machine {
+        args.push("--state-machine".to_string());
+        args.push(machine.to_string_lossy().into_owned());
+    }
+    args.push("--json".to_string());
+    listing(config, &gate.root, &args)
+}
+
+/// One listing summons, run from `cwd`, and its gates.
+fn listing(config: &WorkConfig, cwd: &Path, args: &[String]) -> Result<Vec<Listed>> {
+    let answer = summon(config, LIST_VERB, cwd, args)?;
     if !answer.is_done() {
         return Err(sentence(config, LIST_VERB, &answer));
     }
-    let unread = |why: String| {
-        EphorError::Command(format!(
-            "cannot read the gates {} listed: {why}",
-            super::runner(config)
-        ))
-    };
-    let listing: Listing = serde_json::from_str(answer.output.as_deref().unwrap_or(""))
-        .map_err(|err| unread(err.to_string()))?;
-    if listing.version != LIST_VERSION {
-        return Err(unread(format!("version {}", listing.version)));
-    }
-    Ok(listing.gates)
+    read::<Listing>(answer.output.as_deref().unwrap_or(""))
+        .map(|(listing, _)| listing.gates)
+        .map_err(|why| {
+            EphorError::Command(format!(
+                "cannot read the gates {} listed: {why}",
+                super::runner(config)
+            ))
+        })
 }
 
 /// The runner's own request and answer schemas, as it printed them: the
@@ -447,10 +530,12 @@ pub fn schemas(config: &WorkConfig) -> std::result::Result<(Value, Value), Strin
     if !answer.is_done() {
         return Err(sentence(config, SCHEMA_VERB, &answer).to_string());
     }
-    let document: Value =
-        serde_json::from_str(answer.output.as_deref().unwrap_or("")).map_err(|err| {
+    let document: Value = serde_json::from_str(answer.output.as_deref().unwrap_or(""))
+        .map_err(|err| err.to_string())
+        .and_then(|document| versioned(&document).map(|()| document))
+        .map_err(|why| {
             format!(
-                "cannot read the schemas {} printed: {err}",
+                "cannot read the schemas {} printed: {why}",
                 super::runner(config)
             )
         })?;
@@ -492,8 +577,20 @@ pub fn answer(
     let answer = summon(config, ANSWER_VERB, &gate.root, &args);
     drop(private);
     let answer = answer?;
-    match serde_json::from_str::<Verdict>(answer.output.as_deref().unwrap_or("")) {
-        Ok(verdict) => Ok(verdict),
+    let Ok(document) = serde_json::from_str::<Value>(answer.output.as_deref().unwrap_or("")) else {
+        return Err(sentence(config, ANSWER_VERB, &answer));
+    };
+    if let Err(why) = versioned(&document) {
+        return Err(EphorError::Command(format!(
+            "cannot read the verdict {} gave: {why}",
+            super::runner(config)
+        )));
+    }
+    match serde_json::from_value::<Verdict>(document.clone()) {
+        Ok(verdict) => Ok(Verdict {
+            whole: document,
+            ..verdict
+        }),
         Err(_) => Err(sentence(config, ANSWER_VERB, &answer)),
     }
 }

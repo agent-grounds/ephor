@@ -51,13 +51,16 @@ pub(super) fn review(config: &StatusConfig, args: &WorkReviewArgs) -> Result<Exi
         // answer` (§FS-005-dispatch.9.3).
         if let Some(brief) = &gate.brief {
             println!(
-                "  brief: {} · {} question(s){} · answer with `ephor work gate answer`",
+                "  brief: {} · {} question(s){}{} · answer with `ephor work gate answer`",
                 brief.title,
                 brief.questions.len(),
                 match brief.asks_its_own() {
                     true => ", required ones of its own",
                     false => "",
-                }
+                },
+                gate.holds
+                    .map(|holds| format!(" · {}", crate::work::runtime::gate::say_holds(holds)))
+                    .unwrap_or_default()
             );
         } else if let Some(unbriefed) = &gate.unbriefed {
             println!("  no brief: {unbriefed}");
@@ -137,30 +140,8 @@ pub(super) fn answer(config: &StatusConfig, args: &WorkGateAnswerArgs) -> Result
             .ok_or_else(|| registry_error(format!("'{}' is not in any cached feed", args.item)))?;
         session.answer_gate(&item, &args.ticket, &args.from, &document, args.dry_run)
     })();
-    let mut report = serde_json::json!({
-        "item": args.item, "ticket": args.ticket, "from": args.from, "dry_run": args.dry_run,
-    });
-    let ok = match &outcome {
-        Ok(verdict) => {
-            report["dry_run"] = (verdict.dry_run || args.dry_run).into();
-            report["ok"] = verdict.ok.into();
-            report["to"] = serde_json::json!(verdict.to);
-            report["route"] = verdict.route.clone().unwrap_or_default();
-            report["answer_path"] = serde_json::json!(verdict.answer_path);
-            report["result"] = serde_json::json!(verdict.result);
-            report["errors"] = serde_json::json!(verdict.errors);
-            if let Some(says) = verdict.says() {
-                report["says"] = says.into();
-            }
-            verdict.ok
-        }
-        Err(error) => {
-            report["ok"] = false.into();
-            report["errors"] = serde_json::json!([]);
-            report["says"] = error.to_string().into();
-            false
-        }
-    };
+    let ok = matches!(&outcome, Ok(verdict) if verdict.ok);
+    let report = verdict_report(args, &outcome);
     if args.json {
         println!("{report}");
     } else {
@@ -189,6 +170,43 @@ pub(super) fn answer(config: &StatusConfig, args: &WorkGateAnswerArgs) -> Result
     } else {
         ExitCode::FAILURE
     })
+}
+
+/// What `--json` prints: the runtime's verdict whole, every field under its
+/// own name, with `item` beside it and `says` on a refusal. A field the
+/// published shape requires and the runtime left out is filled from what was
+/// asked; one it gave is never replaced. Where ephor refused before asking,
+/// the report is made of what was asked (§FS-005-dispatch.9.3).
+fn verdict_report(
+    args: &WorkGateAnswerArgs,
+    outcome: &Result<crate::work::runtime::gate::Verdict>,
+) -> serde_json::Value {
+    let mut report = match outcome {
+        Ok(verdict) if verdict.whole.is_object() => verdict.whole.clone(),
+        _ => serde_json::json!({}),
+    };
+    report["item"] = args.item.clone().into();
+    let asked = [
+        ("ticket", serde_json::Value::from(args.ticket.clone())),
+        ("from", args.from.clone().into()),
+        ("dry_run", args.dry_run.into()),
+        ("ok", false.into()),
+        ("errors", serde_json::json!([])),
+    ];
+    for (field, value) in asked {
+        if report.get(field).is_none_or(serde_json::Value::is_null) {
+            report[field] = value;
+        }
+    }
+    match outcome {
+        Ok(verdict) => {
+            if let Some(says) = verdict.says() {
+                report["says"] = says.into();
+            }
+        }
+        Err(error) => report["says"] = error.to_string().into(),
+    }
+    report
 }
 
 /// The answer document, from a file or `-` for standard input. Read as JSON

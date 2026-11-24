@@ -40,6 +40,9 @@ JSON
     [ -f "$data/older" ] && { echo "error: unrecognized subcommand 'gate'" >&2; exit 2; }
     case "$2" in
       schema) echo '{"version":1,"schemas":{"brief":{},"answer":{},"verdict":{}}}' ;;
+      list)
+        printf '%s\n' "$@" > "$data/list-invocation"
+        cat "$data/listing.json" ;;
       show)
         printf '%s\n' "$@" > "$data/show-invocation"
         [ -f "$data/no-brief" ] && { echo "inbox.2 is not waiting at a gate" >&2; exit 1; }
@@ -110,6 +113,16 @@ fn site(older: bool) -> World {
             "answer_path": "runtime/gates/inbox.2/vetting.1.answer.json",
             "problems": []
         }),
+    );
+    write_json(
+        &data.join("listing.json"),
+        &json!({"version": 1, "root": plan, "gates": [
+            {"ticket": TICKET, "ticket_title": "Vet the storage migration",
+             "title": "Vet the storage migration", "state": "vetting", "plan": plan,
+             "root": world.forest().join("panta"), "visit": 1,
+             "since": "2026-11-24T16:59:22Z", "source": "static", "required": 2,
+             "holds": 6, "problems": []}
+        ]}),
     );
     let at = "2026-11-24T12:00:00Z";
     std::fs::create_dir_all(world.path().join("state/ephor/feed")).unwrap();
@@ -196,6 +209,20 @@ fn a_prepared_gate_is_briefed_dry_run_and_answered_through_the_runtime() {
     assert_eq!(brief["questions"].as_array().unwrap().len(), 3);
     assert_eq!(brief["questions"][2]["required"], false);
     assert_eq!(brief["destinations"][1]["final"], true);
+    // What the gate holds, from one listing of its plan.
+    assert_eq!(review["gates"][0]["holds"], 6, "{review:#}");
+    assert_eq!(
+        invocation(&world, "list-invocation")[..3],
+        [
+            "gate",
+            "list",
+            &world
+                .forest()
+                .join("panta/inbox.rhei.md")
+                .display()
+                .to_string()
+        ]
+    );
     let shown = invocation(&world, "show-invocation");
     assert_eq!(
         shown[..5],
@@ -222,6 +249,7 @@ fn a_prepared_gate_is_briefed_dry_run_and_answered_through_the_runtime() {
         text.contains("brief: Vet the storage migration · 3 question(s)"),
         "{text}"
     );
+    assert!(text.contains(" · holds 6 tasks · "), "{text}");
     assert!(text.contains("ephor work gate answer"), "{text}");
 
     // A reason alone would be refused by the runtime; ephor names the way
@@ -255,15 +283,14 @@ fn a_prepared_gate_is_briefed_dry_run_and_answered_through_the_runtime() {
     let sent = json!({"version": 1, "request_digest": "sha256:3f59537b",
                       "answers": {"approve": true, "scope": "small"}});
     let file = world.file("answers.json", &sent.to_string());
-    verdict(
-        &world,
-        json!({
-            "version": 1, "ok": true, "dry_run": true, "ticket": ticket, "from": "vetting",
-            "to": "apply", "route": {"index": 0, "when": {"approve": true}},
-            "answer_path": "runtime/gates/inbox.2/vetting.1.answer.json",
-            "result": "Go ahead?: yes\nHow much of it?: The first table only", "errors": []
-        }),
-    );
+    let said = json!({
+        "version": 1, "ok": true, "dry_run": true, "ticket": ticket, "from": "vetting",
+        "to": "apply", "route": {"index": 0, "when": {"approve": true}},
+        "answer_path": "runtime/gates/inbox.2/vetting.1.answer.json",
+        "result": "Go ahead?: yes\nHow much of it?: The first table only", "errors": [],
+        "a_field_a_later_runtime_adds": {"kept": true}
+    });
+    verdict(&world, said.clone());
     let args = answer_args(&ticket, &file.display().to_string());
     let dry = world
         .ephor()
@@ -273,6 +300,11 @@ fn a_prepared_gate_is_briefed_dry_run_and_answered_through_the_runtime() {
         .unwrap();
     assert!(dry.status.success(), "{dry:?}");
     let dry = shaped("work-gate-answer", &dry);
+    // The verdict whole, every field under the runtime's own name, with the
+    // matter beside it.
+    let mut whole = said.clone();
+    whole["item"] = ITEM.into();
+    assert_eq!(dry, whole);
     assert_eq!(dry["ok"], true);
     assert_eq!(dry["dry_run"], true);
     assert_eq!(dry["to"], "apply");
@@ -446,6 +478,11 @@ fn an_older_runtime_changes_nothing() {
         gate.get("brief").is_none() && gate.get("unbriefed").is_none(),
         "{review:#}"
     );
+    assert!(gate.get("holds").is_none(), "{review:#}");
+    assert!(
+        !data(&world, "list-invocation").exists(),
+        "nothing is listed"
+    );
     assert!(
         !data(&world, "show-invocation").exists(),
         "no brief is asked for"
@@ -474,6 +511,24 @@ fn an_older_runtime_changes_nothing() {
     assert!(said.contains("prepares no gate briefs"), "{said}");
     assert!(said.contains("ephor work transition"), "{said}");
     assert!(!data(&world, "answer-invocation").exists());
+    // Under `--json`, a refusal ephor gives before asking is made of what was
+    // asked, in the published shape.
+    let refused = world.ephor().args(&args).arg("--json").output().unwrap();
+    assert!(!refused.status.success(), "{refused:?}");
+    let refused = shaped("work-gate-answer", &refused);
+    assert_eq!(
+        (&refused["item"], &refused["ticket"], &refused["from"]),
+        (&json!(ITEM), &json!(ticket), &json!("vetting"))
+    );
+    assert_eq!(
+        (&refused["ok"], &refused["errors"]),
+        (&json!(false), &json!([]))
+    );
+    assert!(refused.get("version").is_none(), "{refused:#}");
+    assert!(refused["says"]
+        .as_str()
+        .unwrap()
+        .contains("prepares no gate briefs"));
 
     let moved = world
         .ephor()

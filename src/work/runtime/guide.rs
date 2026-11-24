@@ -16,6 +16,11 @@ use crate::work::recipe::WorkConfig;
 /// Where the bound runner's name goes in the text below.
 const RUNNER_SLOT: &str = "@RUNNER@";
 
+/// How many lines one screen gives the explanation before the example
+/// (§FS-020-guide.1).
+#[cfg(test)]
+const SCREEN: usize = 48;
+
 /// The contract, before the example.
 const CONTRACT: &str = "\
 GATE — how a workflow prepares the question its gate asks (@RUNNER@)
@@ -31,7 +36,10 @@ Declare it on the gating state, in the machine (states.yaml):
     questions: [...]    or questions declared here once (never both)
     routes: [...]       which answer leads where
     title, summary      optional; a request's own title and summary win
-Paths are relative to the work root and may use {task_id} and {state}.
+Paths are relative to the ticket's execution root: the directory that holds
+the plan file, which for a workspace plan is the directory of its
+index.rhei.md and not the work root above it. They may use {task_id},
+{task_id_local}, {rhei_id} and {state}.
 
 A question is {id, kind, prompt, required, options, help}, in four kinds:
   boolean   yes or no
@@ -49,7 +57,7 @@ fallback. `to` must be a transition the gate declares, and a `text` question
 cannot be routed on. A gate without routes asks the person the destination.
 
 The answer is `{version: 1, request_digest: <the brief's digest>, answers}`
-(`@RUNNER@ gate schema answer`). It is recorded under the work root at
+(`@RUNNER@ gate schema answer`). It is recorded under the execution root at
 runtime/gates/<ticket>/<state>.<visit>.answer.json, and from the state it moves
 the ticket into, `{gate_answer}` is that file's path. Text between
 `{if input.gate-answer.exists}` and `{endif}` is kept only once it is answered.
@@ -228,6 +236,37 @@ mod tests {
             text.lines().all(|line| line.chars().count() <= 80),
             "every line fits an 80-column screen:\n{text}"
         );
+    }
+
+    /// The explanation fits one screen, and the worked example comes after
+    /// it rather than inside it (§FS-020-guide.1).
+    #[test]
+    fn the_explanation_fits_one_screen_before_the_example() {
+        let text = gate(&WorkConfig::default());
+        let explanation = text
+            .split("Worked example.")
+            .next()
+            .expect("the text has an explanation");
+        assert!(
+            text.contains("Worked example."),
+            "the topic ends with its example:\n{text}"
+        );
+        let lines = explanation.trim_end().lines().count();
+        assert!(
+            lines <= SCREEN,
+            "the explanation is {lines} lines, more than one screen of {SCREEN}:\n{explanation}"
+        );
+    }
+
+    /// Paths are said to be relative to the ticket's execution root, the
+    /// runtime's own term, never the work root above a workspace plan
+    /// (§FS-020-guide.2).
+    #[test]
+    fn paths_are_relative_to_the_execution_root() {
+        let text = gate(&WorkConfig::default());
+        assert!(text.contains("execution root"), "{text}");
+        assert!(!text.contains("relative to the work root"), "{text}");
+        assert!(!text.contains("recorded under the work root"), "{text}");
     }
 
     /// The example is one piece: the request it writes parses, every route
