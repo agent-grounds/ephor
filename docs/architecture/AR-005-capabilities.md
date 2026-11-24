@@ -37,3 +37,20 @@ one rung a summons is about to lean on (the place exists, the binding is
 still on disk) at invocation, because a table that answers from ten minutes
 ago and a directory deleted nine minutes ago must fail as the world, not as
 a lie ([§FS-001-forge-interface.6](../functional-spec/FS-001-forge-interface.md#6-a-source-that-did-not-answer-says-so-and-says-which-kind-of-not) has the same stance toward sources).
+
+## 4. A runtime's own features are asked of it, once
+
+Some of what a surface offers depends not on a rung but on what the bound
+runtime can do: whether it starts a run beneath the screen
+([§FS-005-dispatch.20](../functional-spec/FS-005-dispatch.md#20-a-run-of-the-runtime-starts-beneath-the-screen-and-is-watched-by-attaching)), whether it prepares a gate's brief and routes its answer
+([§FS-005-dispatch.9.3](../functional-spec/FS-005-dispatch.md#93-a-prepared-gate-is-answered-in-its-own-form)). These are **runtime features**, answered by the runtime
+module alone ([§AR-007-runtime.1](AR-007-runtime.md#1-what-the-module-owns)) and asked of the runner itself — its own help
+text, its own schema verb — never of a version number. Each is resolved the
+first time a surface needs it and kept for the rest of the process, per bound
+runner, so a menu built on every keystroke never forks the runner to rebuild
+it. A feature is false wherever the workable rung does not hold, and false for
+a runner that could not be asked; the surface then offers exactly what it
+offered before the feature existed ([§REQ-001-boundary.1](../requirements/REQ-001-boundary.md#1-the-anatomy)). The features are
+named by the summons verbs they cover: `work.run.detaches` for the detached
+run, `work.gate` for `work.gate.show` and `work.gate.answer` and the gate verbs
+added after them.

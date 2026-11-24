@@ -175,9 +175,11 @@ One cursor runs over the rows of all three sections, top to bottom, with the
 motion keys every screen has.
 
 - `Enter` on a gate row opens the review of that gate ([§FS-005-dispatch.9.1](FS-005-dispatch.md#91-a-human-gate-is-reviewed-and-moved-where-its-matter-is-read)),
-  the same screen `H` opens from the matter. A gate whose plan no matter on
-  the feed is about cannot be reviewed by matter, so the row says so rather
-  than doing nothing, and `e` reads the plan.
+  the same screen `H` opens from the matter. Where the bound runtime prepares
+  gate briefs, it opens that gate's own brief and form instead
+  ([§FS-005-dispatch.9.3](FS-005-dispatch.md#93-a-prepared-gate-is-answered-in-its-own-form)), and `esc` there comes back to the row. A gate
+  whose plan no matter on the feed is about cannot be reviewed by matter, so
+  the row says so rather than doing nothing, and `e` reads the plan.
 - `Enter` on a poll row opens the matter's conversation, or the plan where
   the feed carries no matter.
 - `Enter` on a new row opens the processing screen for its proposal

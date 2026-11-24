@@ -1186,6 +1186,89 @@ its verdicts elsewhere
 ([§FS-005-dispatch.35](FS-005-dispatch.md#35-what-a-ledger-entry-may-be-forgotten-for-is-read-from-the-plans)),
 and a row pointing at a file nobody was meant to write would be noise.
 
+### 9.3 A prepared gate is answered in its own form
+
+A workflow may prepare the question its gate asks: a title, a summary, the one
+file the person should read first, the files beside it, and the questions
+themselves — each a yes or no, one choice, several choices, or text, required
+or not. That is the gate's **brief**, and where the bound runtime prepares
+briefs, the brief is what the reader is shown and what they answer. The
+runtime also turns the answers into the move: ephor sends what the reader
+said and is told where the ticket goes. It never maps an answer to a state,
+never reads meaning into a route, and never computes the digest that ties an
+answer to the brief it answers — it copies the digest it was given
+([§DA-012-the-runtime-routes-a-gate-answer](../decisions/architectural/DA-012-the-runtime-routes-a-gate-answer.md#da-012-the-runtime-routes-a-gate-answer-the-runtime-turns-a-gates-answers-into-its-move-and-ephor-only-sends-them), [§FS-005-dispatch.9.1](FS-005-dispatch.md#91-a-human-gate-is-reviewed-and-moved-where-its-matter-is-read)).
+
+**The review carries the brief.** Each gate in a matter's review carries the
+brief as the runtime gave it: the summary, the display file and attachments
+with whether each can be read, the questions with their kinds, options,
+required flags and help, the declared destinations and the routes, the visit,
+when the ticket entered the gate, the digest, where the answer will be
+recorded, and any problem the runtime reported. When the gate was entered is
+`null` where the runtime does not know, and every surface says *unknown*
+then, never zero. A gate the runtime could not brief carries the runtime's
+sentence instead and stays reviewable as before. Nothing else in the review
+changes, and `--json` gains the brief as one more field on the gate
+([§REQ-002-parity.3](../requirements/REQ-002-parity.md#3-every-reading-answers-a-program)).
+
+**The screen.** Opening a briefed gate shows its title, its state and how long
+it has waited; the matter, the ticket and the visit; the summary; then the
+display file, read through the same bounded, local viewer review files use,
+scrollable, with the line it is at. Beneath it, one line counts the other
+files, and beneath that the form: *Your answer*, with how many of the
+questions are answered, each question marked answered (`✓`), required and
+unanswered (`?`) or optional (`·`), and its options drawn inline. `tab`
+moves between the file and the form. In the form `j`/`k` move between
+questions and options, `space` chooses — the one option of a choice, an
+option of several, yes or no — `Enter` on a text question types a line, and
+`e` opens the reader's editor on it. `f` lists the brief's attachments first
+and then the files [§FS-005-dispatch.9.1](FS-005-dispatch.md#91-a-human-gate-is-reviewed-and-moved-where-its-matter-is-read) infers, demoted to *other files*;
+each opens in the same viewer. Leaving, reading and choosing move nothing.
+
+**Submitting asks first.** `s` sends exactly the answer the form holds to the
+runtime's dry run, which runs every check a real answer would. Its verdict is
+the confirmation: the answers as they will be recorded, then what the runtime
+says it will do — *this moves `<ticket>` from `<state>` to `<state>`*, by
+which route, and where the answer will be recorded. `Enter` sends the same
+answer for real; `esc` goes back to the form with every answer kept. Whether
+the form is complete is the runtime's to say, so a required question left
+unanswered comes back as the runtime's refusal, beside the question it
+names. A refusal at either step — invalid answers, a stale brief, a ticket
+that changed state, no route that fits, a ticket no longer at a gate, or a
+transition the runtime refused — stays visible on the form, each error
+beside its question where it names one; every field of the verdict that the
+refusal leaves unknown is read as unknown. Answering starts no run and posts
+nothing, and a successful answer rereads the review.
+
+**The command line is the same call.** `ephor work gate answer --item <matter>
+--ticket <ticket> --from <state> --answers <file|-> [--dry-run]` sends the
+runtime's answer document — its version, the digest copied from the review,
+and the answers by question id — unchanged, and prints the runtime's verdict;
+`--json` prints it whole, and a refusal exits non-zero with the verdict still
+on standard output. The screen's confirmation and its submit are this
+command with `--dry-run` and without it ([§REQ-002-parity.2](../requirements/REQ-002-parity.md#2-parity-runs-both-ways)).
+
+**A typed gate is not moved by a reason alone.** At a gate whose brief asks a
+required question of the workflow's own — not the runtime's stand-ins for
+choosing a destination and giving a reason — the runtime refuses the plain
+transition of [§FS-005-dispatch.9.1](FS-005-dispatch.md#91-a-human-gate-is-reviewed-and-moved-where-its-matter-is-read). So ephor sends the reader to the form
+rather than to the refusal: choosing a destination in the review opens the
+form, and `work transition` refuses with a sentence naming `work gate
+answer`. A gate whose brief asks only the stand-ins is moved either way.
+
+**Contents stay local.** The brief's files are read as review files are,
+bounded and never executed. The answers reach the runtime alone, through a
+private file ephor removes once the runtime has answered; the answer the
+runtime records is the runtime's, and ephor writes nothing into the plan and
+nothing into a reply, dossier or provider call.
+
+**An older runtime changes nothing.** Whether the bound runtime prepares
+briefs is asked of it once, and where it does not — an older one, or none
+bound — every screen and command is exactly [§FS-005-dispatch.9.1](FS-005-dispatch.md#91-a-human-gate-is-reviewed-and-moved-where-its-matter-is-read): the
+review's JSON has no brief, a gate opens the review, and `work gate answer`
+refuses with a sentence naming `work transition`
+([§REQ-001-boundary.1](../requirements/REQ-001-boundary.md#1-the-anatomy)).
+
 ## 10. What ephor offers is not a limit on what can be asked
 
 Recipes are for the work that repeats. Most work does not: a reader looks at a
