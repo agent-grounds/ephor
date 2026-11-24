@@ -98,6 +98,9 @@ pub enum Command {
     Actions(ActionsArgs),
     /// A project's branches, and where each one stands.
     Branches(BranchesArgs),
+    /// What waits on you, what nothing has been done about, and what is
+    /// running: the screen the interface opens on.
+    Waiting(WaitingArgs),
     /// Every operation beneath the reading, in one place.
     #[command(visible_alias = "ops")]
     Operations(OperationsArgs),
@@ -1222,6 +1225,15 @@ pub struct BranchesArgs {
     pub checked_out: bool,
 
     /// Emit raw JSON instead of a table.
+    #[arg(long)]
+    pub json: bool,
+}
+
+/// `ephor waiting` (§FS-019-waiting.6): the first screen, without the screen.
+/// It answers for the site, so it takes no scope.
+#[derive(Args, Debug, Default)]
+pub struct WaitingArgs {
+    /// Emit raw JSON instead of a listing.
     #[arg(long)]
     pub json: bool,
 }

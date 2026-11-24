@@ -35,6 +35,20 @@ use crate::seams::summons::{self, quote, Answer, Mode, Site, Summons};
 /// binding rather than this word.
 pub const RUNNER: &str = "rhei";
 
+/// Whether a matter is itself a ticket of the runtime's own task store: work
+/// already, so never a matter nothing has been done about
+/// (§FS-019-waiting.1.2).
+pub fn is_own_task(item: &crate::feed::model::Item) -> bool {
+    item.source == RUNNER && item.kind == crate::feed::model::ItemKind::Task
+}
+
+/// The feed id the runtime's own task store gives one ticket, where a store
+/// carries it: what a gate no dispatched matter is about is reviewed by
+/// (§FS-019-waiting.4).
+pub fn own_task_id(plan_id: &str, ticket: &str) -> String {
+    format!("{RUNNER}:{plan_id}.{ticket}")
+}
+
 /// What runs plans here: the person's binding where they set one, the shipped
 /// default otherwise. Choosing a runtime is a property of how a person works,
 /// which is why one ships wired and ready (§FS-005-dispatch lead).

@@ -521,6 +521,7 @@ const SWEEP: &[(&str, &[&str])] = &[
     ),
     ("branches", &["branches", "--json"]),
     ("operations", &["operations", "--json"]),
+    ("waiting", &["waiting", "--json"]),
     ("burn", &["burn", "--json"]),
     (
         "burn",

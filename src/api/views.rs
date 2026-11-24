@@ -857,3 +857,117 @@ pub struct RetireTask {
     pub task: String,
     pub state: String,
 }
+
+/// What waits on the reader, what nothing has been done about, and what is
+/// running: the first screen, and `ephor waiting` (§FS-019-waiting.6). A field
+/// the runtime does not report is absent rather than guessed
+/// (§FS-019-waiting.1.1).
+#[derive(Debug, Clone, Serialize)]
+pub struct Waiting {
+    /// The workable rung's sentence, where the runtime cannot run anything
+    /// (§FS-019-waiting.2).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub refusal: Option<String>,
+    pub on_you: Vec<OnYou>,
+    pub new: Vec<NewMatter>,
+    pub held: Vec<HeldMatter>,
+    pub running: Vec<RunningRoot>,
+    pub overview: Overview,
+}
+
+/// A gate, or a poll that names the reader (§FS-019-waiting.1.1).
+#[derive(Debug, Clone, Serialize)]
+pub struct OnYou {
+    /// `gate` or `poll`.
+    pub kind: &'static str,
+    /// `<plan>.<ticket>`.
+    pub ticket: String,
+    /// The ticket's own heading, and the plan's title only where the ticket
+    /// has none.
+    pub title: String,
+    pub state: String,
+    pub project: String,
+    pub root: PathBuf,
+    pub plan: PathBuf,
+    /// The matter the plan is about, where the ledger names one.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub item: Option<String>,
+    /// That matter's title, where the feed still carries it.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub matter: Option<String>,
+    /// On a poll: the person it declares it awaits, in the machine's words.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub waiting_on: Option<String>,
+    /// Whether the reader moves it here: a gate is, a poll moves itself.
+    pub movable: bool,
+    /// On a gate: the feed id `ephor work review --item` reviews it by,
+    /// where the feed carries one (§FS-019-waiting.4).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub review: Option<String>,
+}
+
+/// A matter nothing has been done about yet (§FS-019-waiting.1.2).
+#[derive(Debug, Clone, Serialize)]
+pub struct NewMatter {
+    pub id: String,
+    pub project: String,
+    pub kind: crate::feed::model::ItemKind,
+    pub title: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub url: Option<String>,
+    pub updated_at: DateTime<Utc>,
+    pub unread: bool,
+}
+
+/// A matter a site selector excludes by one of its labels, listed apart and
+/// offered nothing (§FS-019-waiting.1.2).
+#[derive(Debug, Clone, Serialize)]
+pub struct HeldMatter {
+    pub id: String,
+    pub project: String,
+    pub kind: crate::feed::model::ItemKind,
+    pub title: String,
+    /// The label that holds it.
+    pub label: String,
+}
+
+/// One live run (§FS-019-waiting.1.3).
+#[derive(Debug, Clone, Serialize)]
+pub struct RunningRoot {
+    pub root: PathBuf,
+    pub project: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub item: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub matter: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub plan: Option<PathBuf>,
+    /// The tickets the run holds right now, each in its state.
+    pub tickets: Vec<RunningTicket>,
+    /// What the run calls itself (§FS-005-dispatch.20).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub run: Option<String>,
+    /// When the run began, as the run published it.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub started_at: Option<DateTime<Utc>>,
+    /// The runner's own command for watching it.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub attach: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct RunningTicket {
+    /// `<plan>.<ticket>`.
+    pub ticket: String,
+    pub title: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub state: Option<String>,
+}
+
+/// How much the overview holds (§FS-019-waiting.3).
+#[derive(Debug, Clone, Copy, Default, Serialize)]
+pub struct Overview {
+    pub matters: usize,
+    /// How many of them changed since the reader last looked.
+    pub unread: usize,
+}

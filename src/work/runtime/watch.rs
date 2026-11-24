@@ -739,6 +739,28 @@ pub struct BoardTicket {
     pub doing: Doing,
     pub item: Option<String>,
     pub title: String,
+    /// The ticket's own heading in its plan, where the plan gives it one —
+    /// what a gate row on the first screen is called, since `title` is the
+    /// plan's and is the same for every ticket in it (§FS-019-waiting.1.1).
+    pub ticket_title: String,
+    pub plan: PathBuf,
+}
+
+/// A ticket parked on a poll that declares whose answer it awaits
+/// (§FS-005-dispatch.9), found in the same walk as the board. Not a row of the
+/// board: it is the first screen that asks which of these wait on the reader
+/// (§FS-019-waiting.1.1), and the board's rows stay what they were.
+#[derive(Debug, Clone)]
+pub struct PersonWait {
+    pub project: String,
+    pub root: PathBuf,
+    pub plan_id: String,
+    pub ticket: String,
+    pub ticket_title: String,
+    pub state: String,
+    /// The person the poll names, in the machine's own words.
+    pub waiting_on: String,
+    pub item: Option<String>,
     pub plan: PathBuf,
 }
 
@@ -882,6 +904,9 @@ impl Operation {
 pub struct Board {
     pub operations: Vec<Operation>,
     pub refusal: Option<String>,
+    /// Every ticket waiting on a poll that names a person, under every root
+    /// the walk found, live or not (§FS-019-waiting.1.1).
+    pub asks: Vec<PersonWait>,
 }
 
 /// One of the two ways the machine that would judge a plan goes missing:
@@ -931,9 +956,11 @@ pub fn board(config: &WorkConfig, roots: &[RootPlans]) -> Board {
         return Board {
             operations: Vec::new(),
             refusal: Some(refusal),
+            asks: Vec::new(),
         };
     }
     let mut operations = Vec::new();
+    let mut asks = Vec::new();
     for group in roots {
         let is_live = live(config, &group.root);
         // Who answers for this root's slots, chosen once (§FS-005-dispatch.15.2).
@@ -1055,6 +1082,24 @@ pub fn board(config: &WorkConfig, roots: &[RootPlans]) -> Board {
                     }
                     continue;
                 }
+                // A poll that names a person is read here, in the same walk, and
+                // kept apart from the rows (§FS-019-waiting.1.1).
+                if let Some((state, person)) = state
+                    .as_deref()
+                    .and_then(|state| Some((state, judge?.waiting_on(state)?)))
+                {
+                    asks.push(PersonWait {
+                        project: plan_ref.project.clone(),
+                        root: group.root.clone(),
+                        plan_id: plan_ref.plan_id.clone(),
+                        ticket: ticket.id.clone(),
+                        ticket_title: ticket.title.clone(),
+                        state: state.to_string(),
+                        waiting_on: person.to_string(),
+                        item: plan_ref.item.clone(),
+                        plan: plan_ref.path.clone(),
+                    });
+                }
                 let holds = held_now(&plan_ref.plan_id, &ticket.id, state.as_deref());
                 let doing = if is_gating(judge, state.as_deref()) {
                     // Parked is a flavour of its own, before liveness: the
@@ -1106,6 +1151,7 @@ pub fn board(config: &WorkConfig, roots: &[RootPlans]) -> Board {
                     doing,
                     item: plan_ref.item.clone(),
                     title: title.clone(),
+                    ticket_title: ticket.title.clone(),
                     plan: plan_ref.path.clone(),
                 });
             }
@@ -1142,6 +1188,9 @@ pub fn board(config: &WorkConfig, roots: &[RootPlans]) -> Board {
                         .find(|(candidate, ..)| candidate.plan_id == row.plan)
                         .map(|(_, title, _)| title.clone())
                         .unwrap_or_else(|| plan_ref.title.clone()),
+                    // A subtask the plan read does not surface has no heading
+                    // here; the row falls back on the plan's.
+                    ticket_title: String::new(),
                     plan: plan_ref.path.clone(),
                 });
             }
@@ -1185,6 +1234,7 @@ pub fn board(config: &WorkConfig, roots: &[RootPlans]) -> Board {
     Board {
         operations,
         refusal: None,
+        asks,
     }
 }
 
@@ -1991,6 +2041,43 @@ mod tests {
         assert_eq!(op.tickets[0].ticket, "answer-1");
         assert_eq!(op.tickets[0].doing, Doing::Waiting);
         assert_eq!(op.done, 1);
+    }
+
+    /// The first screen reads the board's walk rather than a second scanner
+    /// (§FS-019-waiting.1.1): a gate keeps its ticket's own heading beside the
+    /// plan's title, and a poll that names a person is found under a root no
+    /// run holds, kept apart from the rows so the board stays what it was.
+    #[test]
+    fn the_walk_names_each_gate_and_finds_every_person_poll() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        let group = root_with_tickets(
+            root,
+            WAITS,
+            &format!(
+                "### Task ask-1: Approve the retry window\n**State:** needs-human\n\nwork\n\n{}{}",
+                task("poll-1", "plan-approval"),
+                task("tag-1", "holding"),
+            ),
+        );
+
+        let board = board(&config(), std::slice::from_ref(&group));
+        let op = &board.operations[0];
+        assert!(!op.live);
+        assert_eq!(op.tickets.len(), 1, "{:?}", op.tickets);
+        assert_eq!(op.tickets[0].doing, Doing::Waiting);
+        assert_eq!(op.tickets[0].title, "Widen the retry window");
+        assert_eq!(op.tickets[0].ticket_title, "Approve the retry window");
+
+        // The person poll, and only it: the release-tag poll names nobody.
+        assert_eq!(board.asks.len(), 1, "{:?}", board.asks);
+        let ask = &board.asks[0];
+        assert_eq!(ask.ticket, "poll-1");
+        assert_eq!(ask.state, "plan-approval");
+        assert_eq!(ask.waiting_on, "author");
+        assert_eq!(ask.ticket_title, "do it");
+        assert_eq!(ask.item.as_deref(), Some("forge:widget/42"));
+        assert_eq!(ask.root, root);
     }
 
     /// A run that died mid-slot: the lock is free, the journal still holds

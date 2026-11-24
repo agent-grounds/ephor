@@ -457,23 +457,38 @@ impl Session {
         &self,
         groups: &[crate::work::runtime::watch::RootPlans],
     ) -> (Vec<Running>, Option<String>) {
+        let read = self.board_over(groups);
+        (read.running, read.refusal)
+    }
+
+    /// The board's walk with every matter behind it resolved: the rows
+    /// [`Session::running`] gives the board, and the person polls the first
+    /// screen reads beside them (§FS-019-waiting.1.1). One walk for both, so a
+    /// gate on one surface is a gate on the other (§FS-005-dispatch.15).
+    pub fn board_over(&self, groups: &[crate::work::runtime::watch::RootPlans]) -> BoardReading {
         use crate::work::runtime::watch;
 
         if self.dispatcher.is_none() {
-            return (
-                Vec::new(),
-                Some("Work needs the registry, which could not be read at startup".to_string()),
-            );
+            return BoardReading {
+                running: Vec::new(),
+                asks: Vec::new(),
+                matters: BTreeMap::new(),
+                refusal: Some(
+                    "Work needs the registry, which could not be read at startup".to_string(),
+                ),
+            };
         }
         let watch::Board {
             operations,
             refusal,
+            asks,
         } = watch::board(&self.work_config, groups);
         // Every row's matter in one walk of the feeds rather than a walk per
         // row: rebuilding each matter into a row costs the whole feed once.
         let wanted: BTreeSet<String> = operations
             .iter()
-            .filter_map(|op| op.item().map(str::to_string))
+            .flat_map(|op| op.tickets.iter().filter_map(|ticket| ticket.item.clone()))
+            .chain(asks.iter().filter_map(|ask| ask.item.clone()))
             .collect();
         let mut matters: BTreeMap<String, Item> = BTreeMap::new();
         if !wanted.is_empty() {
@@ -485,7 +500,7 @@ impl Session {
                 }
             }
         }
-        let rows = operations
+        let running = operations
             .into_iter()
             .map(|op| Running {
                 item: op.item().and_then(|id| matters.get(id).cloned()),
@@ -504,7 +519,19 @@ impl Session {
                 op,
             })
             .collect();
-        (rows, refusal)
+        let asks = asks
+            .into_iter()
+            .map(|ask| Asked {
+                item: ask.item.as_ref().and_then(|id| matters.get(id).cloned()),
+                ask,
+            })
+            .collect();
+        BoardReading {
+            running,
+            asks,
+            refusal,
+            matters,
+        }
     }
 
     /// What ephor is running itself, right now (§FS-005-dispatch.17). It needs
@@ -571,6 +598,25 @@ pub struct Running {
     pub op: crate::work::runtime::watch::Operation,
     pub item: Option<Item>,
     pub plan: Option<std::path::PathBuf>,
+}
+
+/// A poll that names a person, with the matter behind it where the feed still
+/// carries one (§FS-019-waiting.1.1).
+pub struct Asked {
+    pub ask: crate::work::runtime::watch::PersonWait,
+    pub item: Option<Item>,
+}
+
+/// One walk of the work roots, read for every surface that needs it
+/// (§FS-005-dispatch.15): the board's rows, the person polls beside them, and
+/// why there are none where the runtime cannot run any.
+pub struct BoardReading {
+    pub running: Vec<Running>,
+    pub asks: Vec<Asked>,
+    pub refusal: Option<String>,
+    /// Every matter a ticket of the walk is about, where the feed still
+    /// carries it, by feed id.
+    pub matters: BTreeMap<String, Item>,
 }
 
 /// One entry as a reading names it (§FS-011-command-line.1).
