@@ -186,12 +186,26 @@ impl Session {
         recipes: &[crate::work::recipe::Recipe],
         beside: &[(crate::work::runtime::workflow::Source, ActionConfig)],
     ) -> Vec<ActionConfig> {
+        self.actions_from(item, recipes, beside, true)
+    }
+
+    /// [`Session::actions_with`], with or without the entries the matter's
+    /// source offers. Asking a source for its entries launches it to probe
+    /// what it declares, and none of them hands work over, so the proposal a
+    /// Waiting row carries is read without them: a reading of the screen
+    /// launches no forge (§FS-019-waiting.6, §FS-019-waiting.7.1).
+    pub(crate) fn actions_from(
+        &self,
+        item: &Item,
+        recipes: &[crate::work::recipe::Recipe],
+        beside: &[(crate::work::runtime::workflow::Source, ActionConfig)],
+        sources: bool,
+    ) -> Vec<ActionConfig> {
         let project = self
             .project_actions
             .get(&item.project)
             .map(Vec::as_slice)
             .unwrap_or_default();
-        let sources = self.sources_for(&item.project);
         // One fold of the item's checkout answers both rebase offers and every
         // selector that asks about it (§FS-004-quick-actions.8).
         let trailing = self.item_trailing(item);
@@ -199,7 +213,10 @@ impl Session {
             .as_ref()
             .map(offers::Trailing::facts)
             .unwrap_or_default();
-        let mut recognized = crate::feed::providers::quick_actions(&sources, item);
+        let mut recognized = match sources {
+            true => crate::feed::providers::quick_actions(&self.sources_for(&item.project), item),
+            false => Vec::new(),
+        };
         // ephor's own quick actions, offered because of what is on disk rather
         // than because a source said something (§FS-004-quick-actions.6).
         if let Some(trailing) = &trailing {

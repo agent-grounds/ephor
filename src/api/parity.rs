@@ -180,6 +180,30 @@ pub const ABILITIES: &[Ability] = &[
         keys: &["O"],
         command: "feed",
     },
+    // Processing a new matter where Waiting shows it (§FS-019-waiting.7):
+    // `Enter` confirms the proposal on its processing screen, `a` picks
+    // another entry, `x` records that the matter needs none, and `A` takes
+    // every unambiguous row after one preview.
+    Ability {
+        what: "process a new matter: lay its proposal, record it, and ask for its start",
+        keys: &["enter"],
+        command: "work process",
+    },
+    Ability {
+        what: "process a new matter with another entry than its proposal",
+        keys: &["a"],
+        command: "work process --entry",
+    },
+    Ability {
+        what: "process every new matter whose proposal is unambiguous",
+        keys: &["A"],
+        command: "work process --all",
+    },
+    Ability {
+        what: "record that a matter needs no work, and why",
+        keys: &["x"],
+        command: "work dismiss",
+    },
     Ability {
         what: "watch a live run by attaching to it",
         keys: &["a"],

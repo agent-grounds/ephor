@@ -1019,6 +1019,22 @@ impl Session {
         answers: &[String],
         dry_run: bool,
     ) -> views::Outcome {
+        self.hand_over_with(item, entry, answers, dry_run, true)
+    }
+
+    /// [`Session::hand_over`], with the autorun start left out where
+    /// `autorun` is false: processing a matter from Waiting asks the sweep's
+    /// admission for its start itself, under the budget a sweep binds
+    /// (§FS-005-dispatch.24.5), so the lay is the same move and the start is
+    /// not made twice.
+    pub(crate) fn hand_over_with(
+        &mut self,
+        item: &Item,
+        entry: &MenuEntry,
+        answers: &[String],
+        dry_run: bool,
+        autorun: bool,
+    ) -> views::Outcome {
         if let Some(reason) = entry.gate.refusal() {
             return views::Outcome::refused(reason);
         }
@@ -1051,7 +1067,7 @@ impl Session {
                             // it, so this is the same act the timer makes and
                             // is safe on a root that already has a run: it
                             // starts nothing there.
-                            if recipe.autorun {
+                            if recipe.autorun && autorun {
                                 let project = item.project.clone();
                                 match dispatcher.start_due(
                                     chrono::Utc::now(),
@@ -1173,7 +1189,9 @@ impl Session {
 
 /// `input=value` pairs, refused by name where one is not a pair: a mistyped
 /// answer silently dropped would lay a workflow down with the wrong input.
-fn parse_answers(answers: &[String]) -> Result<std::collections::BTreeMap<String, String>, String> {
+pub(crate) fn parse_answers(
+    answers: &[String],
+) -> Result<std::collections::BTreeMap<String, String>, String> {
     let mut typed = std::collections::BTreeMap::new();
     for answer in answers {
         let Some((name, value)) = answer.split_once('=') else {

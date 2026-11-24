@@ -561,6 +561,18 @@ const SWEEP: &[(&str, &[&str])] = &[
     ("work-states", &["work", "states", "--json"]),
     ("work-workflows", &["work", "workflows", "--json"]),
     ("work", &["work", "offers", "--item", ITEM, "--json"]),
+    // Before the dispatch below gives the matter work: a matter with a rhei
+    // has nothing to dismiss (§FS-019-waiting.7.4).
+    (
+        "work-process",
+        &["work", "process", "--all", "--dry-run", "--json"],
+    ),
+    (
+        "outcome",
+        &[
+            "work", "dismiss", "--item", ITEM, "--reason", "not ours", "--json",
+        ],
+    ),
     (
         "work-dispatch",
         &["work", "dispatch", "--item", ITEM, "--json"],

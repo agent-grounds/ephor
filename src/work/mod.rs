@@ -4142,6 +4142,15 @@ pub fn due_among(
                 })
         })
         .collect();
+    // The matters a person processed from Waiting whose start still waits for
+    // a slot: their work asked to run itself, whatever its entry says
+    // (§FS-005-dispatch.24.5).
+    let queued: BTreeSet<&str> = ledger
+        .processed
+        .iter()
+        .filter(|(_, mark)| mark.queued)
+        .map(|(id, _)| id.as_str())
+        .collect();
     // Which trees are being worked, taken over the whole snapshot before
     // anything here is judged due (§FS-005-dispatch.24). The run that holds a
     // tree usually holds no due ticket of its own, so this cannot be folded
@@ -4248,10 +4257,16 @@ pub fn due_among(
                 None => autoruns.get(&plan_ref.project),
             }
             .unwrap_or(&nothing);
+            // A matter processed from Waiting and still queued asked for its
+            // start when it was processed (§FS-005-dispatch.24.5).
+            let processed = plan_ref
+                .item
+                .as_deref()
+                .is_some_and(|item| queued.contains(item));
             // `autorun` is the condition under which work starts with nobody
             // present, so its silence means the key and the key is blind to
             // it (§FS-005-dispatch.30, §FS-005-dispatch.24).
-            if !key && asked.is_empty() {
+            if !key && asked.is_empty() && !processed {
                 continue;
             }
             // A plan that is a store of its own runs under the machine it
@@ -4320,7 +4335,7 @@ pub fn due_among(
                 // The key does not ask: it is blind to `autorun`, and the
                 // whole of which plans are its own was settled above by the
                 // matter the record names (§FS-005-dispatch.30).
-                if !key {
+                if !key && !processed {
                     let asked_for = laid.or_else(|| {
                         dispatched
                             .get(&(canonical(&group.root), ticket.id.clone()))
@@ -4946,6 +4961,47 @@ impl Dispatcher {
         excluded: &Excluded,
         budget: spend::Budget,
     ) -> Result<Sweep> {
+        self.start_among(
+            now,
+            projects,
+            runner_args,
+            max_concurrent,
+            excluded,
+            budget,
+            &[],
+        )
+    }
+
+    /// The sweep's own admission, narrowed to the roots holding these
+    /// matters' work: what processing a matter from Waiting asks for
+    /// (§FS-005-dispatch.24.5). The same ceilings, pools, back-off and budget
+    /// as any sweep, and the same act, so a start asked for here and one the
+    /// timer makes later cannot be two different things.
+    pub fn start_for(
+        &mut self,
+        now: DateTime<Utc>,
+        items: &[String],
+        budget: spend::Budget,
+    ) -> Result<Sweep> {
+        if items.is_empty() {
+            return Ok(Sweep::default());
+        }
+        self.start_among(now, &[], &[], None, &Excluded::default(), budget, items)
+    }
+
+    /// [`Dispatcher::start_due`], over every due root when `about` is empty
+    /// and over the roots holding those matters' work otherwise.
+    #[allow(clippy::too_many_arguments)]
+    fn start_among(
+        &mut self,
+        now: DateTime<Utc>,
+        projects: &[String],
+        runner_args: &[String],
+        max_concurrent: Option<usize>,
+        excluded: &Excluded,
+        budget: spend::Budget,
+        about: &[String],
+    ) -> Result<Sweep> {
         // The runtime is a rung like any other capacity, and with nothing
         // bound there is no run to start (§AR-005-capabilities.2).
         if runtime::refusal(&self.global).is_some() {
@@ -5023,7 +5079,12 @@ impl Dispatcher {
         // (§FS-005-dispatch.24). A tree a run held *before* the sweep is not
         // in here — [`due_among`] wrote that on the root itself.
         let mut taken: BTreeMap<PathBuf, PathBuf> = BTreeMap::new();
-        let due = excluded.mark(self.due_over(&roots, now, projects, Reach::Sweep)?);
+        let mut due = excluded.mark(self.due_over(&roots, now, projects, Reach::Sweep)?);
+        // Narrowed to the matters processing asked about, where it asked about
+        // some (§FS-005-dispatch.24.5).
+        if !about.is_empty() {
+            due.retain(|root| root.items.iter().any(|item| about.contains(item)));
+        }
         // What this sweep read of the last run on each root, kept before
         // anything is started. A verdict is the acting sweep's and only its:
         // reading one stream twice gives one answer, so nothing is lost by a
@@ -5173,6 +5234,14 @@ impl Dispatcher {
                 ) {
                     Ok(started) => {
                         self.start_worked(&root.root);
+                        // The start processing asked for has happened
+                        // (§FS-005-dispatch.24.5).
+                        for item in &root.items {
+                            if let Some(mark) = self.ledger.processed.get_mut(item) {
+                                mark.queued = false;
+                                mark.says = None;
+                            }
+                        }
                         // The descriptor can already say the run is over, and
                         // a run that died just after publishing it has already
                         // released the lock. Neither occupies a slot needed by
@@ -5868,6 +5937,9 @@ pub struct Launched {
     pub item: Option<String>,
     /// The tickets that made this root due, plan-qualified.
     pub tickets: Vec<String>,
+    /// Every matter whose work made this root due: what processing reads to
+    /// say what became of the matter it asked about (§FS-005-dispatch.24.5).
+    pub items: Vec<String>,
     /// What the run calls itself, where it named itself.
     pub id: Option<String>,
     /// The run was over before the launcher returned — nothing was left to
@@ -5889,6 +5961,7 @@ impl Launched {
             root: due.root.clone(),
             item: due.item.clone(),
             tickets: due.tickets.clone(),
+            items: due.items.clone(),
             id: None,
             finished: false,
             failed: None,

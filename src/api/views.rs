@@ -872,6 +872,13 @@ pub struct Waiting {
     pub new: Vec<NewMatter>,
     pub held: Vec<HeldMatter>,
     pub running: Vec<RunningRoot>,
+    /// The work processing laid and asked to start that has not started
+    /// (§FS-019-waiting.7.6).
+    pub queued: Vec<QueuedMatter>,
+    /// The sentence naming the setting a repeated confirmation would make
+    /// automatic, where there is one (§FS-019-waiting.7.7).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub adopt: Option<String>,
     pub overview: Overview,
 }
 
@@ -917,6 +924,121 @@ pub struct NewMatter {
     pub url: Option<String>,
     pub updated_at: DateTime<Utc>,
     pub unread: bool,
+    /// The rhei ephor would assign it (§FS-019-waiting.7.1).
+    pub proposal: Proposal,
+}
+
+/// The rhei a new matter would be assigned: the first entry `ephor actions`
+/// offers that hands work over, or the runtime's `triage` workflow where none
+/// does (§FS-019-waiting.7.1). Every field is the menu's.
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct Proposal {
+    /// The entry, by the name `ephor actions` prints — or the workflow's own
+    /// id, where the proposal is the runtime's `triage`.
+    pub entry: String,
+    /// `agent` or `workflow`.
+    pub kind: &'static str,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub icon: String,
+    pub description: String,
+    /// `ready`, or `needs-checkout` where the dispatch makes the workspace
+    /// first.
+    pub gate: &'static str,
+    /// Who the work would go to, where the entry says.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub hand: Option<String>,
+    /// The branch the entry's own template would mint (§FS-005-dispatch.25).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub branch: Option<String>,
+    /// The workspace that branch belongs in.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub workspace: Option<PathBuf>,
+    /// The work root it would hand the work into (§FS-005-dispatch.6.1).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub root: Option<PathBuf>,
+    /// How many other entries would also hand the matter over: what `a`
+    /// chooses among.
+    pub others: usize,
+    /// No entry hands the matter over, so the runtime's `triage` workflow is
+    /// proposed in their place.
+    pub fallback: bool,
+    /// Available and ready to hand work over: what `A` processes.
+    pub unambiguous: bool,
+    /// Why it cannot be processed as it stands, where it cannot.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub refusal: Option<String>,
+}
+
+/// Work processing laid and asked to start that has not started
+/// (§FS-019-waiting.7.6).
+#[derive(Debug, Clone, Serialize)]
+pub struct QueuedMatter {
+    pub id: String,
+    pub project: String,
+    pub title: String,
+    /// When it was processed.
+    pub at: DateTime<Utc>,
+    /// Why it was not started then, in the admission's own words.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub says: Option<String>,
+}
+
+/// What processing one matter, or every unambiguous one, came to
+/// (§FS-019-waiting.7.2, §FS-019-waiting.7.5): `ephor work process`.
+#[derive(Debug, Clone, Serialize)]
+pub struct Processing {
+    pub dry_run: bool,
+    /// One row per matter processed, or that would be.
+    pub processed: Vec<ProcessRow>,
+    /// The new matters `--all` left for the reader, and why.
+    pub left: Vec<LeftMatter>,
+    /// A sweep above one project reported rather than wrote
+    /// (§FS-011-command-line.10).
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub gated: bool,
+    /// Why, naming `--act`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub says: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ProcessRow {
+    pub item: String,
+    pub title: String,
+    /// The entry it was processed with; empty where none could be chosen.
+    pub entry: String,
+    /// `agent` or `workflow`; empty where none could be chosen.
+    pub kind: &'static str,
+    pub ok: bool,
+    /// The move's own sentence, and what the start came to.
+    pub says: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub plan: Option<PathBuf>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub tickets: Vec<String>,
+    /// `started` or `queued`, where it was laid. Absent on a dry run and on
+    /// a refusal.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub start: Option<&'static str>,
+    /// What the inputs were answered with, on a workflow
+    /// (§FS-005-dispatch.19).
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub answers: Vec<Answered>,
+}
+
+/// One input of a workflow and what answered it.
+#[derive(Debug, Clone, Serialize)]
+pub struct Answered {
+    pub input: String,
+    pub shown: String,
+    pub from: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct LeftMatter {
+    pub item: String,
+    pub title: String,
+    pub says: String,
 }
 
 /// A matter a site selector excludes by one of its labels, listed apart and

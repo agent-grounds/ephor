@@ -188,6 +188,10 @@ fn work_honoured(args: &WorkArgs) -> (String, Honours) {
         Some(WorkCommand::Dispatch(_)) => said("work dispatch", Honours::Watched),
         Some(WorkCommand::Sync(_)) => said("work sync", Honours::Watched),
         Some(WorkCommand::Run(_)) => said("work run", Honours::Watched),
+        // `--all` takes the new rows of the projects the scope reaches
+        // (§FS-019-waiting.7.5).
+        Some(WorkCommand::Process(_)) => said("work process", Honours::Watched),
+        Some(WorkCommand::Dismiss(_)) => said("work dismiss", Honours::Nothing),
         Some(WorkCommand::Offers(_)) => said("work offers", Honours::Nothing),
         Some(WorkCommand::Review(_)) => said("work review", Honours::Nothing),
         Some(WorkCommand::Transition(_)) => said("work transition", Honours::Nothing),
@@ -313,6 +317,11 @@ fn work_sweeps(args: &WorkArgs) -> Sweeps {
         Some(WorkCommand::Dispatch(_)) | Some(WorkCommand::Sync(_)) | Some(WorkCommand::Run(_)) => {
             Sweeps::Gated
         }
+        // `--all` lays work in every project its rows belong to
+        // (§FS-019-waiting.7.5); `--item` is one matter, as for dispatch.
+        Some(WorkCommand::Process(_)) => Sweeps::Gated,
+        // A ledger row about one matter (§FS-019-waiting.7.4).
+        Some(WorkCommand::Dismiss(_)) => Sweeps::Nothing,
         // `work list` reads; the rest are about one matter, which the width
         // of the site does not widen — `lay`, `ask`, `cancel` and `forget`
         // included, since each names the matter it is about.

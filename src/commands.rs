@@ -618,6 +618,8 @@ pub fn waiting(args: &crate::cli::WaitingArgs) -> Result<ExitCode> {
             row.title,
             age(row.updated_at)
         );
+        // The rhei it would be assigned (§FS-019-waiting.7.1).
+        println!("      {}   {}", row.proposal.says(), row.id);
     }
     if !view.held.is_empty() {
         println!();
@@ -661,9 +663,137 @@ pub fn waiting(args: &crate::cli::WaitingArgs) -> Result<ExitCode> {
             }
         }
     }
+    // What processing laid that waits for a slot (§FS-019-waiting.7.6).
+    if let Some(queued) = view.queued_line() {
+        println!("  {queued}");
+    }
     println!();
+    if let Some(adopt) = &view.adopt {
+        println!("{adopt}");
+    }
     println!("{}", view.overview_line());
     Ok(ExitCode::SUCCESS)
+}
+
+/// `ephor work process` (§FS-019-waiting.7.2, §FS-019-waiting.7.5): the
+/// Waiting screen's processing move as a command — one matter by `--item`,
+/// or every unambiguous one by `--all`, which above one project prints its
+/// preview unless `--act` was given (§FS-011-command-line.10).
+pub fn process(
+    config: &crate::feed::config::StatusConfig,
+    args: &crate::cli::WorkProcessArgs,
+    projects: &[String],
+    gate: &crate::scope::Gate,
+) -> Result<ExitCode> {
+    let mut session = Session::open(config)?;
+    let view = match &args.item {
+        Some(id) => {
+            let item = matter(&session, id)?;
+            let row = session.process(&item, args.entry.as_deref(), &args.set, args.dry_run);
+            views::Processing {
+                dry_run: args.dry_run,
+                processed: vec![row],
+                left: Vec::new(),
+                gated: false,
+                says: None,
+            }
+        }
+        None => {
+            let mut view = session.process_all(projects, args.dry_run || gate.holds());
+            if let Some(says) = gate.says() {
+                view.gated = true;
+                view.says = Some(says.to_string());
+            }
+            view
+        }
+    };
+    // One matter refused is a failure; a sweep that leaves rows for the
+    // reader is not (§REQ-002-parity.3).
+    let failed = args.item.is_some() && view.processed.iter().any(|row| !row.ok);
+    if args.json {
+        emit(&view);
+    } else {
+        print_processing(&view, args.item.is_some());
+    }
+    Ok(match failed {
+        true => ExitCode::from(1),
+        false => ExitCode::SUCCESS,
+    })
+}
+
+/// Prose for [`process`]: each matter, the entry, and what the move said.
+fn print_processing(view: &views::Processing, one: bool) {
+    let style = Style::detect();
+    if !one {
+        let verb = match view.dry_run {
+            true => "would process",
+            false => "processed",
+        };
+        let noun = match view.processed.len() {
+            1 => "new matter",
+            _ => "new matters",
+        };
+        println!("{verb} {} {noun}", view.processed.len());
+    }
+    for row in &view.processed {
+        let mark = match row.ok {
+            true => "✓",
+            false => "✗",
+        };
+        let line = format!("{mark} {} · {}", row.item, row.title);
+        let says = match row.entry.is_empty() {
+            true => row.says.clone(),
+            false => format!("{} · {}", row.entry, row.says),
+        };
+        match (row.ok, one) {
+            (false, true) => {
+                eprintln!("{line}");
+                eprintln!("    {}", says.replace('\n', "\n    "));
+            }
+            _ => {
+                println!("{line}");
+                println!("    {}", says.replace('\n', "\n    "));
+            }
+        }
+        for answer in &row.answers {
+            println!(
+                "      {}  {}",
+                answer.input,
+                style.dim(&match answer.shown.is_empty() {
+                    true => format!("({})", answer.from),
+                    false => format!("{}  ({})", answer.shown, answer.from),
+                })
+            );
+        }
+        if let Some(plan) = &row.plan {
+            println!("      {}", style.dim(&plan.display().to_string()));
+        }
+    }
+    if !view.left.is_empty() {
+        println!("left for you ({})", view.left.len());
+        for row in &view.left {
+            println!(
+                "  · {} · {}   {}",
+                row.item,
+                row.title,
+                style.dim(&row.says)
+            );
+        }
+    }
+    if let Some(says) = &view.says {
+        println!("{says}");
+    }
+}
+
+/// `ephor work dismiss` (§FS-019-waiting.7.4): the record that a matter needs
+/// no rhei, with the reader's reason.
+pub fn dismiss(
+    config: &crate::feed::config::StatusConfig,
+    args: &crate::cli::WorkDismissArgs,
+) -> Result<ExitCode> {
+    let mut session = Session::open(config)?;
+    let item = matter(&session, &args.item)?;
+    Ok(report(&session.dismiss(&item, &args.reason), args.json))
 }
 
 /// `ephor operations attach` (§FS-011-command-line.8): the board's own key as

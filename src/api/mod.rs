@@ -13,6 +13,7 @@ pub mod conversation;
 pub mod human_gate;
 pub mod offers;
 pub mod parity;
+pub mod process;
 pub mod read;
 pub mod reply;
 pub mod schema;
