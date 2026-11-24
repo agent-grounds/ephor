@@ -42,13 +42,16 @@ a **gate row**, under every root, live or not, because the usual end of the
 run that parked a ticket is that run exiting.
 
 A gate row carries the ticket's own title, the heading the ticket has in its
-plan, and not the plan's title, which is the same for every ticket in it. It
+plan, and not the plan's title, which is the same for every ticket in it;
+where the bound runtime lists its gates, it carries the title the gate's own
+brief gives instead ([§FS-019-waiting.1.1.1](FS-019-waiting.md#111-a-runtime-that-lists-its-gates-names-each-one-says-how-long-it-has-waited-and-what-it-holds)). It
 also carries the state the ticket is parked in, the ticket's id, the project,
 and the matter the plan is about, where the ledger names one
 ([§FS-005-dispatch.4](FS-005-dispatch.md#4-the-ledger-is-ephors-record-and-never-the-truth-about-the-work)) and the feed still carries it.
 
 How long a gate has waited and what it holds back are carried only where the
-bound runtime reports them. A runtime that reports neither leaves both off the
+bound runtime reports them, which is what its listing of gates does
+([§FS-019-waiting.1.1.1](FS-019-waiting.md#111-a-runtime-that-lists-its-gates-names-each-one-says-how-long-it-has-waited-and-what-it-holds)). A runtime that reports neither leaves both off the
 row and out of the reading. No file timestamp stands in for when a ticket
 began waiting: a plan file is written for many reasons, and a guess at how
 long a person has kept work waiting is a claim the reading cannot back. Rows
@@ -70,6 +73,37 @@ reader. It stays where it already is: on the matter's own row and on the
 board. A poll row says `waiting on <declared person>` and `not yours to move
 here`. The poll moves itself the moment its answer lands, so the row offers no
 destination and no transition.
+
+#### 1.1.1 A runtime that lists its gates names each one, says how long it has waited, and what it holds
+
+Where the bound runtime prepares gate briefs ([§FS-005-dispatch.9.3](FS-005-dispatch.md#93-a-prepared-gate-is-answered-in-its-own-form)), it also
+lists the gates under a work root, and the reading asks it for that listing
+once per work root that holds a gate row: never once per row, and never for a
+root that holds none. The listing answers the three things the enumeration
+cannot know:
+
+- the gate's **title**, the one its brief gives, which the row carries in
+  place of the ticket's heading;
+- **since**, when the ticket began waiting, as the runtime recorded it, or that
+  the runtime does not know; and
+- **holds**, how many unfinished tasks cannot move until the ticket leaves the
+  gate.
+
+The listing adds no row and takes none away. The rows are still the
+enumeration's: a gate the listing names that the enumeration did not find is
+not a row, and a row the listing does not name, names in another state, or
+belongs to a root whose listing could not be had keeps exactly what the
+enumeration gave it, its title included, and carries neither fact.
+
+A gate whose start the runtime does not know has waited an *unknown* time,
+never no time, and it sorts after every gate whose start is known. Rows whose
+start is known come first, oldest first; every other row, polls included,
+keeps the enumeration's order behind them. On the row the facts follow the
+state, in the one sentence both surfaces print: `human-judgment · waited 2d ·
+holds 6 tasks`, and `waited unknown` where the runtime does not know.
+
+A runtime that prepares no briefs, or none bound, is not asked, and every row
+is exactly what the enumeration gives ([§REQ-001-boundary.1](../requirements/REQ-001-boundary.md#1-the-anatomy)).
 
 ### 1.2 New: every matter nothing has been done about
 
@@ -222,7 +256,8 @@ line, in the screen's order. `ephor waiting --json` prints the published
 `waiting` view (`ephor schema views`):
 
 - `on_you`: the gate and poll rows of [§FS-019-waiting.1.1](FS-019-waiting.md#11-waiting-on-you-every-gate-and-every-poll-on-the-reader), each with its
-  `kind` (`gate` or `poll`);
+  `kind` (`gate` or `poll`), and on a gate the runtime lists, its `since` and
+  `holds` ([§FS-019-waiting.1.1.1](FS-019-waiting.md#111-a-runtime-that-lists-its-gates-names-each-one-says-how-long-it-has-waited-and-what-it-holds));
 - `new`: the rows of [§FS-019-waiting.1.2](FS-019-waiting.md#12-new-every-matter-nothing-has-been-done-about), each with its `proposal`
   ([§FS-019-waiting.7.1](FS-019-waiting.md#71-every-new-row-carries-a-proposal));
 - `held`: each held matter with the label that holds it;
@@ -239,7 +274,10 @@ line, in the screen's order. `ephor waiting --json` prints the published
   anything.
 
 A field the runtime does not report is absent from the view rather than null
-or guessed ([§FS-019-waiting.1.1](FS-019-waiting.md#11-waiting-on-you-every-gate-and-every-poll-on-the-reader)). A later field is added freely, as the view
+or guessed ([§FS-019-waiting.1.1](FS-019-waiting.md#11-waiting-on-you-every-gate-and-every-poll-on-the-reader)). A gate's `since` is the one field that may be
+`null`: the runtime listed the gate and said it does not know when it began
+waiting, which is a different answer from listing nothing
+([§FS-019-waiting.1.1.1](FS-019-waiting.md#111-a-runtime-that-lists-its-gates-names-each-one-says-how-long-it-has-waited-and-what-it-holds)). A later field is added freely, as the view
 schema promises.
 
 The command reads the cache and the disk, like the screen. It fetches

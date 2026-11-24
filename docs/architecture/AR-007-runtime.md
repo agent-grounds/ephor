@@ -137,7 +137,16 @@ through unchanged, written to a private file under the system's temporary
 directory that is removed once the runner has answered, so the plan's own
 directory holds only what the runner records. The same summons carry the
 other gate verbs the binding adds; a later one is a new verb under the same
-feature, not a new probe.
+feature, not a new probe. Two followed: `work.gate.list`, the runner's
+listing of the gates under one work root (`rhei gate list <root> --json`),
+asked once per work root that holds a gate row and read for each gate's title,
+when it began waiting and what it holds, matched to the enumeration's rows by
+ticket and state and never adding one ([§FS-019-waiting.1.1.1](../functional-spec/FS-019-waiting.md#111-a-runtime-that-lists-its-gates-names-each-one-says-how-long-it-has-waited-and-what-it-holds)); and
+`work.gate.schema`, the runner's own request and answer schemas, which the
+guide prints as the runner gave them and never keeps ([§FS-020-guide.4](../functional-spec/FS-020-guide.md#4---json-the-topics-the-text-and-the-runtimes-own-schemas)). The
+guide's `gate` topic is this module's text too, because it explains the plan
+language: its commands are composed with the bound runner, as every command
+line here is ([§FS-020-guide.2](../functional-spec/FS-020-guide.md#2-gate-how-a-workflow-prepares-the-question-its-gate-asks)).
 
 Holding: the binding's own exclusion, taken and held for a move ephor makes on
 its files, and the knowledge of which of those files are coordination state
