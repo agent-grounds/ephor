@@ -158,7 +158,10 @@ the polls that wait on you, the matters nothing has been done about yet, and
 the runs going now — the same reading `ephor waiting` prints. The feed itself,
 below, is the overview, one key (`O`) away; `defaults.start_screen:
 "overview"` or `ephor tui --overview` opens on it instead
-([docs/manual.md §6](docs/manual.md#6-the-inbox)).
+([docs/manual.md §6](docs/manual.md#6-the-inbox)). Each new matter says the rhei it would be assigned;
+`Enter` lays and starts it, `a` picks another, `x` records that it needs none,
+and `A` processes every unambiguous row after one preview — `ephor work
+process` and `ephor work dismiss` from a shell.
 
 Everything in the overview is organized per organization (with its checkout
 folder from the registry's `organizations[].root`, e.g. Widget — `~/c/g`,
@@ -438,6 +441,9 @@ ephor work dispatch [--project P] [--recipe R] [--item ID] [--kind pr]
                     [--updated-within DAYS] [--again] [--ranking PATH] [--limit N] [--act]
                     [-- RUNNER_ARGS…]
 ephor work ask --item ID "…"                # a ticket in your own words
+ephor work process --item ID [--dry-run]    # lay what Waiting proposes, record it, ask for a start
+ephor work process --all [--dry-run] [--act]  # every unambiguous new matter, after a preview
+ephor work dismiss --item ID --reason "…"   # this one needs no rhei, until it moves
 ephor work sync [--dry-run] [--act]         # reopen work whose item has moved
 ephor work cancel --item ID TICKET… [--why "…"]   # take a ticket back; the plan keeps it
 ephor work retire --item ID [--dry-run]     # put a finished matter's leftover work in the archive
