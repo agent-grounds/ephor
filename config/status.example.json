@@ -5,7 +5,8 @@
     "github_user": "you",
     "recent_days": 7,
     "browser": "xdg-open",
-    "window": "tmux"
+    "window": "tmux",
+    "start_screen": "waiting"
   },
   "sources": [
     {
