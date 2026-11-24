@@ -120,6 +120,25 @@ command is. Whether the binding *can* detach on this platform is this
 module's answer too, so the surfaces ask it before offering: where it cannot,
 the run is the attached invocation of before, and the outcome line says so.
 
+Briefing: a gate's prepared question and the answer to it
+([§FS-005-dispatch.9.3](../functional-spec/FS-005-dispatch.md#93-a-prepared-gate-is-answered-in-its-own-form), [§DA-012-the-runtime-routes-a-gate-answer](../decisions/architectural/DA-012-the-runtime-routes-a-gate-answer.md#da-012-the-runtime-routes-a-gate-answer-the-runtime-turns-a-gates-answers-into-its-move-and-ephor-only-sends-them)). Reading the
+brief and sending the answer are two summons, `work.gate.show` and
+`work.gate.answer`, composed here in the runner's own words (`rhei gate show
+--json` and `rhei gate answer --answers <file> --json`, with `--dry-run` for
+the confirmation) and run captured from the gate's execution root. Whether the
+runner has them at all is one feature, `work.gate`, asked of the runner by
+`rhei gate schema` exiting zero, once per process and per runner as detaching
+is ([§AR-005-capabilities.4](AR-005-capabilities.md#4-a-runtimes-own-features-are-asked-of-it-once)). What goes up is the brief as data — the digest
+opaque, a route's condition the runtime's words and never parsed here — and
+the runner's verdict, every field a refusal can leave unknown read as
+optional, the verdict read from standard output even when the runner exits
+non-zero because that is where it puts it. The answer document is passed
+through unchanged, written to a private file under the system's temporary
+directory that is removed once the runner has answered, so the plan's own
+directory holds only what the runner records. The same summons carry the
+other gate verbs the binding adds; a later one is a new verb under the same
+feature, not a new probe.
+
 Holding: the binding's own exclusion, taken and held for a move ephor makes on
 its files, and the knowledge of which of those files are coordination state
 rather than work ([§FS-005-dispatch.36.3](../functional-spec/FS-005-dispatch.md#363-it-holds-the-runtimes-own-exclusion-and-asks-the-runtime-to-move-nothing),
@@ -191,4 +210,8 @@ present but cannot detach — an older one, or a platform with no detached
 shape — runs attached, the terminal handed over, and a run's identity is
 whatever descriptor it leaves; where it leaves none there is no id to show
 and no surface to attach, and the board says *live* from the lock alone
-([§FS-005-dispatch.20](../functional-spec/FS-005-dispatch.md#20-a-run-of-the-runtime-starts-beneath-the-screen-and-is-watched-by-attaching)).
+([§FS-005-dispatch.20](../functional-spec/FS-005-dispatch.md#20-a-run-of-the-runtime-starts-beneath-the-screen-and-is-watched-by-attaching)). A runner that is bound and present but has no gate verbs
+— an older one — briefs nothing: the review is the reading it always was,
+with no brief on any gate and no field for one in its JSON, a gate opens the
+review rather than a form, and the answer verb refuses in a sentence naming
+the plain transition ([§FS-005-dispatch.9.3](../functional-spec/FS-005-dispatch.md#93-a-prepared-gate-is-answered-in-its-own-form)).
