@@ -11,8 +11,30 @@ use crate::work::runtime::human_gate::{self, Review};
 
 use super::Action;
 
+/// The screen `esc` leaves a review for (§FS-019-waiting.4): the work screen
+/// it was opened from, or whichever floor the reader was on.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Return {
+    Work,
+    Waiting,
+    Overview,
+}
+
+impl Return {
+    fn word(self) -> &'static str {
+        match self {
+            Return::Work => "work",
+            Return::Waiting => "waiting",
+            Return::Overview => "overview",
+        }
+    }
+}
+
 pub(crate) struct HumanGateScreen {
     pub item: Item,
+    /// Where `esc` goes: a gate reviewed from Waiting comes back to Waiting,
+    /// never to a work screen the reader did not open (§FS-019-waiting.4).
+    pub back: Return,
     review: Review,
     selected: usize,
     preview: Option<(String, String)>,
@@ -24,12 +46,19 @@ impl HumanGateScreen {
     pub fn new(item: Item, review: Review) -> Self {
         Self {
             item,
+            back: Return::Work,
             review,
             selected: 0,
             preview: None,
             scroll: 0,
             viewport: 0,
         }
+    }
+
+    /// The same review, left by `esc` for `back`.
+    pub fn returning(mut self, back: Return) -> Self {
+        self.back = back;
+        self
     }
 
     fn transitions(&self) -> usize {
@@ -52,19 +81,20 @@ impl HumanGateScreen {
     }
 
     pub fn footer(&self) -> String {
+        let esc = format!("esc {}", self.back.word());
         if self.preview.is_some() {
             " j/k scroll  PgUp/PgDn page  esc back to files · reading changes nothing".to_string()
         } else if self.review.gates.is_empty() {
             // Nothing to decide; the finished files are only read
             // (§FS-005-dispatch.9.2).
             match self.review.files.is_empty() {
-                true => " H reload  esc work".to_string(),
-                false => " No human gate · j/k files  enter read  H reload  esc work".to_string(),
+                true => format!(" H reload  {esc}"),
+                false => format!(" No human gate · j/k files  enter read  H reload  {esc}"),
             }
         } else if self.transitions() == 0 {
-            " No declared transitions · j/k files  enter read  H reload  esc work".to_string()
+            format!(" No declared transitions · j/k files  enter read  H reload  {esc}")
         } else {
-            " j/k select  f files  enter review choice/read file  H reload  esc work".to_string()
+            format!(" j/k select  f files  enter review choice/read file  H reload  {esc}")
         }
     }
 
@@ -84,7 +114,11 @@ impl HumanGateScreen {
             return Action::None;
         }
         match code {
-            KeyCode::Esc => Action::OpenWork(self.item.clone()),
+            // Back where the review was opened from (§FS-019-waiting.4).
+            KeyCode::Esc => match self.back {
+                Return::Work => Action::OpenWork(self.item.clone()),
+                Return::Waiting | Return::Overview => Action::Back,
+            },
             KeyCode::Char('H') => Action::ReviewHumanGate(self.item.clone()),
             KeyCode::Char('j') | KeyCode::Down => {
                 self.selected = (self.selected + 1).min(self.count().saturating_sub(1));

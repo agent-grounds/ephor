@@ -87,7 +87,10 @@ A matter is **new** when all of these hold:
 A matter a recipe dispatched on its own is therefore never new: its dispatch
 is in the ledger. Rows are listed newest first and carry the matter's kind,
 project, title, how long ago it last moved, and the proposal: the rhei ephor
-would assign it ([§FS-019-waiting.7.1](FS-019-waiting.md#71-every-new-row-carries-a-proposal)).
+would assign it ([§FS-019-waiting.7.1](FS-019-waiting.md#71-every-new-row-carries-a-proposal)). On the screen the proposal reads after
+the title as the entry, the hand the work would go to and the branch its
+checkout is on — `→ implement  cld  fix/issue-431` — each where the proposal
+names it, so a row says who would do the work and where before it is opened.
 
 A matter that carries a label some selector of the site excludes by name, such
 as `"labels": ["!human-discussion"]` on an action or a recipe
@@ -107,8 +110,12 @@ way ([§FS-019-waiting.6](FS-019-waiting.md#6-ephor-waiting-is-the-same-reading)
 
 One row per execution root whose run is live, read from the runtime's lock
 exactly as the board reads it ([§FS-005-dispatch.15](FS-005-dispatch.md#15-every-operation-is-visible-in-one-place)). The row carries the
-project, the matter where the ledger names one, the root, the tickets the run
-is holding with the state each is in, and how long the run has been going.
+project, the matter where the ledger names one, the root, the entry the ledger
+says the work was handed over with and the branch it is about
+([§FS-005-dispatch.4](FS-005-dispatch.md#4-the-ledger-is-ephors-record-and-never-the-truth-about-the-work)), the tickets the run is holding with the state each is in,
+and how long the run has been going. A run between two turns holds no ticket,
+and its row says `between turns` rather than showing an empty list that reads
+as a run doing nothing.
 The age is counted from the start the run published beside its lock
 ([§FS-005-dispatch.20](FS-005-dispatch.md#20-a-run-of-the-runtime-starts-beneath-the-screen-and-is-watched-by-attaching)), so a run that published no start shows no age. The
 hand a run works with is carried only where the runtime reports it, by the
@@ -122,9 +129,17 @@ start that has not started yet, and why
 
 A section with no rows collapses to its heading and one line saying that it
 is empty. When neither Waiting on you nor New has a row, the screen opens with
-`Nothing is waiting on you.` and still shows Running, the held line where a
-matter is held, and the overview line ([§FS-019-waiting.3](FS-019-waiting.md#3-the-header-and-the-overview-line)). An empty screen is
-an answer, not a failure, and it says what it is the answer to.
+`Nothing is waiting on you. No gate is open and every matter has work laid or a
+recorded decision.` — `every matter not held` where a matter is held — and
+still shows Running, the held line where a matter is held, and the overview
+line ([§FS-019-waiting.3](FS-019-waiting.md#3-the-header-and-the-overview-line)). An empty screen is an answer, not a failure, and it says
+what it is the answer to.
+
+Under that answer, one line says what the reader decided today:
+`decided today: 5 laid · 1 needs no work`. Both are counted from ephor's own
+records of processing ([§FS-005-dispatch.4](FS-005-dispatch.md#4-the-ledger-is-ephors-record-and-never-the-truth-about-the-work)), the processing marks and the
+dismissals made since local midnight. An answered gate is the runtime's record
+and not ephor's, so it is not counted here.
 
 So the screen never shows that answer before it has one. Reading the work
 roots takes as long as the operations board takes, and the interface draws
@@ -138,8 +153,12 @@ the board shows it ([§FS-005-dispatch.15](FS-005-dispatch.md#15-every-operation
 
 ## 3. The header and the overview line
 
-The header names the screen and counts the three sections:
-`ephor — waiting   3 on you · 5 new · 4 running`.
+The header names the screen, counts the three sections, and says how old the
+reading's feed is:
+`ephor — waiting   3 on you · 5 new · 4 running · refreshed 2m ago`. The age is
+the newest fetch the feed's cache records ([§FS-001-forge-interface.7](FS-001-forge-interface.md#7-a-fetch-runs-beneath-the-reading-never-in-front-of-it)), so
+a quiet screen over a feed nobody has refreshed says so; a feed never fetched
+says `never refreshed`.
 
 The footer opens with one line about the overview:
 `overview: 143 matters · 12 changed since you looked`. The first number is how
@@ -207,7 +226,10 @@ line, in the screen's order. `ephor waiting --json` prints the published
   ([§FS-019-waiting.7.6](FS-019-waiting.md#76-running-names-what-waits-for-a-slot));
 - `adopt`: the sentence naming the recipe a repeated confirmation would make
   automatic, where there is one ([§FS-019-waiting.7.7](FS-019-waiting.md#77-a-proposal-confirmed-again-and-again-names-the-setting-that-would-make-it-automatic));
-- `overview`: the two counts of [§FS-019-waiting.3](FS-019-waiting.md#3-the-header-and-the-overview-line); and
+- `decided`: what the reader decided today, `laid` and `dismissed`
+  ([§FS-019-waiting.2](FS-019-waiting.md#2-an-empty-section-is-one-line));
+- `overview`: the two counts of [§FS-019-waiting.3](FS-019-waiting.md#3-the-header-and-the-overview-line), and `refreshed_at`, the
+  newest fetch, where the feed was ever fetched; and
 - `refusal`: the workable rung's sentence, where the runtime cannot run
   anything.
 
@@ -268,12 +290,32 @@ A held matter carries no proposal: it is offered nothing
 
 ### 7.2 Confirming lays it, records it, and starts it
 
-`Enter` on a new row opens the **processing screen**: the matter, the proposed
-rhei and why it is the one proposed (the first entry in menu order, how many
-others accept the matter, and `a` to choose), the plan and the checkout it
-would create, and the account a dry run of the same move gives of it. Nothing
-is written until the reader confirms with `Enter`. `esc` comes back to
-Waiting.
+`Enter` on a new row opens the **processing screen**. Its title names the
+matter and where it stands among the new rows, `new matter — rhei#431 · 1 of 5
+new`, and it shows:
+
+- the matter: its kind, title, project, how long ago it last moved, and its
+  labels;
+- who holds it: the assignees the feed reports, `nobody · no assignee on the
+  forge` where it reports none, and nothing where the source does not say;
+- `work: none laid · no plan in the ledger`, which is what makes it new;
+- the proposed rhei and why it is the one proposed: the first entry in menu
+  order, how many others accept the matter, and `a` to choose;
+- the hand, the plan the move would write, and the checkout: its branch and
+  whether that workspace is there or will be created;
+- the inputs a workflow would be laid with, and what answered each;
+- the account a dry run of the same move gives of it; and
+- one sentence saying what confirming does: it lays the plan, records it
+  against the matter in the ledger, and asks for its start, and ephor posts
+  nothing to the forge.
+
+The screen's own words say `work` where the runtime's name would go, as
+every string ephor shows does ([§REQ-001-boundary.5](../requirements/REQ-001-boundary.md#5-no-product-literal-outside-its-adapter)).
+
+Nothing is written until the reader confirms with `Enter`. `n` moves to the
+next new row's processing screen without deciding this one, and `esc` comes
+back to Waiting. What the screen reads is what `ephor work process --item <id>
+--dry-run` reads, and each line of it is that command's or the menu's.
 
 Confirming makes the move `ephor actions run` makes with that entry
 ([§FS-005-dispatch.4](FS-005-dispatch.md#4-the-ledger-is-ephors-record-and-never-the-truth-about-the-work)): a recipe entry writes its ticket, and a workflow entry
@@ -285,6 +327,14 @@ admission, narrowed to the roots that hold this matter's work
 cannot be had, a root resting after a failed start, and the spend ceiling
 decide whether it starts now ([§FS-015-spend-ceiling.6](FS-015-spend-ceiling.md#6-only-the-sweep-is-bound-and-the-persons-key-never-is)). Work they do not
 start now is laid all the same and **queued**.
+
+Processing judges the matter against the ledger as it is on disk, not as the
+screen last read it, and it holds the lock a sweep holds from that reading
+until its record is written. A matter a sweep or another process handed over
+since the screen was read is refused as already having work, and a sweep
+running at the moment of confirmation is waited for rather than written over.
+A dismissal is written the same way. The lock is let go before the start is
+asked for, which takes it again as any sweep does.
 
 A workflow whose inputs are not all answered is not laid with a guess. The
 processing screen says what it still wants, and `Enter` opens the workflow's
@@ -356,9 +406,9 @@ Under the live runs, one line names it:
 reason is the admission's own sentence from when the start was asked for.
 
 A queued matter is shown while its root has no live run and its work still
-holds a ticket a run would advance. Its record lasts until a sweep starts that
-work ([§FS-005-dispatch.24.5](FS-005-dispatch.md#245-work-processed-from-waiting-waits-for-its-slot)), and a matter whose work was finished some
-other way is not shown, whatever the record says.
+holds a ticket a run would advance. Its record lasts until a run starts on that
+work's root, whoever starts it ([§FS-005-dispatch.24.5](FS-005-dispatch.md#245-work-processed-from-waiting-waits-for-its-slot)), and a matter whose work
+was finished some other way is not shown, whatever the record says.
 
 ### 7.7 A proposal confirmed again and again names the setting that would make it automatic
 

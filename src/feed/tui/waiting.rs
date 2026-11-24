@@ -87,6 +87,7 @@ impl WaitingScreen {
                 running: Vec::new(),
                 queued: Vec::new(),
                 adopt: None,
+                decided: views::Decided::default(),
                 overview: views::Overview::default(),
             },
             BTreeMap::new(),
@@ -152,6 +153,25 @@ impl WaitingScreen {
             .iter()
             .map(|row| row.root.clone())
             .collect()
+    }
+
+    /// Where a matter stands among the new rows, 1-based, and the matter
+    /// after it: what the processing screen counts and what its `n` opens
+    /// (§FS-019-waiting.7.2).
+    pub fn place_of(&self, id: &str) -> super::process::Place {
+        let Some(index) = self.view.new.iter().position(|row| row.id == id) else {
+            return super::process::Place::default();
+        };
+        super::process::Place {
+            at: Some((index + 1, self.view.new.len())),
+            next: self
+                .view
+                .new
+                .iter()
+                .skip(index + 1)
+                .find_map(|row| self.items.get(&row.id))
+                .map(|item| Box::new(item.clone())),
+        }
     }
 
     fn rows(&self) -> Vec<At> {
@@ -347,10 +367,16 @@ impl WaitingScreen {
             .as_deref()
             .filter(|_| view.on_you.is_empty() && view.running.is_empty());
 
+        // The answer, what it is the answer to, and what the reader decided
+        // today (§FS-019-waiting.2).
         if view.quiet() {
             lines.push(Line::from(Span::styled(
-                format!("  {}", crate::api::waiting::QUIET),
+                format!("  {}", view.quiet_answer()),
                 Style::default().add_modifier(Modifier::BOLD),
+            )));
+            lines.push(Line::from(Span::styled(
+                format!("  {}", view.decided_line()),
+                dim,
             )));
             lines.push(Line::from(""));
         }
@@ -470,9 +496,20 @@ impl WaitingScreen {
                 .started_at
                 .map(|at| crate::feed::render::age(now, at))
                 .unwrap_or_default();
+            // A run between two turns holds nothing, and says so rather than
+            // reading as a run doing nothing (§FS-019-waiting.1.3).
             let holding = match holding.is_empty() {
+                true => "between turns".to_string(),
+                false => holding.join(", "),
+            };
+            let work: Vec<&str> = [&row.entry, &row.branch]
+                .into_iter()
+                .flatten()
+                .map(String::as_str)
+                .collect();
+            let work = match work.is_empty() {
                 true => String::new(),
-                false => format!("   {}", holding.join(", ")),
+                false => format!("   {}", work.join("  ")),
             };
             lines.push(Line::from(vec![
                 Span::styled(format!("  {} ", cursor(at)), dim),
@@ -480,7 +517,8 @@ impl WaitingScreen {
                 Span::styled(format!("{age:<5} "), dim),
                 Span::styled(format!("{:<10} ", row.project), dim),
                 Span::styled(about, strong(at)),
-                Span::styled(holding, dim),
+                Span::styled(work, Style::default().fg(Color::Cyan)),
+                Span::styled(format!("   {holding}"), dim),
             ]));
         }
         // What processing laid that waits for a slot (§FS-019-waiting.7.6).

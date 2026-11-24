@@ -5,7 +5,7 @@ use chrono::Utc;
 use ratatui::crossterm::event::KeyCode;
 use serde_json::json;
 
-use super::{Choice, ProcessScreen};
+use super::{Choice, Place, ProcessScreen};
 use crate::api::views;
 use crate::feed::model::{Item, ItemKind};
 use crate::feed::tui::Action;
@@ -52,6 +52,8 @@ fn account(ok: bool, says: &str) -> views::ProcessRow {
         plan: Some("/w/widget/you/retry/panta/widget-31.rhei.md".into()),
         tickets: vec!["widget-31.fix-gate-1".to_string()],
         start: None,
+        assignees: None,
+        labels: Vec::new(),
         answers: Vec::new(),
     }
 }
@@ -78,25 +80,82 @@ fn choices() -> Vec<Choice> {
 /// (§FS-019-waiting.7.2).
 #[test]
 fn the_proposal_is_shown_with_its_account_and_enter_confirms_it() {
+    let mut next = matter();
+    next.id = "forge:widget/32".to_string();
+    let mut said = account(true, "would lay widget-31.fix-gate-1");
+    said.assignees = Some(Vec::new());
+    said.labels = vec!["bug".to_string()];
+    let mut proposed = proposal(1);
+    proposed.hand = Some("cld".to_string());
+    proposed.branch = Some("fix/issue-31".to_string());
     let mut screen = ProcessScreen::one(
         matter(),
-        proposal(1),
-        account(true, "would lay widget-31.fix-gate-1"),
+        Place {
+            at: Some((1, 5)),
+            next: Some(Box::new(next)),
+        },
+        proposed,
+        said,
         false,
         choices(),
     );
-    assert_eq!(screen.title(), " ephor — process forge:widget/31");
+    // The title names the matter and where it stands among the new rows.
+    assert_eq!(
+        screen.title(),
+        " ephor — new matter — widget/31 · 1 of 5 new"
+    );
     let text = screen.text();
+    assert!(text.contains("labels bug"), "{text}");
+    assert!(
+        text.contains("held by    nobody · no assignee on the forge"),
+        "{text}"
+    );
+    assert!(
+        text.contains("work       none laid · no plan in the ledger"),
+        "{text}"
+    );
     assert!(text.contains("PROPOSED"), "{text}");
     assert!(text.contains("fix-gate"), "{text}");
     assert!(
         text.contains("the first entry in menu order · 1 other would take it"),
         "{text}"
     );
-    assert!(text.contains("/w/widget/you/retry  (made first)"), "{text}");
+    assert!(text.contains("hand       cld"), "{text}");
+    assert!(
+        text.contains(
+            "plan       /w/widget/you/retry/panta/widget-31.rhei.md · written on confirm"
+        ),
+        "{text}"
+    );
+    assert!(
+        text.contains("checkout   fix/issue-31 at /w/widget/you/retry · will be created"),
+        "{text}"
+    );
     assert!(text.contains("WHAT IT WOULD DO"), "{text}");
     assert!(text.contains("widget-31.fix-gate-1"), "{text}");
-    assert!(screen.footer().contains("enter processes it"));
+    assert!(
+        text.contains("records it against widget/31 in the ledger"),
+        "{text}"
+    );
+    assert!(text.contains("Ephor posts nothing to the forge."), "{text}");
+    assert_eq!(
+        screen.footer(),
+        " enter lay and start  ·  a other workflow  ·  x needs no work  ·  n next  ·  l open  ·  esc waiting"
+    );
+
+    // `n` opens the next new row's screen, this one left undecided.
+    match screen.handle_key(KeyCode::Char('n')) {
+        Action::ProcessMatter {
+            item,
+            entry,
+            choosing,
+        } => {
+            assert_eq!(item.id, "forge:widget/32");
+            assert_eq!(entry, None);
+            assert!(!choosing);
+        }
+        _ => panic!("n opens the next new matter"),
+    }
 
     match screen.handle_key(KeyCode::Enter) {
         Action::ConfirmProcess { item, entry, wants } => {
@@ -124,6 +183,7 @@ fn the_proposal_is_shown_with_its_account_and_enter_confirms_it() {
 fn a_refused_account_says_why_and_wanted_inputs_are_asked_for() {
     let mut refused = ProcessScreen::one(
         matter(),
+        Place::default(),
         proposal(0),
         account(false, "× the runtime refused it"),
         false,
@@ -137,9 +197,17 @@ fn a_refused_account_says_why_and_wanted_inputs_are_asked_for() {
         Action::SetMessage(says) => assert!(says.contains("No other entry"), "{says}"),
         _ => panic!("nothing to choose among"),
     }
+    // On the last new row there is no next one, and `n` says so.
+    assert!(!refused.footer().contains("n next"), "{}", refused.footer());
+    match refused.handle_key(KeyCode::Char('n')) {
+        Action::SetMessage(says) => assert_eq!(says, super::LAST),
+        _ => panic!("n on the last row says so"),
+    }
+    assert_eq!(refused.title(), " ephor — new matter — widget/31");
 
     let mut wants = ProcessScreen::one(
         matter(),
+        Place::default(),
         proposal(0),
         account(false, "review-change still wants:\n  --set change_ref=…"),
         true,
@@ -159,6 +227,7 @@ fn a_refused_account_says_why_and_wanted_inputs_are_asked_for() {
 fn a_chooses_another_workflow() {
     let mut screen = ProcessScreen::one(
         matter(),
+        Place::default(),
         proposal(1),
         account(true, "would lay"),
         false,
@@ -189,6 +258,7 @@ fn a_chooses_another_workflow() {
     // Opened from `a` on the Waiting row, the list is open at once.
     let opened = ProcessScreen::one(
         matter(),
+        Place::default(),
         proposal(1),
         account(true, "would lay"),
         false,

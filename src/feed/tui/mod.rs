@@ -60,7 +60,7 @@ use answers::{AnswerOutcome, AnswerScreen};
 use burn::BurnScreen;
 use cache_freshness::CacheFreshness;
 use gate::GateScreen;
-use human_gate::HumanGateScreen;
+use human_gate::{HumanGateScreen, Return};
 use navigator::NavigatorState;
 use operations::OperationsScreen;
 use process::ProcessScreen;
@@ -459,7 +459,15 @@ impl App {
     /// this last found (§FS-005-dispatch.15.1).
     fn reload_work_groups(&mut self) {
         self.work_groups = match &mut self.ctx.dispatcher {
-            Some(dispatcher) => dispatcher.work_roots(),
+            Some(dispatcher) => {
+                // What another process recorded since this screen loaded — a
+                // sweep's dispatch, a dismissal made elsewhere — is what New is
+                // measured against (§FS-019-waiting.1.2, §FS-005-dispatch.4).
+                if let Err(err) = dispatcher.reload_ledger() {
+                    self.message = err.to_string();
+                }
+                dispatcher.work_roots()
+            }
             None => Vec::new(),
         };
     }
@@ -1216,6 +1224,8 @@ impl App {
                 plan: None,
                 tickets: Vec::new(),
                 start: None,
+                assignees: crate::work::recipe::reported(&item, "assignees"),
+                labels: crate::work::recipe::reported(&item, "labels").unwrap_or_default(),
                 answers: Vec::new(),
             },
         };
@@ -1229,7 +1239,8 @@ impl App {
                 Err(_) => false,
             };
         let choices = self.ctx.process_choices(&item);
-        let screen = ProcessScreen::one(item, proposal, account, wants, choices);
+        let place = self.waiting.place_of(&item.id);
+        let screen = ProcessScreen::one(item, place, proposal, account, wants, choices);
         self.screen = Screen::Process(match choosing {
             true => screen.choosing(),
             false => screen,
@@ -1309,9 +1320,6 @@ impl App {
                 self.rebuild_view();
                 self.open_work(item);
             }
-            // The runtime's move, in its own words, and its answer on the
-            // message line (§FS-005-dispatch.16); the screen below is rebuilt
-            // from the plan, which is where the truth of it now is.
             // `ephor work dismiss` is this call (§FS-019-waiting.7.4).
             Asking::Dismiss(item) => {
                 let outcome = self.ctx.dismiss(&item, line);
@@ -1320,6 +1328,9 @@ impl App {
                     self.processed();
                 }
             }
+            // The runtime's move, in its own words, and its answer on the
+            // message line (§FS-005-dispatch.16); the screen below is rebuilt
+            // from the plan, which is where the truth of it now is.
             Asking::Cancel { item, ticket } => {
                 let Some(dispatcher) = &self.ctx.dispatcher else {
                     self.message = "Work needs the registry, which could not be read".to_string();
@@ -1371,8 +1382,21 @@ impl App {
     }
 
     fn open_human_review(&mut self, item: Item) {
+        // `esc` leaves it for where it was opened from: the work screen, or
+        // the floor the reader was on; a reload keeps the one it had
+        // (§FS-019-waiting.4).
+        let back = match &self.screen {
+            Screen::Work(_) => Return::Work,
+            Screen::HumanGate(open) => open.back,
+            _ => match self.home {
+                Home::Waiting => Return::Waiting,
+                Home::Overview => Return::Overview,
+            },
+        };
         match self.ctx.human_review(&item) {
-            Ok(review) => self.screen = Screen::HumanGate(HumanGateScreen::new(item, review)),
+            Ok(review) => {
+                self.screen = Screen::HumanGate(HumanGateScreen::new(item, review).returning(back))
+            }
             Err(err) => self.message = err.to_string(),
         }
     }

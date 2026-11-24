@@ -13,6 +13,28 @@ fn review_screen(item: Item) -> Screen {
     ))
 }
 
+/// `esc` on the review that is open, as the event loop sends it: the key goes
+/// to the screen, and the action it answers is applied the way `apply`
+/// applies `Back` and `OpenWork` (§FS-019-waiting.4).
+fn esc_on_review(app: &mut App) -> Action {
+    let Screen::HumanGate(review) = &mut app.screen else {
+        panic!("a review is open");
+    };
+    assert!(
+        review.footer().contains(match app.home {
+            Home::Waiting => "esc waiting",
+            Home::Overview => "esc overview",
+        }),
+        "{}",
+        review.footer()
+    );
+    let action = review.handle_key(KeyCode::Esc);
+    if matches!(action, Action::Back) {
+        app.back();
+    }
+    action
+}
+
 #[test]
 fn the_interface_opens_on_waiting_and_the_overview_is_one_key_away() {
     if isolated(
@@ -47,10 +69,15 @@ fn the_interface_opens_on_waiting_and_the_overview_is_one_key_away() {
     // Esc on the floor does nothing.
     assert!(matches!(app.waiting.handle_key(KeyCode::Esc), Action::None));
 
-    // A screen opened from Waiting comes back to Waiting, and the board
-    // opened over it closes back to it.
-    app.screen = review_screen(item.clone());
-    app.back();
+    // A gate review opened from Waiting comes back to Waiting on `esc`, by
+    // the key itself, and the board opened over it closes back to it.
+    app.open_human_review(item.clone());
+    assert!(
+        matches!(app.screen, Screen::HumanGate(_)),
+        "{}",
+        app.message
+    );
+    assert!(matches!(esc_on_review(&mut app), Action::Back));
     assert!(matches!(app.screen, Screen::Waiting));
     assert!(app.global_key(KeyCode::Char(';')));
     assert!(matches!(app.screen, Screen::Operations(_)));
@@ -62,9 +89,28 @@ fn the_interface_opens_on_waiting_and_the_overview_is_one_key_away() {
     assert!(app.global_key(KeyCode::Char('O')));
     assert!(matches!(app.screen, Screen::Navigator));
     assert!(drawn(&mut app).0.contains("O waiting"));
-    app.screen = review_screen(item.clone());
-    app.back();
+    app.open_human_review(item.clone());
+    assert!(matches!(esc_on_review(&mut app), Action::Back));
     assert!(matches!(app.screen, Screen::Navigator));
+
+    // One opened from the work screen still goes back to the work screen, and
+    // a reload keeps where it goes.
+    let mut review = HumanGateScreen::new(
+        item.clone(),
+        crate::work::runtime::human_gate::Review::default(),
+    );
+    assert!(review.footer().contains("esc work"), "{}", review.footer());
+    assert!(matches!(
+        review.handle_key(KeyCode::Esc),
+        Action::OpenWork(_)
+    ));
+    app.open_human_review(item.clone());
+    app.open_human_review(item.clone());
+    let Screen::HumanGate(review) = &app.screen else {
+        panic!("the reload keeps the review open");
+    };
+    assert_eq!(review.back, Return::Overview);
+    app.back();
 
     // `O` on the overview comes back to Waiting, and from a screen opened
     // over Waiting it goes to the overview.

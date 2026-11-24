@@ -48,7 +48,7 @@
         "icon": { "type": "string" },
         "description": { "type": "string" },
         "gate": { "enum": ["ready", "needs-checkout", "blocked"], "description": "`needs-checkout` where the move makes the workspace first, which is whether that workspace is there yet (FS-005-dispatch.25)." },
-        "hand": { "type": "string", "description": "Who the work would go to, where the entry says." },
+        "hand": { "type": "string", "description": "Who the work would go to: the menu's hand on a recipe, and on a workflow the hand its laying would resolve at the same root (FS-005-dispatch.14)." },
         "branch": { "type": "string", "description": "The branch the entry's template would mint." },
         "workspace": { "type": "string", "description": "The workspace that branch belongs in." },
         "root": { "type": "string", "description": "The work root it would hand the work into (FS-005-dispatch.6.1)." },
@@ -84,6 +84,8 @@
         "plan": { "type": "string" },
         "tickets": { "type": "array", "items": { "type": "string" } },
         "start": { "enum": ["started", "queued"], "description": "Where it was laid: whether the sweep's admission started it now (FS-005-dispatch.24.5). Absent on a dry run and a refusal." },
+        "assignees": { "type": "array", "items": { "type": "string" }, "description": "Who holds the matter on the forge, as the feed reports it; empty where nobody does, and absent where the source does not say (FS-019-waiting.7.2)." },
+        "labels": { "type": "array", "items": { "type": "string" }, "description": "The matter's labels, as the feed reports them." },
         "answers": {
           "type": "array",
           "description": "On a workflow: what answered each input, and where from (FS-005-dispatch.19).",
@@ -121,9 +123,11 @@
         "item": { "type": "string" },
         "matter": { "type": "string" },
         "plan": { "type": "string" },
+        "entry": { "type": "string", "description": "The entry the ledger says the work was handed over with (FS-019-waiting.1.3)." },
+        "branch": { "type": "string", "description": "The branch the ledger says the work is about." },
         "tickets": {
           "type": "array",
-          "description": "The tickets the run holds right now.",
+          "description": "The tickets the run holds right now. Empty between two turns, which the screen says.",
           "items": {
             "type": "object",
             "required": ["ticket", "title"],
@@ -839,7 +843,7 @@
     "waiting": {
       "description": "`ephor waiting --json`: what waits on the reader, what nothing has been done about, and what is running — the first screen (FS-019-waiting.6).",
       "type": "object",
-      "required": ["on_you", "new", "held", "running", "queued", "overview"],
+      "required": ["on_you", "new", "held", "running", "queued", "decided", "overview"],
       "properties": {
         "refusal": { "type": "string", "description": "The workable rung's own sentence, where the runtime cannot run anything (FS-019-waiting.2)." },
         "on_you": { "type": "array", "items": { "$ref": "#/$defs/waiting_on_you" } },
@@ -848,13 +852,23 @@
         "running": { "type": "array", "items": { "$ref": "#/$defs/waiting_running" } },
         "queued": { "type": "array", "items": { "$ref": "#/$defs/waiting_queued" } },
         "adopt": { "type": "string", "description": "The setting a proposal confirmed again and again would need to run without the reader; the sentence changes nothing (FS-019-waiting.7.7)." },
+        "decided": {
+          "type": "object",
+          "description": "What the reader decided since local midnight, from ephor's own records of processing (FS-019-waiting.2). An answered gate is the runtime's record and is not counted.",
+          "required": ["laid", "dismissed"],
+          "properties": {
+            "laid": { "type": "integer", "minimum": 0, "description": "Matters processed." },
+            "dismissed": { "type": "integer", "minimum": 0, "description": "Matters recorded as needing no rhei." }
+          }
+        },
         "overview": {
           "type": "object",
-          "description": "How much the overview holds, counted from the feed it draws (FS-019-waiting.3).",
+          "description": "How much the overview holds, counted from the feed it draws, and how old that feed is (FS-019-waiting.3).",
           "required": ["matters", "unread"],
           "properties": {
             "matters": { "type": "integer", "minimum": 0 },
-            "unread": { "type": "integer", "minimum": 0, "description": "How many of them changed since the reader last looked." }
+            "unread": { "type": "integer", "minimum": 0, "description": "How many of them changed since the reader last looked." },
+            "refreshed_at": { "type": "string", "format": "date-time", "description": "The newest fetch the feed's cache records. Absent where it was never fetched." }
           }
         }
       }

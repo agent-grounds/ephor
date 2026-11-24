@@ -89,6 +89,8 @@ fn running(run: Option<&str>) -> views::RunningRoot {
         item: None,
         matter: Some("Leave a fan-out with a free arm".to_string()),
         plan: Some(PathBuf::from("/w/widget-3/panta/widget-3.md")),
+        entry: Some("implement".to_string()),
+        branch: Some("fix/issue-3".to_string()),
         tickets: vec![views::RunningTicket {
             ticket: "widget-3.review-1".to_string(),
             title: "Review round 2".to_string(),
@@ -113,9 +115,11 @@ fn reading(
         running: run,
         queued: Vec::new(),
         adopt: None,
+        decided: views::Decided::default(),
         overview: views::Overview {
             matters: 143,
             unread: 12,
+            refreshed_at: None,
         },
     }
 }
@@ -138,7 +142,7 @@ fn the_screen_is_three_sections_in_order_under_a_counting_header() {
     );
     assert_eq!(
         screen.title(),
-        " ephor — waiting   2 on you · 1 new · 1 running"
+        " ephor — waiting   2 on you · 1 new · 1 running · never refreshed"
     );
     assert!(
         screen
@@ -162,7 +166,28 @@ fn the_screen_is_three_sections_in_order_under_a_counting_header() {
     );
     assert!(text.contains("transition refuses a valid Prior"), "{text}");
     assert!(text.contains("widget-3.review-1 [review]"), "{text}");
+    // The running row names the entry that laid the work and its branch
+    // (§FS-019-waiting.1.3).
+    assert!(text.contains("implement  fix/issue-3"), "{text}");
     assert!(!text.contains(crate::api::waiting::QUIET), "{text}");
+}
+
+/// The header says how old the feed under the reading is, and a run between
+/// two turns says so rather than showing nothing (§FS-019-waiting.3,
+/// §FS-019-waiting.1.3).
+#[test]
+fn the_header_says_how_old_the_feed_is_and_a_run_between_turns_says_so() {
+    let mut idle = running(Some("3f9a2c"));
+    idle.tickets.clear();
+    let mut view = reading(Vec::new(), Vec::new(), vec![idle]);
+    view.overview.refreshed_at = Some(chrono::Utc::now() - chrono::Duration::minutes(2));
+    let screen = WaitingScreen::new(view, BTreeMap::new());
+    assert_eq!(
+        screen.title(),
+        " ephor — waiting   0 on you · 0 new · 1 running · refreshed 2m ago"
+    );
+    let text = screen.text();
+    assert!(text.contains("between turns"), "{text}");
 }
 
 /// With nothing on the reader and nothing new, the screen says so and still
@@ -178,10 +203,21 @@ fn an_empty_screen_is_an_answer_that_still_shows_running() {
         title: "Rename the lock".to_string(),
         label: "human-discussion".to_string(),
     }];
+    view.decided = views::Decided {
+        laid: 5,
+        dismissed: 1,
+    };
     let screen = WaitingScreen::new(view, BTreeMap::new());
     let text = screen.text();
     assert!(
-        text.starts_with(&format!("  {}", crate::api::waiting::QUIET)),
+        text.starts_with(&format!(
+            "  {} No gate is open and every matter not held has work laid or a recorded decision.",
+            crate::api::waiting::QUIET
+        )),
+        "{text}"
+    );
+    assert!(
+        text.contains("decided today: 5 laid · 1 needs no work"),
         "{text}"
     );
     assert!(text.contains("WAITING ON YOU · 0"), "{text}");

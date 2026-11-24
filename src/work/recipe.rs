@@ -1181,7 +1181,7 @@ fn named<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<Vec<String
 /// What the item's source said under `key`, or `None` where it said nothing
 /// (§FS-005-dispatch.31). The absent key and the empty list are different
 /// answers and stay different all the way to the refusal.
-fn reported(item: &Item, key: &str) -> Option<Vec<String>> {
+pub(crate) fn reported(item: &Item, key: &str) -> Option<Vec<String>> {
     let reported = item.raw.get(key)?.as_array()?;
     Some(
         reported

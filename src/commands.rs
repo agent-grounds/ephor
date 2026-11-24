@@ -575,7 +575,8 @@ pub fn waiting(args: &crate::cli::WaitingArgs) -> Result<ExitCode> {
     println!("{}", view.header());
     if view.quiet() {
         println!();
-        println!("{}", crate::api::waiting::QUIET);
+        println!("{}", view.quiet_answer());
+        println!("{}", view.decided_line());
     }
     // The workable rung's sentence stands in for the two sections the
     // runtime would have filled (§FS-019-waiting.2).
@@ -652,7 +653,20 @@ pub fn waiting(args: &crate::cli::WaitingArgs) -> Result<ExitCode> {
                     .map(|age| format!("   {age}"))
                     .unwrap_or_default();
                 println!("  ▶ {} · {about}{since}", row.project);
-                println!("      {}", row.root.display());
+                // The entry and branch the ledger records, then the root
+                // (§FS-019-waiting.1.3).
+                let work: Vec<&str> = [&row.entry, &row.branch]
+                    .into_iter()
+                    .flatten()
+                    .map(String::as_str)
+                    .collect();
+                match work.is_empty() {
+                    true => println!("      {}", row.root.display()),
+                    false => println!("      {}   {}", work.join("  "), row.root.display()),
+                }
+                if row.tickets.is_empty() {
+                    println!("      between turns");
+                }
                 for ticket in &row.tickets {
                     let state = ticket.state.as_deref().unwrap_or("?");
                     println!("      {} [{state}]  {}", ticket.ticket, ticket.title);
