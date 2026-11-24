@@ -1238,7 +1238,8 @@ that changed state, no route that fits, a ticket no longer at a gate, or a
 transition the runtime refused — stays visible on the form, each error
 beside its question where it names one; every field of the verdict that the
 refusal leaves unknown is read as unknown. Answering starts no run and posts
-nothing, and a successful answer rereads the review.
+nothing, and a successful answer goes back to where the form was opened from,
+read again.
 
 **The command line is the same call.** `ephor work gate answer --item <matter>
 --ticket <ticket> --from <state> --answers <file|-> [--dry-run]` sends the
