@@ -1206,13 +1206,17 @@ required flags and help, the declared destinations and the routes, the visit,
 when the ticket entered the gate, the digest, where the answer will be
 recorded, and any problem the runtime reported. When the gate was entered is
 `null` where the runtime does not know, and every surface says *unknown*
-then, never zero. A gate the runtime could not brief carries the runtime's
+then, never zero. Where the runtime also lists the gates of the gate's plan,
+the gate carries how many unfinished tasks it **holds**, the count Waiting
+shows ([§FS-019-waiting.1.1.1](FS-019-waiting.md#111-a-runtime-that-lists-its-gates-names-each-one-says-how-long-it-has-waited-and-what-it-holds)); a gate the listing does not name carries no
+count, never zero. A gate the runtime could not brief carries the runtime's
 sentence instead and stays reviewable as before. Nothing else in the review
-changes, and `--json` gains the brief as one more field on the gate
+changes, and `--json` gains the brief and the count as fields on the gate
 ([§REQ-002-parity.3](../requirements/REQ-002-parity.md#3-every-reading-answers-a-program)).
 
 **The screen.** Opening a briefed gate shows its title, its state and how long
-it has waited; the matter, the ticket and the visit; the summary; then the
+it has waited; the matter, the ticket, the visit and how many tasks the gate
+holds, where the review carries the count; the summary; then the
 display file, read through the same bounded, local viewer review files use,
 scrollable, with the line it is at. Beneath it, one line counts the other
 files, and beneath that the form: *Your answer*, with how many of the
@@ -1222,14 +1226,17 @@ moves between the file and the form. In the form `j`/`k` move between
 questions and options, `space` chooses — the one option of a choice, an
 option of several, yes or no — `Enter` on a text question types a line, and
 `e` opens the reader's editor on it. `f` lists the brief's attachments first
-and then the files [§FS-005-dispatch.9.1](FS-005-dispatch.md#91-a-human-gate-is-reviewed-and-moved-where-its-matter-is-read) infers, demoted to *other files*;
-each opens in the same viewer. Leaving, reading and choosing move nothing.
+and then the files [§FS-005-dispatch.9.1](FS-005-dispatch.md#91-a-human-gate-is-reviewed-and-moved-where-its-matter-is-read) infers for that ticket, demoted to *other
+files* — a file another gate of the matter shares, such as the plan both sit
+in, is that ticket's too and is listed under its name; each opens in the same
+viewer. Leaving, reading and choosing move nothing.
 
 **Submitting asks first.** `s` sends exactly the answer the form holds to the
 runtime's dry run, which runs every check a real answer would. Its verdict is
 the confirmation: the answers as they will be recorded, then what the runtime
 says it will do — *this moves `<ticket>` from `<state>` to `<state>`*, by
-which route, and where the answer will be recorded. `Enter` sends the same
+which route, and where the answer will be recorded — and, where the review
+carries the count, how many held tasks the move releases. `Enter` sends the same
 answer for real; `esc` goes back to the form with every answer kept. Whether
 the form is complete is the runtime's to say, so a required question left
 unanswered comes back as the runtime's refusal, beside the question it
@@ -1245,8 +1252,12 @@ read again.
 --ticket <ticket> --from <state> --answers <file|-> [--dry-run]` sends the
 runtime's answer document — its version, the digest copied from the review,
 and the answers by question id — unchanged, and prints the runtime's verdict;
-`--json` prints it whole, and a refusal exits non-zero with the verdict still
-on standard output. The screen's confirmation and its submit are this
+`--json` prints it whole, every field under the runtime's own name, with the
+matter it was asked about beside it as `item` and, on a refusal, the refusal
+as one line as `says`. A refusal exits non-zero with the verdict still on
+standard output. A refusal ephor gives before asking the runtime — an answer
+file it cannot read, a gate that is no longer there — has the same shape,
+made of what was asked. The screen's confirmation and its submit are this
 command with `--dry-run` and without it ([§REQ-002-parity.2](../requirements/REQ-002-parity.md#2-parity-runs-both-ways)).
 
 **A typed gate is not moved by a reason alone.** At a gate whose brief asks a
