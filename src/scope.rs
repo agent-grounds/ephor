@@ -173,7 +173,7 @@ pub fn honoured(command: &Command) -> (String, Honours) {
         // it (§FS-011-command-line.9).
         Command::Capabilities(_) => said("capabilities", Honours::NothingOverTheSite),
         Command::Doctor(_) => said("doctor", Honours::NothingOverTheSite),
-        Command::Tui => said("tui", Honours::Watched),
+        Command::Tui(_) => said("tui", Honours::Watched),
     }
 }
 
@@ -302,7 +302,7 @@ pub fn sweeps(command: &Command, scope: &Scope) -> Sweeps {
         // folds them into ephor's own store; like `mark-read` it writes ephor's
         // memory, never a project's work root.
         | Command::Burn(_)
-        | Command::Tui => Sweeps::Nothing,
+        | Command::Tui(_) => Sweeps::Nothing,
     }
 }
 

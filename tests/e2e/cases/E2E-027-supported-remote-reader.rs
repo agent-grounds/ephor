@@ -273,8 +273,10 @@ fn tui_with_process_probe(
     mut process_probe: impl FnMut(&str) -> bool,
 ) -> TuiRun {
     let binary = assert_cmd::cargo::cargo_bin("ephor");
+    // The keys these cases press are the overview's, and the interface opens
+    // on the Waiting screen unless told otherwise (§FS-019-waiting.5).
     let script_command = format!(
-        "/bin/stty rows 16 cols 48; printf '%s' \"$$\" > {}; exec {} tui",
+        "/bin/stty rows 16 cols 48; printf '%s' \"$$\" > {}; exec {} tui --overview",
         ephor::seams::summons::quote(&world.path().join("reader.pid").to_string_lossy()),
         ephor::seams::summons::quote(&binary.to_string_lossy())
     );
