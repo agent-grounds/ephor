@@ -105,7 +105,7 @@ fn the_proposal_is_shown_with_its_account_and_enter_confirms_it() {
         " ephor — new matter — widget/31 · 1 of 5 new"
     );
     let text = screen.text();
-    assert!(text.contains("labels bug"), "{text}");
+    assert!(text.contains("moved just now · labels bug"), "{text}");
     assert!(
         text.contains("held by    nobody · no assignee on the forge"),
         "{text}"

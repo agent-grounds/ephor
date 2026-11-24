@@ -426,7 +426,7 @@ impl App {
         // Opening the session already loaded feeds, standings and work. Only
         // the screen's groups and view remain to initialize (§AR-009-surfaces.2);
         // explicit reloads still take the full path through reload_feeds.
-        app.reload_work_groups();
+        app.walk_work_groups();
         app.rebuild_view();
         // What is on disk now is the baseline the tick moves from: the load
         // just read it, and re-reading it two seconds in would be a glance
@@ -458,16 +458,22 @@ impl App {
     /// saw something move — never on the bare tick, which only stats what
     /// this last found (§FS-005-dispatch.15.1).
     fn reload_work_groups(&mut self) {
-        self.work_groups = match &mut self.ctx.dispatcher {
-            Some(dispatcher) => {
-                // What another process recorded since this screen loaded — a
-                // sweep's dispatch, a dismissal made elsewhere — is what New is
-                // measured against (§FS-019-waiting.1.2, §FS-005-dispatch.4).
-                if let Err(err) = dispatcher.reload_ledger() {
-                    self.message = err.to_string();
-                }
-                dispatcher.work_roots()
+        // What another process recorded since this screen loaded — a sweep's
+        // dispatch, a dismissal made elsewhere — is what New is measured
+        // against (§FS-019-waiting.1.2, §FS-005-dispatch.4).
+        if let Some(dispatcher) = &mut self.ctx.dispatcher {
+            if let Err(err) = dispatcher.reload_ledger() {
+                self.message = err.to_string();
             }
+        }
+        self.walk_work_groups();
+    }
+
+    /// The walk alone, over the ledger the session holds: at load, where
+    /// opening the session has just read it.
+    fn walk_work_groups(&mut self) {
+        self.work_groups = match &mut self.ctx.dispatcher {
+            Some(dispatcher) => dispatcher.work_roots(),
             None => Vec::new(),
         };
     }

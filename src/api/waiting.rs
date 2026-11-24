@@ -209,7 +209,7 @@ impl views::Waiting {
     /// `refreshed 2m ago`, or `never refreshed` (§FS-019-waiting.3).
     pub fn refreshed(&self, now: DateTime<Utc>) -> String {
         match self.overview.refreshed_at {
-            Some(at) => format!("refreshed {} ago", crate::feed::render::age(now, at)),
+            Some(at) => format!("refreshed {}", crate::feed::render::ago(now, at)),
             None => "never refreshed".to_string(),
         }
     }

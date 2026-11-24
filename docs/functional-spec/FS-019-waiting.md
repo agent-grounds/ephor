@@ -91,6 +91,9 @@ would assign it ([§FS-019-waiting.7.1](FS-019-waiting.md#71-every-new-row-carri
 the title as the entry, the hand the work would go to and the branch its
 checkout is on — `→ implement  cld  fix/issue-431` — each where the proposal
 names it, so a row says who would do the work and where before it is opened.
+Where a row is wider than the screen, the title is what is cut, with `…`,
+never the proposal after it; a run's row on Running is cut the same way, so
+its work and its tickets stay in sight.
 
 A matter that carries a label some selector of the site excludes by name, such
 as `"labels": ["!human-discussion"]` on an action or a recipe
@@ -157,8 +160,8 @@ The header names the screen, counts the three sections, and says how old the
 reading's feed is:
 `ephor — waiting   3 on you · 5 new · 4 running · refreshed 2m ago`. The age is
 the newest fetch the feed's cache records ([§FS-001-forge-interface.7](FS-001-forge-interface.md#7-a-fetch-runs-beneath-the-reading-never-in-front-of-it)), so
-a quiet screen over a feed nobody has refreshed says so; a feed never fetched
-says `never refreshed`.
+a quiet screen over a feed nobody has refreshed says so. Under a minute it
+says `refreshed just now`, and a feed never fetched says `never refreshed`.
 
 The footer opens with one line about the overview:
 `overview: 143 matters · 12 changed since you looked`. The first number is how

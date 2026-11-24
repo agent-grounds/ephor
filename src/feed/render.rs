@@ -78,6 +78,15 @@ pub fn age(now: DateTime<Utc>, then: DateTime<Utc>) -> String {
     format!("{}d", hours / 24)
 }
 
+/// How long ago, as a phrase: `2m ago`, or `just now` under a minute, where
+/// [`age`]'s bare `now` would read `now ago` (§FS-019-waiting.3).
+pub fn ago(now: DateTime<Utc>, then: DateTime<Utc>) -> String {
+    match age(now, then).as_str() {
+        "now" => "just now".to_string(),
+        age => format!("{age} ago"),
+    }
+}
+
 /// One project's status reading, headed by its age: the oldest asking of its
 /// own histories, never the last refresh run that touched it
 /// (§FS-011-command-line.12, [`crate::feed::age`]).
