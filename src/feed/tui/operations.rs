@@ -588,6 +588,7 @@ mod tests {
             doing,
             item: Some("forge:demo/17".to_string()),
             title: "Humanize durations".to_string(),
+            ticket_title: String::new(),
             plan: PathBuf::from("/w/demo/panta/forge-demo-17.rhei.md"),
         }
     }

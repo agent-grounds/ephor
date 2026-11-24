@@ -377,6 +377,10 @@ path = "tests/e2e/cases/E2E-070-a-refresh-asks-one-capability.rs"
 name = "e2e_071_an_empty_branch_selection_is_said"
 path = "tests/e2e/cases/E2E-071-an-empty-branch-selection-is-said.rs"
 
+[[test]]
+name = "e2e_072_the_screen_ephor_opens_on"
+path = "tests/e2e/cases/E2E-072-the-screen-ephor-opens-on.rs"
+
 [dependencies]
 clap = { version = "4", features = ["derive"] }
 serde = { version = "1", features = ["derive"] }

@@ -19,5 +19,6 @@ pub mod schema;
 pub mod session;
 pub mod settle;
 pub mod views;
+pub mod waiting;
 
 pub use session::{JobSubject, OrgInfo, Session, WorkLines};

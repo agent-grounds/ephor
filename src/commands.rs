@@ -559,6 +559,113 @@ pub fn operations(args: &OperationsArgs) -> Result<ExitCode> {
     Ok(ExitCode::SUCCESS)
 }
 
+/// `ephor waiting` (§FS-019-waiting.6): the first screen as a command — the
+/// same reading, its three sections, the held line and the overview line, in
+/// the screen's order. It reads the cache and the disk and writes nothing.
+pub fn waiting(args: &crate::cli::WaitingArgs) -> Result<ExitCode> {
+    let config = load_config()?;
+    let mut session = Session::open(&config)?;
+    let view = session.waiting();
+    if args.json {
+        emit(&view);
+        return Ok(ExitCode::SUCCESS);
+    }
+    let now = chrono::Utc::now();
+    let age = |then| crate::feed::render::age(now, then);
+    println!("{}", view.header());
+    if view.quiet() {
+        println!();
+        println!("{}", crate::api::waiting::QUIET);
+    }
+    // The workable rung's sentence stands in for the two sections the
+    // runtime would have filled (§FS-019-waiting.2).
+    let refused = view
+        .refusal
+        .as_deref()
+        .filter(|_| view.on_you.is_empty() && view.running.is_empty());
+    println!();
+    println!("Waiting on you ({})", view.on_you.len());
+    match refused {
+        Some(refusal) => println!("  {refusal}"),
+        None if view.on_you.is_empty() => println!("  nothing"),
+        None => {
+            for row in &view.on_you {
+                let mark = if row.movable { "✋" } else { "⏳" };
+                println!(
+                    "  {mark} {} · {}   {}   {}",
+                    row.project,
+                    row.title,
+                    row.says(),
+                    row.ticket
+                );
+                if let Some(matter) = &row.matter {
+                    println!("      {matter}");
+                }
+            }
+        }
+    }
+    println!();
+    println!("New ({})", view.new.len());
+    if view.new.is_empty() {
+        println!("  nothing");
+    }
+    for row in &view.new {
+        let unread = if row.unread { "●" } else { " " };
+        println!(
+            "  {unread} {:<7} {} · {}   {}",
+            row.kind.label(),
+            row.project,
+            row.title,
+            age(row.updated_at)
+        );
+    }
+    if !view.held.is_empty() {
+        println!();
+        println!("Held ({})", view.held.len());
+        for row in &view.held {
+            println!(
+                "    {:<7} {} · {}   held by {}",
+                row.kind.label(),
+                row.project,
+                row.title,
+                row.label
+            );
+        }
+    }
+    println!();
+    println!("Running ({})", view.running.len());
+    match refused {
+        Some(refusal) => println!("  {refusal}"),
+        None if view.running.is_empty() => println!("  nothing"),
+        None => {
+            for row in &view.running {
+                let about = row
+                    .matter
+                    .as_deref()
+                    .or(row.item.as_deref())
+                    .unwrap_or("no matter");
+                let since = row
+                    .started_at
+                    .map(age)
+                    .map(|age| format!("   {age}"))
+                    .unwrap_or_default();
+                println!("  ▶ {} · {about}{since}", row.project);
+                println!("      {}", row.root.display());
+                for ticket in &row.tickets {
+                    let state = ticket.state.as_deref().unwrap_or("?");
+                    println!("      {} [{state}]  {}", ticket.ticket, ticket.title);
+                }
+                if let Some(attach) = &row.attach {
+                    println!("      watch it:  {attach}");
+                }
+            }
+        }
+    }
+    println!();
+    println!("{}", view.overview_line());
+    Ok(ExitCode::SUCCESS)
+}
+
 /// `ephor operations attach` (§FS-011-command-line.8): the board's own key as
 /// a command. It watches; it starts nothing and stops nothing
 /// (§FS-005-dispatch.15).
