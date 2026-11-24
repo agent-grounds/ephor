@@ -36,8 +36,8 @@ pub(crate) enum Over {
     One {
         item: Box<Item>,
         place: Place,
-        proposal: views::Proposal,
-        account: views::ProcessRow,
+        proposal: Box<views::Proposal>,
+        account: Box<views::ProcessRow>,
         /// A workflow with inputs nobody answered: `Enter` opens them rather
         /// than laying it with a guess (§FS-019-waiting.7.2).
         wants: bool,
@@ -70,8 +70,8 @@ impl ProcessScreen {
             over: Over::One {
                 item: Box::new(item),
                 place,
-                proposal,
-                account,
+                proposal: Box::new(proposal),
+                account: Box::new(account),
                 wants,
                 choices,
             },

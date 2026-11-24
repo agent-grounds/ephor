@@ -312,12 +312,16 @@ impl views::OnYou {
     }
 }
 
+/// Which feed id a gate is reviewed by, asked with the ticket's matter, its
+/// plan and its id; None where the feed carries none.
+pub(crate) type ReviewedBy<'a> = &'a dyn Fn(Option<&str>, &str, &str) -> Option<String>;
+
 /// The board's half of the reading: the gates and the polls on the reader,
 /// and every live run (§FS-019-waiting.1.1, §FS-019-waiting.1.3). `review`
 /// names the feed id a gate is reviewed by, where the feed carries one.
 pub(crate) fn reading(
     board: BoardReading,
-    review: &dyn Fn(Option<&str>, &str, &str) -> Option<String>,
+    review: ReviewedBy<'_>,
     config: &crate::work::recipe::WorkConfig,
 ) -> views::Waiting {
     let BoardReading {
