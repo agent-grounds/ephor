@@ -188,6 +188,33 @@ fn the_header_says_how_old_the_feed_is_and_a_run_between_turns_says_so() {
     );
     let text = screen.text();
     assert!(text.contains("between turns"), "{text}");
+
+    // On a narrow screen the title gives way, and the facts after it stay.
+    let long = "A title long enough to run well past the edge of any screen it is drawn on";
+    let mut far = running(Some("3f9a2c"));
+    far.matter = Some(long.to_string());
+    far.tickets.clear();
+    let mut narrow = WaitingScreen::new(
+        reading(Vec::new(), vec![new_row("forge:widget/9", long)], vec![far]),
+        BTreeMap::new(),
+    );
+    narrow.width = 100;
+    let text = narrow.text();
+    for line in text.lines() {
+        assert!(unicode_width::UnicodeWidthStr::width(line) <= 100, "{line}");
+    }
+    assert!(text.contains("…   → fix"), "{text}");
+    assert!(
+        text.contains("…   implement  fix/issue-3   between turns"),
+        "{text}"
+    );
+
+    // Under a minute it is `just now`, never `now ago`.
+    let mut fresh = reading(Vec::new(), Vec::new(), Vec::new());
+    fresh.overview.refreshed_at = Some(chrono::Utc::now());
+    assert!(WaitingScreen::new(fresh, BTreeMap::new())
+        .title()
+        .ends_with("· refreshed just now"),);
 }
 
 /// With nothing on the reader and nothing new, the screen says so and still

@@ -270,8 +270,8 @@ impl ProcessScreen {
                     Span::styled(format!("   {} · {}", item.project, item.id), dim),
                 ]));
                 let mut moved = format!(
-                    "moved {} ago",
-                    crate::feed::render::age(chrono::Utc::now(), item.updated_at)
+                    "moved {}",
+                    crate::feed::render::ago(chrono::Utc::now(), item.updated_at)
                 );
                 if !account.labels.is_empty() {
                     moved.push_str(&format!(" · labels {}", account.labels.join(", ")));

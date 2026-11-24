@@ -54,6 +54,8 @@ pub(crate) struct WaitingScreen {
     selected: usize,
     scroll: u16,
     viewport: u16,
+    /// The columns the last frame had; 0 before any, which cuts nothing.
+    width: u16,
     /// Whether a reading has landed. Before one has, the screen says it is
     /// reading rather than drawing empty sections, which would be an answer
     /// (§FS-019-waiting.2).
@@ -71,6 +73,7 @@ impl WaitingScreen {
             selected: 0,
             scroll: 0,
             viewport: 0,
+            width: 0,
             read: true,
         }
     }
@@ -405,14 +408,18 @@ impl WaitingScreen {
             } else {
                 ("⏳", Style::default().fg(Color::Yellow))
             };
-            lines.push(Line::from(vec![
-                Span::styled(format!("  {} ", cursor(at)), dim),
-                Span::styled(format!("{mark} "), style),
-                Span::styled(row.title.clone(), strong(at)),
-                Span::styled(format!("   {}", row.project), dim),
-                Span::raw(format!("   {}", row.says())),
-                Span::styled(format!("   {}", row.ticket), dim),
-            ]));
+            lines.push(fitted(
+                vec![
+                    Span::styled(format!("  {} ", cursor(at)), dim),
+                    Span::styled(format!("{mark} "), style),
+                    Span::styled(row.title.clone(), strong(at)),
+                    Span::styled(format!("   {}", row.project), dim),
+                    Span::raw(format!("   {}", row.says())),
+                    Span::styled(format!("   {}", row.ticket), dim),
+                ],
+                2,
+                self.width,
+            ));
             let about = match (&row.matter, &row.item) {
                 (Some(matter), _) => matter.clone(),
                 (None, Some(item)) => item.clone(),
@@ -437,22 +444,28 @@ impl WaitingScreen {
             let unread = if row.unread { "●" } else { " " };
             // The age leads, as on the overview's rows, so a long title is
             // what the edge of the screen cuts rather than the age.
-            lines.push(Line::from(vec![
-                Span::styled(format!("  {} ", cursor(at)), dim),
-                Span::styled(format!("{unread} "), Style::default().fg(Color::Cyan)),
-                Span::styled(
-                    format!("{:<5} ", crate::feed::render::age(now, row.updated_at)),
-                    dim,
-                ),
-                Span::styled(format!("{:<6} ", row.kind.label()), dim),
-                Span::styled(format!("{:<10} ", row.project), dim),
-                Span::styled(row.title.clone(), strong(at)),
-                // The rhei it would be assigned (§FS-019-waiting.7.1).
-                Span::styled(
-                    format!("   {}", row.proposal.says()),
-                    proposal(&row.proposal),
-                ),
-            ]));
+            // The title gives way, so the proposal stays on screen
+            // (§FS-019-waiting.1.2).
+            lines.push(fitted(
+                vec![
+                    Span::styled(format!("  {} ", cursor(at)), dim),
+                    Span::styled(format!("{unread} "), Style::default().fg(Color::Cyan)),
+                    Span::styled(
+                        format!("{:<5} ", crate::feed::render::age(now, row.updated_at)),
+                        dim,
+                    ),
+                    Span::styled(format!("{:<6} ", row.kind.label()), dim),
+                    Span::styled(format!("{:<10} ", row.project), dim),
+                    Span::styled(row.title.clone(), strong(at)),
+                    // The rhei it would be assigned (§FS-019-waiting.7.1).
+                    Span::styled(
+                        format!("   {}", row.proposal.says()),
+                        proposal(&row.proposal),
+                    ),
+                ],
+                5,
+                self.width,
+            ));
         }
         // Held matters once, apart, offered nothing (§FS-019-waiting.1.2).
         if !view.held.is_empty() {
@@ -511,15 +524,19 @@ impl WaitingScreen {
                 true => String::new(),
                 false => format!("   {}", work.join("  ")),
             };
-            lines.push(Line::from(vec![
-                Span::styled(format!("  {} ", cursor(at)), dim),
-                Span::styled("▶ ".to_string(), Style::default().fg(Color::Green)),
-                Span::styled(format!("{age:<5} "), dim),
-                Span::styled(format!("{:<10} ", row.project), dim),
-                Span::styled(about, strong(at)),
-                Span::styled(work, Style::default().fg(Color::Cyan)),
-                Span::styled(format!("   {holding}"), dim),
-            ]));
+            lines.push(fitted(
+                vec![
+                    Span::styled(format!("  {} ", cursor(at)), dim),
+                    Span::styled("▶ ".to_string(), Style::default().fg(Color::Green)),
+                    Span::styled(format!("{age:<5} "), dim),
+                    Span::styled(format!("{:<10} ", row.project), dim),
+                    Span::styled(about, strong(at)),
+                    Span::styled(work, Style::default().fg(Color::Cyan)),
+                    Span::styled(format!("   {holding}"), dim),
+                ],
+                4,
+                self.width,
+            ));
         }
         // What processing laid that waits for a slot (§FS-019-waiting.7.6).
         if let Some(queued) = view.queued_line() {
@@ -554,6 +571,7 @@ impl WaitingScreen {
 
     pub fn draw(&mut self, frame: &mut ratatui::Frame, area: Rect) {
         self.viewport = area.height;
+        self.width = area.width;
         let (lines, _) = self.layout();
         let max_scroll = lines.len().saturating_sub(area.height as usize);
         self.scroll = self.scroll.min(max_scroll as u16);
@@ -575,6 +593,41 @@ impl WaitingScreen {
             .collect::<Vec<_>>()
             .join("\n")
     }
+}
+
+/// The fewest columns a title keeps however much follows it.
+const TITLE_AT_LEAST: usize = 24;
+
+/// One row whose title, the span at `title`, is cut to the room the others
+/// leave it in `width` columns, so the facts after it stay on screen and the
+/// edge cuts the title instead (§FS-019-waiting.1.2). A width of 0 cuts
+/// nothing.
+fn fitted(mut spans: Vec<Span<'static>>, title: usize, width: u16) -> Line<'static> {
+    use unicode_width::UnicodeWidthChar;
+    if width > 0 {
+        let others: usize = spans
+            .iter()
+            .enumerate()
+            .filter(|(at, _)| *at != title)
+            .map(|(_, span)| span.width())
+            .sum();
+        let room = (width as usize).saturating_sub(others).max(TITLE_AT_LEAST);
+        if spans[title].width() > room {
+            let mut cut = String::new();
+            let mut used = 0;
+            for c in spans[title].content.chars() {
+                let wide = c.width().unwrap_or(0);
+                if used + wide > room - 1 {
+                    break;
+                }
+                used += wide;
+                cut.push(c);
+            }
+            cut.push('…');
+            spans[title].content = cut.into();
+        }
+    }
+    Line::from(spans)
 }
 
 /// A proposal ready to process is drawn as quietly as the row's other facts;
