@@ -101,6 +101,9 @@ pub enum Command {
     /// What waits on you, what nothing has been done about, and what is
     /// running: the screen the interface opens on.
     Waiting(WaitingArgs),
+    /// How work gets into the shapes ephor reads: a gate's brief and its
+    /// answer, and what makes a matter new. Written for an agent to read.
+    Guide(GuideArgs),
     /// Every operation beneath the reading, in one place.
     #[command(visible_alias = "ops")]
     Operations(OperationsArgs),
@@ -1353,6 +1356,18 @@ pub struct BranchesArgs {
 #[derive(Args, Debug, Default)]
 pub struct WaitingArgs {
     /// Emit raw JSON instead of a listing.
+    #[arg(long)]
+    pub json: bool,
+}
+
+/// `ephor guide` (§FS-020-guide): the topics, or one of them.
+#[derive(Args, Debug, Default)]
+pub struct GuideArgs {
+    /// The topic to explain: `gate` or `matter`. Without one, the topics.
+    pub topic: Option<String>,
+
+    /// Emit the guide view as JSON; for `gate`, with the bound runtime's own
+    /// request and answer schemas.
     #[arg(long)]
     pub json: bool,
 }

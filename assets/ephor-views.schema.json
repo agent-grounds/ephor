@@ -73,12 +73,12 @@
     },
     "waiting_on_you": {
       "type": "object",
-      "description": "A gate, or a poll that names the reader (FS-019-waiting.1.1). How long it has waited and what it holds are absent until the runtime reports them; no file timestamp stands in.",
+      "description": "A gate, or a poll that names the reader (FS-019-waiting.1.1). How long a gate has waited and what it holds are absent until the runtime lists them; no file timestamp stands in (FS-019-waiting.1.1.1).",
       "required": ["kind", "ticket", "title", "state", "project", "root", "plan", "movable"],
       "properties": {
         "kind": { "enum": ["gate", "poll"] },
         "ticket": { "type": "string", "description": "`<plan>.<ticket>`." },
-        "title": { "type": "string", "description": "The ticket's own heading in its plan, and the plan's title only where the ticket has none." },
+        "title": { "type": "string", "description": "The ticket's own heading in its plan, and the plan's title only where the ticket has none; on a gate the runtime lists, the title its brief gives (FS-019-waiting.1.1.1)." },
         "state": { "type": "string", "description": "The state the ticket is parked in; `?` where the plan does not say." },
         "project": { "type": "string" },
         "root": { "type": "string" },
@@ -87,7 +87,9 @@
         "matter": { "type": "string", "description": "That matter's title, where the feed still carries it." },
         "waiting_on": { "type": "string", "description": "On a poll: the person it declares it awaits, in the machine's own words." },
         "movable": { "type": "boolean", "description": "Whether the reader moves it here: a gate is, a poll moves itself when its answer lands." },
-        "review": { "type": "string", "description": "On a gate: the feed id `ephor work review --item` reviews it by, where the feed carries one (FS-019-waiting.4)." }
+        "review": { "type": "string", "description": "On a gate: the feed id `ephor work review --item` reviews it by, where the feed carries one (FS-019-waiting.4)." },
+        "since": { "type": ["string", "null"], "format": "date-time", "description": "On a gate the runtime lists: when the ticket began waiting, and null where the runtime listed it and does not know — unknown, never zero. Absent where the runtime listed nothing about it (FS-019-waiting.1.1.1)." },
+        "holds": { "type": "integer", "minimum": 0, "description": "On a gate the runtime lists: how many unfinished tasks cannot move until it leaves the gate (FS-019-waiting.1.1.1)." }
       }
     },
     "waiting_new": {
@@ -905,6 +907,36 @@
           "type": "array",
           "items": { "$ref": "#/$defs/operation" }
         }
+      }
+    },
+    "guide": {
+      "description": "`ephor guide --json`: the topics, and for a named topic its text; for `gate`, the bound runtime's own request and answer schemas, or the sentence saying why there are none (FS-020-guide.4).",
+      "type": "object",
+      "required": ["topics", "text"],
+      "properties": {
+        "topic": { "enum": ["gate", "matter"], "description": "The topic asked for; absent where none was." },
+        "topics": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["name", "summary"],
+            "properties": {
+              "name": { "type": "string" },
+              "summary": { "type": "string", "description": "The one line that says what it explains." }
+            }
+          }
+        },
+        "text": { "type": "string", "description": "What the text form prints: the list of topics, or the topic's text (FS-020-guide.2, FS-020-guide.3)." },
+        "schemas": {
+          "type": "object",
+          "description": "On `gate`: the schemas the bound runtime printed, carried unchanged; ephor keeps no copy (FS-020-guide.4).",
+          "required": ["request", "answer"],
+          "properties": {
+            "request": { "type": "object", "description": "The schema of the request a state writes before its gate." },
+            "answer": { "type": "object", "description": "The schema of the answer sent back to the gate." }
+          }
+        },
+        "schemas_unavailable": { "type": "string", "description": "On `gate`: why there are no schemas — no runtime bound, one that prepares no gate briefs, or one that could not be asked." }
       }
     },
     "waiting": {

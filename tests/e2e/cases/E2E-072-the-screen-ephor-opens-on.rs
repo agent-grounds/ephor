@@ -116,10 +116,36 @@ states:
     final: true
 ";
 
+/// A runtime that prepares gate briefs, and so lists the gates under a work
+/// root (§FS-019-waiting.1.1.1): it keeps every listing it was asked for, and
+/// answers from `listing.json` beside it, or refuses where there is none.
+const LISTING_RUNTIME: &str = r#"#!/usr/bin/env bash
+set -euo pipefail
+data="$(dirname "$0")/../gate-data"
+case "${1:-}" in
+  list) printf '[]' ;;
+  gate)
+    case "${2:-}" in
+      schema) printf '{"version":1,"schemas":{"request":{},"answer":{}}}' ;;
+      list)
+        printf '%s\n' "$*" >> "$data/listed"
+        [ -f "$data/listing.json" ] || { echo "cannot list this root" >&2; exit 1; }
+        cat "$data/listing.json" ;;
+      *) exit 1 ;;
+    esac ;;
+  *) exit 0 ;;
+esac
+"#;
+
 fn watching() -> World {
+    watching_with(ACME_RUNTIME)
+}
+
+fn watching_with(runtime: &str) -> World {
     let world = World::new();
     world.stub("ephor-forge-acmeforge", ACME_FORGE);
-    world.stub("acme-runtime", ACME_RUNTIME);
+    settle(&world.stub("acme-runtime", runtime));
+    fs::create_dir_all(world.path().join("gate-data")).expect("the stub's data");
     world.configure(json!({
         "projects": { PROJECT: { "providers": [
             { "provider": "acmeforge", "user": "you", "repos": ["app"] }
@@ -331,5 +357,98 @@ fn the_first_screen_is_a_command_that_says_what_waits_on_the_reader() {
         !out.status.success(),
         "{}",
         String::from_utf8_lossy(&out.stdout)
+    );
+}
+
+/// A runtime that lists its gates lends each gate row its brief's title, when
+/// it began waiting and what it holds, asked once per work root; a root it
+/// cannot list keeps the rows the enumeration gave (§FS-019-waiting.1.1.1).
+#[test]
+fn a_runtime_that_lists_its_gates_says_how_long_each_has_waited() {
+    let world = watching_with(LISTING_RUNTIME);
+    world
+        .ephor()
+        .args(["work", "dispatch", "--item", ITEM])
+        .assert()
+        .success();
+    let heading = park(&world);
+    let data = world.path().join("gate-data");
+
+    // The listing could not be had: the rows are the enumeration's.
+    let view = waiting(&world);
+    let gate = &view["on_you"][0];
+    assert_eq!(gate["kind"], "gate", "{view}");
+    assert_eq!(gate["title"], heading.as_str(), "{view}");
+    assert!(
+        gate.get("since").is_none() && gate.get("holds").is_none(),
+        "{view}"
+    );
+    let ticket = gate["ticket"]
+        .as_str()
+        .expect("the gate's ticket")
+        .to_string();
+    let listed = fs::read_to_string(data.join("listed")).expect("the root was listed");
+    assert_eq!(
+        listed.lines().collect::<Vec<_>>(),
+        vec![format!("gate list {} --json", work_root(&world).display())],
+        "one listing for the one root that holds a gate"
+    );
+
+    // Listed: the brief's title, the start and the holds; an unknown start
+    // is null, never zero.
+    write(
+        &data.join("listing.json"),
+        &json!({"version": 1, "root": work_root(&world), "gates": [
+            {"ticket": ticket, "ticket_title": heading, "title": "Rule on the retry window",
+             "state": "needs-human", "plan": plan_of(&world), "root": work_root(&world),
+             "visit": 1, "since": "2026-08-20T09:00:00Z", "source": "questions",
+             "required": 1, "holds": 2, "problems": []}
+        ]})
+        .to_string(),
+    );
+    let view = waiting(&world);
+    let gate = &view["on_you"][0];
+    assert_eq!(gate["title"], "Rule on the retry window", "{view}");
+    assert_eq!(gate["since"], "2026-08-20T09:00:00Z", "{view}");
+    assert_eq!(gate["holds"], 2, "{view}");
+    assert_eq!(view["on_you"][1]["kind"], "poll", "{view}");
+    assert!(view["on_you"][1].get("since").is_none(), "{view}");
+    let out = world
+        .ephor()
+        .args(["waiting"])
+        .output()
+        .expect("ephor waiting");
+    let text = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        text.contains("Rule on the retry window   needs-human · waited "),
+        "{text}"
+    );
+    assert!(text.contains(" · holds 2 tasks"), "{text}");
+
+    write(
+        &data.join("listing.json"),
+        &json!({"version": 1, "root": work_root(&world), "gates": [
+            {"ticket": ticket, "ticket_title": heading, "title": "Rule on the retry window",
+             "state": "needs-human", "plan": plan_of(&world), "root": work_root(&world),
+             "visit": 1, "since": null, "source": "questions",
+             "required": 1, "holds": 0, "problems": []}
+        ]})
+        .to_string(),
+    );
+    let view = waiting(&world);
+    let gate = &view["on_you"][0];
+    assert!(
+        gate["since"].is_null() && gate.get("since").is_some(),
+        "{view}"
+    );
+    let out = world
+        .ephor()
+        .args(["waiting"])
+        .output()
+        .expect("ephor waiting");
+    let text = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        text.contains("needs-human · waited unknown · holds nothing"),
+        "{text}"
     );
 }

@@ -389,6 +389,10 @@ path = "tests/e2e/cases/E2E-073-a-new-matter-is-processed-where-it-is-shown.rs"
 name = "e2e_074_a_prepared_gate_is_answered_in_its_form"
 path = "tests/e2e/cases/E2E-074-a-prepared-gate-is-answered-in-its-form.rs"
 
+[[test]]
+name = "e2e_075_the_guide_is_asked_of_the_ephor_that_reads"
+path = "tests/e2e/cases/E2E-075-the-guide-is-asked-of-the-ephor-that-reads.rs"
+
 [dependencies]
 clap = { version = "4", features = ["derive"] }
 serde = { version = "1", features = ["derive"] }

@@ -66,6 +66,15 @@ impl Session {
                 })
         };
         let mut reading = reading(board, &review_id, &self.work_config);
+        // What only the runtime knows about each gate — its brief's title, how
+        // long it has waited, what it holds — asked once per work root, and
+        // only of a runtime that prepares briefs (§FS-019-waiting.1.1.1).
+        if crate::work::runtime::gate::briefs(&self.work_config) {
+            let config = &self.work_config;
+            listed(&mut reading.on_you, &|root| {
+                crate::work::runtime::gate::list(config, root).ok()
+            });
+        }
         // The entry and branch the ledger records for each live run's matter
         // (§FS-019-waiting.1.3), and what the reader decided today
         // (§FS-019-waiting.2): ephor's own records, read and never written.
@@ -303,13 +312,89 @@ pub const QUIET: &str = "Nothing is waiting on you.";
 
 impl views::OnYou {
     /// What the row says beside its title: the state a gate is parked in, and
-    /// whom a poll waits on (§FS-019-waiting.1.1).
+    /// whom a poll waits on (§FS-019-waiting.1.1), with how long a gate has
+    /// waited and what it holds where the runtime listed them
+    /// (§FS-019-waiting.1.1.1).
     pub fn says(&self) -> String {
-        match &self.waiting_on {
-            Some(person) => format!("waiting on {person} · not yours to move here"),
-            None => self.state.clone(),
+        self.says_at(Utc::now())
+    }
+
+    /// [`Self::says`], counted from `now`.
+    pub fn says_at(&self, now: DateTime<Utc>) -> String {
+        if let Some(person) = &self.waiting_on {
+            return format!("waiting on {person} · not yours to move here");
+        }
+        let mut says = self.state.clone();
+        match self.since {
+            // Unknown is said as unknown, never as no time at all.
+            Some(None) => says.push_str(" · waited unknown"),
+            Some(Some(at)) => match crate::feed::render::age(now, at).as_str() {
+                "now" => says.push_str(" · waited under a minute"),
+                age => says.push_str(&format!(" · waited {age}")),
+            },
+            None => {}
+        }
+        match self.holds {
+            Some(0) => says.push_str(" · holds nothing"),
+            Some(1) => says.push_str(" · holds 1 task"),
+            Some(held) => says.push_str(&format!(" · holds {held} tasks")),
+            None => {}
+        }
+        says
+    }
+}
+
+/// The runtime's listing laid over the enumeration's gate rows: each root that
+/// holds a gate row is listed once, and a row the listing names in the same
+/// state takes its title, start and holds. The listing adds no row and takes
+/// none away; a row it does not name, or names in another state, or whose root
+/// could not be listed, stays as it was. Then the rows whose start is known
+/// lead, oldest first, and every other row keeps its place behind them
+/// (§FS-019-waiting.1.1.1).
+pub(crate) fn listed(
+    rows: &mut [views::OnYou],
+    list: &dyn Fn(&Path) -> Option<Vec<crate::work::runtime::gate::Listed>>,
+) {
+    let mut roots: Vec<std::path::PathBuf> = Vec::new();
+    for row in rows.iter().filter(|row| row.kind == "gate") {
+        if !roots.contains(&row.root) {
+            roots.push(row.root.clone());
         }
     }
+    for root in roots {
+        let Some(gates) = list(&root) else {
+            continue;
+        };
+        for row in rows
+            .iter_mut()
+            .filter(|row| row.kind == "gate" && row.root == root)
+        {
+            let Some(gate) = gates
+                .iter()
+                .find(|gate| gate.ticket == row.ticket && gate.state == row.state)
+            else {
+                continue;
+            };
+            if !gate.title.trim().is_empty() {
+                row.title = gate.title.clone();
+            }
+            // A start the runtime wrote and this reader cannot read is as
+            // unknown as one it did not write.
+            row.since = Some(
+                gate.since
+                    .as_deref()
+                    .and_then(|at| DateTime::parse_from_rfc3339(at).ok())
+                    .map(|at| at.with_timezone(&Utc)),
+            );
+            row.holds = Some(gate.holds);
+        }
+    }
+    // A stable sort, so the rows with no known start keep the enumeration's
+    // order among themselves, behind the ones that have one.
+    rows.sort_by_key(|row| match row.since {
+        Some(Some(at)) => (false, Some(at)),
+        _ => (true, None),
+    });
 }
 
 /// Which feed id a gate is reviewed by, asked with the ticket's matter, its
@@ -356,6 +441,8 @@ pub(crate) fn reading(
                 waiting_on: None,
                 movable: true,
                 review: review(ticket.item.as_deref(), &ticket.plan_id, &ticket.ticket),
+                since: None,
+                holds: None,
             });
         }
     }
@@ -377,6 +464,8 @@ pub(crate) fn reading(
             waiting_on: Some(ask.waiting_on.clone()),
             movable: false,
             review: None,
+            since: None,
+            holds: None,
         });
     }
     let order: Vec<&Path> = running

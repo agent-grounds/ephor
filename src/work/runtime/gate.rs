@@ -29,8 +29,14 @@ pub const SHOW_VERB: &str = "work.gate.show";
 /// Sending one gate's answer, as a dry run or for real.
 pub const ANSWER_VERB: &str = "work.gate.answer";
 /// The probe: the runner's own schema verb, which exits zero only where the
-/// gate verbs exist.
+/// gate verbs exist. The guide asks the same verb for the schemas it prints
+/// (§FS-020-guide.4).
 pub const SCHEMA_VERB: &str = "work.gate.schema";
+/// Listing every gate under one work root (§FS-019-waiting.1.1.1).
+pub const LIST_VERB: &str = "work.gate.list";
+
+/// The version of the listing the binding reads.
+const LIST_VERSION: u64 = 1;
 
 /// The version of the answer document the binding reads. The binding's
 /// grammar, so it is spelled here and nowhere above.
@@ -361,6 +367,101 @@ pub fn brief_review(config: &WorkConfig, review: &mut Review) {
             Err(err) => gate.unbriefed = Some(err.to_string()),
         }
     }
+}
+
+/// One gate as the runner's listing gives it: what the first screen could not
+/// know from the plans alone (§FS-019-waiting.1.1.1). Only these fields are
+/// read; a field the runner adds later is ignored rather than refused.
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+pub struct Listed {
+    /// The project-qualified ticket id, `<plan>.<ticket>`.
+    pub ticket: String,
+    pub state: String,
+    /// The brief's title.
+    #[serde(default)]
+    pub title: String,
+    /// When the ticket entered the gate, as the runner wrote it; None where
+    /// the runner does not know.
+    #[serde(default)]
+    pub since: Option<String>,
+    /// How many unfinished tasks cannot move until the ticket leaves.
+    pub holds: u64,
+}
+
+/// The listing's envelope.
+#[derive(Deserialize)]
+struct Listing {
+    version: u64,
+    gates: Vec<Listed>,
+}
+
+/// Every gate under one work root, in the runner's words: one summons for the
+/// whole root, never one per gate (§FS-019-waiting.1.1.1). The caller asks only
+/// where [`briefs`] holds; a listing that cannot be had is an error the caller
+/// reads as "this root's rows stay as the enumeration gave them".
+pub fn list(config: &WorkConfig, root: &Path) -> Result<Vec<Listed>> {
+    let args = vec![
+        "list".to_string(),
+        root.to_string_lossy().into_owned(),
+        "--json".to_string(),
+    ];
+    let answer = summon(config, LIST_VERB, root, &args)?;
+    if !answer.is_done() {
+        return Err(sentence(config, LIST_VERB, &answer));
+    }
+    let unread = |why: String| {
+        EphorError::Command(format!(
+            "cannot read the gates {} listed: {why}",
+            super::runner(config)
+        ))
+    };
+    let listing: Listing = serde_json::from_str(answer.output.as_deref().unwrap_or(""))
+        .map_err(|err| unread(err.to_string()))?;
+    if listing.version != LIST_VERSION {
+        return Err(unread(format!("version {}", listing.version)));
+    }
+    Ok(listing.gates)
+}
+
+/// The runner's own request and answer schemas, as it printed them: the
+/// guide carries them and ephor keeps no copy (§FS-020-guide.4). The error is
+/// the sentence the guide says in their place — no runner bound, a runner
+/// that prepares no briefs, or one that could not be asked.
+pub fn schemas(config: &WorkConfig) -> std::result::Result<(Value, Value), String> {
+    if let Some(reason) = super::refusal(config) {
+        return Err(reason);
+    }
+    if !briefs(config) {
+        return Err(format!(
+            "{} prepares no gate briefs, so there are no request or answer schemas to print",
+            super::runner(config)
+        ));
+    }
+    let answer = summon(
+        config,
+        SCHEMA_VERB,
+        &std::env::temp_dir(),
+        &["schema".to_string()],
+    )
+    .map_err(|err| err.to_string())?;
+    if !answer.is_done() {
+        return Err(sentence(config, SCHEMA_VERB, &answer).to_string());
+    }
+    let document: Value =
+        serde_json::from_str(answer.output.as_deref().unwrap_or("")).map_err(|err| {
+            format!(
+                "cannot read the schemas {} printed: {err}",
+                super::runner(config)
+            )
+        })?;
+    let named = |name: &str| {
+        document
+            .get("schemas")
+            .and_then(|schemas| schemas.get(name))
+            .cloned()
+            .ok_or_else(|| format!("{} printed no {name} schema", super::runner(config)))
+    };
+    Ok((named("request")?, named("answer")?))
 }
 
 /// Send one answer document, unchanged, and read back the runtime's verdict

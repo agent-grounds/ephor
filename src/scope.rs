@@ -159,6 +159,9 @@ pub fn honoured(command: &Command) -> (String, Honours) {
         // The first screen answers for the site, as the board it reads does
         // (§FS-019-waiting.6).
         Command::Waiting(_) => said("waiting", Honours::NothingOverTheSite),
+        // An explanation of a format, the same for every project: there is no
+        // set of projects for a selector to narrow (§FS-020-guide.1).
+        Command::Guide(_) => said("guide", Honours::Nothing),
         // It reads every configured project in order to say which one a
         // session was working in, and then answers for the machine rather
         // than for a group (§FS-013-burn.4).
@@ -296,6 +299,7 @@ pub fn sweeps(command: &Command, scope: &Scope) -> Sweeps {
         | Command::Branches(_)
         | Command::Operations(_)
         | Command::Waiting(_)
+        | Command::Guide(_)
         | Command::Thread(_)
         | Command::React(_)
         | Command::Tick(_)

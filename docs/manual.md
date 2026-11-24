@@ -1611,7 +1611,13 @@ needs me now — in three sections, in this order:
   `between turns`.
 
 How long a gate has waited and what it holds back are shown only where the
-runtime reports them; no file timestamp stands in. An empty section is one
+runtime reports them; no file timestamp stands in. A runtime that prepares gate
+briefs lists its gates, once per work root, and then a gate row carries its
+brief's title and reads `human-judgment · waited 2d · holds 6 tasks`, the
+gates longest waiting first; a gate whose start the runtime does not know says
+`waited unknown` and comes after them, never as if it had just arrived
+([§FS-019-waiting.1.1.1](functional-spec/FS-019-waiting.md#111-a-runtime-that-lists-its-gates-names-each-one-says-how-long-it-has-waited-and-what-it-holds)). The listing adds no row: a gate it does not name keeps
+the row the plans gave it. An empty section is one
 line, and an empty screen says `Nothing is waiting on you. No gate is open and
 every matter has work laid or a recorded decision.`, then `decided today: 5 laid ·
 1 needs no work`, and still shows what is running. The header ends with how old
@@ -3772,6 +3778,9 @@ this command instead. Where the runtime prepares no briefs, the review carries
 none, the Waiting screen opens the review as before, and `ephor work gate
 answer` refuses and names `ephor work transition`.
 
+How a workflow prepares the questions in the first place is `ephor guide gate`
+(§8.20).
+
 **A finished blocked ticket is read here, never decided.** A ticket that
 finished with the verdict `blocked` is over, so it is no gate: it has no
 transition and nothing waits on it. Its reason is still the thing to read, so
@@ -5749,6 +5758,43 @@ Nothing already printed changes. The spawn count beside a pool is shown and is
 never read into the rule: counting one's own spawns is deriving a quota under
 another name, and it is wrong the first moment anything else spends from the
 same credential.
+
+### 8.20 Writing work ephor can read — `ephor guide`
+
+Whoever writes a workflow, and an agent about to stop at a gate, needs to know
+what ephor will show and what it expects back. A document answers for the
+version it was written against; the binary on the machine is the version that
+will read the work, so the explanation is a command
+([§FS-020-guide](functional-spec/FS-020-guide.md#fs-020-guide-how-work-gets-into-the-shapes-ephor-reads-is-asked-of-the-ephor-that-will-read-it)):
+
+```bash
+ephor guide                # the topics
+ephor guide gate           # how a workflow prepares the question its gate asks
+ephor guide matter         # what makes a matter new, and how a workflow becomes its proposal
+ephor guide gate --json    # the same, with the runtime's own request and answer schemas
+```
+
+`gate` is written in the bound runtime's plan language, with every command
+spelled with the runner your site binds: the `gate:` block on a gating state,
+the file it shows, the questions — written by the state before the gate as a
+request, or declared once in the machine — in their four kinds, the routes
+that turn answers into the destination, where the answer is recorded, and how
+the next state reads it. It ends with one complete worked example and the
+commands that check it: the runtime's own validation, brief and dry run, then
+`ephor work review --json` and `ephor work gate answer --dry-run`
+([§FS-020-guide.2](functional-spec/FS-020-guide.md#2-gate-how-a-workflow-prepares-the-question-its-gate-asks)).
+
+`matter` is ephor's own: new and held, what processed means, and that a
+workflow becomes the proposal for a kind of matter by an entry naming it whose
+selector accepts the matter, first in menu order
+([§FS-020-guide.3](functional-spec/FS-020-guide.md#3-matter-what-makes-a-matter-new-and-how-a-workflow-becomes-its-proposal)).
+
+Under `--json`, `gate` carries the request and answer schemas the bound
+runtime prints when the command runs; ephor keeps no copy. With no runtime
+bound, or one that prepares no gate briefs, there are none, and the view
+carries the sentence why instead — the text form prints it after the prose
+([§FS-020-guide.4](functional-spec/FS-020-guide.md#4---json-the-topics-the-text-and-the-runtimes-own-schemas)). The guide reads no forge and writes nothing, and it
+answers even where no site configuration exists yet.
 
 ---
 

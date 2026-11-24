@@ -15,7 +15,11 @@ case "$1" in
   gate)
     [ -f "$here/older" ] && { echo "error: unrecognized subcommand 'gate'" >&2; exit 2; }
     case "$2" in
-      schema) echo '{"version":1,"schemas":{}}' ;;
+      schema) echo '{"version":1,"schemas":{"request":{"$id":"req"},"answer":{"$id":"ans"},"list":{}}}' ;;
+      list)
+        printf '%s\n' "$@" > list-invocation
+        [ -f no-list ] && { echo 'not a recognized Panta Project' >&2; exit 1; }
+        cat listing.json ;;
       show)
         printf '%s\n' "$@" > show-invocation
         if [ -f no-brief ]; then echo 'review.1 is in accepted, which is not a gate' >&2; exit 1; fi
@@ -313,4 +317,78 @@ fn a_refusal_is_the_runners_verdict_with_its_unknowns_left_unknown() {
     std::fs::write(world.root().join("verdict.json"), "Segmentation fault\n").unwrap();
     let err = answer(&world.config, gate, &serde_json::json!({}), true).unwrap_err();
     assert!(err.to_string().contains("Segmentation fault"), "{err}");
+}
+
+/// The listing is one summons per work root, asked of the root itself, and
+/// read for each gate's ticket, state, title, start and holds; a start the
+/// runner does not know stays unknown (§FS-019-waiting.1.1.1).
+#[test]
+fn a_root_is_listed_once_in_the_runners_own_words() {
+    let world = World::new(false);
+    std::fs::write(
+        world.root().join("listing.json"),
+        serde_json::json!({"version": 1, "root": world.root(), "gates": [
+            {"ticket": "review.1", "ticket_title": "Decide", "title": "Rule on the proposal",
+             "state": "waiting", "plan": world.path, "root": world.root(), "visit": 2,
+             "since": "2026-11-22T10:14:03Z", "source": "request", "required": 1,
+             "holds": 6, "problems": []},
+            {"ticket": "review.2", "ticket_title": "Wait", "title": "Wait",
+             "state": "waiting", "plan": world.path, "root": world.root(), "visit": 1,
+             "since": null, "source": "synthesized", "required": 2, "holds": 0,
+             "problems": [], "a_field_a_later_runtime_adds": 1}
+        ]})
+        .to_string(),
+    )
+    .unwrap();
+    let gates = list(&world.config, world.root()).unwrap();
+    assert_eq!(gates.len(), 2);
+    assert_eq!(gates[0].ticket, "review.1");
+    assert_eq!(gates[0].title, "Rule on the proposal");
+    assert_eq!(gates[0].since.as_deref(), Some("2026-11-22T10:14:03Z"));
+    assert_eq!(gates[0].holds, 6);
+    assert_eq!(gates[1].since, None);
+    assert_eq!(
+        world.lines("list-invocation"),
+        [
+            "gate",
+            "list",
+            &world.root().display().to_string(),
+            "--json"
+        ]
+    );
+
+    // A root the runner cannot list is the runner's sentence, and a listing
+    // in a version this binding does not read is refused, not guessed at.
+    std::fs::write(world.root().join("no-list"), "").unwrap();
+    let err = list(&world.config, world.root()).unwrap_err();
+    assert!(err.to_string().contains("not a recognized"), "{err}");
+    std::fs::remove_file(world.root().join("no-list")).unwrap();
+    std::fs::write(
+        world.root().join("listing.json"),
+        r#"{"version": 2, "root": "/", "gates": []}"#,
+    )
+    .unwrap();
+    let err = list(&world.config, world.root()).unwrap_err();
+    assert!(err.to_string().contains("version 2"), "{err}");
+}
+
+/// The guide's schemas are the runner's, printed as it gave them; a runner
+/// without the gate verbs has none, and the guide is told why
+/// (§FS-020-guide.4).
+#[test]
+fn the_schemas_are_the_runners_own_or_a_sentence_saying_why_not() {
+    let world = World::new(false);
+    let (request, answer) = schemas(&world.config).unwrap();
+    assert_eq!(request, serde_json::json!({"$id": "req"}));
+    assert_eq!(answer, serde_json::json!({"$id": "ans"}));
+
+    let older = World::new(true);
+    let why = schemas(&older.config).unwrap_err();
+    assert!(why.contains("prepares no gate briefs"), "{why}");
+
+    let unbound = WorkConfig {
+        runner: Some(older.root().join("no-such-runner").display().to_string()),
+        ..WorkConfig::default()
+    };
+    assert!(schemas(&unbound).is_err());
 }
