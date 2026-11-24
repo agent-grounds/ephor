@@ -166,6 +166,20 @@ pub const ABILITIES: &[Ability] = &[
         keys: &[";"],
         command: "operations",
     },
+    // `O` moves between the two first screens (§FS-019-waiting.4): from
+    // anywhere to the overview and from the overview back to Waiting. Each is
+    // a reading of its own, so the key is carried by both commands
+    // (§FS-019-waiting.6).
+    Ability {
+        what: "what waits on the reader, what is new, and what is running",
+        keys: &["O"],
+        command: "waiting",
+    },
+    Ability {
+        what: "the overview: every matter the feed carries",
+        keys: &["O"],
+        command: "feed",
+    },
     Ability {
         what: "watch a live run by attaching to it",
         keys: &["a"],

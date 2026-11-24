@@ -214,7 +214,7 @@ fn run(cli: Cli) -> Result<ExitCode> {
         // (§FS-010-doctor).
         Command::Capabilities(args) => return ephor::doctor::capabilities(args),
         Command::Doctor(args) => return ephor::doctor::doctor(args),
-        Command::Tui => return feed::tui::run(&projects),
+        Command::Tui(args) => return feed::tui::run(&projects, args),
         // The schemas are the interface's stability surface, printable without
         // a registry to read (§FS-006-project-interface.11).
         Command::Schema(args) => return print_schema(&args.name),
@@ -373,7 +373,7 @@ fn run(cli: Cli) -> Result<ExitCode> {
         | Command::Tick(_)
         | Command::Reply(_)
         | Command::Settle(_)
-        | Command::Tui => {
+        | Command::Tui(_) => {
             unreachable!("handled above")
         }
     }

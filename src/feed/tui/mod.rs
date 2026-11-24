@@ -1,5 +1,9 @@
-//! Interactive two-screen browser over the status feed.
+//! Interactive browser over the status feed.
 //!
+//! - **Waiting** (`waiting.rs`): the first screen — what waits on the reader,
+//!   what nothing has been done about, and what is running
+//!   (§FS-019-waiting). The navigator is one key away from it, as the
+//!   overview.
 //! - **Navigator** (`navigator.rs`): everything organized per organization,
 //!   then per project, then per type (Status, Pull Requests, CI, Messages),
 //!   then per branch. Three modes toggled with Tab / Enter: Stream (full
@@ -23,6 +27,7 @@ mod operations;
 mod prompt;
 mod refresh_picker;
 mod thread;
+mod waiting;
 mod work;
 
 use std::io::{BufRead, Write};
@@ -60,6 +65,7 @@ use operations::OperationsScreen;
 use prompt::{Asking, Prompt, PromptOutcome};
 use refresh_picker::{PickerOutcome, RefreshPicker};
 use thread::ThreadScreen;
+use waiting::WaitingScreen;
 use work::WorkScreen;
 
 /// What a screen asks the shell to do in response to a key.
@@ -232,6 +238,9 @@ pub(crate) enum CheckoutOf {
 
 enum Screen {
     HumanGate(HumanGateScreen),
+    /// What waits on the reader (§FS-019-waiting). Its rows live on the app,
+    /// as the navigator's do, so leaving and coming back keeps the cursor.
+    Waiting,
     Navigator,
     Thread(ThreadScreen),
     Gate(GateScreen),
@@ -253,11 +262,28 @@ const WORK_TICK: Duration = Duration::from_secs(2);
 /// faster than this anyway.
 const BURN_TICK: Duration = Duration::from_secs(10);
 
+/// The two screens a reader stands on, rather than opens over something
+/// (§FS-019-waiting.4): `esc` from anything else comes back to whichever of
+/// them the reader was last on.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Home {
+    Waiting,
+    Overview,
+}
+
 struct App {
     ctx: Ctx,
     /// Newer local caches compared with displayed feeds (§FS-001-forge-interface.7.1).
     cache_freshness: CacheFreshness,
     navigator: NavigatorState,
+    /// The first screen's rows (§FS-019-waiting), kept like the navigator's.
+    waiting: WaitingScreen,
+    /// Whether what the Waiting rows were read from has moved since. Set
+    /// wherever the feed or the work is re-read, and paid for only when the
+    /// screen is shown — before a draw, never in it (§FS-005-dispatch.15.1).
+    waiting_stale: bool,
+    /// Which of the two floors the reader was last on (§FS-019-waiting.4).
+    home: Home,
     screen: Screen,
     /// The screen the reader was on when the operations board opened over
     /// it — one modal layer, restored by Esc. What the board's Enter opens
@@ -301,13 +327,23 @@ struct App {
     message: String,
 }
 
-pub fn run(scope: &crate::scope::Projects) -> Result<ExitCode> {
+pub fn run(scope: &crate::scope::Projects, args: &crate::cli::TuiArgs) -> Result<ExitCode> {
     let config = load_config()?;
     let mut app = App::load(&config, scope)?;
+    app.go_home_to(start_home(&config.defaults, args));
     let mut terminal = ratatui::init();
     let result = app.event_loop(&mut terminal, &config);
     ratatui::restore();
     result
+}
+
+/// The screen the interface opens on: the reader's setting, or the flag for
+/// this one launch (§FS-019-waiting.5).
+fn start_home(defaults: &crate::feed::config::Defaults, args: &crate::cli::TuiArgs) -> Home {
+    match (args.overview, defaults.start_screen) {
+        (true, _) | (false, crate::feed::config::StartScreen::Overview) => Home::Overview,
+        (false, crate::feed::config::StartScreen::Waiting) => Home::Waiting,
+    }
 }
 
 pub(crate) fn highlight_style() -> Style {
@@ -336,6 +372,9 @@ impl App {
             ctx: Ctx::open_over(config, scope)?,
             cache_freshness,
             navigator: NavigatorState::new(),
+            waiting: WaitingScreen::pending(),
+            waiting_stale: true,
+            home: Home::Waiting,
             screen: Screen::Navigator,
             saved: None,
             menu: None,
@@ -412,6 +451,19 @@ impl App {
         config: &StatusConfig,
     ) -> Result<ExitCode> {
         loop {
+            // Before the frame, never inside it: the Waiting rows are re-read
+            // only when what they come from moved and they are on screen
+            // (§FS-005-dispatch.15.1). The first read walks every work root,
+            // so a frame saying so is drawn before it (§FS-019-waiting.2).
+            if self.waiting_stale
+                && matches!(self.screen, Screen::Waiting)
+                && !self.waiting.is_read()
+            {
+                terminal
+                    .draw(|frame| self.draw(frame))
+                    .map_err(|err| EphorError::Command(format!("draw failed: {err}")))?;
+            }
+            self.freshen_waiting();
             terminal
                 .draw(|frame| self.draw(frame))
                 .map_err(|err| EphorError::Command(format!("draw failed: {err}")))?;
@@ -542,17 +594,11 @@ impl App {
                 Screen::Thread(thread) => thread.is_picking(),
                 _ => false,
             };
-            if key.code == KeyCode::Char(';') && !inside {
-                self.toggle_operations();
-                continue;
-            }
-            // The burn page opens the same way and closes back the same way
-            // (§FS-013-burn.8).
-            if key.code == KeyCode::Char('$') && !inside {
-                self.toggle_burn();
+            if !inside && self.global_key(key.code) {
                 continue;
             }
             let action = match &mut self.screen {
+                Screen::Waiting => self.waiting.handle_key(key.code),
                 Screen::Navigator => self.navigator.handle_key(&self.ctx, key.code),
                 Screen::Thread(thread) => thread.handle_key(key.code),
                 Screen::Gate(gate) => gate.handle_key(key.code),
@@ -603,20 +649,7 @@ impl App {
                 Some(screen) => self.screen = Screen::Gate(screen),
                 None => self.message = "No gate recorded for this item".to_string(),
             },
-            Action::Back => {
-                // The board is one modal layer: leaving it restores the
-                // screen it opened over, and leaving anything else drops any
-                // stale slot on the way to the navigator
-                // (§FS-005-dispatch.15).
-                self.screen = match self.saved.take() {
-                    Some(previous)
-                        if matches!(self.screen, Screen::Operations(_) | Screen::Burn(_)) =>
-                    {
-                        previous
-                    }
-                    _ => Screen::Navigator,
-                }
-            }
+            Action::Back => self.back(),
             Action::ToggleUnread => {
                 self.ctx.unread_only = !self.ctx.unread_only;
                 self.rebuild_view();
@@ -635,7 +668,7 @@ impl App {
             Action::MarkDone { marks, pop } => {
                 self.mark_done(marks)?;
                 if pop {
-                    self.screen = Screen::Navigator;
+                    self.screen = self.home_screen();
                 }
             }
             // The three moves inside a conversation are the API's, not this
@@ -716,7 +749,7 @@ impl App {
                 let outcome = self.ctx.settle(&item, crate::api::act::Sending::Now);
                 self.message = outcome.says;
                 if outcome.ok {
-                    self.screen = Screen::Navigator;
+                    self.screen = self.home_screen();
                     self.rebuild_view();
                 }
             }
@@ -2029,6 +2062,7 @@ impl App {
     fn rebuild_view(&mut self) {
         self.ctx.recompute_stats();
         self.navigator.rebuild(&self.ctx);
+        self.waiting_stale = true;
     }
 
     fn mark_done(&mut self, marks: Vec<(String, DateTime<Utc>, String)>) -> Result<()> {
@@ -2177,7 +2211,7 @@ impl App {
     /// is found by looking, never remembered.
     fn toggle_operations(&mut self) {
         if matches!(self.screen, Screen::Operations(_)) {
-            self.screen = self.saved.take().unwrap_or(Screen::Navigator);
+            self.screen = self.saved.take().unwrap_or_else(|| self.home_screen());
             return;
         }
         self.reload_work_groups();
@@ -2191,6 +2225,101 @@ impl App {
         if !matches!(previous, Screen::Burn(_)) {
             self.saved = Some(previous);
         }
+    }
+
+    /// The keys every screen answers the same way, over whatever is on it.
+    /// True where the key was one of them.
+    fn global_key(&mut self, code: KeyCode) -> bool {
+        match code {
+            // The operations board (§FS-005-dispatch.15).
+            KeyCode::Char(';') => self.toggle_operations(),
+            // The burn page opens the same way and closes back the same way
+            // (§FS-013-burn.8).
+            KeyCode::Char('$') => self.toggle_burn(),
+            // The overview from anywhere, and Waiting from the overview
+            // (§FS-019-waiting.4).
+            KeyCode::Char('O') => self.toggle_overview(),
+            _ => return false,
+        }
+        true
+    }
+
+    /// `esc`. The board is one modal layer: leaving it restores the screen it
+    /// opened over, and leaving anything else drops any stale slot on the way
+    /// to whichever floor the reader was last on (§FS-005-dispatch.15,
+    /// §FS-019-waiting.4).
+    fn back(&mut self) {
+        self.screen = match self.saved.take() {
+            Some(previous) if matches!(self.screen, Screen::Operations(_) | Screen::Burn(_)) => {
+                previous
+            }
+            _ => self.home_screen(),
+        }
+    }
+
+    /// The screen a floor is (§FS-019-waiting.4).
+    fn home_screen(&self) -> Screen {
+        match self.home {
+            Home::Waiting => Screen::Waiting,
+            Home::Overview => Screen::Navigator,
+        }
+    }
+
+    /// Stand on one of the two floors, dropping whatever modal layer was over
+    /// the screen it replaces (§FS-019-waiting.4).
+    fn go_home_to(&mut self, home: Home) {
+        self.home = home;
+        self.saved = None;
+        self.screen = self.home_screen();
+    }
+
+    /// `O` (§FS-019-waiting.4): the overview from any screen, and Waiting
+    /// from the overview.
+    fn toggle_overview(&mut self) {
+        match self.screen {
+            Screen::Navigator => self.go_home_to(Home::Waiting),
+            _ => self.go_home_to(Home::Overview),
+        }
+    }
+
+    /// Re-read the Waiting rows where what they come from moved and the
+    /// screen is shown (§FS-019-waiting.6). The same reading `ephor waiting`
+    /// prints, over this screen's enumeration of the roots, exactly as the
+    /// board is (§FS-005-dispatch.15.1).
+    fn freshen_waiting(&mut self) {
+        if !self.waiting_stale || !matches!(self.screen, Screen::Waiting) {
+            return;
+        }
+        self.waiting_stale = false;
+        let view = self.ctx.waiting_over(&self.work_groups);
+        let items = self.waiting_items(&view);
+        self.waiting.replace(view, items);
+    }
+
+    /// The matters the Waiting rows lead to, resolved once with the reading
+    /// rather than on a key.
+    fn waiting_items(
+        &self,
+        view: &crate::api::views::Waiting,
+    ) -> std::collections::BTreeMap<String, Item> {
+        let wanted: std::collections::BTreeSet<&String> = view
+            .on_you
+            .iter()
+            .flat_map(|row| row.review.iter().chain(row.item.iter()))
+            .chain(view.new.iter().map(|row| &row.id))
+            .collect();
+        // One walk of the feeds for every row, not a walk per row: building a
+        // matter out of the cache costs the whole feed once.
+        let mut items = std::collections::BTreeMap::new();
+        if wanted.is_empty() {
+            return items;
+        }
+        for item in self.ctx.feeds.iter().flat_map(|feed| feed.items()) {
+            if wanted.contains(&item.id) {
+                items.insert(item.id.clone(), item);
+            }
+        }
+        items
     }
 
     /// The board's rows, built off the draw path (§FS-005-dispatch.15):
@@ -2241,8 +2370,11 @@ impl App {
             .and_then(|dispatcher| dispatcher.status(item))
     }
 
-    /// Rebuild the open board's rows; a closed board costs nothing.
+    /// Rebuild the open board's rows; a closed board costs nothing. What the
+    /// board reads the Waiting screen reads too, so its rows are marked for
+    /// the next time they are shown (§FS-005-dispatch.15).
     fn reload_operations(&mut self) {
+        self.waiting_stale = true;
         if !matches!(self.screen, Screen::Operations(_)) {
             return;
         }
@@ -2301,6 +2433,20 @@ impl App {
             self.rebuild_view();
             self.reload_operations();
             return true;
+        }
+        // On the Waiting screen a run starting or ending moves the Running
+        // section, and neither moves a file: the roots are probed, as the
+        // board probes them (§FS-005-dispatch.15.1).
+        if matches!(self.screen, Screen::Waiting) {
+            let shown = self.waiting.live_roots();
+            let flipped = self.work_groups.iter().any(|group| {
+                shown.contains(&group.root)
+                    != crate::work::runtime::watch::live(&self.work, &group.root)
+            });
+            if flipped || jobs_moved {
+                self.waiting_stale = true;
+            }
+            return flipped || jobs_moved || burned || cache_moved;
         }
         let shown = match &self.screen {
             Screen::Operations(board) => board.roots(),
@@ -2463,6 +2609,7 @@ impl App {
             // what the header says while the answers are up.
             Some(answers) => answers.title(),
             None => match &self.screen {
+                Screen::Waiting => self.waiting.title(),
                 Screen::Navigator => self.navigator.title(&self.ctx),
                 Screen::Thread(thread) => thread.title(),
                 Screen::Gate(gate) => gate.title(),
@@ -2509,6 +2656,7 @@ impl App {
         );
 
         match &mut self.screen {
+            Screen::Waiting => self.waiting.draw(frame, body_area),
             Screen::Navigator => self.navigator.draw(&self.ctx, frame, body_area),
             Screen::Thread(thread) => thread.draw(frame, body_area),
             Screen::Gate(gate) => gate.draw(frame, body_area),
@@ -2555,6 +2703,7 @@ impl App {
             menu.footer()
         } else {
             match &self.screen {
+                Screen::Waiting => self.waiting.footer(),
                 Screen::Navigator => self.navigator.footer(),
                 // Built from what is selected, not fixed per screen
                 // (§FS-004-quick-actions.2).
@@ -2602,3 +2751,7 @@ mod tests;
 
 #[cfg(test)]
 mod cache_freshness_tests;
+
+#[cfg(test)]
+#[path = "waiting_app_tests.rs"]
+mod waiting_app_tests;

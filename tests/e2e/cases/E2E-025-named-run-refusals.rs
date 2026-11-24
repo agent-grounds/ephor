@@ -454,12 +454,12 @@ fn issue_90_cli_and_work_screen_render_the_same_root_refusal() {
 /// takes keys in raw mode and echoes each one, and after the second `q` it
 /// closes its terminal and lingers before exiting 0. It enters raw mode
 /// without flushing its input, as the work screen does, so a key typed before
-/// it got there is kept. Run with anything other than `tui`, as `settle` runs
-/// it, it exits at once.
+/// it got there is kept. Run with anything other than `tui --overview`, as
+/// `settle` runs it, it exits at once.
 #[cfg(unix)]
 const LINGERING_TUI: &str = r#"#!/usr/bin/env python3
 import os, sys, termios, time, tty
-if sys.argv[1:] != ["tui"]:
+if sys.argv[1:] != ["tui", "--overview"]:
     sys.exit(2)
 tty.setraw(0, termios.TCSANOW)
 os.write(1, b"stand-in ready")
@@ -563,8 +563,10 @@ fn screen(world: &World) -> Output {
 /// The pseudo-terminal driver `screen` runs, kept apart so that the driver
 /// itself can be pinned against a stand-in for the work screen (see
 /// `issue_210_the_pty_driver_keeps_a_clean_exit_that_closes_its_terminal_first`).
-/// `python3 -c PTY_DRIVER <program>` runs `<program> tui` on the pty, types
-/// `jwRqq` into it, writes everything the terminal received to its own stdout,
+/// `python3 -c PTY_DRIVER <program>` runs `<program> tui --overview` on the
+/// pty — the keys below are the overview's, and the interface opens on the
+/// Waiting screen unless told otherwise (§FS-019-waiting.5) — types `jwRqq`
+/// into it, writes everything the terminal received to its own stdout,
 /// and exits with the program's own status; 124 means its 15 s deadline came
 /// first. An end of file on the master ends the reading but not the wait: the
 /// driver then waits for the program, up to that same deadline, before it
@@ -573,7 +575,7 @@ fn screen(world: &World) -> Output {
 const PTY_DRIVER: &str = r#"import fcntl, os, pty, select, struct, subprocess, sys, termios, time
 master, slave = pty.openpty()
 fcntl.ioctl(master, termios.TIOCSWINSZ, struct.pack("HHHH", 24, 400, 0, 0))
-child = subprocess.Popen([sys.argv[1], "tui"], stdin=slave, stdout=slave, stderr=slave)
+child = subprocess.Popen([sys.argv[1], "tui", "--overview"], stdin=slave, stdout=slave, stderr=slave)
 os.close(slave)
 chunks = []
 deadline = time.monotonic() + 15

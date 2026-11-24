@@ -263,7 +263,7 @@ impl super::App {
     /// path in both cases.
     pub(super) fn toggle_burn(&mut self) {
         if matches!(self.screen, Screen::Burn(_)) {
-            self.screen = self.saved.take().unwrap_or(Screen::Navigator);
+            self.screen = self.saved.take().unwrap_or_else(|| self.home_screen());
             return;
         }
         self.ctx.burn_refresh(false);

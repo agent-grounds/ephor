@@ -10,7 +10,7 @@ use std::fs;
 
 const WARNING: &str = "Displayed feed outdated: demo — newer cache available; press r to refresh";
 
-fn stored(project: &str, title: &str, fetched: DateTime<Utc>) -> ProjectFeed {
+pub(super) fn stored(project: &str, title: &str, fetched: DateTime<Utc>) -> ProjectFeed {
     let item = Item {
         id: format!("fixture:{project}#1"),
         project: project.into(),
@@ -44,7 +44,7 @@ fn stored(project: &str, title: &str, fetched: DateTime<Utc>) -> ProjectFeed {
     feed
 }
 
-fn drawn(app: &mut App) -> (String, Buffer) {
+pub(super) fn drawn(app: &mut App) -> (String, Buffer) {
     let mut terminal = Terminal::new(TestBackend::new(140, 40)).unwrap();
     terminal.draw(|frame| app.draw(frame)).unwrap();
     let buffer = terminal.backend().buffer().clone();

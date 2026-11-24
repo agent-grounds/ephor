@@ -125,9 +125,19 @@ pub enum Command {
     Capabilities(CapabilitiesArgs),
     /// Is this still working? The whole site, then ephor itself.
     Doctor(DoctorArgs),
-    /// Interactive inbox: navigate the feed, open items, mark them done.
+    /// Interactive inbox: opens on what waits on you, with the whole feed one
+    /// key away.
     #[command(alias = "inbox")]
-    Tui,
+    Tui(TuiArgs),
+}
+
+/// `ephor tui` (§FS-019-waiting.5): the screen it opens on is the reader's
+/// setting, and this flag overrides it for one launch.
+#[derive(Args, Debug, Default)]
+pub struct TuiArgs {
+    /// Open on the overview, whatever `defaults.start_screen` says.
+    #[arg(long)]
+    pub overview: bool,
 }
 
 /// `ephor job` (§FS-005-dispatch.17): a move that needs nobody watching runs

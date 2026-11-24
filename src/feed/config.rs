@@ -567,6 +567,21 @@ pub struct Defaults {
     /// always was (§AR-002-summons.6).
     #[serde(default)]
     pub window: Option<crate::seams::window::Binding>,
+    /// The screen `ephor tui` opens on (§FS-019-waiting.5): what waits on the
+    /// reader, or the whole feed. Any other value is refused at load.
+    #[serde(default)]
+    pub start_screen: StartScreen,
+}
+
+/// Which screen the interface opens on (§FS-019-waiting.5).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum StartScreen {
+    /// What waits on the reader, what is new, and what is running.
+    #[default]
+    Waiting,
+    /// The feed itself.
+    Overview,
 }
 
 /// Only omission selects automatically. A present null must reach the strict
@@ -589,6 +604,7 @@ impl Default for Defaults {
             recent_days: default_recent_days(),
             browser: None,
             window: None,
+            start_screen: StartScreen::default(),
         }
     }
 }
@@ -684,6 +700,22 @@ mod tests {
             .is_err(),
             "a misspelled key in the organization's work block is refused, not ignored"
         );
+    }
+
+    /// The start screen is `waiting` unless the reader says `overview`, and
+    /// any other word is a configuration error rather than a silent default
+    /// (§FS-019-waiting.5).
+    #[test]
+    fn the_start_screen_is_waiting_unless_the_reader_says_overview() {
+        let unset: StatusConfig = serde_json::from_str("{}").unwrap();
+        assert_eq!(unset.defaults.start_screen, StartScreen::Waiting);
+        let overview: StatusConfig =
+            serde_json::from_str(r#"{ "defaults": { "start_screen": "overview" } }"#).unwrap();
+        assert_eq!(overview.defaults.start_screen, StartScreen::Overview);
+        assert!(serde_json::from_str::<StatusConfig>(
+            r#"{ "defaults": { "start_screen": "feed" } }"#
+        )
+        .is_err());
     }
 
     #[test]
