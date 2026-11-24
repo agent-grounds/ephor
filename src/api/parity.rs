@@ -141,6 +141,18 @@ pub const ABILITIES: &[Ability] = &[
         keys: &["enter"],
         command: "work transition",
     },
+    // A prepared gate's form (§FS-005-dispatch.9.3): `s` asks the runtime
+    // what an answer would do, and `enter` on its confirmation sends it.
+    Ability {
+        what: "what the runtime would do with an answer to a prepared gate",
+        keys: &["s"],
+        command: "work gate answer --dry-run",
+    },
+    Ability {
+        what: "answer a prepared gate",
+        keys: &["enter"],
+        command: "work gate answer",
+    },
     Ability {
         what: "let the runtime work a plan",
         keys: &["R"],

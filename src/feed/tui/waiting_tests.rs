@@ -306,8 +306,11 @@ fn enter_does_what_the_row_is() {
     );
 
     match screen.handle_key(KeyCode::Enter) {
-        Action::ReviewHumanGate(item) => assert_eq!(item.id, "forge:widget/7"),
-        _ => panic!("a gate opens its review"),
+        Action::OpenGateBrief { item, ticket } => {
+            assert_eq!(item.id, "forge:widget/7");
+            assert_eq!(ticket, "widget-7.ask-1");
+        }
+        _ => panic!("a gate opens its review, or its form where it has one"),
     }
     screen.handle_key(KeyCode::Char('j'));
     match screen.handle_key(KeyCode::Enter) {

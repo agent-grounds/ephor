@@ -40,6 +40,15 @@ pub struct Gate {
     pub plan: PathBuf,
     pub machine: Option<PathBuf>,
     pub destinations: Vec<Destination>,
+    /// The gate's brief, where the bound runtime prepares one; absent from
+    /// the JSON where it does not, so an older runtime's review reads exactly
+    /// as it did (§FS-005-dispatch.9.3).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub brief: Option<super::gate::Brief>,
+    /// Why a runtime that prepares briefs could not brief this gate, in its
+    /// own words; the gate stays reviewable as before (§FS-005-dispatch.9.3).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub unbriefed: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -230,6 +239,8 @@ pub fn review_plan(
             plan: path.to_path_buf(),
             machine: machine.clone(),
             destinations,
+            brief: None,
+            unbriefed: None,
         });
         review.add_file(format!("{ticket} · plan"), path.to_path_buf(), None);
         review.add_file(format!("{ticket} · task"), task_path.to_path_buf(), None);

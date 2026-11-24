@@ -1784,7 +1784,7 @@ does not report one simply never shows it.
 |---|---|
 | `j` `k`, arrows | move |
 | `g` `G` | first / last |
-| `Enter` `l` | on a gate, its review — the screen `H` opens (§8.7.2); on a poll, the matter's thread or the plan; on a new matter, its thread; on a running row, attach (§8.16) |
+| `Enter` `l` | on a gate, its form where the runtime prepares one, and otherwise its review — the screen `H` opens (§8.7.2); on a poll, the matter's thread or the plan; on a new matter, its thread; on a running row, attach (§8.16) |
 | `e` | read the plan behind a gate, poll or running row |
 | `O` | the overview — and from the overview, back here |
 | `;` `$` | the operations board and the burn page, as from any screen |
@@ -3724,6 +3724,53 @@ ephor work transition --item <matter-id> --ticket <qualified-ticket> \
 The review numbers its files from one and lists the qualified ticket ids the
 transition command takes. `--json` is also supported for a file reading and a
 transition outcome.
+
+**A prepared gate is answered in its own form.** Where the bound runtime
+prepares gate briefs, each gate in the review carries one: its title, a
+summary, the file to read first, the questions the workflow asks, and the
+routes the runtime will take on the answers
+([§FS-005-dispatch.9.3](functional-spec/FS-005-dispatch.md#93-a-prepared-gate-is-answered-in-its-own-form)). `Enter` on a gate row of the
+Waiting screen opens that form directly; the review marks such a gate
+*answered in its form*, and where the workflow asks required questions of its
+own, choosing a transition there opens the form rather than asking for a reason.
+
+The form shows the gate's title, its state and how long it has waited, the
+matter, the ticket and its visit, the summary, and the file to read first with
+its line position; `f` lists the other files. Under **Your answer** each
+question is marked `✓` answered, `?` required and unanswered, or `·` optional,
+with a count of how many are answered. `tab` moves the keys between the file
+and the form, `j`/`k` move, `space` (or `Enter`) chooses: one option of a
+choice, any of several, yes or no, or a line to type for a text answer, which
+`Enter` keeps and `Esc` drops. `e` writes a text answer in your editor, on a
+private temporary file removed once it is read back. `Backspace` takes an
+answer back.
+
+`s` submits, and asks the runtime first: its dry run says where the ticket
+will move, by which route, and where the answer will be recorded, and that is
+the confirmation. `Enter` there sends the same answer for real; `Esc` goes back
+to the form. Ephor never decides where an answer leads and never decides
+whether the form is complete — what the runtime refuses stays on the form,
+beside the question it names. A field the runtime does not report is shown as
+*unknown*. `Esc` on the form returns to wherever it was opened from.
+
+The same answer goes through the command line, from a file or from standard
+input; the dry run is the same call with one flag more:
+
+```bash
+ephor work gate answer --item <matter-id> --ticket <qualified-ticket> \
+  --from <current-state> --answers answers.json --dry-run --json
+ephor work gate answer --item <matter-id> --ticket <qualified-ticket> \
+  --from <current-state> --answers - < answers.json
+```
+
+The answer document is the runtime's: its `version`, the brief's `digest`
+copied unchanged as `request_digest`, and the answers by question id, the way
+`ephor work review --json` lists them under each gate's `brief`. The command
+exits non-zero when the runtime refuses, and says why. `ephor work transition`
+refuses at a gate whose workflow asks required questions of its own and names
+this command instead. Where the runtime prepares no briefs, the review carries
+none, the Waiting screen opens the review as before, and `ephor work gate
+answer` refuses and names `ephor work transition`.
 
 **A finished blocked ticket is read here, never decided.** A ticket that
 finished with the verdict `blocked` is over, so it is no gate: it has no

@@ -526,17 +526,9 @@ impl AnswerScreen {
                     value: typed.line.trim().to_string(),
                 };
             }
-            KeyCode::Backspace => {
-                typing.line.pop();
+            _ => {
+                edit_line(&mut typing.line, code, modifiers);
             }
-            KeyCode::Char('u') if modifiers.contains(KeyModifiers::CONTROL) => typing.line.clear(),
-            KeyCode::Char('w') if modifiers.contains(KeyModifiers::CONTROL) => {
-                let trimmed = typing.line.trim_end();
-                let cut = trimmed.rfind(' ').map(|index| index + 1).unwrap_or(0);
-                typing.line.truncate(cut);
-            }
-            KeyCode::Char(ch) => typing.line.push(ch),
-            _ => {}
         }
         AnswerOutcome::Stay
     }
@@ -873,6 +865,26 @@ fn rows_of(laying: &Laying) -> Vec<Row> {
 /// A value on one row: what it says, with nothing on it that a row cannot
 /// hold. An answer that is empty says so, rather than leaving the column
 /// looking unfilled by accident.
+/// One editing key on a line being typed: the prompt's keys, so a line typed
+/// in any form behaves as a line typed anywhere. False for a key that edits
+/// nothing, which the form it was typed into decides about.
+pub(super) fn edit_line(line: &mut String, code: KeyCode, modifiers: KeyModifiers) -> bool {
+    match code {
+        KeyCode::Backspace => {
+            line.pop();
+        }
+        KeyCode::Char('u') if modifiers.contains(KeyModifiers::CONTROL) => line.clear(),
+        KeyCode::Char('w') if modifiers.contains(KeyModifiers::CONTROL) => {
+            let trimmed = line.trim_end();
+            let cut = trimmed.rfind(' ').map(|index| index + 1).unwrap_or(0);
+            line.truncate(cut);
+        }
+        KeyCode::Char(ch) => line.push(ch),
+        _ => return false,
+    }
+    true
+}
+
 fn shown(value: &str) -> String {
     let one = value.replace('\n', " ");
     match one.trim().is_empty() {
@@ -884,7 +896,7 @@ fn shown(value: &str) -> String {
 /// The same, cut to the column it stands in. A cut answer says it was cut:
 /// the whole of it is one keystroke away, and a value silently shortened is a
 /// value a reader would have corrected if they had seen it.
-fn fit(value: &str, width: usize) -> String {
+pub(super) fn fit(value: &str, width: usize) -> String {
     let one = shown(value);
     match one.chars().count() > width {
         true => {

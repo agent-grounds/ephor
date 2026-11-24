@@ -195,6 +195,7 @@ fn work_honoured(args: &WorkArgs) -> (String, Honours) {
         Some(WorkCommand::Offers(_)) => said("work offers", Honours::Nothing),
         Some(WorkCommand::Review(_)) => said("work review", Honours::Nothing),
         Some(WorkCommand::Transition(_)) => said("work transition", Honours::Nothing),
+        Some(WorkCommand::Gate(_)) => said("work gate answer", Honours::Nothing),
         Some(WorkCommand::Ask(_)) => said("work ask", Honours::Nothing),
         Some(WorkCommand::Cancel(_)) => said("work cancel", Honours::Nothing),
         // One matter, never a set of projects (§FS-005-dispatch.36.6).
@@ -330,6 +331,7 @@ fn work_sweeps(args: &WorkArgs) -> Sweeps {
         | Some(WorkCommand::Offers(_))
         | Some(WorkCommand::Review(_))
         | Some(WorkCommand::Transition(_))
+        | Some(WorkCommand::Gate(_))
         | Some(WorkCommand::Ask(_))
         | Some(WorkCommand::Cancel(_))
         | Some(WorkCommand::Retire(_))
