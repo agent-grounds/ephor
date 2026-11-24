@@ -89,6 +89,13 @@ the label that holds it, and it is offered nothing. Ephor names no label
 itself: which labels hold a matter is what the site's own selectors say, and
 a site whose selectors exclude no label holds nothing.
 
+On the screen the held matters are one line, under New. While there are three
+or fewer it names each, with its label; past that it counts them by the label
+that holds them — `25 matters are held, and offered nothing: 25 by
+human-discussion` — because a line of titles is cut by the edge of the screen
+long before it says anything. `ephor waiting` lists each held matter either
+way ([§FS-019-waiting.6](FS-019-waiting.md#6-ephor-waiting-is-the-same-reading)).
+
 ### 1.3 Running: every live run
 
 One row per execution root whose run is live, read from the runtime's lock
@@ -107,6 +114,12 @@ is empty. When neither Waiting on you nor New has a row, the screen opens with
 `Nothing is waiting on you.` and still shows Running, the held line where a
 matter is held, and the overview line ([§FS-019-waiting.3](FS-019-waiting.md#3-the-header-and-the-overview-line)). An empty screen is
 an answer, not a failure, and it says what it is the answer to.
+
+So the screen never shows that answer before it has one. Reading the work
+roots takes as long as the operations board takes, and the interface draws
+its first frame before that read rather than after it: until the first
+reading lands the screen says it is reading, with no section under it, and
+neither `Nothing is waiting on you.` nor an empty section.
 
 Where the runtime cannot run anything at all, the workable rung's own sentence
 is shown in place of the empty Waiting on you and Running sections, exactly as
