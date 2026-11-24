@@ -289,3 +289,52 @@ fn new_is_what_nothing_has_been_done_about_and_held_is_apart() {
     assert_eq!(new.len(), 1);
     assert!(held.is_empty());
 }
+
+/// What the reader decided today is counted from the processing marks and the
+/// dismissals made since local midnight, and from nothing older
+/// (§FS-019-waiting.2).
+#[test]
+fn decided_today_counts_marks_and_dismissals_since_local_midnight() {
+    use crate::work::ledger::{Dismissal, Ledger, Processed, Snapshot};
+    let now = chrono::Local::now();
+    let midnight = now
+        .date_naive()
+        .and_hms_opt(0, 0, 0)
+        .unwrap()
+        .and_local_timezone(chrono::Local)
+        .earliest()
+        .unwrap()
+        .with_timezone(&Utc);
+    let today = midnight + chrono::Duration::seconds(1);
+    let yesterday = midnight - chrono::Duration::seconds(1);
+    let mark = |at| Processed {
+        entry: "implement".to_string(),
+        kind: "agent".to_string(),
+        matter: "issue".to_string(),
+        project: "widget".to_string(),
+        title: "t".to_string(),
+        at,
+        queued: false,
+        says: None,
+        root: None,
+        run: None,
+    };
+    let item = matter("forge:widget/9", "Rename the lock", 1);
+    let dismissal = |at| Dismissal {
+        project: "widget".to_string(),
+        title: "t".to_string(),
+        reason: "a duplicate".to_string(),
+        at,
+        snapshot: Snapshot::of(&item),
+    };
+    let mut ledger = Ledger::default();
+    ledger.processed.insert("a".to_string(), mark(today));
+    ledger.processed.insert("b".to_string(), mark(today));
+    ledger.processed.insert("c".to_string(), mark(yesterday));
+    ledger.dismissed.insert("d".to_string(), dismissal(today));
+    ledger
+        .dismissed
+        .insert("e".to_string(), dismissal(yesterday));
+    let decided = super::decided(&ledger, now);
+    assert_eq!((decided.laid, decided.dismissed), (2, 1));
+}

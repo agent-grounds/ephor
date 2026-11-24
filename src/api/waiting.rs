@@ -49,6 +49,9 @@ impl Session {
                 .iter()
                 .filter(|item| cache::is_unread(&self.seen, item))
                 .count(),
+            // The newest fetch any feed in the reading records
+            // (§FS-019-waiting.3).
+            refreshed_at: self.feeds.iter().filter_map(|feed| feed.fetched_at).max(),
         };
         // Processed: a rhei is assigned, or a person said none is needed and
         // the matter has not moved since (§FS-019-waiting.7).
@@ -63,6 +66,28 @@ impl Session {
                 })
         };
         let mut reading = reading(board, &review_id, &self.work_config);
+        // The entry and branch the ledger records for each live run's matter
+        // (§FS-019-waiting.1.3), and what the reader decided today
+        // (§FS-019-waiting.2): ephor's own records, read and never written.
+        if let Some(dispatcher) = &self.dispatcher {
+            for row in &mut reading.running {
+                let Some(entry) = row
+                    .item
+                    .as_ref()
+                    .and_then(|id| dispatcher.ledger.entries.get(id))
+                else {
+                    continue;
+                };
+                let last = crate::work::retired::standing(entry).last();
+                row.entry = last
+                    .map(|dispatch| dispatch.recipe.clone())
+                    .filter(|recipe| !recipe.is_empty());
+                row.branch = last
+                    .and_then(|dispatch| dispatch.branch.clone())
+                    .or_else(|| entry.branch.clone());
+            }
+            reading.decided = decided(&dispatcher.ledger, chrono::Local::now());
+        }
         // The matters the feed carries, and not the saved reply rows the
         // overview keeps beside them: a drafted reply is not a matter nothing
         // has been done about (§FS-019-waiting.1.2).
@@ -133,13 +158,14 @@ impl Session {
 /// The sentences both surfaces say about the reading, so the screen and the
 /// command cannot word one fact two ways (§FS-019-waiting.3).
 impl views::Waiting {
-    /// `ephor — waiting   3 on you · 5 new · 4 running`.
+    /// `ephor — waiting   3 on you · 5 new · 4 running · refreshed 2m ago`.
     pub fn header(&self) -> String {
         format!(
-            "ephor — waiting   {} on you · {} new · {} running",
+            "ephor — waiting   {} on you · {} new · {} running · {}",
             self.on_you.len(),
             self.new.len(),
-            self.running.len()
+            self.running.len(),
+            self.refreshed(Utc::now())
         )
     }
 
@@ -160,6 +186,54 @@ impl views::Waiting {
     /// then opens with [`QUIET`] (§FS-019-waiting.2).
     pub fn quiet(&self) -> bool {
         self.on_you.is_empty() && self.new.is_empty()
+    }
+
+    /// The whole answer a quiet screen gives: [`QUIET`], and what it is the
+    /// answer to (§FS-019-waiting.2).
+    pub fn quiet_answer(&self) -> String {
+        let which = match self.held.is_empty() {
+            true => "every matter",
+            false => "every matter not held",
+        };
+        format!("{QUIET} No gate is open and {which} has work laid or a recorded decision.")
+    }
+
+    /// `decided today: 5 laid · 1 needs no work` (§FS-019-waiting.2).
+    pub fn decided_line(&self) -> String {
+        format!(
+            "decided today: {} laid · {} needs no work",
+            self.decided.laid, self.decided.dismissed
+        )
+    }
+
+    /// `refreshed 2m ago`, or `never refreshed` (§FS-019-waiting.3).
+    pub fn refreshed(&self, now: DateTime<Utc>) -> String {
+        match self.overview.refreshed_at {
+            Some(at) => format!("refreshed {} ago", crate::feed::render::age(now, at)),
+            None => "never refreshed".to_string(),
+        }
+    }
+}
+
+/// What the reader decided since local midnight, counted from the processing
+/// marks and the dismissals (§FS-019-waiting.2).
+pub(crate) fn decided(
+    ledger: &crate::work::ledger::Ledger,
+    now: chrono::DateTime<chrono::Local>,
+) -> views::Decided {
+    let today = now.date_naive();
+    let on_today = |at: &DateTime<Utc>| at.with_timezone(&chrono::Local).date_naive() == today;
+    views::Decided {
+        laid: ledger
+            .processed
+            .values()
+            .filter(|mark| on_today(&mark.at))
+            .count(),
+        dismissed: ledger
+            .dismissed
+            .values()
+            .filter(|dismissal| on_today(&dismissal.at))
+            .count(),
     }
 }
 
@@ -184,8 +258,9 @@ impl views::Waiting {
 
 impl views::Proposal {
     /// What a new row says about the rhei it would be assigned
-    /// (§FS-019-waiting.7.1): the entry, how many others would take it, and
-    /// why it cannot be processed as it stands, where it cannot.
+    /// (§FS-019-waiting.7.1, §FS-019-waiting.1.2): the entry, the hand and
+    /// the branch where it names them, how many others would take it, and why
+    /// it cannot be processed as it stands, where it cannot.
     pub fn says(&self) -> String {
         if self.fallback && self.gate == "blocked" {
             return format!("→ {} · not available", self.entry);
@@ -194,6 +269,9 @@ impl views::Proposal {
             return format!("→ {} · {}", self.entry, one_line(refusal));
         }
         let mut says = format!("→ {}", self.entry);
+        for named in [&self.hand, &self.branch].into_iter().flatten() {
+            says.push_str(&format!("  {}", one_line(named)));
+        }
         if self.gate == "needs-checkout" {
             says.push_str(" · makes its checkout");
         }
@@ -318,6 +396,8 @@ pub(crate) fn reading(
             item: row.op.item().map(str::to_string),
             matter: matter(row.op.item()),
             plan: row.plan.clone(),
+            entry: None,
+            branch: None,
             tickets: row
                 .op
                 .tickets
@@ -354,6 +434,7 @@ pub(crate) fn reading(
         running,
         queued: Vec::new(),
         adopt: None,
+        decided: views::Decided::default(),
         overview: views::Overview::default(),
     }
 }

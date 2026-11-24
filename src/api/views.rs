@@ -879,6 +879,8 @@ pub struct Waiting {
     /// automatic, where there is one (§FS-019-waiting.7.7).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub adopt: Option<String>,
+    /// What the reader decided today (§FS-019-waiting.2).
+    pub decided: Decided,
     pub overview: Overview,
 }
 
@@ -944,7 +946,8 @@ pub struct Proposal {
     /// `ready`, or `needs-checkout` where the dispatch makes the workspace
     /// first.
     pub gate: &'static str,
-    /// Who the work would go to, where the entry says.
+    /// Who the work would go to: the menu's hand on a recipe, and on a
+    /// workflow the hand its laying would resolve (§FS-019-waiting.7.1).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub hand: Option<String>,
     /// The branch the entry's own template would mint (§FS-005-dispatch.25).
@@ -1020,6 +1023,14 @@ pub struct ProcessRow {
     /// a refusal.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub start: Option<&'static str>,
+    /// Who holds the matter on the forge, as the feed reports it: empty where
+    /// nobody does, absent where the source does not say
+    /// (§FS-019-waiting.7.2).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub assignees: Option<Vec<String>>,
+    /// The matter's labels, as the feed reports them.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub labels: Vec<String>,
     /// What the inputs were answered with, on a workflow
     /// (§FS-005-dispatch.19).
     #[serde(skip_serializing_if = "Vec::is_empty")]
@@ -1064,7 +1075,15 @@ pub struct RunningRoot {
     pub matter: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub plan: Option<PathBuf>,
-    /// The tickets the run holds right now, each in its state.
+    /// The entry the ledger says the work was handed over with, where it
+    /// records one (§FS-019-waiting.1.3).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub entry: Option<String>,
+    /// The branch the ledger says the work is about.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub branch: Option<String>,
+    /// The tickets the run holds right now, each in its state. Empty between
+    /// two turns, which the row says (§FS-019-waiting.1.3).
     pub tickets: Vec<RunningTicket>,
     /// What the run calls itself (§FS-005-dispatch.20).
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -1086,10 +1105,25 @@ pub struct RunningTicket {
     pub state: Option<String>,
 }
 
-/// How much the overview holds (§FS-019-waiting.3).
+/// How much the overview holds, and how old the feed under it is
+/// (§FS-019-waiting.3).
 #[derive(Debug, Clone, Copy, Default, Serialize)]
 pub struct Overview {
     pub matters: usize,
     /// How many of them changed since the reader last looked.
     pub unread: usize,
+    /// The newest fetch the feed's cache records; absent where it was never
+    /// fetched.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub refreshed_at: Option<DateTime<Utc>>,
+}
+
+/// What the reader decided today, from ephor's own records of processing
+/// (§FS-019-waiting.2).
+#[derive(Debug, Clone, Copy, Default, Serialize)]
+pub struct Decided {
+    /// Matters processed since local midnight.
+    pub laid: usize,
+    /// Matters recorded as needing no rhei since local midnight.
+    pub dismissed: usize,
 }

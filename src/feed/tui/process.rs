@@ -21,11 +21,21 @@ use super::Action;
 
 pub(crate) use crate::api::process::Choice;
 
+/// Where one matter stands among the new rows, and the one after it: what
+/// the title counts and what `n` opens (§FS-019-waiting.7.2).
+#[derive(Default)]
+pub(crate) struct Place {
+    /// 1-based, and how many new rows there are, where the matter is one.
+    pub at: Option<(usize, usize)>,
+    pub next: Option<Box<Item>>,
+}
+
 /// What the screen is over.
 pub(crate) enum Over {
     /// One matter, the entry proposed or chosen, and a dry run's account.
     One {
         item: Box<Item>,
+        place: Place,
         proposal: views::Proposal,
         account: views::ProcessRow,
         /// A workflow with inputs nobody answered: `Enter` opens them rather
@@ -50,6 +60,7 @@ pub(crate) struct ProcessScreen {
 impl ProcessScreen {
     pub fn one(
         item: Item,
+        place: Place,
         proposal: views::Proposal,
         account: views::ProcessRow,
         wants: bool,
@@ -58,6 +69,7 @@ impl ProcessScreen {
         ProcessScreen {
             over: Over::One {
                 item: Box::new(item),
+                place,
                 proposal,
                 account,
                 wants,
@@ -89,7 +101,15 @@ impl ProcessScreen {
 
     pub fn title(&self) -> String {
         match &self.over {
-            Over::One { item, .. } => format!(" ephor — process {}", item.id),
+            // The matter, and where it stands among the new rows
+            // (§FS-019-waiting.7.2).
+            Over::One { item, place, .. } => {
+                let short = crate::api::waiting::short_id(&item.id);
+                match place.at {
+                    Some((at, of)) => format!(" ephor — new matter — {short} · {at} of {of} new"),
+                    None => format!(" ephor — new matter — {short}"),
+                }
+            }
             Over::All(view) => format!(
                 " ephor — process {} new {}",
                 view.processed.len(),
@@ -106,13 +126,18 @@ impl ProcessScreen {
             return " j/k move  ·  enter processes with it  ·  esc back".to_string();
         }
         match &self.over {
-            Over::One { wants: true, .. } => {
-                " enter answers its inputs  ·  a another  ·  x needs none  ·  l open  ·  esc back"
-                    .to_string()
-            }
-            Over::One { .. } => {
-                " enter processes it  ·  a another  ·  x needs none  ·  l open  ·  esc back"
-                    .to_string()
+            Over::One { wants, place, .. } => {
+                let enter = match wants {
+                    true => "enter answers its inputs",
+                    false => "enter lay and start",
+                };
+                let next = match place.next {
+                    Some(_) => "  ·  n next",
+                    None => "",
+                };
+                format!(
+                    " {enter}  ·  a other workflow  ·  x needs no work{next}  ·  l open  ·  esc waiting"
+                )
             }
             Over::All(view) if view.processed.is_empty() => " esc back".to_string(),
             Over::All(_) => " enter processes them  ·  esc back".to_string(),
@@ -202,6 +227,23 @@ impl ProcessScreen {
                 },
                 Over::All(_) => Action::None,
             },
+            // The next new row's screen, this one left undecided
+            // (§FS-019-waiting.7.2).
+            KeyCode::Char('n') => match &self.over {
+                Over::One {
+                    place:
+                        Place {
+                            next: Some(next), ..
+                        },
+                    ..
+                } => Action::ProcessMatter {
+                    item: (**next).clone(),
+                    entry: None,
+                    choosing: false,
+                },
+                Over::One { .. } => Action::SetMessage(LAST.to_string()),
+                Over::All(_) => Action::None,
+            },
             _ => Action::None,
         }
     }
@@ -218,12 +260,31 @@ impl ProcessScreen {
                 account,
                 wants,
                 choices,
+                ..
             } => {
+                // The matter, who holds it, and that no rhei has it yet
+                // (§FS-019-waiting.7.2).
                 lines.push(Line::from(vec![
                     Span::styled(format!("  {} ", item.kind.label()), dim),
                     Span::styled(item.title.clone(), bold),
                     Span::styled(format!("   {} · {}", item.project, item.id), dim),
                 ]));
+                let mut moved = format!(
+                    "moved {} ago",
+                    crate::feed::render::age(chrono::Utc::now(), item.updated_at)
+                );
+                if !account.labels.is_empty() {
+                    moved.push_str(&format!(" · labels {}", account.labels.join(", ")));
+                }
+                lines.push(Line::from(Span::styled(format!("  {moved}"), dim)));
+                match &account.assignees {
+                    Some(held) if held.is_empty() => {
+                        lines.push(field("held by", "nobody · no assignee on the forge"))
+                    }
+                    Some(held) => lines.push(field("held by", &held.join(", "))),
+                    None => {}
+                }
+                lines.push(field("work", "none laid · no plan in the ledger"));
                 lines.push(Line::from(""));
                 lines.push(Line::from(Span::styled("  PROPOSED".to_string(), heading)));
                 lines.push(Line::from(vec![
@@ -239,18 +300,27 @@ impl ProcessScreen {
                 if let Some(hand) = &proposal.hand {
                     lines.push(field("hand", hand));
                 }
-                if let Some(branch) = &proposal.branch {
-                    lines.push(field("branch", branch));
-                }
-                if let Some(workspace) = &proposal.workspace {
-                    let there = match proposal.gate {
-                        "needs-checkout" => "  (made first)",
-                        _ => "",
-                    };
+                if let Some(plan) = &account.plan {
                     lines.push(field(
-                        "checkout",
-                        &format!("{}{there}", workspace.display()),
+                        "plan",
+                        &format!("{} · written on confirm", plan.display()),
                     ));
+                }
+                // One line for the checkout: its branch, where it is, and
+                // whether it is there or will be created.
+                if proposal.branch.is_some() || proposal.workspace.is_some() {
+                    let there = match proposal.gate {
+                        "needs-checkout" => "will be created",
+                        _ => "exists",
+                    };
+                    let mut checkout = proposal.branch.clone().unwrap_or_default();
+                    if let Some(workspace) = &proposal.workspace {
+                        if !checkout.is_empty() {
+                            checkout.push_str(" at ");
+                        }
+                        checkout.push_str(&workspace.display().to_string());
+                    }
+                    lines.push(field("checkout", &format!("{checkout} · {there}")));
                 }
                 if let Some(root) = &proposal.root {
                     lines.push(field("work root", &root.display().to_string()));
@@ -274,11 +344,12 @@ impl ProcessScreen {
                 for line in account.says.lines() {
                     lines.push(Line::from(Span::styled(format!("    {line}"), tone)));
                 }
-                if let Some(plan) = &account.plan {
-                    lines.push(field("plan", &plan.display().to_string()));
-                }
                 for ticket in &account.tickets {
                     lines.push(field("ticket", ticket));
+                }
+                if !account.answers.is_empty() {
+                    lines.push(Line::from(""));
+                    lines.push(Line::from(Span::styled("  INPUTS".to_string(), heading)));
                 }
                 for answer in &account.answers {
                     let shown = match answer.shown.is_empty() {
@@ -287,6 +358,16 @@ impl ProcessScreen {
                     };
                     lines.push(field(&answer.input, &shown));
                 }
+                // What confirming does, in one sentence (§FS-019-waiting.7.2).
+                lines.push(Line::from(""));
+                lines.push(Line::from(Span::styled(
+                    format!(
+                        "  Confirming lays the plan, records it against {} in the ledger, and \
+                         asks for its start. Ephor posts nothing to the forge.",
+                        crate::api::waiting::short_id(&item.id)
+                    ),
+                    dim,
+                )));
                 if let Some(selected) = self.choosing {
                     lines.push(Line::from(""));
                     lines.push(Line::from(Span::styled(
@@ -397,6 +478,9 @@ fn why(proposal: &views::Proposal) -> String {
         }
     }
 }
+
+/// What `n` says on the last new row (§FS-019-waiting.7.2).
+pub(crate) const LAST: &str = "This is the last new matter";
 
 fn field(name: &str, value: &str) -> Line<'static> {
     Line::from(vec![

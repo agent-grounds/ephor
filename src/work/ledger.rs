@@ -116,6 +116,15 @@ pub struct Processed {
     /// starts it clears this (§FS-005-dispatch.24.5).
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub queued: bool,
+    /// The work root the matter's work was laid in, and the run the runtime
+    /// last reported there when this was written: a root whose last run is
+    /// another one has had its start, whoever started it, and the mark is
+    /// spent (§FS-005-dispatch.24.5). Absent on marks written before this was
+    /// recorded, which only the sweep's own start clears.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub root: Option<PathBuf>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub run: Option<String>,
     /// Why it was not started when it was processed, in the admission's own
     /// words (§FS-019-waiting.7.6).
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -843,6 +852,8 @@ mod tests {
                 at: Utc::now(),
                 queued: true,
                 says: Some("global work.max_active 0 is full".to_string()),
+                root: Some(PathBuf::from("/w/widget/panta")),
+                run: Some("a1b2c3".to_string()),
             },
         );
         let text = serde_json::to_string(&ledger).unwrap();
@@ -854,6 +865,7 @@ mod tests {
             mark.says.as_deref(),
             Some("global work.max_active 0 is full")
         );
+        assert_eq!(mark.run.as_deref(), Some("a1b2c3"));
 
         let dismissal = &back.dismissed[&matter.id];
         assert!(dismissal.stands(&matter));

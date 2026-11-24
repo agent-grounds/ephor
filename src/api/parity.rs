@@ -199,6 +199,13 @@ pub const ABILITIES: &[Ability] = &[
         keys: &["A"],
         command: "work process --all",
     },
+    // `n` on a processing screen reads the next new row's account, leaving
+    // this one undecided (§FS-019-waiting.7.2).
+    Ability {
+        what: "read the next new matter's processing account",
+        keys: &["n"],
+        command: "work process --dry-run",
+    },
     Ability {
         what: "record that a matter needs no work, and why",
         keys: &["x"],

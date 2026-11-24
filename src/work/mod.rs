@@ -4148,7 +4148,7 @@ pub fn due_among(
     let queued: BTreeSet<&str> = ledger
         .processed
         .iter()
-        .filter(|(_, mark)| mark.queued)
+        .filter(|(_, mark)| still_queued(mark))
         .map(|(id, _)| id.as_str())
         .collect();
     // Which trees are being worked, taken over the whole snapshot before
@@ -4849,6 +4849,14 @@ fn rank_due(due: Vec<Due>, ranked_ids: &[String]) -> Vec<Due> {
             .then_with(|| left.root.cmp(&right.root))
     });
     due
+}
+
+/// The lock a sweep holds from its reload of the ledger until its record is
+/// saved, held by processing over its own reload-to-save so neither writes
+/// over the other (§FS-019-waiting.7.2). It is released when the returned file
+/// is dropped; taking it again in the same process while it is held blocks.
+pub fn ledger_lock() -> Result<fs::File> {
+    autorun_lock()
 }
 
 /// Serialize autorun capacity decisions across every ephor process using this
@@ -5751,6 +5759,19 @@ impl Dispatcher {
             .then(|| (entry.plan_id.clone(), entry.plan.clone()))
     }
 
+    /// Read the ledger again from disk, so that the move about to save it
+    /// saves over what every other process wrote since this one loaded it — a
+    /// sweep's dispatch, another screen's dismissal — and not over the copy
+    /// taken when the screen opened (§FS-005-dispatch.4). Only between
+    /// hand-offs: one in flight holds the copy it would roll back to.
+    pub fn reload_ledger(&mut self) -> Result<()> {
+        if self.journal.ledger.is_some() {
+            return Ok(());
+        }
+        self.ledger = ledger::load()?;
+        Ok(())
+    }
+
     /// Commit the ledger and only then release the work-root pre-images. A
     /// failed atomic store restores the entire unsaved batch and the loaded
     /// in-memory ledger (§FS-005-dispatch.4).
@@ -6450,6 +6471,35 @@ fn root_key(root: &std::path::Path) -> String {
 /// to use is not the identity of a directory or a plan. A path that cannot
 /// be resolved is its own answer: something that is not there yet is still
 /// only equal to itself.
+/// Whether a processing mark still asks for a start (§FS-005-dispatch.24.5):
+/// it is queued, and the root it was made about has had no run since. The
+/// first run there spends it, whether a sweep, `ephor work run`, the screen
+/// or a person at the runtime's own prompt started it.
+pub fn still_queued(mark: &ledger::Processed) -> bool {
+    mark.queued
+        && match &mark.root {
+            Some(root) => last_run(root) == mark.run,
+            None => true,
+        }
+}
+
+/// The run the runtime last reported on a root, by the name it gave itself
+/// (§AR-007-runtime.3). None where no run has reported one there.
+pub fn last_run(root: &std::path::Path) -> Option<String> {
+    runtime::events::progress(root).and_then(|last| last.id)
+}
+
+/// The work root a matter's work was last committed to, as the ledger records
+/// it (§FS-005-dispatch.4): its newest standing dispatch's, else the entry's
+/// own.
+pub fn work_root_of(ledger: &Ledger, id: &str) -> Option<PathBuf> {
+    let entry = ledger.entries.get(id)?;
+    retired::standing(entry)
+        .filter_map(|dispatch| dispatch.root.clone())
+        .last()
+        .or_else(|| Some(entry.root.clone()).filter(|root| !root.as_os_str().is_empty()))
+}
+
 fn canonical(path: &std::path::Path) -> PathBuf {
     std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf())
 }

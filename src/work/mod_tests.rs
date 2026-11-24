@@ -2811,10 +2811,10 @@ fn a_recipe_that_did_not_ask_is_never_due() {
 }
 
 /// Work processing laid from Waiting and asked to start is due to the sweep
-/// whatever its recipe asked, until a sweep starts it — and only that matter's
-/// (§FS-005-dispatch.24.5).
+/// whatever its recipe asked, until a run starts on its root — and only that
+/// matter's (§FS-005-dispatch.24.5).
 #[test]
-fn work_processing_queued_is_due_until_a_sweep_starts_it() {
+fn work_processing_queued_is_due_until_a_run_starts_it() {
     let tmp = tempfile::tempdir().unwrap();
     let group = due_root(&tmp.path().join("panta"), &ticket_at("review-1", "fix"));
     let due_with = |ledger: &Ledger| {
@@ -2840,6 +2840,8 @@ fn work_processing_queued_is_due_until_a_sweep_starts_it() {
                 at: Utc::now(),
                 queued,
                 says: None,
+                root: None,
+                run: None,
             },
         )
     };
@@ -2857,6 +2859,33 @@ fn work_processing_queued_is_due_until_a_sweep_starts_it() {
     // Another matter's mark is not this one's.
     ledger.processed = BTreeMap::from([mark("forge:widget/7", true)]);
     assert!(due_with(&ledger).is_empty());
+
+    // A mark that names its root and the run the root last had is owed while
+    // that is still the root's last run, and spent by the first run after it,
+    // whoever started that one: here, a run nobody in ephor started.
+    let root = tmp.path().join("panta");
+    let (id, mut recorded) = mark("forge:widget/42", true);
+    recorded.root = Some(root.clone());
+    recorded.run = super::last_run(&root);
+    assert_eq!(recorded.run, None, "no run has reported on the root yet");
+    ledger.processed = BTreeMap::from([(id.clone(), recorded.clone())]);
+    assert!(still_queued(&recorded));
+    assert_eq!(due_with(&ledger).len(), 1);
+    fs::create_dir_all(root.join("runtime")).unwrap();
+    fs::write(
+        root.join(runtime::events::STREAM),
+        "{\"seq\":1,\"event\":\"run_started\",\"run_id\":\"f00d01\"}\n",
+    )
+    .unwrap();
+    assert!(!still_queued(&recorded));
+    assert!(
+        due_with(&ledger).is_empty(),
+        "the run it asked for has happened"
+    );
+    // A mark made after that run is owed until the next one.
+    recorded.run = super::last_run(&root);
+    ledger.processed = BTreeMap::from([(id, recorded)]);
+    assert_eq!(due_with(&ledger).len(), 1);
 }
 
 /// What a run would not advance is not what makes a root due: work that

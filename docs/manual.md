@@ -1605,16 +1605,21 @@ needs me now — in three sections, in this order:
   carrying a label some selector of yours excludes by name, such as
   `"labels": ["!human-discussion"]` on a recipe or an action, is **held**: it
   is listed apart, once, with the label, and offered nothing.
-- **Running**: every live run, with the tickets it holds and how long it has
-  been going, counted from the start the run published.
+- **Running**: every live run, with the entry and branch the ledger handed it
+  over with, the tickets it holds and how long it has been going, counted from
+  the start the run published. A run between turns holds no ticket and says
+  `between turns`.
 
 How long a gate has waited and what it holds back are shown only where the
 runtime reports them; no file timestamp stands in. An empty section is one
-line, and an empty screen says `Nothing is waiting on you.` and still shows
-what is running. Reading the work roots takes as long as the operations board
-does, so the first frame says `Reading what waits on you…` until it lands. The footer always opens with
-`overview: 143 matters · 12 changed since you looked`, so a quiet screen is
-never mistaken for a quiet feed.
+line, and an empty screen says `Nothing is waiting on you. No gate is open and
+every matter has work laid or a recorded decision.`, then `decided today: 5 laid ·
+1 needs no work`, and still shows what is running. The header ends with how old
+the feed is, `refreshed 2m ago`, so a quiet screen read from an old cache says
+so. Reading the work roots takes as long as the operations board does, so the
+first frame says `Reading what waits on you…` until it lands. The footer always
+opens with `overview: 143 matters · 12 changed since you looked`, so a quiet
+screen is never mistaken for a quiet feed.
 
 **Processing a new matter** happens on the row
 ([§FS-019-waiting.7](functional-spec/FS-019-waiting.md#7-a-new-matter-is-processed-where-it-is-shown)). Every new row says what it would be assigned —
@@ -1625,7 +1630,7 @@ available` where the runtime offers none. A held matter is offered nothing.
 
 | Key | On a new row |
 |---|---|
-| `Enter` | the processing screen: the proposal, why it is the one, and what a dry run says it would lay; `Enter` there lays it, records it and asks for a start |
+| `Enter` | the processing screen: the matter and who holds it, the proposal, why it is the one, the hand, plan and checkout, and what a dry run says it would lay; `Enter` there lays it, records it and asks for a start, and `n` moves to the next new row undecided |
 | `a` | choose another entry, or a workflow no entry names |
 | `x` | record that it needs no rhei, with a reason; lifted when the matter moves |
 | `A` | preview every unambiguous row, then process them all on `Enter` |

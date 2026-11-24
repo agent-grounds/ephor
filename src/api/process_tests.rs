@@ -34,6 +34,8 @@ fn row(item: &str, ok: bool, start: Option<&'static str>) -> views::ProcessRow {
         plan: None,
         tickets: Vec::new(),
         start,
+        assignees: None,
+        labels: Vec::new(),
         answers: Vec::new(),
     }
 }
@@ -87,6 +89,7 @@ fn the_queued_line_names_the_matters_and_the_admissions_reason() {
         running: Vec::new(),
         queued: Vec::new(),
         adopt: None,
+        decided: views::Decided::default(),
         overview: views::Overview::default(),
     };
     assert_eq!(view.queued_line(), None);

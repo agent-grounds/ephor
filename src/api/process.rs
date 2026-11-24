@@ -77,6 +77,15 @@ impl Session {
         holding_label(item, &self.holding_labels())
     }
 
+    /// The ledger, read again from disk before a move that saves it
+    /// (§FS-005-dispatch.4). Nothing to read without a registry.
+    pub(crate) fn reload_ledger(&mut self) -> Result<(), String> {
+        match self.dispatcher.as_mut() {
+            Some(dispatcher) => dispatcher.reload_ledger().map_err(|err| err.to_string()),
+            None => Ok(()),
+        }
+    }
+
     /// Whether the ledger records work about this matter — the first of the
     /// two ways a matter is processed (§FS-019-waiting.7).
     pub(crate) fn has_work(&self, id: &str) -> bool {
@@ -263,13 +272,23 @@ impl Session {
                 refusal = Some(format!("it still wants {}", inputs.missing.join(", ")));
             }
         }
+        // A recipe's hand is the menu's; a workflow's is the one its laying
+        // would resolve at the same root (§FS-019-waiting.7.1,
+        // §FS-005-dispatch.14).
+        let hand = match &entry.action.hand {
+            Some(hand) => Some(hand.says.clone()),
+            None if entry.action.workflow.is_some() => root
+                .as_deref()
+                .and_then(|root| self.workflow_hand(item, entry, root)),
+            None => None,
+        };
         views::Proposal {
             entry: entry.key(),
             kind: entry.kind(),
             icon: entry.action.icon.clone(),
             description: entry.action.description.clone(),
             gate: entry.gate.name(),
-            hand: entry.action.hand.as_ref().map(|hand| hand.says.clone()),
+            hand,
             branch: match &entry.action.minted {
                 Some(Minted::Named { branch, .. }) => Some(branch.clone()),
                 _ => None,
@@ -284,6 +303,27 @@ impl Session {
             unambiguous: refusal.is_none() && entry.running.is_none(),
             refusal,
         }
+    }
+
+    /// Who a workflow entry's work would go to, resolved as its laying
+    /// resolves it, against the root it would be laid in
+    /// (§FS-005-dispatch.14, §FS-005-dispatch.19).
+    fn workflow_hand(
+        &mut self,
+        item: &Item,
+        entry: &MenuEntry,
+        root: &std::path::Path,
+    ) -> Option<String> {
+        let unbound = crate::work::runtime::refusal(&self.work_config);
+        let dispatcher = self.dispatcher.as_mut()?;
+        let choice = dispatcher.hand(
+            &item.project,
+            &entry.action.id,
+            entry.picked.as_ref(),
+            None,
+            root,
+        );
+        Some(super::session::who_gets_it(&choice, unbound.as_deref()).says)
     }
 
     /// Process one matter (§FS-019-waiting.7.2): lay the chosen entry down
@@ -308,8 +348,28 @@ impl Session {
             plan: None,
             tickets: Vec::new(),
             start: None,
+            // Who holds the matter and how it is labelled, as the feed says
+            // (§FS-019-waiting.7.2).
+            assignees: crate::work::recipe::reported(item, "assignees"),
+            labels: crate::work::recipe::reported(item, "labels").unwrap_or_default(),
             answers: Vec::new(),
         };
+        // Asked of the ledger as it is now, and saved over it under the lock a
+        // sweep holds, so neither writes over the other (§FS-019-waiting.7.2).
+        let mut lock = None;
+        if !dry_run {
+            match crate::work::ledger_lock() {
+                Ok(held) => lock = Some(held),
+                Err(err) => {
+                    row.says = err.to_string();
+                    return row;
+                }
+            }
+            if let Err(err) = self.reload_ledger() {
+                row.says = err;
+                return row;
+            }
+        }
         if let Some(label) = self.held_by(item) {
             row.says = format!(
                 "{} is held by {label}, and a held matter is offered nothing",
@@ -351,6 +411,8 @@ impl Session {
             row.says = format!("{} · {err}", row.says);
             return row;
         }
+        // The start takes the lock again as a sweep, so it is let go here.
+        drop(lock);
         let (start, says) = self.start_processed(item);
         row.start = Some(start);
         row.says = format!("{} · {says}", row.says);
@@ -402,6 +464,10 @@ impl Session {
             return Err("Work needs the registry, which could not be read".to_string());
         };
         dispatcher.ledger.dismissed.remove(&item.id);
+        // Which run the root last had, so the first run there spends the mark
+        // whoever starts it (§FS-005-dispatch.24.5).
+        let root = crate::work::work_root_of(&dispatcher.ledger, &item.id);
+        let run = root.as_deref().and_then(crate::work::last_run);
         dispatcher.ledger.processed.insert(
             item.id.clone(),
             Processed {
@@ -413,6 +479,8 @@ impl Session {
                 at: Utc::now(),
                 queued: true,
                 says: None,
+                root,
+                run,
             },
         );
         dispatcher.save().map_err(|err| err.to_string())
@@ -532,6 +600,15 @@ impl Session {
                 "A dismissal needs a reason: say why this matter needs no work",
             );
         }
+        // The ledger as it is now, read and saved under the sweep's lock as
+        // processing's record is (§FS-019-waiting.7.2).
+        let _lock = match crate::work::ledger_lock() {
+            Ok(held) => held,
+            Err(err) => return views::Outcome::refused(err.to_string()),
+        };
+        if let Err(err) = self.reload_ledger() {
+            return views::Outcome::refused(err);
+        }
         if let Some(label) = self.held_by(item) {
             return views::Outcome::refused(format!(
                 "{} is held by {label}, and a held matter is offered nothing",
@@ -584,7 +661,10 @@ impl Session {
             .processed
             .iter()
             .filter(|(id, mark)| {
-                mark.queued && !live.contains(*id) && !on_you.contains(*id) && self.working(id)
+                crate::work::still_queued(mark)
+                    && !live.contains(*id)
+                    && !on_you.contains(*id)
+                    && self.working(id)
             })
             .map(|(id, mark)| views::QueuedMatter {
                 id: id.clone(),
