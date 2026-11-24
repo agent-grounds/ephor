@@ -4,6 +4,73 @@
   "title": "ephor command-line readings",
   "description": "What every command prints under --json (REQ-002-parity.3, AR-009-surfaces.3). One entry per view name; `ephor schema views` prints this document, and it is the stability surface REQ-002-parity.4 promises: a field is added freely, and renaming or removing one is a release note. The views are the same values the interface renders, so a screen and a command cannot describe one fact two ways.",
   "$defs": {
+    "gate_brief": {
+      "description": "A gate's brief as the bound runtime gave it (FS-005-dispatch.9.3): what the reader is shown and asked. `since` is null where the runtime does not know when the ticket entered the gate, and every surface says unknown then. `digest` is opaque and copied into an answer unchanged; `routes` are the runtime's, shown and never evaluated by ephor.",
+      "type": "object",
+      "required": ["title", "source", "visit", "since", "summary", "display", "attachments", "questions", "destinations", "routes", "digest", "answer_path", "problems"],
+      "properties": {
+        "title": { "type": "string" },
+        "source": { "type": "string" },
+        "visit": { "type": "integer", "minimum": 0 },
+        "since": { "type": ["string", "null"] },
+        "summary": { "type": ["string", "null"] },
+        "display": { "oneOf": [{ "$ref": "#/$defs/gate_brief_file" }, { "type": "null" }] },
+        "attachments": { "type": "array", "items": { "$ref": "#/$defs/gate_brief_file" } },
+        "questions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["id", "kind", "prompt", "required", "options", "help"],
+            "properties": {
+              "id": { "type": "string" },
+              "kind": { "description": "`boolean`, `choice`, `multi` or `text`, as the runtime words it.", "type": "string" },
+              "prompt": { "type": "string" },
+              "required": { "type": "boolean" },
+              "options": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": ["value", "label", "description"],
+                  "properties": {
+                    "value": { "type": "string" },
+                    "label": { "type": ["string", "null"] },
+                    "description": { "type": ["string", "null"] }
+                  }
+                }
+              },
+              "help": { "type": ["string", "null"] }
+            }
+          }
+        },
+        "destinations": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["state", "description", "condition", "final"],
+            "properties": {
+              "state": { "type": "string" },
+              "description": { "type": ["string", "null"] },
+              "condition": { "type": ["string", "null"] },
+              "final": { "type": "boolean" }
+            }
+          }
+        },
+        "routes": { "type": "array" },
+        "digest": { "type": "string" },
+        "answer_path": { "type": ["string", "null"] },
+        "problems": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "gate_brief_file": {
+      "type": "object",
+      "required": ["path", "absolute", "readable", "problem"],
+      "properties": {
+        "path": { "type": "string" },
+        "absolute": { "type": "string" },
+        "readable": { "type": "boolean" },
+        "problem": { "type": ["string", "null"] }
+      }
+    },
     "waiting_on_you": {
       "type": "object",
       "description": "A gate, or a poll that names the reader (FS-019-waiting.1.1). How long it has waited and what it holds are absent until the runtime reports them; no file timestamp stands in.",
@@ -1836,7 +1903,7 @@
       }
     },
     "work-review": {
-      "description": "`ephor work review --json` — current human gates, declared destinations, and local review files for one matter (FS-005-dispatch.9.1). `gates` comes from current state alone; `files` also lists, after every gate's materials, the verdict and result of each finished ticket whose verdict is `blocked`, labelled `finished blocked`, and does so even where `gates` is empty (FS-005-dispatch.9.2). Reading this view does not advance work.",
+      "description": "`ephor work review --json` — current human gates, declared destinations, and local review files for one matter (FS-005-dispatch.9.1). Where the bound runtime prepares gate briefs, each gate carries its `brief`, or `unbriefed` where the runtime could not brief it; with a runtime that prepares none, neither field is present (FS-005-dispatch.9.3). `gates` comes from current state alone; `files` also lists, after every gate's materials, the verdict and result of each finished ticket whose verdict is `blocked`, labelled `finished blocked`, and does so even where `gates` is empty (FS-005-dispatch.9.2). Reading this view does not advance work.",
       "type": "object",
       "required": ["gates", "files"],
       "properties": {
@@ -1863,6 +1930,11 @@
                     "description": { "type": ["string", "null"] }
                   }
                 }
+              },
+              "brief": { "$ref": "#/$defs/gate_brief" },
+              "unbriefed": {
+                "description": "Why a runtime that prepares briefs could not brief this gate, in its words; the gate stays reviewable as before (FS-005-dispatch.9.3).",
+                "type": "string"
               }
             }
           }
@@ -1904,6 +1976,40 @@
         "says": { "type": "string" }
       },
       "if": { "properties": { "transitioned": { "const": false } } },
+      "then": { "required": ["says"] }
+    },
+    "work-gate-answer": {
+      "description": "`ephor work gate answer --json` — the runtime's verdict on one answer to a prepared gate, sent unchanged, as a dry run or for real (FS-005-dispatch.9.3). The runtime routes: `to` and `route` are its words, and every field a refusal leaves unknown is null. `errors` are the runtime's reasons, each naming the question where it names one; `says` is the refusal as one line, ephor's own where ephor refused before asking. A refusal exits non-zero.",
+      "type": "object",
+      "required": ["item", "ticket", "from", "dry_run", "ok", "errors"],
+      "properties": {
+        "item": { "type": "string" },
+        "ticket": { "type": "string" },
+        "from": { "type": "string" },
+        "dry_run": { "type": "boolean" },
+        "ok": { "type": "boolean" },
+        "to": { "type": ["string", "null"] },
+        "route": {
+          "description": "The route that chose the destination, as the runtime wrote it; null where the destination was chosen directly.",
+          "type": ["object", "null"]
+        },
+        "answer_path": { "type": ["string", "null"] },
+        "result": { "type": ["string", "null"] },
+        "errors": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["kind", "message"],
+            "properties": {
+              "kind": { "type": "string" },
+              "question": { "type": ["string", "null"] },
+              "message": { "type": "string" }
+            }
+          }
+        },
+        "says": { "type": "string" }
+      },
+      "if": { "properties": { "ok": { "const": false } } },
       "then": { "required": ["says"] }
     },
     "work-states": {

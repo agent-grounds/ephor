@@ -248,6 +248,8 @@ pub enum WorkCommand {
     Review(WorkReviewArgs),
     /// Apply one explicit human decision through the runtime's guarded transition.
     Transition(WorkTransitionArgs),
+    /// Answer a gate the workflow prepared, in the runtime's own answer form.
+    Gate(WorkGateArgs),
     /// Open tickets for items that match a recipe and have no work yet.
     Dispatch(WorkDispatchArgs),
     /// Ask one item for something no recipe covers, in your own words.
@@ -371,6 +373,51 @@ pub struct WorkTransitionArgs {
     pub result: String,
 
     /// Emit the transition outcome as JSON.
+    #[arg(long)]
+    pub json: bool,
+}
+
+/// A prepared gate's verbs (§FS-005-dispatch.9.3).
+#[derive(Args, Debug)]
+pub struct WorkGateArgs {
+    #[command(subcommand)]
+    pub command: WorkGateCommand,
+}
+
+#[derive(Subcommand, Debug)]
+pub enum WorkGateCommand {
+    /// Send answers to a prepared gate; the runtime decides where the ticket
+    /// goes. `--dry-run` says what it would do and moves nothing.
+    Answer(WorkGateAnswerArgs),
+}
+
+/// One answer to a prepared gate, the same call the interface makes
+/// (§FS-005-dispatch.9.3).
+#[derive(Args, Debug)]
+pub struct WorkGateAnswerArgs {
+    /// The matter, by its feed id.
+    #[arg(long)]
+    pub item: String,
+
+    /// The qualified ticket id from the review listing.
+    #[arg(long)]
+    pub ticket: String,
+
+    /// Expected current state; a changed state refuses the answer.
+    #[arg(long)]
+    pub from: String,
+
+    /// The answer document, as a file or `-` for standard input: its
+    /// `version`, the brief's `digest` as `request_digest`, and `answers` by
+    /// question id. Sent to the runtime unchanged.
+    #[arg(long)]
+    pub answers: String,
+
+    /// Run every check the answer would, and move nothing.
+    #[arg(long)]
+    pub dry_run: bool,
+
+    /// Emit the runtime's verdict as JSON.
     #[arg(long)]
     pub json: bool,
 }

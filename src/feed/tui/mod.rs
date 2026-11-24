@@ -18,6 +18,8 @@
 
 mod actions;
 mod answers;
+mod brief;
+mod brief_draw;
 mod burn;
 mod cache_freshness;
 mod gate;
@@ -57,6 +59,7 @@ pub(crate) use crate::branches::BranchInfo;
 pub(crate) use crate::branches::WorkspaceState;
 use actions::{ActionMenu, MenuOutcome};
 use answers::{AnswerOutcome, AnswerScreen};
+use brief::BriefScreen;
 use burn::BurnScreen;
 use cache_freshness::CacheFreshness;
 use gate::GateScreen;
@@ -79,6 +82,26 @@ pub(crate) enum Action {
         ticket: String,
         from: String,
         to: String,
+    },
+    /// A gate's own form where the runtime prepares one, and its review where
+    /// it does not (§FS-005-dispatch.9.3).
+    OpenGateBrief {
+        item: Item,
+        ticket: String,
+    },
+    /// Send the form's answer: as a dry run, whose verdict is the
+    /// confirmation, or for real (§FS-005-dispatch.9.3).
+    AnswerGate {
+        item: Item,
+        ticket: String,
+        from: String,
+        document: serde_json::Value,
+        dry_run: bool,
+    },
+    /// Write a text answer in the reader's editor.
+    EditGateText {
+        question: String,
+        text: String,
     },
     Quit,
     /// Show the item's thread screen. With `or_url`, an item without any
@@ -263,6 +286,8 @@ pub(crate) enum CheckoutOf {
 
 enum Screen {
     HumanGate(HumanGateScreen),
+    /// A prepared gate, answered in its own form (§FS-005-dispatch.9.3).
+    Brief(BriefScreen),
     /// What waits on the reader (§FS-019-waiting). Its rows live on the app,
     /// as the navigator's do, so leaving and coming back keeps the cursor.
     Waiting,
@@ -637,6 +662,7 @@ impl App {
             // opened over an armed reaction picker leaves it armed beneath.
             let inside = match &self.screen {
                 Screen::Thread(thread) => thread.is_picking(),
+                Screen::Brief(brief) => brief.is_typing(),
                 _ => false,
             };
             if !inside && self.global_key(key.code) {
@@ -649,6 +675,7 @@ impl App {
                 Screen::Gate(gate) => gate.handle_key(key.code),
                 Screen::Work(work) => work.handle_key(key.code),
                 Screen::HumanGate(review) => review.handle_key(key.code),
+                Screen::Brief(brief) => brief.handle_key(key.code, key.modifiers),
                 Screen::Operations(board) => board.handle_key(key.code),
                 Screen::Burn(page) => page.handle_key(key.code),
                 Screen::Process(screen) => screen.handle_key(key.code),
@@ -1088,6 +1115,17 @@ impl App {
                 .empty_submits(),
             ),
             Action::ReviewHumanGate(item) => self.open_human_review(item),
+            Action::OpenGateBrief { item, ticket } => self.open_gate(item, &ticket),
+            Action::AnswerGate {
+                item,
+                ticket,
+                from,
+                document,
+                dry_run,
+            } => self.answer_gate(item, &ticket, &from, &document, dry_run),
+            Action::EditGateText { question, text } => {
+                self.edit_gate_text(terminal, &question, &text)?
+            }
             Action::TransitionHumanGate {
                 item,
                 ticket,
@@ -1394,6 +1432,8 @@ impl App {
         let back = match &self.screen {
             Screen::Work(_) => Return::Work,
             Screen::HumanGate(open) => open.back,
+            Screen::Brief(open) if open.back == Return::Review => open.floor,
+            Screen::Brief(open) => open.back,
             _ => match self.home {
                 Home::Waiting => Return::Waiting,
                 Home::Overview => Return::Overview,
@@ -2825,6 +2865,7 @@ impl App {
                 Screen::Gate(gate) => gate.title(),
                 Screen::Work(work) => work.title(),
                 Screen::HumanGate(review) => review.title(),
+                Screen::Brief(brief) => brief.title(),
                 Screen::Operations(board) => board.title(),
                 Screen::Burn(page) => page.title(),
                 Screen::Process(screen) => screen.title(),
@@ -2873,6 +2914,7 @@ impl App {
             Screen::Gate(gate) => gate.draw(frame, body_area),
             Screen::Work(work) => work.draw(frame, body_area),
             Screen::HumanGate(review) => review.draw(frame, body_area),
+            Screen::Brief(brief) => brief.draw(frame, body_area),
             // The refresh reports on the board additionally — the header
             // above keeps its line (§FS-001-forge-interface.7).
             Screen::Operations(board) => {
@@ -2923,6 +2965,7 @@ impl App {
                 Screen::Gate(gate) => gate.footer().to_string(),
                 Screen::Work(work) => work.footer(),
                 Screen::HumanGate(review) => review.footer(),
+                Screen::Brief(brief) => brief.footer(),
                 Screen::Operations(board) => board.footer().to_string(),
                 Screen::Burn(page) => page.footer().to_string(),
                 Screen::Process(screen) => screen.footer(),

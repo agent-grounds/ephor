@@ -18,14 +18,17 @@ pub(crate) enum Return {
     Work,
     Waiting,
     Overview,
+    /// The review a prepared gate's form was sent from (§FS-005-dispatch.9.3).
+    Review,
 }
 
 impl Return {
-    fn word(self) -> &'static str {
+    pub(super) fn word(self) -> &'static str {
         match self {
             Return::Work => "work",
             Return::Waiting => "waiting",
             Return::Overview => "overview",
+            Return::Review => "review",
         }
     }
 }
@@ -117,7 +120,7 @@ impl HumanGateScreen {
             // Back where the review was opened from (§FS-019-waiting.4).
             KeyCode::Esc => match self.back {
                 Return::Work => Action::OpenWork(self.item.clone()),
-                Return::Waiting | Return::Overview => Action::Back,
+                Return::Waiting | Return::Overview | Return::Review => Action::Back,
             },
             KeyCode::Char('H') => Action::ReviewHumanGate(self.item.clone()),
             KeyCode::Char('j') | KeyCode::Down => {
@@ -143,6 +146,19 @@ impl HumanGateScreen {
         let mut index = self.selected;
         for gate in &self.review.gates {
             if let Some(destination) = gate.destinations.get(index) {
+                // A gate that asks questions of its own is answered in its
+                // form, never moved by a reason the runtime would refuse
+                // (§FS-005-dispatch.9.3).
+                if gate
+                    .brief
+                    .as_ref()
+                    .is_some_and(crate::work::runtime::gate::Brief::asks_its_own)
+                {
+                    return Action::OpenGateBrief {
+                        item: self.item.clone(),
+                        ticket: gate.ticket.clone(),
+                    };
+                }
                 return Action::TransitionHumanGate {
                     item: self.item.clone(),
                     ticket: gate.ticket.clone(),
@@ -186,12 +202,21 @@ impl HumanGateScreen {
         };
         let mut rows = Vec::new();
         for gate in &self.review.gates {
+            // Where enter goes to the form instead (§FS-005-dispatch.9.3).
+            let form = match gate
+                .brief
+                .as_ref()
+                .is_some_and(crate::work::runtime::gate::Brief::asks_its_own)
+            {
+                true => " · answered in its form",
+                false => "",
+            };
             for destination in &gate.destinations {
                 let condition = destination
                     .condition
                     .as_ref()
-                    .map(|condition| format!(" · {condition}"))
-                    .unwrap_or_default();
+                    .map(|condition| format!(" · {condition}{form}"))
+                    .unwrap_or_else(|| form.to_string());
                 rows.push(ListItem::new(vec![
                     Line::from(format!("{} · {}", gate.ticket, gate.title)),
                     Line::from(vec![Span::styled(
@@ -262,6 +287,8 @@ mod tests {
                     description: None,
                 },
             ],
+            brief: None,
+            unbriefed: None,
         };
         HumanGateScreen::new(
             item,

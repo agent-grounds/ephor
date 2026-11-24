@@ -86,6 +86,7 @@ pub const SHAPES: &[(&str, &str)] = &[
     ("work review", "work-review"),
     ("work review --file", "work-review-file"),
     ("work transition", "work-transition"),
+    ("work gate answer", "work-gate-answer"),
     ("update", "update"),
     ("ensure-agents", "ensure-agents"),
 ];
@@ -93,7 +94,7 @@ pub const SHAPES: &[(&str, &str)] = &[
 /// Every shape this API publishes, by the name the schema files it under. The
 /// tests below hold it to the document in both directions, so it is a
 /// spelling of the document rather than a second list to keep true.
-pub const NAMES: [&str; 42] = [
+pub const NAMES: [&str; 43] = [
     "actions",
     "branches",
     "operations",
@@ -134,6 +135,7 @@ pub const NAMES: [&str; 42] = [
     "work-review",
     "work-review-file",
     "work-transition",
+    "work-gate-answer",
     "update",
     "ensure-agents",
 ];
@@ -293,6 +295,8 @@ mod tests {
                     condition: None,
                     description: None,
                 }],
+                brief: None,
+                unbriefed: None,
             }],
             files: vec![Artifact {
                 name: "review".into(),
@@ -316,6 +320,83 @@ mod tests {
         assert!(!holds("work-transition", &decision).is_empty());
         decision["says"] = "The expected state changed".into();
         assert!(holds("work-transition", &decision).is_empty());
+    }
+
+    /// A briefed gate's review and an answer's verdict print the shapes they
+    /// publish, nullable refusal fields included (§FS-005-dispatch.9.3).
+    #[test]
+    fn a_briefed_review_and_an_answers_verdict_hold_their_shapes() {
+        use crate::work::runtime::gate::{Brief, Verdict};
+        use crate::work::runtime::human_gate::{Gate, Review};
+
+        let brief: Brief = serde_json::from_value(serde_json::json!({
+            "version": 1, "ticket": "demo.1", "title": "Rule on it", "state": "human-review",
+            "visit": 1, "since": null, "plan": "/demo/demo.rhei.md", "root": "/demo",
+            "source": "request", "summary": "One question.",
+            "display": {"path": "verdict.md", "absolute": "/demo/verdict.md",
+                        "readable": true, "problem": null},
+            "attachments": [],
+            "questions": [{"id": "approve", "kind": "boolean", "prompt": "Accept?",
+                           "required": true},
+                          {"id": "pick", "kind": "choice", "prompt": "Which?", "required": false,
+                           "options": [{"value": "a"}, {"value": "b", "label": "Bee"}]}],
+            "destinations": [{"state": "done", "description": null, "condition": null,
+                              "final": true}],
+            "routes": [{"to": "done", "when": {"approve": true}}],
+            "digest": "sha256:00", "answer_path": "runtime/gates/demo.1/human-review.1.answer.json",
+            "problems": []
+        }))
+        .unwrap();
+        assert!(brief.asks_its_own());
+        let review = Review {
+            gates: vec![
+                Gate {
+                    ticket: "demo.1".into(),
+                    title: "Review".into(),
+                    state: "human-review".into(),
+                    root: "/demo".into(),
+                    plan: "/demo/demo.rhei.md".into(),
+                    machine: None,
+                    destinations: Vec::new(),
+                    brief: Some(brief),
+                    unbriefed: None,
+                },
+                Gate {
+                    ticket: "demo.2".into(),
+                    title: "Review".into(),
+                    state: "human-review".into(),
+                    root: "/demo".into(),
+                    plan: "/demo/demo.rhei.md".into(),
+                    machine: None,
+                    destinations: Vec::new(),
+                    brief: None,
+                    unbriefed: Some("the request is missing".into()),
+                },
+            ],
+            ..Review::default()
+        };
+        let value = serde_json::to_value(review).unwrap();
+        assert_eq!(holds("work-review", &value), Vec::<String>::new());
+
+        let refused: Verdict = serde_json::from_value(serde_json::json!({
+            "version": 1, "ok": false, "dry_run": true, "ticket": "demo.1",
+            "from": "human-review", "to": null, "route": null, "answer_path": null,
+            "result": null,
+            "errors": [{"kind": "stale", "question": null, "message": "the brief changed"}]
+        }))
+        .unwrap();
+        let mut answer = serde_json::json!({
+            "item": "rhei:demo.1", "ticket": "demo.1", "from": "human-review",
+            "dry_run": true, "ok": false, "to": refused.to, "route": null,
+            "answer_path": refused.answer_path, "result": refused.result,
+            "errors": refused.errors,
+        });
+        assert!(
+            !holds("work-gate-answer", &answer).is_empty(),
+            "a refusal says why"
+        );
+        answer["says"] = refused.says().unwrap().into();
+        assert_eq!(holds("work-gate-answer", &answer), Vec::<String>::new());
     }
 
     /// A shape without a schema is a `--json` nobody can rely on

@@ -41,6 +41,13 @@ fn pages() -> Vec<Page> {
             }
             let mut path = path.to_vec();
             path.push(sub.get_name().to_string());
+            // A group that runs only through one of its verbs (`work gate`)
+            // has no command line of its own to refuse anything on; its
+            // verbs are the pages.
+            if sub.is_subcommand_required_set() {
+                walk(sub, &path, into);
+                continue;
+            }
             let mut argv = vec!["ephor".to_string()];
             argv.extend(path.iter().cloned());
             // A group one of whose members is required counts as its first

@@ -630,6 +630,11 @@ const ELSEWHERE: &[(&str, &str)] = &[
         "E2E-066's a_dry_run_writes_nothing_not_even_a_lock_file — it needs a forge that answers \
          whether the matter is over",
     ),
+    (
+        "work-gate-answer",
+        "E2E-074's a_prepared_gate_is_briefed_dry_run_and_answered_through_the_runtime — it needs \
+         a runtime that prepares gate briefs",
+    ),
 ];
 
 /// Local review and an explicit owner decision share the published command

@@ -286,8 +286,14 @@ impl WaitingScreen {
             Some(At::OnYou(index)) => {
                 let row = &self.view.on_you[index];
                 match row.kind {
+                    // The gate's own form where the runtime prepares one, and
+                    // its review where it does not: the shell asks which
+                    // (§FS-019-waiting.4, §FS-005-dispatch.9.3).
                     "gate" => match row.review.as_ref().and_then(|id| self.items.get(id)) {
-                        Some(item) => Action::ReviewHumanGate(item.clone()),
+                        Some(item) => Action::OpenGateBrief {
+                            item: item.clone(),
+                            ticket: row.ticket.clone(),
+                        },
                         None => Action::SetMessage(NO_REVIEW.to_string()),
                     },
                     _ => match row.item.as_ref().and_then(|id| self.items.get(id)) {

@@ -52,6 +52,9 @@ pub fn work(args: &WorkArgs, scope: &Projects, act: crate::scope::Act) -> Result
         WorkCommand::Offers(offers) => work_offers(&config, offers),
         WorkCommand::Review(review) => human_gate::review(&config, review),
         WorkCommand::Transition(transition) => human_gate::transition(&config, transition),
+        WorkCommand::Gate(gate) => match &gate.command {
+            crate::cli::WorkGateCommand::Answer(answer) => human_gate::answer(&config, answer),
+        },
         WorkCommand::Dispatch(dispatch) => {
             let projects = scope.narrow(&dispatch.project, watched())?;
             let gate = gate(
