@@ -1968,6 +1968,17 @@ Which machine that was is the plan's own question
 plan judged by a machine of its own is never among them — a row that said
 otherwise would deny a count the work beside it really earned.
 
+**The board keeps its place beside the first screen.** The interface opens
+on the Waiting screen ([§FS-019-waiting](FS-019-waiting.md#fs-019-waiting-ephor-opens-on-what-waits-on-the-reader-and-every-matter-is-one-key-away)), which lists the part of this board a
+person must act on (the gates, and the polls that wait on the reader) and the
+live runs, read from this same enumeration. It also lists the new matters,
+which this board never carried. The board stays the complete list, and
+nothing leaves it because the Waiting screen shows it too: every live run,
+every claim, the queue, every parked question and dropped ticket, ephor's own
+jobs, and the refresh. The two read one walk of the work roots, so a gate on
+one is a gate on the other, and `;` still opens the board over whichever
+screen the reader is on.
+
 ### 15.1 The board keeps itself current
 
 Nothing here is something the reader has to ask for twice: work that moves
