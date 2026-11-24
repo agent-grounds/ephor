@@ -289,6 +289,8 @@ mod tests {
             ],
             brief: None,
             unbriefed: None,
+            holds: None,
+            files: Vec::new(),
         };
         HumanGateScreen::new(
             item,

@@ -559,9 +559,6 @@ pub fn operations(args: &OperationsArgs) -> Result<ExitCode> {
     Ok(ExitCode::SUCCESS)
 }
 
-/// `ephor waiting` (§FS-019-waiting.6): the first screen as a command — the
-/// same reading, its three sections, the held line and the overview line, in
-/// the screen's order. It reads the cache and the disk and writes nothing.
 /// `ephor guide [topic]` (§FS-020-guide): the guide's text, or its view. It
 /// needs no site configuration to answer: without one, the runner is the
 /// default binding's, which is the one an agent on a fresh machine would get.
@@ -585,6 +582,9 @@ pub fn guide(args: &crate::cli::GuideArgs) -> Result<ExitCode> {
     Ok(ExitCode::SUCCESS)
 }
 
+/// `ephor waiting` (§FS-019-waiting.6): the first screen as a command — the
+/// same reading, its three sections, the held line and the overview line, in
+/// the screen's order. It reads the cache and the disk and writes nothing.
 pub fn waiting(args: &crate::cli::WaitingArgs) -> Result<ExitCode> {
     let config = load_config()?;
     let mut session = Session::open(&config)?;

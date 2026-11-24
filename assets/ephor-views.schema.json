@@ -1967,6 +1967,11 @@
               "unbriefed": {
                 "description": "Why a runtime that prepares briefs could not brief this gate, in its words; the gate stays reviewable as before (FS-005-dispatch.9.3).",
                 "type": "string"
+              },
+              "holds": {
+                "description": "How many unfinished tasks cannot move until the ticket leaves the gate, from the runtime's listing of the gate's plan. Absent where the runtime did not list the gate, never zero in its place (FS-005-dispatch.9.3).",
+                "type": "integer",
+                "minimum": 0
               }
             }
           }
@@ -2011,10 +2016,11 @@
       "then": { "required": ["says"] }
     },
     "work-gate-answer": {
-      "description": "`ephor work gate answer --json` — the runtime's verdict on one answer to a prepared gate, sent unchanged, as a dry run or for real (FS-005-dispatch.9.3). The runtime routes: `to` and `route` are its words, and every field a refusal leaves unknown is null. `errors` are the runtime's reasons, each naming the question where it names one; `says` is the refusal as one line, ephor's own where ephor refused before asking. A refusal exits non-zero.",
+      "description": "`ephor work gate answer --json` — the runtime's verdict on one answer to a prepared gate, sent unchanged, as a dry run or for real, printed whole: every field the runtime gave, under its own names, with `item` beside it (FS-005-dispatch.9.3). The runtime routes: `to` and `route` are its words, and every field a refusal leaves unknown is null. `errors` are the runtime's reasons, each naming the question where it names one; `says` is the refusal as one line. Where ephor refused before asking the runtime, the object is made of what was asked, `errors` is empty and `says` is ephor's sentence. A refusal exits non-zero.",
       "type": "object",
       "required": ["item", "ticket", "from", "dry_run", "ok", "errors"],
       "properties": {
+        "version": { "type": "integer", "description": "The runtime's version of its verdict; absent where ephor refused before asking." },
         "item": { "type": "string" },
         "ticket": { "type": "string" },
         "from": { "type": "string" },

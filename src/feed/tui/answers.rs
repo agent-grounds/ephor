@@ -862,9 +862,6 @@ fn rows_of(laying: &Laying) -> Vec<Row> {
         .collect()
 }
 
-/// A value on one row: what it says, with nothing on it that a row cannot
-/// hold. An answer that is empty says so, rather than leaving the column
-/// looking unfilled by accident.
 /// One editing key on a line being typed: the prompt's keys, so a line typed
 /// in any form behaves as a line typed anywhere. False for a key that edits
 /// nothing, which the form it was typed into decides about.
@@ -885,6 +882,9 @@ pub(super) fn edit_line(line: &mut String, code: KeyCode, modifiers: KeyModifier
     true
 }
 
+/// A value on one row: what it says, with nothing on it that a row cannot
+/// hold. An answer that is empty says so, rather than leaving the column
+/// looking unfilled by accident.
 fn shown(value: &str) -> String {
     let one = value.replace('\n', " ");
     match one.trim().is_empty() {

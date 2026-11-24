@@ -392,3 +392,167 @@ fn the_schemas_are_the_runners_own_or_a_sentence_saying_why_not() {
     };
     assert!(schemas(&unbound).is_err());
 }
+
+/// A review asks the runner to list each briefed gate's plan once, under the
+/// machine it read the plan with, and a gate takes what it holds from the
+/// listing's entry for its ticket in its state; a gate the listing does not
+/// name, or a plan it cannot list, carries no count rather than zero
+/// (§FS-005-dispatch.9.3).
+#[test]
+fn a_review_counts_what_each_briefed_gate_holds_from_one_listing_of_its_plan() {
+    let world = World::new(false);
+    let listing = |state: &str, holds: u64| {
+        serde_json::json!({"version": 1, "root": world.root(), "gates": [
+            {"ticket": "review.1", "ticket_title": "Decide", "title": "Rule on the proposal",
+             "state": state, "plan": world.path, "root": world.root(), "visit": 2,
+             "since": null, "source": "request", "required": 1, "holds": holds,
+             "problems": []}
+        ]})
+        .to_string()
+    };
+    std::fs::write(world.root().join("listing.json"), listing("waiting", 6)).unwrap();
+    let mut review = world.review();
+    brief_review(&world.config, &mut review);
+    assert_eq!(review.gates[0].holds, Some(6));
+    let value = serde_json::to_value(&review).unwrap();
+    assert_eq!(value["gates"][0]["holds"], 6);
+    assert!(value["gates"][0].get("files").is_none(), "{value}");
+    let asked = world.lines("list-invocation");
+    assert_eq!(
+        asked[..3],
+        ["gate", "list", &world.path.display().to_string()]
+    );
+    let machine = asked
+        .iter()
+        .position(|arg| arg == "--state-machine")
+        .unwrap();
+    assert_eq!(
+        asked[machine + 1],
+        world.root().join("states.yaml").display().to_string()
+    );
+    assert_eq!(asked.last().map(String::as_str), Some("--json"));
+
+    // Named in another state, or not listed at all: no count.
+    std::fs::write(world.root().join("listing.json"), listing("accepted", 6)).unwrap();
+    let mut review = world.review();
+    brief_review(&world.config, &mut review);
+    assert_eq!(review.gates[0].holds, None);
+    std::fs::write(world.root().join("no-list"), "").unwrap();
+    let mut review = world.review();
+    brief_review(&world.config, &mut review);
+    assert_eq!(review.gates[0].holds, None);
+    assert!(serde_json::to_value(&review).unwrap()["gates"][0]
+        .get("holds")
+        .is_none());
+}
+
+/// `held` lists each plan once however many of its gates are briefed, and
+/// never lists for a gate the runner could not brief (§FS-005-dispatch.9.3).
+#[test]
+fn a_plan_is_listed_once_for_all_its_briefed_gates() {
+    let world = World::new(false);
+    let mut review = world.review();
+    brief_review(&world.config, &mut review);
+    let mut second = review.gates[0].clone();
+    second.ticket = "review.2".to_string();
+    let mut unbriefed = review.gates[0].clone();
+    unbriefed.ticket = "review.3".to_string();
+    unbriefed.brief = None;
+    review.gates.push(second);
+    review.gates.push(unbriefed);
+    let asked = std::cell::Cell::new(0);
+    held(&mut review, &|_| {
+        asked.set(asked.get() + 1);
+        Some(vec![
+            Listed {
+                ticket: "review.1".into(),
+                state: "waiting".into(),
+                title: String::new(),
+                since: None,
+                holds: 2,
+            },
+            Listed {
+                ticket: "review.3".into(),
+                state: "waiting".into(),
+                title: String::new(),
+                since: None,
+                holds: 9,
+            },
+        ])
+    });
+    assert_eq!(asked.get(), 1);
+    let holds: Vec<Option<u64>> = review.gates.iter().map(|gate| gate.holds).collect();
+    assert_eq!(holds, [Some(2), None, None]);
+}
+
+/// Every document the runner prints is read in the one version this binding
+/// reads: a brief in another is refused, so its gate stays unbriefed with
+/// that sentence, and so is a verdict; a verdict in the version read is kept
+/// whole, every field the runner gave (§AR-007-runtime.1, §FS-005-dispatch.9.3).
+#[test]
+fn a_brief_or_verdict_in_another_version_is_refused_and_a_verdict_is_kept_whole() {
+    let world = World::new(false);
+    let brief: Value =
+        serde_json::from_str(&std::fs::read_to_string(world.root().join("brief.json")).unwrap())
+            .unwrap();
+    let mut later = brief.clone();
+    later["version"] = 2.into();
+    std::fs::write(world.root().join("brief.json"), later.to_string()).unwrap();
+    let mut review = world.review();
+    brief_review(&world.config, &mut review);
+    assert_eq!(review.gates[0].brief, None);
+    let unbriefed = review.gates[0].unbriefed.clone().unwrap();
+    assert!(unbriefed.contains("version 2"), "{unbriefed}");
+    let mut unversioned = brief;
+    unversioned.as_object_mut().unwrap().remove("version");
+    std::fs::write(world.root().join("brief.json"), unversioned.to_string()).unwrap();
+    let mut review = world.review();
+    brief_review(&world.config, &mut review);
+    assert!(review.gates[0]
+        .unbriefed
+        .as_deref()
+        .unwrap()
+        .contains("no version"));
+
+    let gate = &review.gates[0];
+    let verdict = serde_json::json!({
+        "version": 1, "ok": true, "dry_run": true, "ticket": "review.1", "from": "waiting",
+        "to": "accepted", "route": null, "answer_path": "runtime/gates/review.1/waiting.2.answer.json",
+        "result": "Accept the proposal?: yes", "errors": [], "a_field_a_later_runtime_adds": 1
+    });
+    world.verdict(verdict.clone());
+    let read = answer(&world.config, gate, &serde_json::json!({}), true).unwrap();
+    assert_eq!(read.whole, verdict);
+    let mut later = verdict;
+    later["version"] = 2.into();
+    world.verdict(later);
+    let err = answer(&world.config, gate, &serde_json::json!({}), true).unwrap_err();
+    assert!(err.to_string().contains("version 2"), "{err}");
+}
+
+/// Two gates of one plan each keep every file the review found for them,
+/// the plan and machine they share included, though the review lists each
+/// file once (§FS-005-dispatch.9.3).
+#[test]
+fn two_gates_of_one_plan_each_keep_the_files_they_share() {
+    let world = World::new(false);
+    std::fs::write(
+        &world.path,
+        "# Rhei: Review\n**States:** review\n\n## Tasks\n\n### Task 1: Decide\n**State:** waiting\n\n### Task 2: Decide again\n**State:** waiting\n",
+    )
+    .unwrap();
+    let review = review_plan(&world.config, world.root(), &world.path, "review", None).unwrap();
+    assert_eq!(review.gates.len(), 2);
+    let machine = world.root().join("states.yaml");
+    for gate in &review.gates {
+        assert!(gate.files.contains(&world.path), "{:?}", gate.files);
+        assert!(gate.files.contains(&machine), "{:?}", gate.files);
+    }
+    let named: Vec<&str> = review
+        .files
+        .iter()
+        .filter(|file| file.path == world.path)
+        .map(|file| file.name.as_str())
+        .collect();
+    assert_eq!(named, ["review.1 · plan"], "listed once, under the first");
+}

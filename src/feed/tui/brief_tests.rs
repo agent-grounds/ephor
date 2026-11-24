@@ -72,6 +72,8 @@ fn review(dir: &std::path::Path, brief: Option<Brief>) -> Review {
             }],
             brief,
             unbriefed: None,
+            holds: None,
+            files: Vec::new(),
         }],
         files: vec![Artifact {
             name: "inbox.2 · log".to_string(),
@@ -513,4 +515,102 @@ fn the_review_sends_a_typed_gate_to_its_form() {
         review_screen.handle_key(KeyCode::Enter),
         Action::TransitionHumanGate { .. }
     ));
+}
+
+/// A second gate in the same plan lists the files it shares with the first —
+/// the plan, the machine — under its own name, though the review names each
+/// file once, under the gate that found it first (§FS-005-dispatch.9.3).
+#[test]
+fn a_second_gate_in_a_plan_lists_the_files_it_shares_under_its_own_name() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut review = review(dir.path(), Some(brief(dir.path())));
+    let plan = dir.path().join("inbox.rhei.md");
+    let machine = dir.path().join("states.yaml");
+    let first_task = dir.path().join("tasks/1.md");
+    let second_task = dir.path().join("tasks/2.md");
+    let mut first = review.gates[0].clone();
+    first.ticket = "inbox.1".to_string();
+    first.files = vec![plan.clone(), first_task.clone(), machine.clone()];
+    review.gates[0].files = vec![plan.clone(), second_task.clone(), machine.clone()];
+    review.gates.insert(0, first);
+    let file = |name: &str, path: &std::path::Path| Artifact {
+        name: name.to_string(),
+        path: path.to_path_buf(),
+        problem: None,
+    };
+    review.files = vec![
+        file("inbox.1 · plan", &plan),
+        file("inbox.1 · task", &first_task),
+        file("inbox.1 · state machine", &machine),
+        file("inbox.2 · task", &second_task),
+    ];
+    let screen = BriefScreen::open(item(), &review, "inbox.2", "runner").unwrap();
+    let names: Vec<&str> = screen
+        .others
+        .iter()
+        .map(|file| file.name.as_str())
+        .collect();
+    assert_eq!(
+        names,
+        [
+            "inbox.2 · plan",
+            "inbox.2 · state machine",
+            "inbox.2 · task"
+        ]
+    );
+    let first = BriefScreen::open(item(), &review, "inbox.1", "runner").unwrap();
+    let names: Vec<&str> = first.others.iter().map(|file| file.name.as_str()).collect();
+    assert_eq!(
+        names,
+        [
+            "inbox.1 · plan",
+            "inbox.1 · task",
+            "inbox.1 · state machine"
+        ]
+    );
+}
+
+/// Where the review carries what the gate holds, the header says it as
+/// Waiting does and the confirmation says what the move releases; where it
+/// carries no count, neither line guesses one (§FS-005-dispatch.9.3).
+#[test]
+fn what_the_gate_holds_heads_the_form_and_its_release_is_confirmed() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut review = review(dir.path(), Some(brief(dir.path())));
+    review.gates[0].holds = Some(6);
+    let mut screen = BriefScreen::open(item(), &review, "inbox.2", "runner").unwrap();
+    let text = drawn(&mut screen);
+    assert!(
+        text.contains(
+            "matter Vet the storage migration · ticket inbox.2 · visit 2 · holds 6 tasks"
+        ),
+        "{text}"
+    );
+    let verdict: Verdict = serde_json::from_value(json!({
+        "ok": true, "dry_run": true, "to": "apply", "route": null,
+        "answer_path": "runtime/gates/inbox.2/vetting.2.answer.json", "errors": []
+    }))
+    .unwrap();
+    screen.dry_ran(Ok(verdict.clone()));
+    let text = drawn(&mut screen);
+    let releases = text
+        .lines()
+        .find(|line| line.contains("releases"))
+        .unwrap_or_else(|| panic!("a releases row\n{text}"));
+    assert!(
+        releases.contains("6 held tasks; the next run picks them up"),
+        "{text}"
+    );
+
+    review.gates[0].holds = Some(0);
+    let mut screen = BriefScreen::open(item(), &review, "inbox.2", "runner").unwrap();
+    assert!(drawn(&mut screen).contains("visit 2 · holds nothing"));
+    screen.dry_ran(Ok(verdict.clone()));
+    assert!(drawn(&mut screen).contains("no held task"));
+
+    review.gates[0].holds = None;
+    let mut screen = BriefScreen::open(item(), &review, "inbox.2", "runner").unwrap();
+    assert!(!drawn(&mut screen).contains("holds"));
+    screen.dry_ran(Ok(verdict));
+    assert!(!drawn(&mut screen).contains("releases"));
 }

@@ -149,6 +149,8 @@ mod tests {
             assert!(view.text.contains(part), "{part} missing:\n{}", view.text);
         }
         assert!(view.text.lines().all(|line| line.chars().count() <= 80));
+        // One screen, 80 columns by 48 lines (§FS-020-guide.1).
+        assert!(view.text.trim_end().lines().count() <= 48, "{}", view.text);
         assert_eq!(view.schemas_unavailable, None);
     }
 }

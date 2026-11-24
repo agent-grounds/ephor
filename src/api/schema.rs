@@ -299,6 +299,8 @@ mod tests {
                 }],
                 brief: None,
                 unbriefed: None,
+                holds: None,
+                files: Vec::new(),
             }],
             files: vec![Artifact {
                 name: "review".into(),
@@ -362,6 +364,8 @@ mod tests {
                     destinations: Vec::new(),
                     brief: Some(brief),
                     unbriefed: None,
+                    holds: Some(6),
+                    files: Vec::new(),
                 },
                 Gate {
                     ticket: "demo.2".into(),
@@ -373,6 +377,8 @@ mod tests {
                     destinations: Vec::new(),
                     brief: None,
                     unbriefed: Some("the request is missing".into()),
+                    holds: None,
+                    files: Vec::new(),
                 },
             ],
             ..Review::default()

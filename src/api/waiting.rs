@@ -334,11 +334,9 @@ impl views::OnYou {
             },
             None => {}
         }
-        match self.holds {
-            Some(0) => says.push_str(" · holds nothing"),
-            Some(1) => says.push_str(" · holds 1 task"),
-            Some(held) => says.push_str(&format!(" · holds {held} tasks")),
-            None => {}
+        if let Some(holds) = self.holds {
+            says.push_str(" · ");
+            says.push_str(&crate::work::runtime::gate::say_holds(holds));
         }
         says
     }

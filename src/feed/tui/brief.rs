@@ -51,6 +51,8 @@ pub(crate) struct BriefScreen {
     pub(super) runner: String,
     /// The files the review infers for this ticket, demoted to *other files*.
     pub(super) others: Vec<Artifact>,
+    /// How many unfinished tasks the gate holds, where the runtime listed it.
+    pub(super) holds: Option<u64>,
     /// The display file's text, or why it cannot be read.
     pub(super) display: std::result::Result<String, String>,
     pub(super) scroll: usize,
@@ -86,12 +88,24 @@ impl BriefScreen {
             .chain(&brief.attachments)
             .map(|file| file.absolute.as_path())
             .collect();
+        // The review names a file shared by two gates — the plan they sit in,
+        // the machine — once, under the first; here it is this ticket's too,
+        // and says so under its name (§FS-005-dispatch.9.3).
         let others = review
             .files
             .iter()
-            .filter(|file| file.name.starts_with(&prefix))
+            .filter(|file| gate.files.contains(&file.path) || file.name.starts_with(&prefix))
             .filter(|file| !named.contains(&file.path.as_path()))
-            .cloned()
+            .map(|file| match file.name.starts_with(&prefix) {
+                true => file.clone(),
+                false => Artifact {
+                    name: match file.name.split_once(" · ") {
+                        Some((_, what)) => format!("{prefix}{what}"),
+                        None => format!("{prefix}{}", file.name),
+                    },
+                    ..file.clone()
+                },
+            })
             .collect();
         let display = match &brief.display {
             None => Err("The brief names no file to read first.".to_string()),
@@ -106,6 +120,7 @@ impl BriefScreen {
             brief,
             runner: runner.to_string(),
             others,
+            holds: gate.holds,
             display,
             scroll: 0,
             viewport: 0,
