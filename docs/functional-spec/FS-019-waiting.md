@@ -7,7 +7,10 @@ answer. The question a person opens ephor with is "what needs me now"
 past everything that does not.
 
 So the interface opens on the **Waiting screen**: the short list of what waits
-on the reader, what nothing has been done about yet, and what is running. The
+on the reader, what nothing has been done about yet, and what is running. A
+matter nothing has been done about is decided about where it is shown: each
+one carries the rhei ephor would assign it, and one key lays that rhei down and
+starts it ([§FS-019-waiting.7](FS-019-waiting.md#7-a-new-matter-is-processed-where-it-is-shown)). The
 feed stays exactly as it is, as the **overview**, one key away from anywhere.
 Nothing is hidden, only not upfront, and the screen says how much the
 overview holds so that a quiet Waiting screen is never mistaken for a quiet
@@ -21,7 +24,8 @@ same reading, so the screen and the command cannot describe one fact two ways
 
 1. **Waiting on you**: every gate, and every poll that waits on the reader.
 2. **New**: every matter nothing has been done about.
-3. **Running**: every live run.
+3. **Running**: every live run, and the work processing laid that waits for a
+   slot.
 
 The order is the order of what costs the reader most to leave: a gate holds
 work nobody else will move ([§FS-005-dispatch.9](FS-005-dispatch.md#9-work-that-stops-for-a-person-says-so-where-the-person-is-looking)), a new matter is work nobody
@@ -73,14 +77,17 @@ A matter is **new** when all of these hold:
 
 - the feed shows it ([§FS-003-feed-categories.2](FS-003-feed-categories.md#2-recent));
 - it is not finished;
-- the ledger records no work about it ([§FS-005-dispatch.4](FS-005-dispatch.md#4-the-ledger-is-ephors-record-and-never-the-truth-about-the-work));
+- it is not processed: the ledger records no work about it
+  ([§FS-005-dispatch.4](FS-005-dispatch.md#4-the-ledger-is-ephors-record-and-never-the-truth-about-the-work)), and no dismissal of it still stands
+  ([§FS-019-waiting.7.4](FS-019-waiting.md#74-x-records-that-a-matter-needs-no-rhei));
 - it is not itself a ticket of the bound runtime's own task store, which is
   work already; and
 - it is not held.
 
 A matter a recipe dispatched on its own is therefore never new: its dispatch
 is in the ledger. Rows are listed newest first and carry the matter's kind,
-project, title and how long ago it last moved.
+project, title, how long ago it last moved, and the proposal: the rhei ephor
+would assign it ([§FS-019-waiting.7.1](FS-019-waiting.md#71-every-new-row-carries-a-proposal)).
 
 A matter that carries a label some selector of the site excludes by name, such
 as `"labels": ["!human-discussion"]` on an action or a recipe
@@ -106,6 +113,10 @@ The age is counted from the start the run published beside its lock
 ([§FS-005-dispatch.20](FS-005-dispatch.md#20-a-run-of-the-runtime-starts-beneath-the-screen-and-is-watched-by-attaching)), so a run that published no start shows no age. The
 hand a run works with is carried only where the runtime reports it, by the
 same rule as a gate's wait ([§FS-019-waiting.1.1](FS-019-waiting.md#11-waiting-on-you-every-gate-and-every-poll-on-the-reader)).
+
+Under the live runs, one line names the work processing laid and asked to
+start that has not started yet, and why
+([§FS-019-waiting.7.6](FS-019-waiting.md#76-running-names-what-waits-for-a-slot)).
 
 ## 2. An empty section is one line
 
@@ -147,7 +158,13 @@ motion keys every screen has.
   than doing nothing, and `e` reads the plan.
 - `Enter` on a poll row opens the matter's conversation, or the plan where
   the feed carries no matter.
-- `Enter` on a new row opens the matter, as `Enter` on the overview does.
+- `Enter` on a new row opens the processing screen for its proposal
+  ([§FS-019-waiting.7.2](FS-019-waiting.md#72-confirming-lays-it-records-it-and-starts-it)); `l` opens the matter, as `Enter` on the overview
+  does.
+- `a` on a new row chooses another rhei for it ([§FS-019-waiting.7.3](FS-019-waiting.md#73-a-chooses-another)), and
+  `x` records that it needs none ([§FS-019-waiting.7.4](FS-019-waiting.md#74-x-records-that-a-matter-needs-no-rhei)).
+- `A` processes every new row whose proposal is unambiguous, after one
+  preview ([§FS-019-waiting.7.5](FS-019-waiting.md#75-a-processes-every-unambiguous-row-after-one-preview)).
 - `Enter` on a running row attaches to the run ([§FS-005-dispatch.20](FS-005-dispatch.md#20-a-run-of-the-runtime-starts-beneath-the-screen-and-is-watched-by-attaching)). A run
   that left no id beside its lock says so rather than doing nothing.
 - `e` reads the plan behind a gate, poll or running row.
@@ -182,9 +199,14 @@ line, in the screen's order. `ephor waiting --json` prints the published
 
 - `on_you`: the gate and poll rows of [§FS-019-waiting.1.1](FS-019-waiting.md#11-waiting-on-you-every-gate-and-every-poll-on-the-reader), each with its
   `kind` (`gate` or `poll`);
-- `new`: the rows of [§FS-019-waiting.1.2](FS-019-waiting.md#12-new-every-matter-nothing-has-been-done-about);
+- `new`: the rows of [§FS-019-waiting.1.2](FS-019-waiting.md#12-new-every-matter-nothing-has-been-done-about), each with its `proposal`
+  ([§FS-019-waiting.7.1](FS-019-waiting.md#71-every-new-row-carries-a-proposal));
 - `held`: each held matter with the label that holds it;
 - `running`: the rows of [§FS-019-waiting.1.3](FS-019-waiting.md#13-running-every-live-run);
+- `queued`: the work processing laid that waits for a slot
+  ([§FS-019-waiting.7.6](FS-019-waiting.md#76-running-names-what-waits-for-a-slot));
+- `adopt`: the sentence naming the recipe a repeated confirmation would make
+  automatic, where there is one ([§FS-019-waiting.7.7](FS-019-waiting.md#77-a-proposal-confirmed-again-and-again-names-the-setting-that-would-make-it-automatic));
 - `overview`: the two counts of [§FS-019-waiting.3](FS-019-waiting.md#3-the-header-and-the-overview-line); and
 - `refusal`: the workable rung's sentence, where the runtime cannot run
   anything.
@@ -201,3 +223,149 @@ quietly ignored ([§FS-011-command-line.9](FS-011-command-line.md#9-a-scope-sele
 
 `O` is the key both commands carry: `ephor waiting` is the Waiting screen,
 and `ephor feed` is the overview ([§REQ-002-parity.5](../requirements/REQ-002-parity.md#5-the-parity-list-is-checked-not-remembered)).
+
+## 7. A new matter is processed where it is shown
+
+A matter is **processed** when a rhei is assigned to it, which is work the
+ledger records about it ([§FS-005-dispatch.4](FS-005-dispatch.md#4-the-ledger-is-ephors-record-and-never-the-truth-about-the-work)), or when a person has recorded
+that it needs none ([§FS-019-waiting.7.4](FS-019-waiting.md#74-x-records-that-a-matter-needs-no-rhei)). New is every matter that is
+neither processed nor held, so processing a row is what takes it off the
+screen, and the screen is done when New is empty.
+
+Every move here is a move the rest of ephor already makes. The proposal is the
+menu's, the laying is the one `ephor actions run` and `ephor work lay` make,
+and the start is the sweep's own admission. The screen computes no answer of
+its own, and every key has a command that makes the same call
+([§REQ-002-parity.2](../requirements/REQ-002-parity.md#2-parity-runs-both-ways)).
+
+### 7.1 Every new row carries a proposal
+
+The **proposal** is the first entry `ephor actions --item <id>` would offer for
+the matter, in menu order ([§FS-011-command-line.1](FS-011-command-line.md#1-what-may-be-done-here-listed-and-run)), among the entries that
+hand work over: a recipe, or a workflow
+([§FS-005-dispatch.19](FS-005-dispatch.md#19-a-workflow-the-runtime-offers-is-an-action-and-its-inputs-are-answered-here)). An entry the menu refuses, or one that already has
+work going about the matter ([§FS-005-dispatch.21](FS-005-dispatch.md#21-what-is-already-going-is-shown-where-it-could-be-started-again)), is passed over. The
+entries, their order, their gates, the hand, the branch a template would mint
+and the workspace it belongs in ([§FS-005-dispatch.25](FS-005-dispatch.md#25-work-about-a-matter-with-no-branch-can-mint-the-branch-it-needs)), and the work root
+([§FS-005-dispatch.6.1](FS-005-dispatch.md#61-the-work-root-is-a-template-and-it-may-reach-above-the-project)) are all the menu's, read through the same session.
+
+The proposal carries the entry's id, kind and description, the hand, the
+branch and workspace where the entry mints them and whether that workspace is
+there yet, the work root, and how many other entries would also hand the
+matter over. Those others are what `a` chooses among.
+
+A matter no entry hands over is offered the runtime's `triage` workflow, where
+the project's runtime offers a workflow by that name. Where it offers none, the
+proposal still names `triage` and says that it is not available. Ephor ships no
+`triage` workflow of its own: which one stands behind the name is the
+runtime's.
+
+A proposal is **unambiguous** when it is available and its entry is ready to
+hand work over. One that is not is still shown, with why.
+
+A held matter carries no proposal: it is offered nothing
+([§FS-019-waiting.1.2](FS-019-waiting.md#12-new-every-matter-nothing-has-been-done-about)), on the screen and on the command line alike.
+
+### 7.2 Confirming lays it, records it, and starts it
+
+`Enter` on a new row opens the **processing screen**: the matter, the proposed
+rhei and why it is the one proposed (the first entry in menu order, how many
+others accept the matter, and `a` to choose), the plan and the checkout it
+would create, and the account a dry run of the same move gives of it. Nothing
+is written until the reader confirms with `Enter`. `esc` comes back to
+Waiting.
+
+Confirming makes the move `ephor actions run` makes with that entry
+([§FS-005-dispatch.4](FS-005-dispatch.md#4-the-ledger-is-ephors-record-and-never-the-truth-about-the-work)): a recipe entry writes its ticket, and a workflow entry
+lays its plan down through the same laying `ephor work lay` uses
+([§FS-005-dispatch.19](FS-005-dispatch.md#19-a-workflow-the-runtime-offers-is-an-action-and-its-inputs-are-answered-here)). The ledger records the work against the matter,
+which is what makes it processed. Then a start is asked of the sweep's own
+admission, narrowed to the roots that hold this matter's work
+([§FS-005-dispatch.24.5](FS-005-dispatch.md#245-work-processed-from-waiting-waits-for-its-slot)): `max_concurrent`, `max_active`, a pool that
+cannot be had, a root resting after a failed start, and the spend ceiling
+decide whether it starts now ([§FS-015-spend-ceiling.6](FS-015-spend-ceiling.md#6-only-the-sweep-is-bound-and-the-persons-key-never-is)). Work they do not
+start now is laid all the same and **queued**.
+
+A workflow whose inputs are not all answered is not laid with a guess. The
+processing screen says what it still wants, and `Enter` opens the workflow's
+own input screen ([§FS-005-dispatch.19](FS-005-dispatch.md#19-a-workflow-the-runtime-offers-is-an-action-and-its-inputs-are-answered-here)); laying it there processes the
+matter with those answers. `ephor work process` refuses it by naming each
+input, as `ephor actions run` does, and `--set` answers them.
+
+Ephor posts nothing to the forge. Where the issue is assigned, the plan's own
+claim task assigns it ([§FS-005-dispatch.7](FS-005-dispatch.md#7-handing-over-work-is-the-readers-move-and-stays-inside-the-machine)).
+
+`ephor work process --item <id>` is the same move about the proposal, and
+`--dry-run` is the account the processing screen shows.
+
+### 7.3 `a` chooses another
+
+`a` on a new row, or on its processing screen, lists every entry the matter's
+menu would hand it over with, in menu order, followed by every workflow the
+runtime offers there that no entry names. Choosing one opens the processing
+screen for it, exactly as the proposal's does. `ephor work process --item <id>
+--entry <entry>` is the same choice, by the name `ephor actions` prints or a
+workflow's own id.
+
+### 7.4 `x` records that a matter needs no rhei
+
+`x` on a new row, or on its processing screen, asks for a reason and records a
+**dismissal**: a ledger record about the matter with the reason, when it was
+made, and the matter's fingerprint ([§FS-005-dispatch.4](FS-005-dispatch.md#4-the-ledger-is-ephors-record-and-never-the-truth-about-the-work)). A reason is
+required; an empty one is refused, because a decision nobody can read back is
+not a record of one.
+
+A dismissed matter is processed and leaves New. **The dismissal is lifted the
+moment the matter moves**, by the comparison that reopens work
+([§FS-005-dispatch.5](FS-005-dispatch.md#5-an-item-that-moved-reopens-its-work)): a matter whose fingerprint differs from the one its
+dismissal took is new again, and nothing is written to lift it. A second
+dismissal of the same matter replaces the first.
+
+A dismissal is about this screen and nothing else. It holds back no recipe, no
+action and no `lay`: a matter a recipe hands over is still handed over, and
+then it is processed for that reason instead.
+
+`ephor work dismiss --item <id> --reason <text>` makes the same record.
+
+### 7.5 `A` processes every unambiguous row after one preview
+
+`A` previews every new row: for each one whose proposal is unambiguous, the
+account a dry run gives of processing it; for each other, why it is left for
+the reader. Nothing is written by the preview. Confirming it processes each
+unambiguous row in the screen's order, exactly as confirming one does, and
+says what each came to. A row whose dry run asks for an input nobody answered
+is not unambiguous and is left.
+
+The admission decides how many start
+([§FS-019-waiting.7.2](FS-019-waiting.md#72-confirming-lays-it-records-it-and-starts-it)). The rest are laid all the same and queued, so `A` on
+a full site lays everything and starts what fits.
+
+`ephor work process --all` is the same move, and `--dry-run` is its preview.
+
+### 7.6 Running names what waits for a slot
+
+Work processing laid and asked to start, that has not started, is **queued**.
+Under the live runs, one line names it:
+`queued 2 · ephor#119, fissile#78 · waiting for a slot (max_active 4)`. The
+reason is the admission's own sentence from when the start was asked for.
+
+A queued matter is shown while its root has no live run and its work still
+holds a ticket a run would advance. Its record lasts until a sweep starts that
+work ([§FS-005-dispatch.24.5](FS-005-dispatch.md#245-work-processed-from-waiting-waits-for-its-slot)), and a matter whose work was finished some
+other way is not shown, whatever the record says.
+
+### 7.7 A proposal confirmed again and again names the setting that would make it automatic
+
+When the reader has confirmed the same entry, from Waiting, for three or more
+matters of the same kind, the footer names it and the setting that would make
+it automatic: `implement confirmed for 3 issues · "autorun": true and
+"dispatch" on implement would do it without you`. A recipe needs both
+([§FS-005-dispatch.32](FS-005-dispatch.md#32-a-recipe-can-ask-for-its-own-sweep-and-say-how-often)), and a workflow entry needs `autorun`
+([§FS-005-dispatch.28](FS-005-dispatch.md#28-a-workflow-entry-can-ask-for-the-same-thing-a-recipe-can)). A setting the entry already has is not named, and an
+entry that already has every one is not mentioned.
+
+The sentence changes nothing. Adopting a recipe is the reader's act, made in
+the configuration where every other one is written
+([§FS-005-dispatch.7](FS-005-dispatch.md#7-handing-over-work-is-the-readers-move-and-stays-inside-the-machine), [§FS-005-dispatch.32.1](FS-005-dispatch.md#321-the-reader-adopts-the-recipe-the-recipe-does-the-rest)). The count is read
+from ephor's record of what processing did, and `ephor waiting` carries the
+same sentence.

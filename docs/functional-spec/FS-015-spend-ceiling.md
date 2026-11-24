@@ -211,6 +211,14 @@ types the command is present, is deciding, and can see the warning; refusing
 them would turn a budget into a lock-out and would make the first thing
 anybody did with it be to remove it.
 
+**Processing a matter from Waiting lays it whatever the budget says, and
+starts it only as a sweep would.** The plan is the reader's move and is laid
+([§FS-019-waiting.7.2](FS-019-waiting.md#72-confirming-lays-it-records-it-and-starts-it)), but the start it asks for is the sweep's own admission
+narrowed to that matter ([§FS-005-dispatch.24.5](FS-005-dispatch.md#245-work-processed-from-waiting-waits-for-its-slot)), so a full budget leaves
+the work queued, with the ceiling's own sentence, for a later sweep to start.
+Nothing is refused: the reader who wants it running now still has the named
+run.
+
 There is no one-sweep command-line override of a budget. `--max-concurrent`
 exists because narrowing a single sweep is a thing a person does while
 watching it; widening a spend ceiling for one invocation is indistinguishable
