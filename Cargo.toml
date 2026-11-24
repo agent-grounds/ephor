@@ -381,6 +381,10 @@ path = "tests/e2e/cases/E2E-071-an-empty-branch-selection-is-said.rs"
 name = "e2e_072_the_screen_ephor_opens_on"
 path = "tests/e2e/cases/E2E-072-the-screen-ephor-opens-on.rs"
 
+[[test]]
+name = "e2e_073_a_new_matter_is_processed_where_it_is_shown"
+path = "tests/e2e/cases/E2E-073-a-new-matter-is-processed-where-it-is-shown.rs"
+
 [dependencies]
 clap = { version = "4", features = ["derive"] }
 serde = { version = "1", features = ["derive"] }

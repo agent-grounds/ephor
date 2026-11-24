@@ -61,6 +61,65 @@ pub struct Ledger {
     /// (§FS-006-project-interface.11).
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub pools: BTreeMap<String, PoolRecord>,
+    /// Matters a person recorded as needing no rhei, keyed by feed id
+    /// (§FS-005-dispatch.4, §FS-019-waiting.7.4). A person's decision about
+    /// the Waiting screen and nothing else: it holds back no recipe and no
+    /// action. An addition (§FS-006-project-interface.11).
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub dismissed: BTreeMap<String, Dismissal>,
+    /// What processing from the Waiting screen asked of each matter, keyed by
+    /// feed id (§FS-005-dispatch.4, §FS-019-waiting.7): which entry was
+    /// confirmed, and whether the start it asked for still waits for a slot.
+    /// Never the state of the work. An addition
+    /// (§FS-006-project-interface.11).
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub processed: BTreeMap<String, Processed>,
+}
+
+/// A person's record that a matter needs no rhei (§FS-019-waiting.7.4). The
+/// fingerprint is what lifts it: a matter that moved since is new again, by
+/// the comparison that reopens work (§FS-005-dispatch.5).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Dismissal {
+    pub project: String,
+    pub title: String,
+    pub reason: String,
+    pub at: DateTime<Utc>,
+    pub snapshot: Snapshot,
+}
+
+impl Dismissal {
+    /// Whether the dismissal still stands for the matter as it is now: it
+    /// stands until the matter moves (§FS-005-dispatch.5).
+    pub fn stands(&self, item: &Item) -> bool {
+        self.snapshot.changes(&Snapshot::of(item)).is_empty()
+    }
+}
+
+/// What processing a matter from the Waiting screen did
+/// (§FS-019-waiting.7.2): ephor's record of the reader's act, kept beside the
+/// work and never instead of it (§FS-005-dispatch.4).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Processed {
+    /// The entry confirmed: a recipe's id, or a workflow entry's.
+    pub entry: String,
+    /// `recipe` or `workflow`.
+    pub kind: String,
+    /// The matter's kind, as a feed row labels it: what a repeated
+    /// confirmation is counted by (§FS-019-waiting.7.7).
+    pub matter: String,
+    pub project: String,
+    pub title: String,
+    pub at: DateTime<Utc>,
+    /// The start asked for has not happened: the next sweep reads this
+    /// matter's work as work that asked to run itself, and the sweep that
+    /// starts it clears this (§FS-005-dispatch.24.5).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub queued: bool,
+    /// Why it was not started when it was processed, in the admission's own
+    /// words (§FS-019-waiting.7.6).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub says: Option<String>,
 }
 
 /// What one pool has said about itself, from either channel
@@ -620,6 +679,8 @@ pub fn load() -> Result<Ledger> {
             advances: BTreeMap::new(),
             waited: Default::default(),
             pools: BTreeMap::new(),
+            dismissed: BTreeMap::new(),
+            processed: BTreeMap::new(),
         });
     }
     let text = fs::read_to_string(&path)
@@ -745,6 +806,61 @@ mod tests {
         later["retirements"][0]["future"] = json!("x");
         let read: Entry = serde_json::from_value(later).unwrap();
         assert_eq!(read.retirements, retired.retirements);
+    }
+
+    /// The two records processing keeps are additive (§FS-005-dispatch.4): a
+    /// ledger without them reads as one with none, one with them writes them
+    /// back, and a dismissal stands only until the matter moves
+    /// (§FS-019-waiting.7.4).
+    #[test]
+    fn dismissals_and_processing_marks_round_trip_and_a_dismissal_lifts_on_a_move() {
+        let older: Ledger = serde_json::from_value(json!({ "version": 1 })).unwrap();
+        assert!(older.dismissed.is_empty() && older.processed.is_empty());
+        let written = serde_json::to_value(&older).unwrap();
+        assert!(written.get("dismissed").is_none(), "{written}");
+        assert!(written.get("processed").is_none(), "{written}");
+
+        let matter = item(gate(1, false), "open", 10);
+        let mut ledger = older;
+        ledger.dismissed.insert(
+            matter.id.clone(),
+            Dismissal {
+                project: "widget".to_string(),
+                title: matter.title.clone(),
+                reason: "a duplicate of #41".to_string(),
+                at: Utc::now(),
+                snapshot: Snapshot::of(&matter),
+            },
+        );
+        ledger.processed.insert(
+            "github-prs:acme/widget#43".to_string(),
+            Processed {
+                entry: "fix-gate".to_string(),
+                kind: "agent".to_string(),
+                matter: "pr".to_string(),
+                project: "widget".to_string(),
+                title: "Another".to_string(),
+                at: Utc::now(),
+                queued: true,
+                says: Some("global work.max_active 0 is full".to_string()),
+            },
+        );
+        let text = serde_json::to_string(&ledger).unwrap();
+        let back: Ledger = serde_json::from_str(&text).unwrap();
+        assert_eq!(back.dismissed.len(), 1);
+        let mark = &back.processed["github-prs:acme/widget#43"];
+        assert!(mark.queued);
+        assert_eq!(
+            mark.says.as_deref(),
+            Some("global work.max_active 0 is full")
+        );
+
+        let dismissal = &back.dismissed[&matter.id];
+        assert!(dismissal.stands(&matter));
+        // The gate went green: the matter moved, and the dismissal is lifted
+        // with nothing written.
+        let moved = item(gate(0, false), "open", 10);
+        assert!(!dismissal.stands(&moved));
     }
 
     fn gate(failed: u64, blocked: bool) -> Value {

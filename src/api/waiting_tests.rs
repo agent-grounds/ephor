@@ -273,7 +273,7 @@ fn new_is_what_nothing_has_been_done_about_and_held_is_apart() {
         [old, newest, finished, ledgered, own, discussed, labelled]
             .into_iter()
             .map(|item| (item, true)),
-        &|id| id == "forge:widget/4",
+        &|item| item.id == "forge:widget/4",
         &holds,
     );
     let titles: Vec<&str> = new.iter().map(|row| row.title.as_str()).collect();

@@ -43,8 +43,16 @@ fn pages() -> Vec<Page> {
             path.push(sub.get_name().to_string());
             let mut argv = vec!["ephor".to_string()];
             argv.extend(path.iter().cloned());
+            // A group one of whose members is required counts as its first
+            // member being required: `work process` takes `--item` or `--all`.
+            let grouped: Vec<&clap::Id> = sub
+                .get_groups()
+                .filter(|group| group.is_required_set())
+                .filter_map(|group| group.get_args().next())
+                .collect();
             for arg in sub.get_arguments() {
-                if !arg.is_required_set() || arg.is_global_set() {
+                let required = arg.is_required_set() || grouped.contains(&arg.get_id());
+                if !required || arg.is_global_set() {
                     continue;
                 }
                 let value = arg
@@ -205,6 +213,7 @@ fn a_verb_that_refuses_the_selectors_says_so_in_its_help() {
         "work cancel",
         "work workflows",
         "work lay",
+        "work dismiss",
         "work forget",
         "work states",
     ] {

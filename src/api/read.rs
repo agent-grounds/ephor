@@ -115,6 +115,16 @@ impl Session {
     /// The entries a subject carries, assembled and gated
     /// (§FS-011-command-line.1). The one list both surfaces show.
     pub fn menu(&mut self, subject: &Subject) -> Result<Vec<offers::MenuEntry>, String> {
+        self.menu_with(subject, true)
+    }
+
+    /// [`Session::menu`], with or without the entries the matter's source
+    /// offers ([`Session::actions_from`]).
+    pub(crate) fn menu_with(
+        &mut self,
+        subject: &Subject,
+        sources: bool,
+    ) -> Result<Vec<offers::MenuEntry>, String> {
         let placed = self.place(subject)?;
         let gate_state = self.gate_state(subject, &placed.state);
         let project = subject.project().to_string();
@@ -145,7 +155,7 @@ impl Session {
                     }
                     None => (Vec::new(), false),
                 };
-                let applicable = self.actions_with(&item, &recipes, &beside);
+                let applicable = self.actions_from(&item, &recipes, &beside, sources);
                 (Some(item), applicable, has_workflows)
             }
             // A branch row carries ephor's own offers only: there is no matter

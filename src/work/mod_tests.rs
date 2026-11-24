@@ -323,6 +323,8 @@ fn the_roots_are_the_configured_places_and_the_ledger_keeps_its_matter() {
         starts: BTreeMap::new(),
         advances: BTreeMap::new(),
         waited: Default::default(),
+        dismissed: Default::default(),
+        processed: Default::default(),
     };
     ledger.entries.insert(
         "forge:widget/7".to_string(),
@@ -806,6 +808,8 @@ fn a_shared_root_is_listed_once_and_an_item_template_is_skipped() {
         starts: BTreeMap::new(),
         advances: BTreeMap::new(),
         waited: Default::default(),
+        dismissed: Default::default(),
+        processed: Default::default(),
     };
     let groups = enumerate_roots(
         &WorkConfig::default(),
@@ -859,6 +863,8 @@ fn an_aliased_workspace_is_one_root_not_two() {
         starts: BTreeMap::new(),
         advances: BTreeMap::new(),
         waited: Default::default(),
+        dismissed: Default::default(),
+        processed: Default::default(),
     };
     let groups = enumerate_roots(
         &WorkConfig::default(),
@@ -947,6 +953,8 @@ fn a_plan_under_an_organization_root_is_enumerated_and_one_with_no_answer_is_ski
         starts: BTreeMap::new(),
         advances: BTreeMap::new(),
         waited: Default::default(),
+        dismissed: Default::default(),
+        processed: Default::default(),
     };
     let groups = enumerate_roots(
         &WorkConfig::default(),
@@ -1297,6 +1305,8 @@ fn empty_ledger() -> Ledger {
         starts: BTreeMap::new(),
         advances: BTreeMap::new(),
         waited: Default::default(),
+        dismissed: Default::default(),
+        processed: Default::default(),
     }
 }
 
@@ -2798,6 +2808,55 @@ fn a_recipe_that_did_not_ask_is_never_due() {
         Reach::Sweep,
     )
     .is_empty());
+}
+
+/// Work processing laid from Waiting and asked to start is due to the sweep
+/// whatever its recipe asked, until a sweep starts it — and only that matter's
+/// (§FS-005-dispatch.24.5).
+#[test]
+fn work_processing_queued_is_due_until_a_sweep_starts_it() {
+    let tmp = tempfile::tempdir().unwrap();
+    let group = due_root(&tmp.path().join("panta"), &ticket_at("review-1", "fix"));
+    let due_with = |ledger: &Ledger| {
+        due_among(
+            &work_config(),
+            std::slice::from_ref(&group),
+            &asking(&["fix-gate"]),
+            &laying(&[]),
+            ledger,
+            Utc::now(),
+            Reach::Sweep,
+        )
+    };
+    let mark = |item: &str, queued: bool| {
+        (
+            item.to_string(),
+            ledger::Processed {
+                entry: "review".to_string(),
+                kind: "agent".to_string(),
+                matter: "issue".to_string(),
+                project: "widget".to_string(),
+                title: "Widen the retry window".to_string(),
+                at: Utc::now(),
+                queued,
+                says: None,
+            },
+        )
+    };
+    let mut ledger = empty_ledger();
+    assert!(due_with(&ledger).is_empty(), "nothing asked to run it");
+
+    ledger.processed = BTreeMap::from([mark("forge:widget/42", true)]);
+    let due = due_with(&ledger);
+    assert_eq!(due.len(), 1);
+    assert_eq!(due[0].tickets, vec!["widget-42.review-1".to_string()]);
+
+    // Started once, the mark no longer asks.
+    ledger.processed = BTreeMap::from([mark("forge:widget/42", false)]);
+    assert!(due_with(&ledger).is_empty());
+    // Another matter's mark is not this one's.
+    ledger.processed = BTreeMap::from([mark("forge:widget/7", true)]);
+    assert!(due_with(&ledger).is_empty());
 }
 
 /// What a run would not advance is not what makes a root due: work that

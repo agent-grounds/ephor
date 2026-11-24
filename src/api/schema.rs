@@ -78,6 +78,8 @@ pub const SHAPES: &[(&str, &str)] = &[
     ("work retire", "work-retire"),
     ("work run", "work-run"),
     ("work lay", "work-lay"),
+    ("work process", "work-process"),
+    ("work dismiss", "outcome"),
     ("work workflows", "work-workflows"),
     ("work forget", "work-forget"),
     ("work states", "work-states"),
@@ -91,7 +93,7 @@ pub const SHAPES: &[(&str, &str)] = &[
 /// Every shape this API publishes, by the name the schema files it under. The
 /// tests below hold it to the document in both directions, so it is a
 /// spelling of the document rather than a second list to keep true.
-pub const NAMES: [&str; 41] = [
+pub const NAMES: [&str; 42] = [
     "actions",
     "branches",
     "operations",
@@ -125,6 +127,7 @@ pub const NAMES: [&str; 41] = [
     "work-retire",
     "work-run",
     "work-lay",
+    "work-process",
     "work-workflows",
     "work-forget",
     "work-states",

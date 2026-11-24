@@ -5,9 +5,11 @@
 //! Gates, person polls and live runs come from the board's own walk of the
 //! work roots ([`Session::board_over`]), never a second scanner
 //! (§FS-005-dispatch.15). New and held matters come from the feed the overview
-//! draws, measured against the ledger (§FS-005-dispatch.4).
+//! draws, measured against the ledger (§FS-005-dispatch.4). Each new matter
+//! carries the rhei it would be assigned, read off its own menu
+//! (§FS-019-waiting.7.1).
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
 use chrono::{DateTime, Utc};
@@ -34,8 +36,10 @@ impl Session {
 
     /// The reading over an enumeration the caller already holds — what the
     /// interface does between ticks, exactly as the board does
-    /// (§FS-005-dispatch.15.1).
-    pub fn waiting_over(&self, groups: &[RootPlans]) -> views::Waiting {
+    /// (§FS-005-dispatch.15.1). Mutable because each new row's proposal is
+    /// its menu's, and a menu asks the runtime what it offers
+    /// (§FS-019-waiting.7.1).
+    pub fn waiting_over(&mut self, groups: &[RootPlans]) -> views::Waiting {
         let board = self.board_over(groups);
         let now = Utc::now();
         let items = self.items();
@@ -46,11 +50,9 @@ impl Session {
                 .filter(|item| cache::is_unread(&self.seen, item))
                 .count(),
         };
-        let processed = |id: &str| {
-            self.dispatcher
-                .as_ref()
-                .is_some_and(|dispatcher| dispatcher.ledger.entries.contains_key(id))
-        };
+        // Processed: a rhei is assigned, or a person said none is needed and
+        // the matter has not moved since (§FS-019-waiting.7).
+        let processed = |item: &Item| self.has_work(&item.id) || self.dismissed(item);
         let holds = self.holding_labels();
         let review_id = |item: Option<&str>, plan_id: &str, ticket: &str| {
             item.filter(|id| self.item(id).is_some())
@@ -64,20 +66,40 @@ impl Session {
         // The matters the feed carries, and not the saved reply rows the
         // overview keeps beside them: a drafted reply is not a matter nothing
         // has been done about (§FS-019-waiting.1.2).
-        let (new, held) = unprocessed(
-            self.feeds
-                .iter()
-                .flat_map(|feed| feed.items())
-                .filter(|item| self.shows(item, now))
-                .map(|item| {
-                    let unread = cache::is_unread(&self.seen, &item);
-                    (item, unread)
-                }),
-            &processed,
-            &holds,
-        );
+        let shown: Vec<(Item, bool)> = self
+            .feeds
+            .iter()
+            .flat_map(|feed| feed.items())
+            .filter(|item| self.shows(item, now))
+            .map(|item| {
+                let unread = cache::is_unread(&self.seen, &item);
+                (item, unread)
+            })
+            .collect();
+        let (mut new, held) = unprocessed(shown.iter().cloned(), &processed, &holds);
+        let live: BTreeSet<String> = reading
+            .running
+            .iter()
+            .filter_map(|row| row.item.clone())
+            .collect();
+        let on_you: BTreeSet<String> = reading
+            .on_you
+            .iter()
+            .filter_map(|row| row.item.clone())
+            .collect();
+        reading.queued = self.queued_rows(&live, &on_you);
+        let by_id: BTreeMap<&str, &Item> = shown
+            .iter()
+            .map(|(item, _)| (item.id.as_str(), item))
+            .collect();
+        for row in &mut new {
+            if let Some(item) = by_id.get(row.id.as_str()) {
+                row.proposal = self.proposal_of(item);
+            }
+        }
         reading.new = new;
         reading.held = held;
+        reading.adopt = self.adopt();
         reading.overview = overview;
         reading
     }
@@ -138,6 +160,63 @@ impl views::Waiting {
     /// then opens with [`QUIET`] (§FS-019-waiting.2).
     pub fn quiet(&self) -> bool {
         self.on_you.is_empty() && self.new.is_empty()
+    }
+}
+
+impl views::Waiting {
+    /// `queued 2 · ephor#119, fissile#78 · waiting for a slot (max_active 4)`:
+    /// the one line under the live runs naming what processing laid that has
+    /// not started, with the admission's own reason (§FS-019-waiting.7.6).
+    pub fn queued_line(&self) -> Option<String> {
+        let last = self.queued.last()?;
+        let ids: Vec<&str> = self.queued.iter().map(|row| short_id(&row.id)).collect();
+        let why = last
+            .says
+            .clone()
+            .unwrap_or_else(|| super::process::NO_START_NOW.to_string());
+        Some(format!(
+            "queued {} · {} · {why}",
+            self.queued.len(),
+            ids.join(", ")
+        ))
+    }
+}
+
+impl views::Proposal {
+    /// What a new row says about the rhei it would be assigned
+    /// (§FS-019-waiting.7.1): the entry, how many others would take it, and
+    /// why it cannot be processed as it stands, where it cannot.
+    pub fn says(&self) -> String {
+        if self.fallback && self.gate == "blocked" {
+            return format!("→ {} · not available", self.entry);
+        }
+        if let Some(refusal) = &self.refusal {
+            return format!("→ {} · {}", self.entry, one_line(refusal));
+        }
+        let mut says = format!("→ {}", self.entry);
+        if self.gate == "needs-checkout" {
+            says.push_str(" · makes its checkout");
+        }
+        if self.others > 0 {
+            says.push_str(&format!(" · {} more", self.others));
+        }
+        says
+    }
+}
+
+/// A sentence held to one line.
+fn one_line(text: &str) -> String {
+    text.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+/// A matter's id as a person says it: `ephor#119` for
+/// `github-issues:agent-grounds/ephor#119`, and the id after its source
+/// otherwise.
+pub(crate) fn short_id(id: &str) -> &str {
+    let rest = id.rsplit(':').next().unwrap_or(id);
+    match rest.contains('#') {
+        true => rest.rsplit('/').next().unwrap_or(rest),
+        false => rest,
     }
 }
 
@@ -273,6 +352,8 @@ pub(crate) fn reading(
         new: Vec::new(),
         held: Vec::new(),
         running,
+        queued: Vec::new(),
+        adopt: None,
         overview: views::Overview::default(),
     }
 }
@@ -303,28 +384,20 @@ pub(crate) fn names_reader(person: &str, item: Option<&Item>) -> bool {
 /// The feed's half: every matter the feed shows that nothing has been done
 /// about, newest first, and the held ones apart (§FS-019-waiting.1.2). `items`
 /// are what the feed shows, each with whether it is unread; `processed` asks
-/// the ledger.
+/// the ledger, for work and for a standing dismissal (§FS-019-waiting.7.4).
+/// Each new row's proposal is left for the caller, which reads the menus.
 pub(crate) fn unprocessed(
     items: impl IntoIterator<Item = (Item, bool)>,
-    processed: &dyn Fn(&str) -> bool,
+    processed: &dyn Fn(&Item) -> bool,
     holds: &BTreeSet<String>,
 ) -> (Vec<views::NewMatter>, Vec<views::HeldMatter>) {
     let mut new = Vec::new();
     let mut held = Vec::new();
     for (item, unread) in items {
-        if item.is_finished() || processed(&item.id) || crate::work::runtime::is_own_task(&item) {
+        if item.is_finished() || processed(&item) || crate::work::runtime::is_own_task(&item) {
             continue;
         }
-        let label = item
-            .raw
-            .get("labels")
-            .and_then(|labels| labels.as_array())
-            .into_iter()
-            .flatten()
-            .filter_map(|label| label.as_str())
-            .find(|label| holds.contains(*label))
-            .map(str::to_string);
-        match label {
+        match super::process::holding_label(&item, holds) {
             Some(label) => held.push(views::HeldMatter {
                 id: item.id,
                 project: item.project,
@@ -340,6 +413,7 @@ pub(crate) fn unprocessed(
                 url: item.url,
                 updated_at: item.updated_at,
                 unread,
+                proposal: views::Proposal::default(),
             }),
         }
     }

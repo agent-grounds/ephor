@@ -177,6 +177,9 @@ pub(crate) struct AnswerScreen {
     /// The binding's own account of what would be written, where it was asked
     /// for (§FS-005-dispatch.19). A reading over the screen, closed by Esc.
     account: Option<String>,
+    /// Laying it processes a new matter from Waiting: recorded against the
+    /// matter and started as the sweep would start it (§FS-019-waiting.7.2).
+    pub process: bool,
 }
 
 impl AnswerScreen {
@@ -205,6 +208,7 @@ impl AnswerScreen {
             choosing: None,
             typing: None,
             account: None,
+            process: false,
         }
     }
 
@@ -943,6 +947,7 @@ mod tests {
             choosing: None,
             typing: None,
             account: None,
+            process: false,
         }
     }
 

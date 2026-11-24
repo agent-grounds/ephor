@@ -24,6 +24,7 @@ mod gate;
 mod human_gate;
 mod navigator;
 mod operations;
+mod process;
 mod prompt;
 mod refresh_picker;
 mod thread;
@@ -62,6 +63,7 @@ use gate::GateScreen;
 use human_gate::HumanGateScreen;
 use navigator::NavigatorState;
 use operations::OperationsScreen;
+use process::ProcessScreen;
 use prompt::{Asking, Prompt, PromptOutcome};
 use refresh_picker::{PickerOutcome, RefreshPicker};
 use thread::ThreadScreen;
@@ -208,6 +210,29 @@ pub(crate) enum Action {
         item: Item,
         ticket: String,
     },
+    /// Open the processing screen for a new matter: its proposal, or the
+    /// entry named, with a dry run's account (§FS-019-waiting.7.2). With
+    /// `choosing`, `a`'s list is open on it at once (§FS-019-waiting.7.3).
+    ProcessMatter {
+        item: Item,
+        entry: Option<String>,
+        choosing: bool,
+    },
+    /// Process it with that entry: `ephor work process --item --entry`. With
+    /// `wants`, the workflow's inputs are answered first.
+    ConfirmProcess {
+        item: Item,
+        entry: String,
+        wants: bool,
+    },
+    /// Ask why the matter needs no rhei, then record it
+    /// (§FS-019-waiting.7.4).
+    DismissMatter(Item),
+    /// `A`'s preview of processing every unambiguous row
+    /// (§FS-019-waiting.7.5).
+    PreviewProcessAll,
+    /// Process them: `ephor work process --all`.
+    ConfirmProcessAll,
     ToggleUnread,
     Refresh,
     /// Choose one source, or one capability of it, and refresh only that
@@ -249,6 +274,9 @@ enum Screen {
     Operations(OperationsScreen),
     /// The burn page, watch-only (§FS-013-burn.8).
     Burn(BurnScreen),
+    /// A new matter being processed, or every unambiguous one previewed
+    /// (§FS-019-waiting.7).
+    Process(ProcessScreen),
 }
 
 /// How often the interface glances at the work artifacts between key reads
@@ -511,6 +539,9 @@ impl App {
                             Asking::Cancel { ticket, .. } => {
                                 format!("{ticket} kept — nothing cancelled")
                             }
+                            Asking::Dismiss(item) => {
+                                format!("{} not dismissed — a dismissal needs a reason", item.id)
+                            }
                             _ => "Nothing asked for".to_string(),
                         };
                     }
@@ -606,6 +637,7 @@ impl App {
                 Screen::HumanGate(review) => review.handle_key(key.code),
                 Screen::Operations(board) => board.handle_key(key.code),
                 Screen::Burn(page) => page.handle_key(key.code),
+                Screen::Process(screen) => screen.handle_key(key.code),
             };
             // A finished job's line stays under its subject until the reader
             // opens that row, and opening it is what reads it off
@@ -1119,8 +1151,136 @@ impl App {
             )?,
             Action::Refresh => self.start_refresh(config, None),
             Action::PickRefresh => self.pick_refresh(config),
+            Action::ProcessMatter {
+                item,
+                entry,
+                choosing,
+            } => self.open_processing(item, entry, choosing),
+            Action::ConfirmProcess { item, entry, wants } => {
+                self.confirm_process(terminal, item, entry, wants)?
+            }
+            // A reason is required: a decision nobody can read back is not a
+            // record of one (§FS-019-waiting.7.4).
+            Action::DismissMatter(item) => {
+                let title = format!("{} needs no work — why?", item.id);
+                self.prompt = Some(Prompt::new(
+                    Asking::Dismiss(item),
+                    title,
+                    "the reason is recorded, and lifted when the matter moves  ·  enter records it  ·  esc keeps it",
+                ))
+            }
+            Action::PreviewProcessAll => {
+                self.message = "Reading what processing would lay…".to_string();
+                terminal
+                    .draw(|frame| self.draw(frame))
+                    .map_err(|err| EphorError::Command(format!("draw failed: {err}")))?;
+                let view = self.ctx.process_all(&[], true);
+                self.message.clear();
+                self.screen = Screen::Process(ProcessScreen::all(view));
+            }
+            Action::ConfirmProcessAll => {
+                self.message = "Processing…".to_string();
+                terminal
+                    .draw(|frame| self.draw(frame))
+                    .map_err(|err| EphorError::Command(format!("draw failed: {err}")))?;
+                let view = self.ctx.process_all(&[], false);
+                self.message = crate::api::process::summary(&view);
+                self.processed();
+            }
         }
         Ok(false)
+    }
+
+    /// The processing screen for one new matter (§FS-019-waiting.7.2): the
+    /// proposal or the entry named, the account a dry run of the move gives,
+    /// and what `a` would list — all the session's, read now.
+    fn open_processing(&mut self, item: Item, entry: Option<String>, choosing: bool) {
+        let proposal = match self.ctx.choose(&item, entry.as_deref()) {
+            Ok(chosen) => self.ctx.proposal_from(&item, &chosen),
+            Err(refusal) if entry.is_some() => {
+                self.message = refusal;
+                return;
+            }
+            Err(_) => self.ctx.proposal_of(&item),
+        };
+        let available = !(proposal.fallback && proposal.gate == "blocked");
+        let account = match available {
+            true => self.ctx.process(&item, Some(&proposal.entry), &[], true),
+            false => crate::api::views::ProcessRow {
+                item: item.id.clone(),
+                title: item.title.clone(),
+                entry: proposal.entry.clone(),
+                kind: proposal.kind,
+                ok: false,
+                says: proposal.refusal.clone().unwrap_or_default(),
+                plan: None,
+                tickets: Vec::new(),
+                start: None,
+                answers: Vec::new(),
+            },
+        };
+        let wants = available
+            && match self.ctx.choose(&item, Some(&proposal.entry)) {
+                Ok(chosen) => !self
+                    .ctx
+                    .inputs_of(&item, &chosen.entry, &[])
+                    .missing
+                    .is_empty(),
+                Err(_) => false,
+            };
+        let choices = self.ctx.process_choices(&item);
+        let screen = ProcessScreen::one(item, proposal, account, wants, choices);
+        self.screen = Screen::Process(match choosing {
+            true => screen.choosing(),
+            false => screen,
+        });
+    }
+
+    /// `Enter` on the processing screen: the move `ephor work process` makes,
+    /// or — for a workflow with inputs nobody answered — its input screen,
+    /// where laying it processes the matter (§FS-019-waiting.7.2).
+    fn confirm_process(
+        &mut self,
+        terminal: &mut DefaultTerminal,
+        item: Item,
+        entry: String,
+        wants: bool,
+    ) -> Result<()> {
+        if wants {
+            let chosen = match self.ctx.choose(&item, Some(&entry)) {
+                Ok(chosen) => chosen,
+                Err(refusal) => {
+                    self.message = refusal;
+                    return Ok(());
+                }
+            };
+            let action = chosen.entry.action.clone();
+            let picked = chosen.entry.picked.clone();
+            self.lay_workflow(&item, &action, std::collections::BTreeMap::new(), picked)?;
+            if let Some(answers) = &mut self.answers {
+                answers.process = true;
+            }
+            return Ok(());
+        }
+        self.message = format!("Processing {}…", item.id);
+        terminal
+            .draw(|frame| self.draw(frame))
+            .map_err(|err| EphorError::Command(format!("draw failed: {err}")))?;
+        let row = self.ctx.process(&item, Some(&entry), &[], false);
+        self.message = row.says;
+        if row.ok {
+            self.processed();
+        }
+        Ok(())
+    }
+
+    /// After a matter was processed or dismissed: back to Waiting, with the
+    /// roots enumerated again so a run the start began is shown running
+    /// (§FS-019-waiting.7.6).
+    fn processed(&mut self) {
+        self.reload_work_groups();
+        self.rebuild_view();
+        self.go_home_to(Home::Waiting);
     }
 
     /// What the reader typed, done: a ticket in their own words, or a command
@@ -1152,6 +1312,14 @@ impl App {
             // The runtime's move, in its own words, and its answer on the
             // message line (§FS-005-dispatch.16); the screen below is rebuilt
             // from the plan, which is where the truth of it now is.
+            // `ephor work dismiss` is this call (§FS-019-waiting.7.4).
+            Asking::Dismiss(item) => {
+                let outcome = self.ctx.dismiss(&item, line);
+                self.message = outcome.says;
+                if outcome.ok {
+                    self.processed();
+                }
+            }
             Asking::Cancel { item, ticket } => {
                 let Some(dispatcher) = &self.ctx.dispatcher else {
                     self.message = "Work needs the registry, which could not be read".to_string();
@@ -1593,6 +1761,18 @@ impl App {
             gate: actions::Gate::Ready,
             running: None,
         };
+        // Reached from the processing screen, laying it is processing the
+        // matter, with these answers (§FS-019-waiting.7.2).
+        if screen.process {
+            let entry = laid.key();
+            let row = self.ctx.process(&item, Some(&entry), &answers, false);
+            self.message = row.says;
+            if row.ok {
+                self.answers = None;
+                self.processed();
+            }
+            return;
+        }
         let outcome = self.ctx.hand_over(&item, &laid, &answers, false);
         self.message = outcome.says;
         if outcome.ok {
@@ -2617,6 +2797,7 @@ impl App {
                 Screen::HumanGate(review) => review.title(),
                 Screen::Operations(board) => board.title(),
                 Screen::Burn(page) => page.title(),
+                Screen::Process(screen) => screen.title(),
             },
         };
         // A screen that stays live during a fetch is also a screen that looks
@@ -2672,6 +2853,7 @@ impl App {
                 board.draw(frame, body_area, line)
             }
             Screen::Burn(page) => page.draw(frame, body_area),
+            Screen::Process(screen) => screen.draw(frame, body_area),
         }
         if let Some(menu) = &self.menu {
             menu.draw(frame, body_area);
@@ -2713,6 +2895,7 @@ impl App {
                 Screen::HumanGate(review) => review.footer(),
                 Screen::Operations(board) => board.footer().to_string(),
                 Screen::Burn(page) => page.footer().to_string(),
+                Screen::Process(screen) => screen.footer(),
             }
         };
         frame.render_widget(

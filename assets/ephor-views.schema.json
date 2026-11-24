@@ -25,8 +25,8 @@
     },
     "waiting_new": {
       "type": "object",
-      "description": "A matter nothing has been done about: shown, unfinished, in no ledger entry, not the runtime's own ticket and not held (FS-019-waiting.1.2).",
-      "required": ["id", "project", "kind", "title", "updated_at", "unread"],
+      "description": "A matter nothing has been done about: shown, unfinished, in no ledger entry, with no dismissal still standing, not the runtime's own ticket and not held (FS-019-waiting.1.2, FS-019-waiting.7).",
+      "required": ["id", "project", "kind", "title", "updated_at", "unread", "proposal"],
       "properties": {
         "id": { "type": "string" },
         "project": { "type": "string" },
@@ -34,7 +34,69 @@
         "title": { "type": "string" },
         "url": { "type": "string" },
         "updated_at": { "type": "string", "format": "date-time" },
-        "unread": { "type": "boolean" }
+        "unread": { "type": "boolean" },
+        "proposal": { "$ref": "#/$defs/waiting_proposal" }
+      }
+    },
+    "waiting_proposal": {
+      "type": "object",
+      "description": "The work a new matter would be handed to: the first entry `ephor actions --item` offers that hands work over and is neither refused nor already going, or the runtime's `triage` workflow where none does (FS-019-waiting.7.1). Every field is the menu's.",
+      "required": ["entry", "kind", "description", "gate", "others", "fallback", "unambiguous"],
+      "properties": {
+        "entry": { "type": "string", "description": "The entry by the name `ephor actions` prints, or the workflow's own id where it is the runtime's `triage`." },
+        "kind": { "enum": ["agent", "workflow"] },
+        "icon": { "type": "string" },
+        "description": { "type": "string" },
+        "gate": { "enum": ["ready", "needs-checkout", "blocked"], "description": "`needs-checkout` where the move makes the workspace first, which is whether that workspace is there yet (FS-005-dispatch.25)." },
+        "hand": { "type": "string", "description": "Who the work would go to, where the entry says." },
+        "branch": { "type": "string", "description": "The branch the entry's template would mint." },
+        "workspace": { "type": "string", "description": "The workspace that branch belongs in." },
+        "root": { "type": "string", "description": "The work root it would hand the work into (FS-005-dispatch.6.1)." },
+        "others": { "type": "integer", "minimum": 0, "description": "How many other entries would also hand the matter over: what `a` chooses among." },
+        "fallback": { "type": "boolean", "description": "No entry hands the matter over, so the runtime's `triage` is proposed." },
+        "unambiguous": { "type": "boolean", "description": "Available, and ready to hand work over with every input answered: what `ephor work process --all` processes (FS-019-waiting.7.5)." },
+        "refusal": { "type": "string", "description": "Why it cannot be processed as it stands, where it cannot — `triage` not available among them." }
+      }
+    },
+    "waiting_queued": {
+      "type": "object",
+      "description": "Work processing laid and asked to start that has not started (FS-019-waiting.7.6).",
+      "required": ["id", "project", "title", "at"],
+      "properties": {
+        "id": { "type": "string" },
+        "project": { "type": "string" },
+        "title": { "type": "string" },
+        "at": { "type": "string", "format": "date-time", "description": "When it was processed." },
+        "says": { "type": "string", "description": "Why it was not started then, in the admission's own words." }
+      }
+    },
+    "process_row": {
+      "type": "object",
+      "description": "One matter processed, or that would be (FS-019-waiting.7.2).",
+      "required": ["item", "title", "entry", "kind", "ok", "says"],
+      "properties": {
+        "item": { "type": "string" },
+        "title": { "type": "string" },
+        "entry": { "type": "string", "description": "The entry it was processed with; empty where none could be chosen." },
+        "kind": { "enum": ["agent", "workflow", ""] },
+        "ok": { "type": "boolean" },
+        "says": { "type": "string", "description": "The move's own sentence, and what the start came to." },
+        "plan": { "type": "string" },
+        "tickets": { "type": "array", "items": { "type": "string" } },
+        "start": { "enum": ["started", "queued"], "description": "Where it was laid: whether the sweep's admission started it now (FS-005-dispatch.24.5). Absent on a dry run and a refusal." },
+        "answers": {
+          "type": "array",
+          "description": "On a workflow: what answered each input, and where from (FS-005-dispatch.19).",
+          "items": {
+            "type": "object",
+            "required": ["input", "shown", "from"],
+            "properties": {
+              "input": { "type": "string" },
+              "shown": { "type": "string" },
+              "from": { "type": "string" }
+            }
+          }
+        }
       }
     },
     "waiting_held": {
@@ -777,13 +839,15 @@
     "waiting": {
       "description": "`ephor waiting --json`: what waits on the reader, what nothing has been done about, and what is running — the first screen (FS-019-waiting.6).",
       "type": "object",
-      "required": ["on_you", "new", "held", "running", "overview"],
+      "required": ["on_you", "new", "held", "running", "queued", "overview"],
       "properties": {
         "refusal": { "type": "string", "description": "The workable rung's own sentence, where the runtime cannot run anything (FS-019-waiting.2)." },
         "on_you": { "type": "array", "items": { "$ref": "#/$defs/waiting_on_you" } },
         "new": { "type": "array", "items": { "$ref": "#/$defs/waiting_new" } },
         "held": { "type": "array", "items": { "$ref": "#/$defs/waiting_held" } },
         "running": { "type": "array", "items": { "$ref": "#/$defs/waiting_running" } },
+        "queued": { "type": "array", "items": { "$ref": "#/$defs/waiting_queued" } },
+        "adopt": { "type": "string", "description": "The setting a proposal confirmed again and again would need to run without the reader; the sentence changes nothing (FS-019-waiting.7.7)." },
         "overview": {
           "type": "object",
           "description": "How much the overview holds, counted from the feed it draws (FS-019-waiting.3).",
@@ -1593,6 +1657,29 @@
             "max_active": { "type": ["integer", "null"], "description": "The aggregate working ceiling in force, or null where none is." }
           }
         }
+      }
+    },
+    "work-process": {
+      "description": "`ephor work process --json` (FS-019-waiting.7.2, FS-019-waiting.7.5) — one matter processed by `--item`, or every unambiguous new matter by `--all`, and the ones `--all` left.",
+      "type": "object",
+      "required": ["dry_run", "processed", "left"],
+      "properties": {
+        "dry_run": { "type": "boolean" },
+        "processed": { "type": "array", "items": { "$ref": "#/$defs/process_row" } },
+        "left": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["item", "title", "says"],
+            "properties": {
+              "item": { "type": "string" },
+              "title": { "type": "string" },
+              "says": { "type": "string", "description": "Why it was left for the reader." }
+            }
+          }
+        },
+        "gated": { "type": "boolean", "description": "Present and true where `--all` reached more than one project without `--act`, so nothing was written (FS-011-command-line.10)." },
+        "says": { "type": "string", "description": "The gate's sentence, naming `--act`." }
       }
     },
     "work-lay": {

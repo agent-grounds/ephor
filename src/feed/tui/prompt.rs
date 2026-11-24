@@ -30,6 +30,9 @@ pub(crate) enum Asking {
         item: crate::feed::model::Item,
         ticket: String,
     },
+    /// Why a new matter needs no rhei (§FS-019-waiting.7.4) — required, so
+    /// an empty line records nothing.
+    Dismiss(crate::feed::model::Item),
 }
 
 pub(crate) struct Prompt {

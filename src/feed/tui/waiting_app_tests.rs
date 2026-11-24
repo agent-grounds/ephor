@@ -90,3 +90,66 @@ fn the_start_screen_is_the_setting_or_the_flag() {
     assert_eq!(start_home(&overview, &plain), Home::Overview);
     assert_eq!(start_home(&waiting, &flagged), Home::Overview);
 }
+
+/// A new matter is processed where it is shown, through the same calls the
+/// command makes (§FS-019-waiting.7.1, §FS-019-waiting.7.2,
+/// §FS-019-waiting.7.4): where nothing hands it over and the runtime's
+/// `triage` cannot be had, the row proposes `triage` and says it is not
+/// available; the processing screen says why; and a dismissal with a reason
+/// takes it out of New.
+#[test]
+fn a_new_matter_is_proposed_processed_or_dismissed_from_waiting() {
+    if isolated(
+        "feed::tui::waiting_app_tests::a_new_matter_is_proposed_processed_or_dismissed_from_waiting",
+    ) {
+        return;
+    }
+    stored("demo", "Durations read as seconds", Utc::now());
+    let config: StatusConfig =
+        serde_json::from_value(json!({ "projects": { "demo": { "providers": [] } } })).unwrap();
+    let mut app = App::load(&config, &crate::scope::Projects::every()).unwrap();
+    app.go_home_to(Home::Waiting);
+    app.freshen_waiting();
+    let (text, _) = drawn(&mut app);
+    assert!(text.contains("→ triage · not available"), "{text}");
+    assert!(text.contains("A process all"), "{text}");
+    let item = app.ctx.items().remove(0);
+
+    // Enter on the row opens the processing screen over it.
+    assert!(matches!(
+        app.waiting.handle_key(KeyCode::Enter),
+        Action::ProcessMatter { entry: None, .. }
+    ));
+    app.open_processing(item.clone(), None, false);
+    let Screen::Process(screen) = &mut app.screen else {
+        panic!("the processing screen opens");
+    };
+    // The screen says why it is not available: here, before any runtime,
+    // the project has no registry row to place work in.
+    let shown = screen.text();
+    assert!(
+        shown.contains("no entry hands this matter over, so the runtime's triage is proposed"),
+        "{shown}"
+    );
+    assert!(shown.contains("demo has no registry row"), "{shown}");
+    assert!(matches!(
+        screen.handle_key(KeyCode::Enter),
+        Action::SetMessage(_)
+    ));
+    app.back();
+    assert!(matches!(app.screen, Screen::Waiting));
+
+    // `x`, then a reason: the call `ephor work dismiss` makes. An empty one
+    // is refused and records nothing.
+    assert!(!app.ctx.dismiss(&item, "  ").ok);
+    let outcome = app.ctx.dismiss(&item, "a duplicate of #1");
+    assert!(outcome.ok, "{}", outcome.says);
+    app.processed();
+    app.freshen_waiting();
+    let (text, _) = drawn(&mut app);
+    assert!(
+        text.contains("ephor — waiting   0 on you · 0 new · 0 running"),
+        "{text}"
+    );
+    assert!(!text.contains("Durations read as seconds"), "{text}");
+}

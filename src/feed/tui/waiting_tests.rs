@@ -71,6 +71,14 @@ fn new_row(id: &str, title: &str) -> views::NewMatter {
         url: None,
         updated_at: Utc::now(),
         unread: true,
+        proposal: views::Proposal {
+            entry: "fix".to_string(),
+            kind: "agent",
+            description: "Fix it".to_string(),
+            gate: "ready",
+            unambiguous: true,
+            ..views::Proposal::default()
+        },
     }
 }
 
@@ -103,6 +111,8 @@ fn reading(
         new,
         held: Vec::new(),
         running: run,
+        queued: Vec::new(),
+        adopt: None,
         overview: views::Overview {
             matters: 143,
             unread: 12,
@@ -204,7 +214,8 @@ fn a_refusal_stands_in_for_the_sections_the_runtime_fills() {
 
 /// Enter does what the row is (§FS-019-waiting.4): a gate opens its review,
 /// a gate no matter on the feed is about says so, a poll with no matter
-/// reads its plan, a new matter opens as the overview opens it, and a run
+/// reads its plan, a new matter is processed and `l` opens it as the overview
+/// opens it (§FS-019-waiting.7.1), and a run
 /// attaches — or says it left nothing to attach to. Esc on the floor does
 /// nothing, and q leaves.
 #[test]
@@ -251,11 +262,23 @@ fn enter_does_what_the_row_is() {
     }
     screen.handle_key(KeyCode::Char('j'));
     match screen.handle_key(KeyCode::Enter) {
+        Action::ProcessMatter {
+            item,
+            entry,
+            choosing,
+        } => {
+            assert_eq!(item.id, fresh.id);
+            assert_eq!(entry, None, "the proposal, not a pick");
+            assert!(!choosing);
+        }
+        _ => panic!("a new matter is processed (§FS-019-waiting.7.1)"),
+    }
+    match screen.handle_key(KeyCode::Char('l')) {
         Action::OpenThread { item, or_url } => {
             assert_eq!(item.id, fresh.id);
             assert!(or_url);
         }
-        _ => panic!("a new matter opens as the overview opens it"),
+        _ => panic!("l opens a new matter as the overview opens it"),
     }
     screen.handle_key(KeyCode::Char('j'));
     match screen.handle_key(KeyCode::Enter) {
@@ -359,4 +382,121 @@ fn a_screen_not_yet_read_says_so_rather_than_nothing() {
     screen.replace(reading(Vec::new(), Vec::new(), Vec::new()), BTreeMap::new());
     assert!(screen.is_read());
     assert!(screen.text().contains(crate::api::waiting::QUIET));
+}
+
+/// A new row says what processing it would do; `a` picks another workflow,
+/// `x` asks why it needs none, and `A` previews every unambiguous row
+/// (§FS-019-waiting.7.1, §FS-019-waiting.7.3, §FS-019-waiting.7.4,
+/// §FS-019-waiting.7.5). Off a new row the three keys do nothing of the kind.
+#[test]
+fn a_new_row_proposes_and_its_keys_process_it() {
+    let fresh = matter("forge:widget/31", "transition refuses a valid Prior");
+    let items = BTreeMap::from([(fresh.id.clone(), fresh.clone())]);
+    let mut wants = new_row("forge:widget/32", "Wants an input");
+    wants.proposal = views::Proposal {
+        entry: "review-change".to_string(),
+        kind: "workflow",
+        gate: "ready",
+        refusal: Some("it still wants change_ref".to_string()),
+        ..views::Proposal::default()
+    };
+    let mut screen = WaitingScreen::new(
+        reading(
+            vec![gate("widget-7.ask-1", None)],
+            vec![
+                new_row("forge:widget/31", "transition refuses a valid Prior"),
+                wants,
+            ],
+            Vec::new(),
+        ),
+        items,
+    );
+    let text = screen.text();
+    assert!(text.contains("→ fix"), "{text}");
+    assert!(
+        text.contains("→ review-change · it still wants change_ref"),
+        "{text}"
+    );
+    assert!(
+        screen.footer().contains("A process all"),
+        "{}",
+        screen.footer()
+    );
+
+    // On the gate, a and x are not processing.
+    assert!(!matches!(
+        screen.handle_key(KeyCode::Char('x')),
+        Action::DismissMatter(_)
+    ));
+    screen.handle_key(KeyCode::Char('j'));
+    match screen.handle_key(KeyCode::Char('a')) {
+        Action::ProcessMatter { item, choosing, .. } => {
+            assert_eq!(item.id, fresh.id);
+            assert!(choosing, "a opens the chooser");
+        }
+        _ => panic!("a picks another workflow"),
+    }
+    match screen.handle_key(KeyCode::Char('x')) {
+        Action::DismissMatter(item) => assert_eq!(item.id, fresh.id),
+        _ => panic!("x records that it needs none"),
+    }
+    assert!(matches!(
+        screen.handle_key(KeyCode::Char('A')),
+        Action::PreviewProcessAll
+    ));
+    // A row whose matter left the feed since the reading says so.
+    screen.handle_key(KeyCode::Char('j'));
+    match screen.handle_key(KeyCode::Enter) {
+        Action::SetMessage(says) => assert_eq!(says, super::LEFT_THE_FEED),
+        _ => panic!("a row with no matter says so"),
+    }
+}
+
+/// With no new row, `A` says there is nothing to process rather than opening
+/// an empty preview (§FS-019-waiting.7.5).
+#[test]
+fn process_all_with_nothing_new_says_so() {
+    let mut screen = WaitingScreen::new(
+        reading(vec![gate("widget-7.ask-1", None)], Vec::new(), Vec::new()),
+        BTreeMap::new(),
+    );
+    match screen.handle_key(KeyCode::Char('A')) {
+        Action::SetMessage(says) => assert!(says.contains("Nothing new"), "{says}"),
+        _ => panic!("nothing to preview"),
+    }
+}
+
+/// Work laid and waiting for a slot is one line under Running, with the
+/// admission's reason; a proposal confirmed often enough names the setting
+/// that would do it without the reader, in the footer (§FS-019-waiting.7.6,
+/// §FS-019-waiting.7.7).
+#[test]
+fn queued_work_and_the_adopt_sentence_are_shown() {
+    let mut view = reading(Vec::new(), Vec::new(), vec![running(None)]);
+    view.queued = vec![views::QueuedMatter {
+        id: "forge:widget/44".to_string(),
+        project: "widget".to_string(),
+        title: "Queued".to_string(),
+        at: Utc::now(),
+        says: Some("global work.max_active 1 is full".to_string()),
+    }];
+    view.adopt = Some(
+        "fix-gate confirmed for 3 pull requests · \"autorun\": true on fix-gate would do it \
+         without you"
+            .to_string(),
+    );
+    let screen = WaitingScreen::new(view, BTreeMap::new());
+    let text = screen.text();
+    assert!(
+        text.contains("queued 1 · widget/44 · global work.max_active 1 is full"),
+        "{text}"
+    );
+    assert!(text.find("RUNNING · 1") < text.find("queued 1"), "{text}");
+    assert!(
+        screen
+            .footer()
+            .starts_with(" fix-gate confirmed for 3 pull requests"),
+        "{}",
+        screen.footer()
+    );
 }

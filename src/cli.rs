@@ -35,8 +35,8 @@ pub struct Cli {
     /// word that does it (§FS-011-command-line.10). Declared here beside the
     /// selectors for their reason: a flag each verb had to remember is a flag
     /// the next mutating verb forgets. It is taken by `work dispatch`, `work
-    /// sync`, `work run`, `clean`, and `rebase` where a selector makes it
-    /// sweep, and refused by name everywhere else.
+    /// sync`, `work run`, `work process`, `clean`, and `rebase` where a
+    /// selector makes it sweep, and refused by name everywhere else.
     #[arg(long, global = true)]
     pub act: bool,
 
@@ -268,6 +268,14 @@ pub enum WorkCommand {
     /// Lay one of the runtime's workflows down about an item: a plan of its
     /// own, beside the item's, ready for the board to run.
     Lay(WorkLayArgs),
+    /// Process a new matter, as the Waiting screen does: lay the work it is
+    /// proposed (or the entry you name), record it against the matter, and
+    /// start it where a slot allows. With --all, every new matter whose
+    /// proposal is unambiguous.
+    Process(WorkProcessArgs),
+    /// Record that a matter needs no work, and why. It leaves the Waiting
+    /// screen until the matter moves.
+    Dismiss(WorkDismissArgs),
     /// Drop ledger entries. Ephor deletes no plan; the report says which of
     /// each entry's plans stay on disk and which were already gone.
     Forget(WorkForgetArgs),
@@ -474,6 +482,60 @@ pub struct WorkLayArgs {
     /// without writing the plan.
     #[arg(long)]
     pub dry_run: bool,
+
+    /// Emit the outcome as JSON.
+    #[arg(long)]
+    pub json: bool,
+}
+
+/// `ephor work process` (§FS-019-waiting.7.2, §FS-019-waiting.7.5).
+#[derive(Args, Debug)]
+#[command(group(clap::ArgGroup::new("which").required(true).args(["item", "all"])))]
+pub struct WorkProcessArgs {
+    /// The new matter, by its feed id.
+    #[arg(long)]
+    pub item: Option<String>,
+
+    /// Every new matter whose proposal is unambiguous, in the Waiting
+    /// screen's order. Above one project it reports unless --act is given.
+    #[arg(long, conflicts_with_all = ["entry", "set"])]
+    pub all: bool,
+
+    /// With --all, restrict to one project. May be passed multiple times.
+    #[arg(long, requires = "all")]
+    pub project: Vec<String>,
+
+    /// Process it with this entry instead of the proposal: a menu entry by
+    /// the name `ephor actions` prints, or a workflow's own id.
+    #[arg(long)]
+    pub entry: Option<String>,
+
+    /// Answer one of the workflow's inputs: `--set <input>=<value>`.
+    /// Repeatable.
+    #[arg(long = "set", value_name = "INPUT=VALUE")]
+    pub set: Vec<String>,
+
+    /// Report what would be laid, and what would answer every input, without
+    /// writing anything.
+    #[arg(long)]
+    pub dry_run: bool,
+
+    /// Emit the outcome as JSON.
+    #[arg(long)]
+    pub json: bool,
+}
+
+/// `ephor work dismiss` (§FS-019-waiting.7.4).
+#[derive(Args, Debug)]
+pub struct WorkDismissArgs {
+    /// The matter, by its feed id.
+    #[arg(long)]
+    pub item: String,
+
+    /// Why it needs no work. Required: a decision nobody can read back is not
+    /// a record of one.
+    #[arg(long)]
+    pub reason: String,
 
     /// Emit the outcome as JSON.
     #[arg(long)]

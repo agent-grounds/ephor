@@ -83,6 +83,18 @@ pub fn work(args: &WorkArgs, scope: &Projects, act: crate::scope::Act) -> Result
         }
         WorkCommand::Workflows(workflows) => list_workflows(&config, workflows),
         WorkCommand::Lay(lay) => lay_workflow(&config, lay),
+        WorkCommand::Process(process) => {
+            let projects = scope.narrow(&process.project, watched())?;
+            let gate = gate(
+                &config,
+                "work process",
+                &projects,
+                process.item.is_some(),
+                act,
+            );
+            crate::commands::process(&config, process, &projects, &gate)
+        }
+        WorkCommand::Dismiss(dismiss) => crate::commands::dismiss(&config, dismiss),
         WorkCommand::Forget(forget) => forget_work(&config, forget),
         WorkCommand::States(states) => work_states(&config, states),
     }

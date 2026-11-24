@@ -4,7 +4,8 @@
 //! `ephor waiting` prints (§FS-019-waiting.6). The rows are built by the shell
 //! off the draw path; a draw only renders what was already decided, and every
 //! key here either moves the cursor or hands the shell a move another screen
-//! already makes (§FS-019-waiting.4).
+//! or `ephor work process` already makes (§FS-019-waiting.4,
+//! §FS-019-waiting.7).
 
 use std::collections::BTreeMap;
 use std::path::PathBuf;
@@ -25,6 +26,10 @@ use super::Action;
 /// (§FS-019-waiting.4).
 pub(crate) const NO_REVIEW: &str =
     "No matter on the feed is about this plan, so it cannot be reviewed by matter — e reads the plan";
+
+/// What a key on a new row says where its matter left the feed since the
+/// reading.
+pub(crate) const LEFT_THE_FEED: &str = "That matter has left the feed";
 
 /// What `Enter` on a running row says where the run left no id beside its lock
 /// (§FS-019-waiting.4).
@@ -80,6 +85,8 @@ impl WaitingScreen {
                 new: Vec::new(),
                 held: Vec::new(),
                 running: Vec::new(),
+                queued: Vec::new(),
+                adopt: None,
                 overview: views::Overview::default(),
             },
             BTreeMap::new(),
@@ -107,8 +114,16 @@ impl WaitingScreen {
         if !self.read {
             return " O overview  ; operations  $ burn  q quit".to_string();
         }
+        // The setting a repeated confirmation would make automatic leads,
+        // and changes nothing (§FS-019-waiting.7.7).
+        let adopt = self
+            .view
+            .adopt
+            .as_deref()
+            .map(|adopt| format!(" {adopt}  ·"))
+            .unwrap_or_default();
         format!(
-            " {}   O overview  e plan  ; operations  $ burn  r refresh  q quit",
+            "{adopt} {}   O overview  e plan  A process all  ; operations  $ burn  r refresh  q quit",
             self.view.overview_line()
         )
     }
@@ -197,10 +212,45 @@ impl WaitingScreen {
                 self.scroll = self.scroll.saturating_sub(self.viewport.max(1));
                 Action::None
             }
-            KeyCode::Enter | KeyCode::Char('l') => self.open(),
+            // On a new row `Enter` processes it and `l` opens the matter
+            // itself; everywhere else they are the same key
+            // (§FS-019-waiting.4, §FS-019-waiting.7.2).
+            KeyCode::Enter => match self.selected_at() {
+                Some(At::New(index)) => self.process(index, false),
+                _ => self.open(),
+            },
+            KeyCode::Char('l') => self.open(),
+            KeyCode::Char('a') => match self.selected_at() {
+                Some(At::New(index)) => self.process(index, true),
+                _ => Action::None,
+            },
+            KeyCode::Char('x') => match self.selected_at() {
+                Some(At::New(index)) => match self.items.get(&self.view.new[index].id) {
+                    Some(item) => Action::DismissMatter(item.clone()),
+                    None => Action::SetMessage(LEFT_THE_FEED.to_string()),
+                },
+                _ => Action::None,
+            },
+            KeyCode::Char('A') => match self.view.new.is_empty() {
+                true => Action::SetMessage("Nothing new to process".to_string()),
+                false => Action::PreviewProcessAll,
+            },
             KeyCode::Char('e') => self.plan(),
             KeyCode::Char('r') => Action::Refresh,
             _ => Action::None,
+        }
+    }
+
+    /// `Enter` or `a` on a new row: its processing screen, with `a`'s list
+    /// open where `choosing` (§FS-019-waiting.7.2, §FS-019-waiting.7.3).
+    fn process(&self, index: usize, choosing: bool) -> Action {
+        match self.items.get(&self.view.new[index].id) {
+            Some(item) => Action::ProcessMatter {
+                item: item.clone(),
+                entry: None,
+                choosing,
+            },
+            None => Action::SetMessage(LEFT_THE_FEED.to_string()),
         }
     }
 
@@ -231,7 +281,7 @@ impl WaitingScreen {
                     item: item.clone(),
                     or_url: true,
                 },
-                None => Action::SetMessage("That matter has left the feed".to_string()),
+                None => Action::SetMessage(LEFT_THE_FEED.to_string()),
             },
             Some(At::Running(index)) => {
                 let row = &self.view.running[index];
@@ -346,7 +396,12 @@ impl WaitingScreen {
         }
         lines.push(Line::from(""));
 
-        section(&mut lines, "NEW", view.new.len(), "enter open");
+        section(
+            &mut lines,
+            "NEW",
+            view.new.len(),
+            "enter process  l open  a another  x needs none  A all",
+        );
         if view.new.is_empty() {
             lines.push(Line::from(Span::styled("    nothing".to_string(), dim)));
         }
@@ -366,6 +421,11 @@ impl WaitingScreen {
                 Span::styled(format!("{:<6} ", row.kind.label()), dim),
                 Span::styled(format!("{:<10} ", row.project), dim),
                 Span::styled(row.title.clone(), strong(at)),
+                // The rhei it would be assigned (§FS-019-waiting.7.1).
+                Span::styled(
+                    format!("   {}", row.proposal.says()),
+                    proposal(&row.proposal),
+                ),
             ]));
         }
         // Held matters once, apart, offered nothing (§FS-019-waiting.1.2).
@@ -423,6 +483,13 @@ impl WaitingScreen {
                 Span::styled(holding, dim),
             ]));
         }
+        // What processing laid that waits for a slot (§FS-019-waiting.7.6).
+        if let Some(queued) = view.queued_line() {
+            lines.push(Line::from(Span::styled(
+                format!("    {queued}"),
+                Style::default().fg(Color::Yellow),
+            )));
+        }
         (lines, offsets)
     }
 
@@ -469,6 +536,15 @@ impl WaitingScreen {
             })
             .collect::<Vec<_>>()
             .join("\n")
+    }
+}
+
+/// A proposal ready to process is drawn as quietly as the row's other facts;
+/// one that is not says so in colour (§FS-019-waiting.7.1).
+fn proposal(proposal: &views::Proposal) -> Style {
+    match proposal.unambiguous {
+        true => Style::default().fg(Color::Cyan),
+        false => Style::default().fg(Color::Yellow),
     }
 }
 
