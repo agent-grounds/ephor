@@ -19,8 +19,12 @@ refused, and the refusal names the topics there are. Today there are two:
 `gate` ([§FS-020-guide.2](FS-020-guide.md#2-gate-how-a-workflow-prepares-the-question-its-gate-asks)) and `matter` ([§FS-020-guide.3](FS-020-guide.md#3-matter-what-makes-a-matter-new-and-how-a-workflow-becomes-its-proposal)).
 
 The text is written for an agent to read: short, plain, no decoration, and a
-topic fits one screen. It reads the cache, the disk and the bound runtime, as
-every reading does; it fetches nothing from a forge and writes nothing.
+topic's explanation fits one screen of 80 columns and 48 lines. A topic that
+ends with a worked example puts it after the explanation, and the example is
+as long as a complete one has to be: it is the part a reader copies rather
+than reads, and one cut down to fit a screen would not run. It reads
+the cache, the disk and the bound runtime, as every reading does; it fetches
+nothing from a forge and writes nothing.
 
 ## 2. `gate`: how a workflow prepares the question its gate asks
 
@@ -35,7 +39,9 @@ every reading does; it fetches nothing from a forge and writes nothing.
   text, each required unless it says otherwise;
 - how routes turn the answers into the destination, which is the runtime's to
   decide ([§DA-012-the-runtime-routes-a-gate-answer](../decisions/architectural/DA-012-the-runtime-routes-a-gate-answer.md#da-012-the-runtime-routes-a-gate-answer-the-runtime-turns-a-gates-answers-into-its-move-and-ephor-only-sends-them));
-- where the answer is recorded; and
+- where the answer is recorded, every path relative to the ticket's
+  execution root as the runtime defines it, which for a plan in a directory
+  of its own is that directory and not the work root above it; and
 - how the state the answer moves the ticket into reads it.
 
 It ends with one complete worked example, a machine and the request its

@@ -132,7 +132,12 @@ is ([§AR-005-capabilities.4](AR-005-capabilities.md#4-a-runtimes-own-features-a
 opaque, a route's condition the runtime's words and never parsed here — and
 the runner's verdict, every field a refusal can leave unknown read as
 optional, the verdict read from standard output even when the runner exits
-non-zero because that is where it puts it. The answer document is passed
+non-zero because that is where it puts it, and kept whole so the command line
+can print every field the runner gave. Every document the runner prints for
+these verbs — brief, verdict, listing, schemas — carries its version, and one
+in a version this binding does not read is refused as unreadable rather than
+read by guesswork: a brief so refused leaves its gate unbriefed, with that
+sentence. The answer document is passed
 through unchanged, written to a private file under the system's temporary
 directory that is removed once the runner has answered, so the plan's own
 directory holds only what the runner records. The same summons carry the
@@ -141,7 +146,9 @@ feature, not a new probe. Two followed: `work.gate.list`, the runner's
 listing of the gates under one work root (`rhei gate list <root> --json`),
 asked once per work root that holds a gate row and read for each gate's title,
 when it began waiting and what it holds, matched to the enumeration's rows by
-ticket and state and never adding one ([§FS-019-waiting.1.1.1](../functional-spec/FS-019-waiting.md#111-a-runtime-that-lists-its-gates-names-each-one-says-how-long-it-has-waited-and-what-it-holds)); and
+ticket and state and never adding one ([§FS-019-waiting.1.1.1](../functional-spec/FS-019-waiting.md#111-a-runtime-that-lists-its-gates-names-each-one-says-how-long-it-has-waited-and-what-it-holds)), and
+asked by a review too, once per plan that holds a briefed gate, for what each
+of its gates holds ([§FS-005-dispatch.9.3](../functional-spec/FS-005-dispatch.md#93-a-prepared-gate-is-answered-in-its-own-form)); and
 `work.gate.schema`, the runner's own request and answer schemas, which the
 guide prints as the runner gave them and never keeps ([§FS-020-guide.4](../functional-spec/FS-020-guide.md#4---json-the-topics-the-text-and-the-runtimes-own-schemas)). The
 guide's `gate` topic is this module's text too, because it explains the plan

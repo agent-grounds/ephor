@@ -3741,8 +3741,11 @@ Waiting screen opens that form directly; the review marks such a gate
 own, choosing a transition there opens the form rather than asking for a reason.
 
 The form shows the gate's title, its state and how long it has waited, the
-matter, the ticket and its visit, the summary, and the file to read first with
-its line position; `f` lists the other files. Under **Your answer** each
+matter, the ticket and its visit, how many tasks the gate holds where the
+runtime lists its gates, the summary, and the file to read first with its line
+position; `f` lists the brief's attachments and then the other files ephor
+finds for that ticket, the plan and machine it shares with another gate
+included. Under **Your answer** each
 question is marked `✓` answered, `?` required and unanswered, or `·` optional,
 with a count of how many are answered. `tab` moves the keys between the file
 and the form, `j`/`k` move, `space` (or `Enter`) chooses: one option of a
@@ -3753,7 +3756,8 @@ answer back.
 
 `s` submits, and asks the runtime first: its dry run says where the ticket
 will move, by which route, and where the answer will be recorded, and that is
-the confirmation. `Enter` there sends the same answer for real; `Esc` goes back
+the confirmation, with how many held tasks the move releases where the count
+is known. `Enter` there sends the same answer for real; `Esc` goes back
 to the form. Ephor never decides where an answer leads and never decides
 whether the form is complete — what the runtime refuses stays on the form,
 beside the question it names. A field the runtime does not report is shown as
@@ -3772,7 +3776,9 @@ ephor work gate answer --item <matter-id> --ticket <qualified-ticket> \
 The answer document is the runtime's: its `version`, the brief's `digest`
 copied unchanged as `request_digest`, and the answers by question id, the way
 `ephor work review --json` lists them under each gate's `brief`. The command
-exits non-zero when the runtime refuses, and says why. `ephor work transition`
+exits non-zero when the runtime refuses, and says why. `--json` prints the
+runtime's verdict whole, under its own field names, with `item` beside it and,
+on a refusal, `says`. `ephor work transition`
 refuses at a gate whose workflow asks required questions of its own and names
 this command instead. Where the runtime prepares no briefs, the review carries
 none, the Waiting screen opens the review as before, and `ephor work gate
