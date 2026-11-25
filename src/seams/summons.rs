@@ -227,6 +227,11 @@ pub enum Mode {
     Aside,
     /// Output is captured and the command is given this long to finish.
     Captured(Duration),
+    /// Captured, for a caller that answers by the exit code and the answer
+    /// file alone and reads the output for nothing: a byte of it that is not
+    /// UTF-8 is replaced rather than costing the answer (§AR-002-summons.3).
+    /// A monitor's command is one (§FS-021-monitors.5.5).
+    Drained(Duration),
 }
 
 /// How a summons ended, by its exit code alone (§FS-006-project-interface.3).
@@ -388,8 +393,9 @@ fn execute(
             None,
             None,
         ),
-        Mode::Captured(timeout) => {
-            let (status, stdout, stderr) = captured(command, &summons.verb, timeout)?;
+        Mode::Captured(timeout) | Mode::Drained(timeout) => {
+            let lenient = matches!(mode, Mode::Drained(_));
+            let (status, stdout, stderr) = captured(command, &summons.verb, timeout, lenient)?;
             (status, Some(stdout), Some(stderr))
         }
     };
@@ -611,6 +617,17 @@ mod tests {
         assert_eq!(answer.exit_code, Some(0));
         assert_eq!(answer.output.as_deref(), Some("built 3 things\n"));
         assert!(answer.answer.is_none());
+    }
+
+    /// §AR-002-summons.3: drained, a byte that is not UTF-8 in what a
+    /// command printed never costs the answer its exit code.
+    #[test]
+    fn drained_output_that_is_not_utf8_still_answers() {
+        let tmp = tempfile::tempdir().unwrap();
+        let summons = Summons::new("check", "printf 'caf\\351\\n'; printf '\\377' >&2");
+        let answer = run(&summons, &site(tmp.path()), Mode::Drained(SECOND)).unwrap();
+        assert_eq!(answer.outcome, Outcome::Done);
+        assert_eq!(answer.output.as_deref(), Some("caf\u{fffd}\n"));
     }
 
     #[test]

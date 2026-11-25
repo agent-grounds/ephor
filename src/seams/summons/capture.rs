@@ -7,10 +7,14 @@ use std::time::{Duration, Instant};
 
 use super::{spawn, EphorError, ExecutionError};
 
+/// Runs `command` with its output captured, all of it within `timeout`.
+/// Where `lenient`, a byte of output that is not UTF-8 is read as the
+/// replacement character; otherwise it fails the capture.
 pub(super) fn captured(
     mut command: Command,
     verb: &str,
     timeout: Duration,
+    lenient: bool,
 ) -> Result<(ExitStatus, String, String), ExecutionError> {
     command
         .stdin(Stdio::null())
@@ -29,7 +33,7 @@ pub(super) fn captured(
             "{verb}: failed to run: {error}"
         )))
     })?;
-    let result = collect(&mut child, verb, timeout, deadline);
+    let result = collect(&mut child, verb, timeout, deadline, lenient);
     if result.is_err() {
         #[cfg(unix)]
         // SAFETY: process_group(0) gave this child a group identified by its
@@ -48,6 +52,7 @@ fn collect(
     verb: &str,
     timeout: Duration,
     deadline: Instant,
+    lenient: bool,
 ) -> Result<(ExitStatus, String, String), ExecutionError> {
     let failed = |error| {
         ExecutionError::AfterSpawn(EphorError::Command(format!(
@@ -81,8 +86,8 @@ fn collect(
             if stdout.eof && stderr.eof {
                 return Ok((
                     status,
-                    stdout.text().map_err(failed)?,
-                    stderr.text().map_err(failed)?,
+                    stdout.text(lenient).map_err(failed)?,
+                    stderr.text(lenient).map_err(failed)?,
                 ));
             }
         }
@@ -138,7 +143,10 @@ impl<P: Pipe> Capture<P> {
         }
     }
 
-    fn text(self) -> io::Result<String> {
+    fn text(self, lenient: bool) -> io::Result<String> {
+        if lenient {
+            return Ok(String::from_utf8_lossy(&self.bytes).into_owned());
+        }
         String::from_utf8(self.bytes)
             .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))
     }
