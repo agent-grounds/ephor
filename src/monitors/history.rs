@@ -27,12 +27,16 @@ pub enum Line {
         health: Option<Health>,
     },
     /// One reading, `{t, v, health}`: `t` when it was measured, `health` its
-    /// own before the hold, and none for a KPI.
+    /// own before the hold, and none for a KPI. One read out of cadence says
+    /// so, `out_of_cadence: true`, which the detail view notes
+    /// (§FS-021-monitors.19).
     Reading {
         t: DateTime<Utc>,
         v: Value,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         health: Option<Health>,
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        out_of_cadence: bool,
     },
     /// An unreadable read, `{t, health: "unknown"}`, `t` when it was read
     /// (§FS-021-monitors.9.2).

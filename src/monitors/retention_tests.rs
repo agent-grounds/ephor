@@ -6,6 +6,7 @@ fn reading(t: DateTime<Utc>, v: f64, health: Health) -> Line {
         t,
         v: Value::Number(v),
         health: Some(health),
+        out_of_cadence: false,
     }
 }
 
@@ -129,6 +130,7 @@ fn a_boolean_or_a_level_has_no_mean_and_keeps_its_kinds_order() {
         t,
         v: Value::Boolean(v),
         health: None,
+        out_of_cadence: false,
     };
     let old = vec![
         boolean(hour, true),
@@ -151,6 +153,7 @@ fn a_boolean_or_a_level_has_no_mean_and_keeps_its_kinds_order() {
         t,
         v: Value::Level(v.into()),
         health: Some(Health::Ok),
+        out_of_cadence: false,
     };
     let old = vec![
         level(hour, "degraded"),
@@ -303,6 +306,9 @@ fn an_episode_is_kept_as_long_as_the_history_it_falls_in() {
         how: Ending::Recovered {
             value: "81.0%".into(),
         },
+        moved: None,
+        cause: None,
+        shown: Default::default(),
     };
     let inside = episode(now - TimeDelta::days(700));
     let outside = episode(now - TimeDelta::days(760));

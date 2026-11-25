@@ -7,16 +7,18 @@ use crate::monitors::model::Condition;
 use crate::monitors::test_zone::utc;
 use crate::monitors::words::{self, Terms};
 
-fn healthy(json: serde_json::Value) -> Judge {
+pub(super) fn healthy(json: serde_json::Value) -> Judge {
     Judge::Condition(serde_json::from_value::<Condition>(json).unwrap())
 }
 
-fn watch(judge: Judge, drop_after: u32, recover_after: u32) -> Watch<'static> {
+pub(super) fn watch(judge: Judge, drop_after: u32, recover_after: u32) -> Watch<'static> {
     let terms = Terms {
         unit: Some("%"),
         ..Terms::default()
     };
     Watch {
+        title: "Line coverage",
+        unit: Some("%"),
         healthy_words: words::healthy(&judge, &terms),
         judge,
         kind: Some(Kind::Number),
@@ -27,28 +29,28 @@ fn watch(judge: Judge, drop_after: u32, recover_after: u32) -> Watch<'static> {
     }
 }
 
-fn coverage(drop_after: u32, recover_after: u32) -> Watch<'static> {
+pub(super) fn coverage(drop_after: u32, recover_after: u32) -> Watch<'static> {
     watch(healthy(json!({"min": 80})), drop_after, recover_after)
 }
 
 /// A monitor first seen at 12:00, read every ten minutes from then on.
-struct Run {
-    record: Record,
-    clock: DateTime<Utc>,
+pub(super) struct Run {
+    pub(super) record: Record,
+    pub(super) clock: DateTime<Utc>,
 }
 
 impl Run {
-    fn new() -> Run {
+    pub(super) fn new() -> Run {
         Run {
             record: Record::new(utc("2026-11-25T12:00:00Z")),
             clock: utc("2026-11-25T12:00:00Z"),
         }
     }
 
-    fn found(
+    pub(super) fn found(
         &mut self,
         watch: &Watch,
-        found: Found,
+        found: Finding,
         in_cadence: bool,
         after_work: Vec<EndedWork>,
     ) -> Vec<Effect> {
@@ -69,23 +71,23 @@ impl Run {
         effects
     }
 
-    fn value(&mut self, watch: &Watch, value: Value) -> Vec<Effect> {
+    pub(super) fn value(&mut self, watch: &Watch, value: Value) -> Vec<Effect> {
         self.found(
             watch,
-            Found::Reading(reading(watch, value, self.clock)),
+            Finding::Reading(reading(watch, value, self.clock)),
             true,
             Vec::new(),
         )
     }
 
-    fn number(&mut self, watch: &Watch, v: f64) -> Vec<Effect> {
+    pub(super) fn number(&mut self, watch: &Watch, v: f64) -> Vec<Effect> {
         self.value(watch, Value::Number(v))
     }
 
-    fn unreadable(&mut self, watch: &Watch) -> Vec<Effect> {
+    pub(super) fn unreadable(&mut self, watch: &Watch) -> Vec<Effect> {
         self.found(
             watch,
-            Found::Unreadable {
+            Finding::Unreadable {
                 why: "exit 2".into(),
             },
             true,
@@ -93,7 +95,7 @@ impl Run {
         )
     }
 
-    fn look(&mut self, watch: &Watch, at: DateTime<Utc>) -> Vec<Effect> {
+    pub(super) fn look(&mut self, watch: &Watch, at: DateTime<Utc>) -> Vec<Effect> {
         self.clock = at;
         step(
             &mut self.record,
@@ -105,18 +107,20 @@ impl Run {
     }
 }
 
-fn reading(watch: &Watch, value: Value, at: DateTime<Utc>) -> Reading {
+pub(super) fn reading(watch: &Watch, value: Value, at: DateTime<Utc>) -> Reading {
     Reading {
         said: words::value(&value, Some("%"), None),
         band: condition::band(&watch.judge, None, &value, None, watch.levels),
         value,
+        of: None,
         measured: at,
         skew: None,
         sample: None,
+        mark: None,
     }
 }
 
-fn opened(effects: &[Effect], sort: Sort) -> Option<DateTime<Utc>> {
+pub(super) fn opened(effects: &[Effect], sort: Sort) -> Option<DateTime<Utc>> {
     effects.iter().find_map(|effect| match effect {
         Effect::Opened {
             sort: opened,
@@ -126,7 +130,7 @@ fn opened(effects: &[Effect], sort: Sort) -> Option<DateTime<Utc>> {
     })
 }
 
-fn ended(effects: &[Effect], sort: Sort) -> Option<Ending> {
+pub(super) fn ended(effects: &[Effect], sort: Sort) -> Option<Ending> {
     effects.iter().find_map(|effect| match effect {
         Effect::Ended {
             sort: ended,
@@ -137,7 +141,7 @@ fn ended(effects: &[Effect], sort: Sort) -> Option<Ending> {
     })
 }
 
-fn moved(effects: &[Effect]) -> Vec<String> {
+pub(super) fn moved(effects: &[Effect]) -> Vec<String> {
     effects
         .iter()
         .filter_map(|effect| match effect {
@@ -162,7 +166,8 @@ fn drop_after_1_opens_at_the_first_failing_reading() {
     assert!(effects.contains(&Effect::Record(Line::Reading {
         t: utc("2026-11-25T12:10:00Z"),
         v: Value::Number(79.2),
-        health: Some(Health::Down)
+        health: Some(Health::Down),
+        out_of_cadence: false,
     })));
 }
 
@@ -249,7 +254,7 @@ fn warn_and_ok_follow_the_latest_reading_with_no_hold() {
     ] {
         let mut reading = reading(&watch, Value::Number(v), run.clock);
         reading.band = band(v);
-        run.found(&watch, Found::Reading(reading), true, Vec::new());
+        run.found(&watch, Finding::Reading(reading), true, Vec::new());
         assert_eq!(run.record.hold.health, Some(health));
     }
 }
@@ -436,7 +441,8 @@ fn a_monitor_that_turns_kpi_ends_its_drop_and_opens_nothing() {
     assert!(effects.contains(&Effect::Record(Line::Reading {
         t: utc("2026-11-25T12:10:00Z"),
         v: Value::Number(10.0),
-        health: None
+        health: None,
+        out_of_cadence: false,
     })));
     for _ in 0..8 {
         assert!(opened(&run.unreadable(&kpi), Sort::Unknown).is_none());
@@ -480,7 +486,7 @@ fn still_down_after_its_work_ended_moves_once_per_work() {
     };
     let failing = |run: &mut Run, ended| {
         let reading = reading(&watch, Value::Number(71.0), run.clock);
-        run.found(&watch, Found::Reading(reading), false, ended)
+        run.found(&watch, Finding::Reading(reading), false, ended)
     };
     let next_slot = run.record.schedule.next_slot;
     assert_eq!(
@@ -494,10 +500,10 @@ fn still_down_after_its_work_ended_moves_once_per_work() {
         vec!["still down after its work ended"]
     );
     let passing = reading(&watch, Value::Number(90.0), run.clock);
-    assert!(moved(&run.found(&watch, Found::Reading(passing), false, work("w3"))).is_empty());
+    assert!(moved(&run.found(&watch, Finding::Reading(passing), false, work("w3"))).is_empty());
     let unread = run.found(
         &watch,
-        Found::Unreadable { why: "x".into() },
+        Finding::Unreadable { why: "x".into() },
         false,
         work("w4"),
     );
@@ -522,12 +528,12 @@ fn still_unknown_after_its_work_ended_names_the_cause() {
     }];
     let effects = run.found(
         &watch,
-        Found::Stale { measured: None },
+        Finding::Stale { measured: None },
         false,
         ended.clone(),
     );
     assert_eq!(moved(&effects), vec!["still stale after its work ended"]);
-    assert!(moved(&run.found(&watch, Found::Parked, false, ended)).is_empty());
+    assert!(moved(&run.found(&watch, Finding::Parked, false, ended)).is_empty());
 }
 
 #[test]
@@ -542,7 +548,7 @@ fn what_a_read_records_and_whether_it_moves_the_schedule() {
     // Out of cadence: counts, is appended, does not move the schedule.
     let out = run.found(
         &watch,
-        Found::Reading(reading(&watch, Value::Number(86.0), run.clock)),
+        Finding::Reading(reading(&watch, Value::Number(86.0), run.clock)),
         false,
         vec![],
     );
@@ -553,7 +559,7 @@ fn what_a_read_records_and_whether_it_moves_the_schedule() {
     );
     assert_eq!(run.record.held_from, Some(utc("2026-11-25T12:10:00Z")));
     // Stale: moves the schedule only.
-    let stale = run.found(&watch, Found::Stale { measured: None }, true, vec![]);
+    let stale = run.found(&watch, Finding::Stale { measured: None }, true, vec![]);
     assert!(stale.is_empty());
     assert_eq!(
         run.record.schedule.next_slot,
@@ -561,7 +567,7 @@ fn what_a_read_records_and_whether_it_moves_the_schedule() {
     );
     assert_eq!(run.record.held_from, Some(utc("2026-11-25T12:10:00Z")));
     // Parked: the slot passes and parked-since is set.
-    assert!(run.found(&watch, Found::Parked, true, vec![]).is_empty());
+    assert!(run.found(&watch, Finding::Parked, true, vec![]).is_empty());
     assert_eq!(
         run.record.schedule.parked_since,
         Some(utc("2026-11-25T12:30:00Z"))
@@ -591,7 +597,7 @@ fn a_monitor_first_read_after_it_was_first_seen_holds_from_when_it_was_seen() {
             let read = Read {
                 at: utc(at),
                 in_cadence: true,
-                found: Found::Unreadable {
+                found: Finding::Unreadable {
                     why: "exit 2".into(),
                 },
                 after_work: Vec::new(),

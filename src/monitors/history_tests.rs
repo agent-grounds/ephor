@@ -15,7 +15,8 @@ fn each_line_reads_and_writes_its_shape() {
         Line::Reading {
             t: utc("2026-11-25T06:00:00Z"),
             v: Value::Number(81.0),
-            health: Some(Health::Ok)
+            health: Some(Health::Ok),
+            out_of_cadence: false,
         }
     );
     let kpi = line(json!({"t": "2026-11-25T06:00:00Z", "v": "fast"}));
