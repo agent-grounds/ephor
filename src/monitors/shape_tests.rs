@@ -295,3 +295,37 @@ fn a_sample_deserializes_through_the_same_reader() {
     let refused: Result<Sample, _> = serde_json::from_value(json!({"id": "m", "value": {}}));
     assert!(refused.is_err());
 }
+
+#[test]
+fn a_refused_declaration_keeps_its_unknown_field_notes() {
+    let refused =
+        read_declaration(&json!({"id": "m", "kind": "gauge", "heathy": {"min": 1}})).unwrap_err();
+    assert_eq!(refused.notes, vec!["unknown field heathy"]);
+    assert_eq!(refused.id.as_deref(), Some("m"));
+}
+
+#[test]
+fn a_refusal_says_whether_the_shape_or_a_second_declaration_refused_it() {
+    let declared = read_declarations(
+        &[
+            json!({"id": "a", "rate": 1}),
+            json!({"id": "a"}),
+            json!({"id": "b", "kind": "numbr"}),
+        ],
+        Home::Site,
+    );
+    let whys: Vec<_> = declared
+        .refused
+        .iter()
+        .map(|refused| (refused.id.clone().unwrap(), refused.why))
+        .collect();
+    assert_eq!(
+        whys,
+        vec![
+            ("a".to_string(), Refusal::DeclaredTwice),
+            ("a".to_string(), Refusal::DeclaredTwice),
+            ("b".to_string(), Refusal::Shape),
+        ]
+    );
+    assert_eq!(declared.refused[0].notes, vec!["unknown field rate"]);
+}

@@ -48,7 +48,24 @@ pub struct Refused {
     /// Where it stands in its home's `monitors`, for one with no id to name.
     pub index: usize,
     pub id: Option<String>,
+    /// What refused it, which decides what it costs (§FS-021-monitors.4.2).
+    pub why: Refusal,
     pub faults: Vec<String>,
+    /// Keys it does not know, noted on its row beside what is wrong
+    /// (§FS-021-monitors.4.6): `unknown field heathy`.
+    pub notes: Vec<String>,
+}
+
+/// What refused a declaration (§FS-021-monitors.4.2, §FS-021-monitors.4.6).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Refusal {
+    /// It does not fit the shape the manifest schema publishes. In the site
+    /// configuration that refuses the configuration, as any malformed site
+    /// field does; in a manifest it costs that monitor alone.
+    Shape,
+    /// Its id is declared more than once in its home, a rule no shape can
+    /// see, so it costs that monitor alone wherever it is written.
+    DeclaredTwice,
 }
 
 /// One home's declarations, each checked on its own (§FS-021-monitors.4.6).
@@ -122,11 +139,13 @@ pub fn read_declarations(entries: &[Json], home: Home) -> Declared {
             refused.push(Refused {
                 index,
                 id: Some(declaration.id.clone()),
+                why: Refusal::DeclaredTwice,
                 faults: vec![format!(
                     "{} is declared more than once in {}",
                     declaration.id,
                     home.phrase()
                 )],
+                notes: declaration.notes,
             });
         } else {
             declarations.push(declaration);
@@ -147,10 +166,12 @@ pub fn read_declaration(entry: &Json) -> Result<Declaration, Refused> {
         return Err(Refused {
             index: 0,
             id: None,
+            why: Refusal::Shape,
             faults: vec![format!(
                 "a monitor is declared as an object, not {}",
                 json_type(entry)
             )],
+            notes: Vec::new(),
         });
     };
     let mut fields = Fields::new(map);
@@ -207,7 +228,9 @@ pub fn read_declaration(entry: &Json) -> Result<Declaration, Refused> {
         Err(Refused {
             index: 0,
             id,
+            why: Refusal::Shape,
             faults: fields.faults,
+            notes,
         })
     }
 }
