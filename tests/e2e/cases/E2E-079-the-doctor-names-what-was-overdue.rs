@@ -1,7 +1,10 @@
 //! E2E-079-the-doctor-names-what-was-overdue: `ephor doctor` notes the
 //! monitor store's size, its files and where it is, and the monitors that
 //! were overdue when it began, before its own refresh reads them; neither
-//! note moves the exit code (§FS-021-monitors.20.2, §FS-010-doctor.5).
+//! note moves the exit code (§FS-021-monitors.20.2, §FS-010-doctor.5). The
+//! monitor slot counts among the sources configured, asked and answering,
+//! and a project whose only source it is is not watched rather than
+//! unreachable (§FS-021-monitors.17.5).
 
 #[path = "../support.rs"]
 mod support;
@@ -10,14 +13,14 @@ use serde_json::{json, Value};
 
 use support::*;
 
-/// Moves every time the record keeps back to the start of the year.
-fn age(value: &mut Value) {
+/// Moves every time the record keeps to `when`.
+fn age(value: &mut Value, when: &str) {
     match value {
         Value::String(text) if text.len() > 10 && text.as_bytes()[10] == b'T' => {
-            *text = "2026-01-01T00:00:00Z".to_string();
+            *text = when.to_string();
         }
-        Value::Array(values) => values.iter_mut().for_each(age),
-        Value::Object(fields) => fields.values_mut().for_each(age),
+        Value::Array(values) => values.iter_mut().for_each(|value| age(value, when)),
+        Value::Object(fields) => fields.values_mut().for_each(|value| age(value, when)),
         _ => {}
     }
 }
@@ -41,18 +44,34 @@ fn the_doctor_notes_the_store_and_what_was_overdue() {
             .unwrap();
         (out.status.code(), json_of(&out))
     };
-    let (well, report) = doctor();
+    let (first, report) = doctor();
     assert!(!report["notes"].to_string().contains("overdue"), "{report}");
 
-    // The reading is two days old: the monitor was overdue before the doctor.
+    // The monitor slot is one source configured, asked and answering; with
+    // no other source the project is not watched, which is degraded rather
+    // than unreachable.
+    let project = &report["projects"][0];
+    assert_eq!(
+        project["sources"],
+        json!({"configured": 1, "asked": 1, "answering": 1}),
+        "{report}"
+    );
+    assert_eq!(project["health"], "degraded", "{report}");
+    assert_eq!(first, Some(4), "{report}");
+
     let path = world
         .path()
         .join("state/ephor/monitors")
         .join(PROJECT)
         .join("monitors.json");
-    let mut kept = read_json(&path);
-    age(&mut kept["monitors"]["coverage"]);
-    write_json(&path, &kept);
+    let aged = |when: &str| {
+        let mut kept = read_json(&path);
+        age(&mut kept["monitors"]["coverage"], when);
+        write_json(&path, &kept);
+    };
+
+    // Months old: the monitor was overdue before the doctor.
+    aged("2026-01-01T00:00:00Z");
 
     let (code, report) = doctor();
     let notes: Vec<String> = report["notes"]
@@ -74,7 +93,6 @@ fn the_doctor_notes_the_store_and_what_was_overdue() {
                 && note.contains(" file(s) at ")),
         "{notes:?}"
     );
-    // A project with monitors alone is unreachable to the doctor
-    // (§FS-021-monitors.17.5); the notes move its exit code no further.
-    assert_eq!(code, well, "{report}");
+    // The notes move its exit code no further.
+    assert_eq!(code, first, "{report}");
 }
