@@ -2,12 +2,13 @@
 //! (§FS-021-monitors.9.1). Keeping it is the store's; changing it is
 //! [`crate::monitors::machine`]'s.
 
-use chrono::{DateTime, FixedOffset, TimeDelta, Utc};
+use chrono::{DateTime, FixedOffset, TimeDelta, TimeZone, Utc};
 use serde::{Deserialize, Serialize};
 
+use crate::monitors::cadence::Cadence;
 use crate::monitors::condition::Judge;
 use crate::monitors::episode::{Ending, Sort};
-use crate::monitors::freshness::{Attempt, Cause};
+use crate::monitors::freshness::{self, Attempt, Basis, Cause, Freshness};
 use crate::monitors::model::{Band, Health, Kind, Value};
 use crate::monitors::route::Owner;
 use crate::monitors::schedule::Schedule;
@@ -68,6 +69,34 @@ pub struct Record {
 }
 
 impl Record {
+    /// What its freshness is judged from (§FS-021-monitors.7.1): the read
+    /// its value holds from, or, with no reading yet, when ephor first saw it.
+    pub fn basis(&self) -> Basis<'_> {
+        Basis {
+            held_from: self.held_from.unwrap_or(self.schedule.first_seen),
+            has_reading: self.held_from.is_some(),
+            origin: self.schedule.origin(),
+            last_attempt: self.last_attempt.as_ref(),
+            parked_since: self.schedule.parked_since,
+        }
+    }
+
+    /// Where its value stands at `now` under `cadence`, judged without
+    /// changing the record (§FS-021-monitors.7): what the page, `ephor
+    /// monitors`, the doctor and Waiting's overview line read, since they
+    /// write nothing (§FS-021-monitors.18.1, §FS-021-monitors.21.1).
+    /// `slot_error` is the monitor slot's failure, every late monitor's cause
+    /// while it lasts (§FS-021-monitors.7.2).
+    pub fn freshness<Tz: TimeZone>(
+        &self,
+        cadence: &Cadence,
+        now: DateTime<Utc>,
+        zone: &Tz,
+        slot_error: Option<&str>,
+    ) -> Freshness {
+        freshness::freshness(&self.basis(), cadence, now, zone, slot_error)
+    }
+
     /// A monitor ephor sees for the first time at `now`.
     pub fn new(now: DateTime<Utc>) -> Record {
         Record {

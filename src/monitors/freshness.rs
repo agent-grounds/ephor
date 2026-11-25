@@ -116,12 +116,21 @@ pub struct Basis<'a> {
 }
 
 /// The first slot after the reading, where a value starts to be late.
+///
+/// A monitor with no reading yet holds as if ephor had read it when it first
+/// saw the monitor (§FS-021-monitors.7.1), so its slots without `at` count
+/// from then too, not from an anchor its first attempt set later.
 pub fn late_from<Tz: TimeZone>(
     basis: &Basis,
     cadence: &Cadence,
     zone: &Tz,
 ) -> Option<DateTime<Utc>> {
-    slots::first_after(cadence, basis.origin, basis.held_from, zone)
+    let origin = if basis.has_reading {
+        basis.origin
+    } else {
+        basis.held_from
+    };
+    slots::first_after(cadence, origin, basis.held_from, zone)
 }
 
 /// Until when a value holds: the first slot after the reading that brought

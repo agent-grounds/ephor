@@ -102,3 +102,32 @@ fn a_claim_is_void_after_the_timeout_and_a_minute() {
     assert!(claim.is_void(30, utc("2026-11-25T06:01:31Z")));
     assert!(!claim.is_void(u64::MAX, utc("2030-01-01T00:00:00Z")));
 }
+
+#[test]
+fn freshness_is_read_from_a_record_without_changing_it() {
+    let ten = Cadence::resolve(Some("10m"), None).unwrap();
+    let mut record = Record::new(utc("2026-11-25T12:00:00Z"));
+    // Its first attempt came later than ephor first saw it.
+    record.schedule.anchor = Some(utc("2026-11-25T12:05:00Z"));
+    let before = record.clone();
+    let not_read = Freshness::NotReadYet {
+        holds_until: utc("2026-11-25T13:10:00Z"),
+    };
+    let at = |now: &str| record.freshness(&ten, utc(now), &chrono::Utc, None);
+    assert_eq!(at("2026-11-25T13:09:59Z"), not_read);
+    assert_eq!(
+        at("2026-11-25T13:10:00Z"),
+        Freshness::Unknown {
+            cause: Cause::Overdue,
+            since: utc("2026-11-25T13:10:00Z")
+        }
+    );
+    assert_eq!(
+        record.freshness(&ten, utc("2026-11-25T13:10:00Z"), &chrono::Utc, Some("x")),
+        Freshness::Unknown {
+            cause: Cause::Unreadable { why: "x".into() },
+            since: utc("2026-11-25T13:10:00Z")
+        }
+    );
+    assert_eq!(record, before);
+}
