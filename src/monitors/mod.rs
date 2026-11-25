@@ -19,13 +19,17 @@
 //!   [`freshness`] how long what it read holds;
 //! - [`sample`] checks one sample against its monitor, and [`route`] gives an
 //!   answer's samples to the monitors they are for;
+//! - [`state`], [`episode`] and [`machine`] are the hold, the episodes and the
+//!   movement of a monitor's matters, as one state machine;
 //! - [`history`] is a reading's line and the history judged again for
 //!   display, and [`retention`] what of it is kept.
 
 pub mod cadence;
 pub mod condition;
+pub mod episode;
 pub mod freshness;
 pub mod history;
+pub mod machine;
 pub mod model;
 pub mod overlay;
 pub mod retention;
@@ -34,6 +38,7 @@ pub mod sample;
 pub mod schedule;
 pub mod shape;
 pub mod slots;
+pub mod state;
 pub mod words;
 
 #[cfg(test)]
