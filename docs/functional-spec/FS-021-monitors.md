@@ -1043,7 +1043,9 @@ so the sources answering never outnumber the sources configured. Its answer
 is ephor's own reading, not the world answering, so it counts for nothing
 more: it never spares a refresh total failure ([§FS-001-forge-interface.6.1](FS-001-forge-interface.md#61-every-contribution-to-one-provider-answer-counts)),
 never makes a project reachable to the doctor ([§FS-010-doctor.5](FS-010-doctor.md#5-the-answer-is-in-the-exit-code)), and never
-makes it observable ([§FS-006-project-interface.10](FS-006-project-interface.md#10-capability-rung-by-rung)).
+makes it observable ([§FS-006-project-interface.10](FS-006-project-interface.md#10-capability-rung-by-rung)). Those verdicts are judged
+on the project's other sources alone: one whose only source is the slot has
+no source configured for them, so it is not watched rather than unreachable.
 
 ## 18. The Monitors page
 

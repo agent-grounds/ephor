@@ -85,8 +85,14 @@ struct Diagnosis {
     asked: Option<usize>,
     /// How many the configuration names — which is not the same number: a
     /// task store is probed and a shared source is site-level, and both are
-    /// sources of this project's matters.
+    /// sources of this project's matters. The monitor slot counts in all
+    /// three (§FS-021-monitors.17.5).
     configured: usize,
+    /// How many of the world's sources are configured and how many answered:
+    /// the counts above without the monitor slot, which the verdict is
+    /// judged on, since the slot never makes a project reachable
+    /// (§FS-021-monitors.17.5).
+    world: (usize, Option<usize>),
     /// Where this checkout still keeps a piece of tool configuration under the
     /// deprecated `.agents/` name, one sentence per file, in the probe's own
     /// words (§FS-006-project-interface.12). Composed here and judged nowhere
@@ -107,7 +113,8 @@ impl Diagnosis {
     /// names a root that is not there — a row nobody updated after a directory
     /// moved, which is exactly the quiet rot a diagnosis exists to find.
     fn health(&self) -> Health {
-        if self.configured > 0 && self.answering == Some(0) {
+        let (configured, answering) = self.world;
+        if configured > 0 && answering == Some(0) {
             return Health::Unreachable;
         }
         if !self.silent.is_empty() || FAULTS.iter().any(|rung| !self.holds(*rung)) {
@@ -175,14 +182,17 @@ fn diagnose(
         .and_then(crate::branches::Placement::manifest);
     let project_config = config.projects.get(project);
     // §FS-021-monitors.17.5: the monitor slot is one configured source, and no more.
-    let configured = project_config.map(|p| p.providers.len()).unwrap_or(0)
-        + usize::from(feed.is_some_and(ProjectFeed::has_monitors));
+    let world = (
+        project_config.map(|p| p.providers.len()).unwrap_or(0),
+        feed.and_then(ProjectFeed::world_answering),
+    );
+    let configured = world.0 + usize::from(feed.is_some_and(ProjectFeed::has_monitors));
     let answering = feed.and_then(ProjectFeed::answering);
     let asked = feed.and_then(ProjectFeed::asked);
 
     let bindings = Bindings {
-        sources: configured,
-        answering,
+        sources: world.0,
+        answering: world.1,
         checkout: project_config
             .and_then(|p| p.checkout.as_ref())
             .map(|checkout| checkout.command.as_str()),
@@ -218,6 +228,7 @@ fn diagnose(
         answering,
         asked,
         configured,
+        world,
         // Asked of the project's checkout, never of the registry row's root:
         // for a branch-addressable project that root is the container the
         // workspaces sit in, and the files are one level down inside each of
@@ -868,6 +879,7 @@ mod tests {
             answering,
             asked,
             configured,
+            world: (configured, answering),
             deprecated: Vec::new(),
         }
     }
@@ -930,6 +942,15 @@ mod tests {
             diagnosis(0, None, vec![Rung::Observable]).health(),
             Health::Degraded
         );
+        // §FS-021-monitors.17.5: nor is one whose only source is its monitor
+        // slot, answering or not, and the slot answering never spares a
+        // project whose every other source is silent.
+        let mut monitors_only = diagnosis(1, Some(1), vec![Rung::Observable]);
+        monitors_only.world = (0, Some(0));
+        assert_eq!(monitors_only.health(), Health::Degraded);
+        let mut slot_alone = diagnosis(2, Some(1), vec![]);
+        slot_alone.world = (1, Some(0));
+        assert_eq!(slot_alone.health(), Health::Unreachable);
     }
 
     /// A source that failed makes the project degraded even where every rung

@@ -176,9 +176,18 @@ impl ProjectFeed {
     /// what tells them apart — blanking clears it, and a refresh always sets
     /// it.
     ///
-    /// The monitor slot is ephor's own reading rather than the world
-    /// answering, so it never counts here (§FS-021-monitors.17.5).
+    /// The monitor slot counts here as it counts among the sources asked, so
+    /// the sources answering never outnumber them, and never fall short of
+    /// them when every one answered (§FS-021-monitors.17.5).
     pub fn answering(&self) -> Option<usize> {
+        self.fetched_at?;
+        Some(self.providers.values().filter(|slot| slot.ok).count())
+    }
+
+    /// How many of the world's sources answered: [`ProjectFeed::answering`]
+    /// without the monitor slot, which is ephor's own reading and so never
+    /// makes a project observable or reachable (§FS-021-monitors.17.5).
+    pub fn world_answering(&self) -> Option<usize> {
         self.fetched_at?;
         Some(
             self.providers
@@ -186,6 +195,16 @@ impl ProjectFeed {
                 .filter(|(name, slot)| slot.ok && name.as_str() != crate::monitors::watch::SLOT)
                 .count(),
         )
+    }
+
+    /// Why the monitor slot failed at the last refresh, where it did: every
+    /// monitor's freshness says it as its cause (§FS-021-monitors.7.2,
+    /// §FS-021-monitors.17.3).
+    pub fn monitor_slot_error(&self) -> Option<&str> {
+        self.providers
+            .get(crate::monitors::watch::SLOT)
+            .filter(|slot| !slot.ok)
+            .map(|slot| slot.error.as_deref().unwrap_or("did not answer"))
     }
 
     /// Whether the last plain refresh answered a monitor slot: the project
@@ -568,9 +587,9 @@ mod tests {
         };
         assert_eq!(silent.answering(), Some(0));
 
-        // §FS-021-monitors.17.5: the monitor slot answering is ephor's own
-        // reading, never a source answering, and it says the project has
-        // monitors.
+        // §FS-021-monitors.17.5: the monitor slot answering counts among
+        // the sources answering as it counts among those asked, and never as
+        // the world answering; it says the project has monitors.
         let mut monitors = silent;
         assert!(!monitors.has_monitors());
         monitors.providers.insert(
@@ -580,8 +599,26 @@ mod tests {
                 ..ProviderSlot::default()
             },
         );
-        assert_eq!(monitors.answering(), Some(0));
+        assert_eq!(monitors.answering(), Some(1));
+        assert_eq!(monitors.asked(), Some(3));
+        assert_eq!(monitors.world_answering(), Some(0));
         assert!(monitors.has_monitors());
+        assert_eq!(monitors.monitor_slot_error(), None);
+
+        // §FS-021-monitors.7.2: a failed slot says why, for every monitor's
+        // freshness to say it.
+        monitors.providers.insert(
+            crate::monitors::watch::SLOT.to_string(),
+            ProviderSlot {
+                ok: false,
+                error: Some("the store cannot be read".to_string()),
+                ..ProviderSlot::default()
+            },
+        );
+        assert_eq!(
+            monitors.monitor_slot_error(),
+            Some("the store cannot be read")
+        );
     }
 
     fn matter(key: &str) -> Matter {
