@@ -393,6 +393,18 @@ path = "tests/e2e/cases/E2E-074-a-prepared-gate-is-answered-in-its-form.rs"
 name = "e2e_075_the_guide_is_asked_of_the_ephor_that_reads"
 path = "tests/e2e/cases/E2E-075-the-guide-is-asked-of-the-ephor-that-reads.rs"
 
+[[test]]
+name = "e2e_076_a_refresh_reads_the_due_monitors"
+path = "tests/e2e/cases/E2E-076-a-refresh-reads-the-due-monitors.rs"
+
+[[test]]
+name = "e2e_077_a_monitor_that_cannot_be_read_costs_itself"
+path = "tests/e2e/cases/E2E-077-a-monitor-that-cannot-be-read-costs-itself.rs"
+
+[[test]]
+name = "e2e_078_where_a_monitor_is_declared_and_what_brings_it"
+path = "tests/e2e/cases/E2E-078-where-a-monitor-is-declared-and-what-brings-it.rs"
+
 [dependencies]
 clap = { version = "4", features = ["derive"] }
 serde = { version = "1", features = ["derive"] }

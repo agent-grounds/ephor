@@ -96,3 +96,21 @@ fn what_nothing_finer_or_nothing_at_all_answers_is_refused() {
     assert!(refused(&["bare"], "nosuch", None).contains("'nosuch'"));
     assert!(refused(&["bare"], "rhei", None).contains("task store"));
 }
+
+/// Refusal 6 (§FS-011-command-line.9.2): `monitor` is ephor's own reading,
+/// which nothing binds and `--source` cannot name (§FS-021-monitors.17.4).
+#[test]
+fn the_monitor_slot_is_not_a_source_to_name() {
+    let refused = resolved(&["graal"], "monitor", None)
+        .unwrap_err()
+        .to_string();
+    assert!(refused.contains("ephor's own reading"), "{refused}");
+    assert!(crate::feed::providers::built_in("monitor"));
+    assert!(!crate::feed::providers::may_carry_pull_requests("monitor"));
+    let block = json!({ "provider": "monitor" });
+    let refused = crate::feed::providers::build_provider(&block)
+        .err()
+        .unwrap()
+        .0;
+    assert!(refused.contains("not a provider block"), "{refused}");
+}

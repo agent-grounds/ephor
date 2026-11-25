@@ -108,6 +108,7 @@ fn refresh_projects(
     projects: &[String],
     quiet: bool,
     narrow: Option<(&str, Option<&'static str>)>,
+    when: crate::monitors::watch::When,
 ) -> Result<RefreshTally> {
     let registry_doc = load_registry_doc()?;
     let selected: Vec<&String> = if projects.is_empty() {
@@ -179,13 +180,13 @@ fn refresh_projects(
                     .expect("a project that binds the source is asked it"),
             },
         };
-        let outcome = refresh_project(
+        let outcome = crate::feed::refresh::refresh_project_when(
             &registry_doc,
-            project,
-            project_config,
+            (project, project_config),
             &site_sources,
             &config.defaults,
             &ask,
+            when,
         )?;
         if narrowing.is_some() && outcome.asked.is_empty() {
             // None of its blocks declares the capability: nothing was asked.
@@ -715,11 +716,23 @@ pub fn refresh(args: &RefreshArgs, scope: &Projects) -> Result<ExitCode> {
     // on their own are refused before anything is read
     // (§FS-011-command-line.9.2).
     let only = crate::feed::narrow::only(args.source.as_deref(), args.only.as_deref())?;
+    // Refusal 7: a narrowed run reads no monitor, so none to read now.
+    if args.monitors_now && args.source.is_some() {
+        return Err(crate::error::registry_error(
+            "`--monitors-now` reads every monitor of a plain refresh, and a refresh narrowed by \
+             `--source` or `--only` reads none; drop one or the other."
+                .to_string(),
+        ));
+    }
+    let when = match args.monitors_now {
+        true => crate::monitors::watch::When::Now,
+        false => crate::monitors::watch::When::Due,
+    };
     let narrow = args.source.as_deref().map(|source| (source, only));
     // Under `--json` the per-project lines would land on standard output
     // beside the reading (§FS-011-command-line.7), so they are withheld and
     // the whole tally is printed at the end instead.
-    let tally = refresh_projects(&config, &selected, args.quiet || args.json, narrow)?;
+    let tally = refresh_projects(&config, &selected, args.quiet || args.json, narrow, when)?;
     if args.json {
         let mut reading = serde_json::json!({
             "refreshed": tally.refreshed,

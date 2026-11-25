@@ -175,9 +175,24 @@ impl ProjectFeed {
     /// look at credentials when the answer is `ephor refresh`. `fetched_at` is
     /// what tells them apart — blanking clears it, and a refresh always sets
     /// it.
+    ///
+    /// The monitor slot is ephor's own reading rather than the world
+    /// answering, so it never counts here (§FS-021-monitors.17.5).
     pub fn answering(&self) -> Option<usize> {
         self.fetched_at?;
-        Some(self.providers.values().filter(|slot| slot.ok).count())
+        Some(
+            self.providers
+                .iter()
+                .filter(|(name, slot)| slot.ok && name.as_str() != crate::monitors::watch::SLOT)
+                .count(),
+        )
+    }
+
+    /// Whether the last plain refresh answered a monitor slot: the project
+    /// has monitors, declared or kept in its store, and the slot counts as
+    /// one of its configured sources (§FS-021-monitors.17.5).
+    pub fn has_monitors(&self) -> bool {
+        self.providers.contains_key(crate::monitors::watch::SLOT)
     }
 
     /// How many sources were asked at all. Not the same as how many the
@@ -552,6 +567,21 @@ mod tests {
             ..refreshed
         };
         assert_eq!(silent.answering(), Some(0));
+
+        // §FS-021-monitors.17.5: the monitor slot answering is ephor's own
+        // reading, never a source answering, and it says the project has
+        // monitors.
+        let mut monitors = silent;
+        assert!(!monitors.has_monitors());
+        monitors.providers.insert(
+            crate::monitors::watch::SLOT.to_string(),
+            ProviderSlot {
+                ok: true,
+                ..ProviderSlot::default()
+            },
+        );
+        assert_eq!(monitors.answering(), Some(0));
+        assert!(monitors.has_monitors());
     }
 
     fn matter(key: &str) -> Matter {
