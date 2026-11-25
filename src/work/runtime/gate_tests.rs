@@ -5,6 +5,10 @@ use super::*;
 use crate::work::runtime::human_gate::review_plan;
 use std::os::unix::fs::PermissionsExt;
 
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+#[path = "fixture_readiness_tests.rs"]
+mod fixture_readiness;
+
 /// A runner that answers `states` with one gating state and, unless told it
 /// is an older one, the gate verbs: `show` with `brief.json`, `answer` with
 /// `verdict.json`, and a copy of the answers it was handed.

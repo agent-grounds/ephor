@@ -148,3 +148,19 @@ caller's own value is set, and every spawn of `ephor` goes through it. Neither
 the removal nor a test that exercises a spelling changes the test process's own
 environment with `std::env::remove_var` or `set_var`: that races every other
 test thread in the binary, and an in-process read would see it.
+
+## 5. An executable fixture is ready before it is used
+
+The runtime gate and human-gate fixtures publish their freshly written runner
+stand-ins only after they can be executed. A transient writable descriptor
+retained by another child must not turn a gate assertion into an executable
+file contention failure. Readiness waits are bounded by the existing test
+helper's retry budget; they do not change production execution or retries.
+
+A no-argument readiness probe is inert: it writes neither into the caller's
+working directory nor into the fixture, and it neither creates nor overwrites
+evidence of an intended runner invocation. The runner's `states` and gate
+operations retain their specified behavior. Regression coverage exercises both
+actual fixture constructors and their runner operations under controlled
+contention, with probe inertness checked separately. Linux-specific contention
+instrumentation may be platform-gated; ordinary gate assertions remain portable.

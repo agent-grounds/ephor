@@ -88,6 +88,34 @@ fi
 }
 
 #[test]
+#[ignore = "red until #271: no-argument runtime probes preserve invocation evidence; implement removes this"]
+fn runtime_stub_readiness_probe_is_inert() {
+    // §REQ-003-test-isolation.5: a probe writes neither to its caller nor to invocation evidence.
+    let world = World::new();
+    let caller = tempfile::tempdir().unwrap();
+    let runner = world.dir.path().join("runtime-stub");
+    let outside = std::process::Command::new(&runner)
+        .current_dir(caller.path())
+        .output()
+        .unwrap();
+    assert!(outside.status.success(), "{outside:?}");
+    let caller_unchanged = std::fs::read_dir(caller.path()).unwrap().count() == 0;
+
+    let evidence = world.dir.path().join("invocation");
+    std::fs::write(&evidence, "intended invocation\n").unwrap();
+    let inside = std::process::Command::new(&runner)
+        .current_dir(world.dir.path())
+        .output()
+        .unwrap();
+    assert!(inside.status.success(), "{inside:?}");
+    let evidence_unchanged = std::fs::read_to_string(&evidence).unwrap() == "intended invocation\n";
+    assert!(
+        caller_unchanged && evidence_unchanged,
+        "no-argument probe: caller directory unchanged={caller_unchanged}, invocation evidence unchanged={evidence_unchanged}"
+    );
+}
+
+#[test]
 fn human_gate_choices_and_files_are_read_without_moving_or_sending() {
     let world = World::new();
     let review = world.review();
