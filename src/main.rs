@@ -133,7 +133,21 @@ fn validate_manifest(path: &str, json: bool) -> Result<ExitCode> {
     }
     let text = std::fs::read_to_string(&file)
         .map_err(|err| EphorError::Command(format!("Cannot read {}: {err}", file.display())))?;
-    ephor::manifest::parse(&text, &file.display().to_string())?;
+    let manifest = ephor::manifest::parse(&text, &file.display().to_string())?;
+    // A declaration that breaks a rule is shown and not read, and refused
+    // here by name (§FS-021-monitors.4.6).
+    let refused = manifest.refused_monitors();
+    if !refused.is_empty() {
+        return Err(EphorError::Registry(format!(
+            "{} declares monitors that are not read:\n{}",
+            file.display(),
+            refused
+                .iter()
+                .map(|why| format!("  - {why}"))
+                .collect::<Vec<_>>()
+                .join("\n")
+        )));
+    }
     if json {
         println!(
             "{}",

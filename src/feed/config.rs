@@ -641,6 +641,12 @@ pub struct ProjectFeedConfig {
     /// This project's own recipes and work root (§FS-005-dispatch.1).
     #[serde(default)]
     pub work: crate::work::recipe::ProjectWorkConfig,
+    /// The monitors the site declares for this project, over what its
+    /// manifest declares (§FS-021-monitors.4.2), as written: the shape is
+    /// held when the configuration loads, and each one's other rules when it
+    /// is read.
+    #[serde(default)]
+    pub monitors: Vec<Value>,
 }
 
 /// One organization's block, shaped like a project's so a reader who has
@@ -1057,6 +1063,42 @@ pub fn config_path() -> PathBuf {
         .unwrap_or_else(|| paths::resolve_config("status.json"))
 }
 
+/// A project's monitors held to the shape the manifest schema publishes,
+/// which in the site's configuration refuses the configuration as any
+/// malformed field does (§FS-021-monitors.4.2). A rule the shape cannot see,
+/// an id declared twice, costs that monitor alone when it is read. `monitor`
+/// is ephor's own reading, never a block (§FS-021-monitors.17.4).
+fn check_monitors(project_id: &str, project: &ProjectFeedConfig) -> Result<()> {
+    if project.providers.iter().any(names_the_slot) {
+        return Err(registry_error(format!(
+            "Feed config project '{project_id}' has a provider block naming '{}': {SLOT_REFUSAL}",
+            crate::monitors::watch::SLOT,
+        )));
+    }
+    let declared = crate::monitors::shape::read_declarations(
+        &project.monitors,
+        crate::monitors::model::Home::Site,
+    );
+    match declared
+        .refused
+        .iter()
+        .find(|refused| refused.why == crate::monitors::shape::Refusal::Shape)
+    {
+        Some(refused) => Err(registry_error(format!(
+            "Feed config projects.{project_id}.monitors: {}",
+            crate::monitors::declared::say_refused(refused)
+        ))),
+        None => Ok(()),
+    }
+}
+
+fn names_the_slot(block: &Value) -> bool {
+    block.get("provider").and_then(Value::as_str) == Some(crate::monitors::watch::SLOT)
+}
+
+const SLOT_REFUSAL: &str = "that is ephor's own reading of a project's monitors, not a source \
+     to configure; declare monitors under the project's 'monitors' instead";
+
 pub fn load_config() -> Result<StatusConfig> {
     let path = config_path();
     let text = fs::read_to_string(&path).map_err(|err| {
@@ -1075,6 +1117,13 @@ pub fn load_config() -> Result<StatusConfig> {
                 )));
             }
         }
+        check_monitors(project_id, project)?;
+    }
+    if config.sources.iter().any(names_the_slot) {
+        return Err(registry_error(format!(
+            "Feed config sources has a block naming '{}': {SLOT_REFUSAL}",
+            crate::monitors::watch::SLOT,
+        )));
     }
     // A recipe is a menu entry under another name (§FS-005-dispatch.1), so it
     // is held to the same rule about ephor's own namespace as an action is —

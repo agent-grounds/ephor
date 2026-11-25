@@ -343,6 +343,7 @@ impl ForgeProvider {
             }
         }
         Fetched {
+            samples: None,
             declared: Some(declared),
             answers,
         }
