@@ -174,8 +174,10 @@ CORE = (
     "interval",
     "monitors::cadence",
     "monitors::condition",
+    "monitors::episode",
     "monitors::freshness",
     "monitors::history",
+    "monitors::machine",
     "monitors::model",
     "monitors::overlay",
     "monitors::retention",
@@ -184,6 +186,7 @@ CORE = (
     "monitors::schedule",
     "monitors::shape",
     "monitors::slots",
+    "monitors::state",
     "monitors::words",
 )
 
