@@ -258,3 +258,66 @@ fn thinning_again_changes_nothing_and_hours_fold_into_days() {
         assert!((mean.unwrap() - 3.0).abs() < 0.1);
     }
 }
+
+#[test]
+fn a_day_inside_two_years_survives_thinning_again() {
+    let now = utc("2026-11-25T12:00:00Z");
+    for t in [
+        utc("2024-11-25T15:00:00Z"),
+        now - kept_for(),
+        utc("2024-11-25T12:00:01Z"),
+    ] {
+        let lines = with_recent(vec![reading(t, 3.0, Health::Ok), Line::marker(t)], now);
+        let once = thin(&lines, ten(), Kind::Number, None, now);
+        assert_eq!(older(&once, now).len(), 1, "{t}");
+        assert_eq!(thin(&once, ten(), Kind::Number, None, now), once, "{t}");
+    }
+}
+
+#[test]
+fn a_thinned_mean_of_huge_numbers_stays_a_number() {
+    let now = utc("2026-11-25T00:00:00Z");
+    let hour = utc("2026-10-15T06:00:00Z");
+    let old = vec![
+        reading(hour, 1.5e308, Health::Ok),
+        reading(hour + TimeDelta::minutes(10), 1.5e308, Health::Ok),
+    ];
+    let kept = thin(&with_recent(old, now), ten(), Kind::Number, None, now);
+    let line = older(&kept, now).remove(0);
+    let Line::Thinned { mean, .. } = &line else {
+        panic!("{line:?}")
+    };
+    assert_eq!(*mean, Some(1.5e308));
+    let back: Line = serde_json::from_str(&serde_json::to_string(&line).unwrap()).unwrap();
+    assert_eq!(back, line);
+}
+
+#[test]
+fn an_episode_is_kept_as_long_as_the_history_it_falls_in() {
+    use crate::monitors::episode::{Ending, Sort};
+    let now = utc("2026-11-25T12:00:00Z");
+    let episode = |ended: DateTime<Utc>| Past {
+        sort: Sort::Drop,
+        named: ended - TimeDelta::hours(2),
+        ended,
+        how: Ending::Recovered {
+            value: "81.0%".into(),
+        },
+    };
+    let inside = episode(now - TimeDelta::days(700));
+    let outside = episode(now - TimeDelta::days(760));
+    let all = vec![outside.clone(), inside.clone()];
+    // Nothing older than two years is kept, so neither is the episode.
+    let recent = recent(now);
+    assert_eq!(past(&all, &recent, now), vec![inside.clone()]);
+    // A fortnightly monitor's last 104 readings reach back past the cut, and
+    // keep the episodes they fall in.
+    let fortnightly: Vec<Line> = (0..110)
+        .map(|k| reading(now - TimeDelta::weeks(2 * k), 1.0, Health::Ok))
+        .rev()
+        .collect();
+    let kept = thin(&fortnightly, TimeDelta::weeks(2), Kind::Number, None, now);
+    assert!(kept[0].t() < outside.ended);
+    assert_eq!(past(&all, &kept, now), all);
+    assert_eq!(past(&all, &[], now), vec![inside]);
+}

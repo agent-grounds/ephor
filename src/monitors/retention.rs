@@ -4,8 +4,8 @@
 //! day to two years, and nothing older; a monitor read daily or less often is
 //! never thinned, only cut; and the last 104 readings stay whatever their
 //! age. Hours and days are counted in UTC, and an hour or a day is thinned
-//! only once all of it is past its boundary, so thinning again changes
-//! nothing.
+//! only once all of it is past its boundary, and cut only once all of it is,
+//! so thinning again changes nothing.
 
 use std::cmp::Ordering;
 use std::collections::BTreeMap;
@@ -14,6 +14,7 @@ use chrono::{DateTime, DurationRound, TimeDelta, Utc};
 
 use crate::monitors::history::{worst, Line};
 use crate::monitors::model::{Health, Kind, Value};
+use crate::monitors::state::Past;
 
 /// How many readings stay whatever their age: two years of a weekly monitor.
 pub const KEPT_READINGS: usize = 104;
@@ -47,10 +48,17 @@ pub fn thin(
         .filter(|&i| lines[i].is_reading())
         .collect();
     let protected = &readings[readings.len().saturating_sub(KEPT_READINGS)..];
+    let thinned = interval < TimeDelta::days(1);
+    // A thinned monitor keeps one line a day near the cut, named by the day's
+    // start, so the cut takes a day only once all of it is older than two
+    // years: a reading inside the two years is never lost to its day's name.
     let cut = now - kept_for();
+    let cut = match thinned {
+        true => cut.duration_trunc(TimeDelta::days(1)).unwrap_or(cut),
+        false => cut,
+    };
     let raw_until = now - raw_for();
     let hourly_until = now - hourly_for();
-    let thinned = interval < TimeDelta::days(1);
 
     let mut kept: Vec<Line> = Vec::new();
     let mut buckets: BTreeMap<DateTime<Utc>, Vec<&Line>> = BTreeMap::new();
@@ -80,6 +88,19 @@ pub fn thin(
     kept
 }
 
+/// The episodes a monitor keeps, as long as the history they fall in
+/// (§FS-021-monitors.9.1): one that ended within two years of `now`, or no
+/// earlier than the oldest line its history still keeps, `kept` being that
+/// history as [`thin`] left it.
+pub fn past(past: &[Past], kept: &[Line], now: DateTime<Utc>) -> Vec<Past> {
+    let oldest = kept.iter().map(Line::t).min();
+    let cut = now - kept_for();
+    past.iter()
+        .filter(|episode| episode.ended >= cut || oldest.is_some_and(|t| t <= episode.ended))
+        .cloned()
+        .collect()
+}
+
 /// The day or the hour a line folds into, where all of it is past its
 /// boundary.
 fn bucket(
@@ -102,18 +123,21 @@ fn fold(start: DateTime<Utc>, lines: &[&Line], kind: Kind, levels: Option<&[Stri
     let numeric = kind.is_numeric();
     let mut least: Option<Value> = None;
     let mut greatest: Option<Value> = None;
-    let mut sum = 0.0;
     let mut n = 0u32;
     let mut healths: Vec<Option<Health>> = Vec::new();
+    // Each line's mean and how many readings it holds, weighed once the whole
+    // count is known, so a sum of large values never overflows.
+    let mut means: Vec<(f64, u32)> = Vec::new();
     for line in lines {
         healths.push(line.health());
-        let (low, high, count, total) = match line {
+        let (low, high, count, mean) = match line {
             Line::Marker { .. } => continue,
-            Line::Reading { v, .. } => (v, v, 1, v.as_number().unwrap_or(0.0)),
+            Line::Reading { v, .. } => (v, v, 1, v.as_number()),
             Line::Thinned {
                 min, max, n, mean, ..
-            } => (min, max, *n, mean.unwrap_or(0.0) * f64::from(*n)),
+            } => (min, max, *n, mean.or_else(|| midpoint(min, max))),
         };
+        means.extend(mean.map(|mean| (mean, count)));
         if least
             .as_ref()
             .is_none_or(|least| order(levels, low, least) == Ordering::Less)
@@ -126,20 +150,38 @@ fn fold(start: DateTime<Utc>, lines: &[&Line], kind: Kind, levels: Option<&[Stri
         {
             greatest = Some(high.clone());
         }
-        n += count;
-        sum += total;
+        n = n.saturating_add(count);
     }
     match (least, greatest) {
         (Some(min), Some(max)) => Line::Thinned {
             t: start,
+            mean: numeric.then(|| weighed(&means, &min, &max)).flatten(),
             min,
-            mean: (numeric && n > 0).then(|| sum / f64::from(n)),
             max,
             n,
             health: worst(healths),
         },
         _ => Line::marker(start),
     }
+}
+
+/// The mean of some lines' means, each weighed by how many readings it holds,
+/// and never outside the least and greatest value.
+fn weighed(means: &[(f64, u32)], min: &Value, max: &Value) -> Option<f64> {
+    let total: f64 = means.iter().map(|(_, count)| f64::from(*count)).sum();
+    if total == 0.0 {
+        return None;
+    }
+    let mean: f64 = means
+        .iter()
+        .map(|(mean, count)| mean * (f64::from(*count) / total))
+        .sum();
+    Some(mean.clamp(min.as_number()?, max.as_number()?))
+}
+
+/// The middle of a thinned line that lost its mean.
+fn midpoint(min: &Value, max: &Value) -> Option<f64> {
+    Some(min.as_number()? / 2.0 + max.as_number()? / 2.0)
 }
 
 /// Two values in their kind's order: `false` before `true`, levels as `levels`
