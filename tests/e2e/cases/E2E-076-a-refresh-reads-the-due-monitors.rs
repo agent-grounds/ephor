@@ -108,7 +108,7 @@ fn a_narrowed_refresh_reads_no_monitor_and_refuses_to_read_now() {
         ])
         .output()
         .unwrap();
-    assert!(!refused.status.success());
+    assert_eq!(refused.status.code(), Some(2));
     assert!(String::from_utf8_lossy(&refused.stderr).contains("--monitors-now"));
 
     let refused = world
@@ -116,7 +116,7 @@ fn a_narrowed_refresh_reads_no_monitor_and_refuses_to_read_now() {
         .args(["refresh", PROJECT, "--source", "monitor"])
         .output()
         .unwrap();
-    assert!(!refused.status.success());
+    assert_eq!(refused.status.code(), Some(2));
     assert!(String::from_utf8_lossy(&refused.stderr).contains("ephor's own reading"));
     assert!(runs(&world).is_empty());
 }

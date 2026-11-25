@@ -1,5 +1,5 @@
 //! E2E-077-a-monitor-that-cannot-be-read-costs-itself: a command that fails,
-//! times out or answers what does not read, a file that is not there, and an
+//! times out or answers what does not read, a file that is missing, and an
 //! answer with no sample for a monitor each leave only the monitors they read
 //! unreadable, with why; a command that exits `75` parks them; a file unchanged
 //! since its last read is stale. None of them fails the refresh or the
@@ -80,7 +80,7 @@ fn each_unreadable_monitor_says_why_and_the_slot_answers() {
     assert!(why("broken").contains("exited 1"), "{}", why("broken"));
     assert!(why("slow").contains("timed out"), "{}", why("slow"));
     assert!(!why("garbled").is_empty());
-    assert_eq!(why("missing"), "out/missing.json is not there");
+    assert_eq!(why("missing"), "out/missing.json is missing");
     assert_eq!(why("absent"), "no sample for absent");
     assert_eq!(found["parked"]["found"], json!("parked"));
     assert_eq!(found["coverage"]["found"], json!("reading"));

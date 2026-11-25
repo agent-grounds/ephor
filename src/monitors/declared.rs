@@ -16,7 +16,7 @@ use crate::manifest::{Manifest, Trust};
 use crate::monitors::model::Home;
 use crate::monitors::overlay::{self, Homes, Monitor};
 use crate::monitors::shape::{self, Declared, Refused};
-use crate::monitors::state::Record;
+use crate::monitors::state::{Document, Record};
 
 /// What both homes declare for one project.
 #[derive(Debug, Clone, Default)]
@@ -156,6 +156,23 @@ impl Declarations {
             }
         }
         notes
+    }
+
+    /// What every refresh notes about the monitors the declarations resolve
+    /// to (§FS-021-monitors.4.6): a rule the homes break together, such as a
+    /// `warn` laxer than its `healthy` (§FS-021-monitors.3.5), leaves the
+    /// monitor shown and not read, and says why as a refused declaration
+    /// does. A refused declaration is noted by [`Declarations::notes`].
+    pub fn faulted(&self, document: &Document) -> Vec<String> {
+        self.ids()
+            .into_iter()
+            .filter_map(|id| {
+                let faults =
+                    overlay::resolve(&id, &self.homes(&id, document.monitors.get(&id))).faults;
+                (!faults.is_empty())
+                    .then(|| format!("monitor {id} is not read: {}", faults.join("; ")))
+            })
+            .collect()
     }
 }
 

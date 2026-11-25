@@ -1,7 +1,8 @@
 //! E2E-079-the-doctor-names-what-was-overdue: `ephor doctor` notes the
 //! monitor store's size, its files and where it is, and the monitors that
-//! were overdue when it began, before its own refresh reads them; neither
-//! note moves the exit code (§FS-021-monitors.20.2, §FS-010-doctor.5). The
+//! were overdue when it began, before its own refresh reads them, never one
+//! whose value still holds; neither note moves the exit code
+//! (§FS-021-monitors.20.2, §FS-021-monitors.7.5, §FS-010-doctor.5). The
 //! monitor slot counts among the sources configured, asked and answering,
 //! and a project whose only source it is is not watched rather than
 //! unreachable (§FS-021-monitors.17.5).
@@ -69,6 +70,15 @@ fn the_doctor_notes_the_store_and_what_was_overdue() {
         age(&mut kept["monitors"]["coverage"], when);
         write_json(&path, &kept);
     };
+
+    // Half an hour old, a `10m` monitor's value still holds: it is late,
+    // not overdue.
+    let late = (chrono::Utc::now() - chrono::Duration::minutes(30))
+        .format("%Y-%m-%dT%H:%M:%SZ")
+        .to_string();
+    aged(&late);
+    let (_, report) = doctor();
+    assert!(!report["notes"].to_string().contains("overdue"), "{report}");
 
     // Months old: the monitor was overdue before the doctor.
     aged("2026-01-01T00:00:00Z");

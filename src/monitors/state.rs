@@ -409,20 +409,29 @@ pub struct Named {
 }
 
 /// A read's claim on a due monitor (§FS-021-monitors.6.9): the process, the
-/// time and the slot.
+/// time and the slot, and the timeout of the run that claimed it.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Claim {
     pub pid: u32,
     pub at: DateTime<Utc>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub slot: Option<DateTime<Utc>>,
+    /// The seconds the claiming run's command may take: the longest timeout
+    /// among the monitors it reads (§FS-021-monitors.5.5), which a monitor
+    /// sharing its `from` may not have on its own. None in a claim written
+    /// before it was kept.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub timeout: Option<u64>,
 }
 
 impl Claim {
     /// Whether it is void: older than the command's timeout plus a minute,
-    /// so the process that wrote it is gone (§FS-021-monitors.6.9).
+    /// so the process that wrote it is gone (§FS-021-monitors.6.9). The
+    /// timeout is the claiming run's where the claim keeps it, and
+    /// `timeout_seconds` otherwise.
     pub fn is_void(&self, timeout_seconds: u64, now: DateTime<Utc>) -> bool {
-        let timeout = i64::try_from(timeout_seconds).unwrap_or(i64::MAX / 2);
+        let timeout = self.timeout.unwrap_or(timeout_seconds);
+        let timeout = i64::try_from(timeout).unwrap_or(i64::MAX / 2);
         let limit = TimeDelta::try_seconds(timeout)
             .and_then(|timeout| timeout.checked_add(&TimeDelta::minutes(1)))
             .unwrap_or(TimeDelta::MAX);

@@ -22,18 +22,19 @@ use serde_json::Value as Json;
 
 use crate::branches::Placement;
 use crate::error::Result;
-use crate::monitors::cadence::{self, Cadence, DEFAULT_TIMEOUT_SECONDS};
+use crate::monitors::cadence::{self, DEFAULT_TIMEOUT_SECONDS};
 use crate::monitors::declared::{self, Declarations};
 use crate::monitors::episode::Unwatched;
 use crate::monitors::found;
-use crate::monitors::freshness::Cause;
+use crate::monitors::history::Line;
+use crate::monitors::known::{self, Known};
 use crate::monitors::machine::{self, Effect, Event, Read};
 use crate::monitors::model::Source;
 use crate::monitors::overlay::Monitor;
-use crate::monitors::reader::{self, Got, Job, Where};
+use crate::monitors::reader::{self, Clock, Got, Job, Where};
 use crate::monitors::retention;
 use crate::monitors::route::{self, Answer, Outcome, Owner, Route, Watched};
-use crate::monitors::state::{Claim, Document, Record};
+use crate::monitors::state::{Claim, Document, FileMark, Record};
 use crate::monitors::store::Store;
 
 /// The name of the slot a project's monitors answer in, ephor's own reading
@@ -92,14 +93,16 @@ pub fn answer(request: &Request) -> Report {
     refresh(&Store::of(request.project), request, Utc::now())
 }
 
-/// Reads a project's monitors on a plain refresh.
+/// Reads a project's monitors on a plain refresh, which began at `now`.
 pub fn refresh(store: &Store, request: &Request, now: DateTime<Utc>) -> Report {
+    let clock = Clock::starting(now);
     let declarations = declared::read(request.placement, request.site);
     let mut notes = declarations.notes();
     let kept = match store.load() {
         Ok(kept) => kept,
         Err(err) => return failed(err.to_string(), notes),
     };
+    notes.extend(declarations.faulted(&kept));
     if let Some(error) = &declarations.manifest_error {
         if declarations.site_declares() || kept.keeps_any() {
             return failed(format!("the manifest cannot be read: {error}"), notes);
@@ -137,7 +140,7 @@ pub fn refresh(store: &Store, request: &Request, now: DateTime<Utc>) -> Report {
             organization: placement.organization.as_ref(),
             forest: forest.as_ref(),
         });
-    let got = reader::read_all(&plan.jobs, place.as_ref());
+    let got = reader::read_all(&plan.jobs, place.as_ref(), &clock);
     match store.update(|document| commit(store, document, &declarations, request, &plan, &got, now))
     {
         Ok(said) => {
@@ -147,7 +150,28 @@ pub fn refresh(store: &Store, request: &Request, now: DateTime<Utc>) -> Report {
                 notes,
             }
         }
-        Err(err) => failed(err.to_string(), notes),
+        Err(err) => {
+            // Nothing of this read was kept, so its claims go with it and
+            // the next refresh reads again (§FS-021-monitors.6.9).
+            let _ = store.update(|document| {
+                release(document, &plan.claim);
+                Ok(())
+            });
+            failed(err.to_string(), notes)
+        }
+    }
+}
+
+/// Lets go of every claim this read holds.
+fn release(document: &mut Document, mine: &Claim) {
+    for record in document.monitors.values_mut() {
+        if record
+            .claim
+            .as_ref()
+            .is_some_and(|claim| is_mine(claim, mine))
+        {
+            record.claim = None;
+        }
     }
 }
 
@@ -184,18 +208,6 @@ fn failed(why: String, notes: Vec<String>) -> Report {
     }
 }
 
-/// Every declared monitor, resolved over what the store keeps of it.
-fn resolved(declarations: &Declarations, document: &Document) -> BTreeMap<String, Monitor> {
-    declarations
-        .ids()
-        .into_iter()
-        .map(|id| {
-            let monitor = declarations.resolve(&id, document.monitors.get(&id));
-            (id, monitor)
-        })
-        .collect()
-}
-
 fn routes(monitors: &BTreeMap<String, Monitor>) -> BTreeMap<String, Route> {
     monitors
         .iter()
@@ -211,14 +223,27 @@ fn owners(document: &Document) -> BTreeMap<String, Owner> {
         .collect()
 }
 
-fn timeout(monitors: &BTreeMap<String, Monitor>, id: &str) -> u64 {
-    monitors
-        .get(id)
-        .map_or(DEFAULT_TIMEOUT_SECONDS, |monitor| monitor.timeout)
+/// The timeout of the run that reads a monitor: the longest among the
+/// monitors that name its `from` (§FS-021-monitors.5.5), and its own where it
+/// names none. A claim that keeps no timeout of its own is judged by it.
+fn run_timeout(monitors: &BTreeMap<String, Monitor>, id: &str) -> u64 {
+    let Some(monitor) = monitors.get(id) else {
+        return DEFAULT_TIMEOUT_SECONDS;
+    };
+    match &monitor.from {
+        Some(from) => cadence::run_timeout(
+            monitors
+                .values()
+                .filter(|other| other.from.as_ref() == Some(from))
+                .map(|other| other.timeout),
+        ),
+        None => monitor.timeout,
+    }
 }
 
 /// Whether another read holds a live claim on a monitor
-/// (§FS-021-monitors.6.9): one older than its timeout and a minute is void.
+/// (§FS-021-monitors.6.9): one older than its run's timeout and a minute is
+/// void.
 fn held_elsewhere(record: &Record, mine: &Claim, timeout: u64, now: DateTime<Utc>) -> bool {
     record
         .claim
@@ -239,7 +264,7 @@ fn prepare(
     request: &Request,
     now: DateTime<Utc>,
 ) -> Plan {
-    let monitors = resolved(declarations, document);
+    let monitors = known::declared(declarations, document);
     for (id, monitor) in &monitors {
         if monitor.is_readable() {
             document
@@ -252,11 +277,12 @@ fn prepare(
         pid: std::process::id(),
         at: now,
         slot: None,
+        timeout: None,
     };
     let elsewhere: BTreeSet<String> = document
         .monitors
         .iter()
-        .filter(|(id, record)| held_elsewhere(record, &claim, timeout(&monitors, id), now))
+        .filter(|(id, record)| held_elsewhere(record, &claim, run_timeout(&monitors, id), now))
         .map(|(id, _)| id.clone())
         .collect();
     let routes = routes(&monitors);
@@ -299,7 +325,12 @@ fn prepare(
                 .difference(&elsewhere)
                 .cloned()
                 .collect();
-            let timeout = cadence::run_timeout(reads.iter().map(|id| timeout(&monitors, id)));
+            let timeout = cadence::run_timeout(
+                reads
+                    .iter()
+                    .filter_map(|id| monitors.get(id))
+                    .map(|monitor| monitor.timeout),
+            );
             Job {
                 source: source.clone(),
                 reads,
@@ -307,24 +338,34 @@ fn prepare(
             }
         })
         .collect();
-    let mut claimed: BTreeSet<String> = jobs.iter().flat_map(|job| job.reads.clone()).collect();
-    if !request.brought.is_empty() {
-        claimed.extend(
-            route::reads(&watched, &Owner::CustomStatus)
-                .difference(&elsewhere)
-                .cloned(),
-        );
+    // Each claim keeps the timeout of the run that reads it, the longest
+    // where several runs do (§FS-021-monitors.6.9).
+    let mut claimed: BTreeMap<String, u64> = BTreeMap::new();
+    for job in &jobs {
+        for id in &job.reads {
+            let timeout = claimed.entry(id.clone()).or_default();
+            *timeout = (*timeout).max(job.timeout);
+        }
     }
-    for id in claimed {
-        let cadence = monitors
+    if !request.brought.is_empty() {
+        for id in route::reads(&watched, &Owner::CustomStatus).difference(&elsewhere) {
+            claimed
+                .entry(id.clone())
+                .or_insert_with(|| run_timeout(&monitors, id));
+        }
+    }
+    let known = known::all(declarations, document);
+    for (id, timeout) in claimed {
+        let cadence = known
             .get(&id)
-            .map_or_else(Cadence::default_every, |monitor| monitor.cadence);
+            .map_or_else(cadence::Cadence::default_every, |known| known.cadence);
         let record = document
             .monitors
             .entry(id)
             .or_insert_with(|| Record::new(now));
         record.claim = Some(Claim {
             slot: record.schedule.next_slot(&cadence, now, &Local),
+            timeout: Some(timeout),
             ..claim.clone()
         });
     }
@@ -336,7 +377,16 @@ fn prepare(
     }
 }
 
-/// Step three, under the lock again: route, step, keep, let go, thin.
+/// What one monitor's step keeps in its history: whether the history
+/// starts again (§FS-021-monitors.4.4), and the lines it appends.
+#[derive(Debug, Default)]
+struct Kept {
+    id: String,
+    restart: bool,
+    lines: Vec<Line>,
+}
+
+/// Step three, under the lock again: route, step, thin, keep, let go.
 fn commit(
     store: &Store,
     document: &mut Document,
@@ -346,7 +396,7 @@ fn commit(
     got: &[Got],
     now: DateTime<Utc>,
 ) -> Result<Vec<String>> {
-    let monitors = resolved(declarations, document);
+    let monitors = known::declared(declarations, document);
     let routes = routes(&monitors);
     let owners = owners(document);
     let watched = Watched {
@@ -386,19 +436,20 @@ fn commit(
         }
     }
 
-    let declared: Vec<(Source, Cadence)> = monitors
-        .values()
-        .filter_map(|monitor| monitor.from.clone().map(|from| (from, monitor.cadence)))
-        .collect();
-    let marks: BTreeMap<&Source, &crate::monitors::state::FileMark> = got
+    let froms = known::froms(&monitors);
+    let marks: BTreeMap<&Source, &FileMark> = got
         .iter()
         .filter_map(|got| got.mark.as_ref().map(|mark| (&got.source, mark)))
         .collect();
+    // §FS-021-monitors.7.1: a sample is read when its answer was taken.
+    let taken: BTreeMap<&Source, DateTime<Utc>> =
+        got.iter().map(|got| (&got.source, got.read_at)).collect();
+    let mut kept = Vec::new();
     let mut gone = Vec::new();
     let ids: Vec<String> = document.monitors.keys().cloned().collect();
     for id in ids {
         let snapshot = document.monitors[&id].clone();
-        if held_elsewhere(&snapshot, &plan.claim, timeout(&monitors, &id), now) {
+        if held_elsewhere(&snapshot, &plan.claim, run_timeout(&monitors, &id), now) {
             // Read by another refresh: its state is what that one says.
             continue;
         }
@@ -406,6 +457,7 @@ fn commit(
             .get(&id)
             .cloned()
             .unwrap_or_else(|| declarations.resolve(&id, Some(&snapshot)));
+        // The `from` whose answer reads it: its own, or the one that owns it.
         let from = match routes.get(&id) {
             Some(Route::From(source)) => Some(source),
             _ => match &snapshot.owner {
@@ -413,28 +465,25 @@ fn commit(
                 _ => None,
             },
         };
-        let cadence = match routes.get(&id) {
-            Some(Route::From(_)) => monitor.cadence,
-            _ => route::brought_cadence(
-                snapshot.owner.as_ref(),
-                declared.iter().map(|(source, cadence)| (source, *cadence)),
-            ),
-        };
-        let (event, found) = match routed.deliveries.get(&id) {
+        let cadence = known::cadence(&monitor, snapshot.owner.as_ref(), &froms);
+        let (event, found, at) = match routed.deliveries.get(&id) {
             Some(delivery) => {
+                let at = from
+                    .and_then(|from| taken.get(from).copied())
+                    .unwrap_or(now);
                 let homes = declarations.homes(&id, Some(&snapshot));
                 let mark = from.and_then(|from| marks.get(from).copied());
-                let found = found::found(delivery, monitor, &homes, &snapshot, mark, &cadence, now);
+                let found = found::found(delivery, monitor, &homes, &snapshot, mark, &cadence, at);
                 let out_of_cadence = request.when == When::Now
                     && matches!(routes.get(&id), Some(Route::From(_)))
                     && !plan.in_cadence.contains(&id);
                 let event = Event::Read(Read {
-                    at: now,
+                    at,
                     in_cadence: !out_of_cadence,
                     found: found.finding.clone(),
                     after_work: Vec::new(),
                 });
-                (event, found)
+                (event, found, at)
             }
             None => {
                 let event = match monitors.get(&id) {
@@ -468,7 +517,7 @@ fn commit(
                         .or(monitor.of),
                     monitor,
                 };
-                (event, found)
+                (event, found, now)
             }
         };
         let watch = found::watch(&found.monitor, found.ok, found.of, snapshot.kind, cadence);
@@ -476,22 +525,19 @@ fn commit(
             .monitors
             .get_mut(&id)
             .expect("every id stepped is kept");
-        let effects = machine::step(record, &watch, &event, now, &Local);
-        keep(store, &id, effects)?;
+        let effects = machine::step(record, &watch, &event, at, &Local);
+        kept.push(history(&id, effects));
+        let timeout = run_timeout(&monitors, &id);
         if record
             .claim
             .as_ref()
-            .is_some_and(|claim| is_mine(claim, &plan.claim))
-            || record
-                .claim
-                .as_ref()
-                .is_some_and(|claim| claim.is_void(timeout(&monitors, &id), now))
+            .is_some_and(|claim| is_mine(claim, &plan.claim) || claim.is_void(timeout, now))
         {
             record.claim = None;
         }
     }
-    for id in gone {
-        if let Some(record) = document.monitors.remove(&id) {
+    for id in &gone {
+        if let Some(record) = document.monitors.remove(id) {
             if !record.past.is_empty() {
                 document
                     .forgotten
@@ -500,55 +546,84 @@ fn commit(
                     .extend(record.past);
             }
         }
-        store.remove(&id)?;
     }
     let recent = TimeDelta::days(i64::try_from(request.recent_days).unwrap_or(7));
     document.prune_forgotten(recent, now);
     if document.due_to_thin(now) {
-        thin(store, document, &monitors, now)?;
+        let known = known::all(declarations, document);
+        thin(store, document, &known, now)?;
     }
+    keep(store, &kept, &gone)?;
     Ok(notes)
 }
 
-/// Appends what a step kept to the monitor's history, starting it again
-/// where the step says to (§FS-021-monitors.4.3).
-fn keep(store: &Store, id: &str, effects: Vec<Effect>) -> Result<()> {
-    let mut lines = Vec::new();
+/// What a step keeps in the monitor's history.
+fn history(id: &str, effects: Vec<Effect>) -> Kept {
+    let mut kept = Kept {
+        id: id.to_string(),
+        ..Kept::default()
+    };
     for effect in effects {
         match effect {
-            Effect::Record(line) => lines.push(line),
+            Effect::Record(line) => kept.lines.push(line),
             Effect::RestartHistory => {
-                store.remove(id)?;
-                lines.clear();
+                kept.restart = true;
+                kept.lines.clear();
             }
             Effect::Opened { .. } | Effect::Moved { .. } | Effect::Ended { .. } => {}
         }
     }
-    store.append(id, &lines)
+    kept
+}
+
+/// Writes what every step kept, and lets the forgotten histories go
+/// (§FS-021-monitors.5.6). Where one write fails, every line this commit
+/// appended is taken back before the failure fails the slot
+/// (§FS-021-monitors.17.3): `monitors.json` is then not written either, so
+/// the records and the histories still agree, and the next read appends no
+/// line twice.
+fn keep(store: &Store, kept: &[Kept], gone: &[String]) -> Result<()> {
+    let mut appends = store.appends();
+    let written = (|| {
+        for kept in kept {
+            if kept.restart {
+                store.remove(&kept.id)?;
+            }
+            appends.append(&kept.id, &kept.lines)?;
+        }
+        gone.iter().try_for_each(|id| store.remove(id))
+    })();
+    if written.is_err() {
+        appends.undo();
+    }
+    written
 }
 
 /// Thins every history and lets go of the episodes no history keeps any
-/// more, at most once a day and under the lock (§FS-021-monitors.9.3).
+/// more, at most once a day and under the lock (§FS-021-monitors.9.3), each
+/// at the interval its freshness is judged at, so a monitor read from a
+/// daily answer is never thinned (§FS-021-monitors.6.8).
 fn thin(
     store: &Store,
     document: &mut Document,
-    monitors: &BTreeMap<String, Monitor>,
+    known: &BTreeMap<String, Known>,
     now: DateTime<Utc>,
 ) -> Result<()> {
     for (id, record) in document.monitors.iter_mut() {
         let Some(kind) = record.kind else {
             continue;
         };
-        let monitor = monitors.get(id);
-        let interval = monitor
-            .map_or_else(Cadence::default_every, |monitor| monitor.cadence)
-            .interval();
+        let known = known.get(id);
+        let interval = known.map_or_else(
+            || cadence::Cadence::default_every().interval(),
+            |known| known.cadence.interval(),
+        );
         let lines = store.history(id)?;
         let kept = retention::thin(
             &lines,
             interval,
             kind,
-            monitor.and_then(|monitor| monitor.levels.as_deref()),
+            known.and_then(|known| known.monitor.levels.as_deref()),
             now,
         );
         if kept != lines {
@@ -560,38 +635,14 @@ fn thin(
     Ok(())
 }
 
-/// The monitors of a project that were overdue at `now`
-/// (§FS-021-monitors.20.2): what the doctor says before its own refresh reads
-/// them.
-pub fn overdue(
-    store: &Store,
-    placement: Option<&Placement>,
-    site: &[Json],
-    now: DateTime<Utc>,
-) -> Vec<String> {
-    let declarations = declared::read(placement, site);
-    let Ok(document) = store.load() else {
-        return Vec::new();
-    };
-    declarations
-        .ids()
-        .into_iter()
-        .filter(|id| {
-            let Some(record) = document.monitors.get(id) else {
-                return false;
-            };
-            let monitor = declarations.resolve(id, Some(record));
-            monitor.is_readable()
-                && matches!(
-                    record
-                        .freshness(&monitor.cadence, now, &Local, None)
-                        .cause(),
-                    Some(Cause::Overdue)
-                )
-        })
-        .collect()
-}
-
 #[cfg(test)]
 #[path = "watch_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "watch_runs_tests.rs"]
+mod runs_tests;
+
+#[cfg(test)]
+#[path = "watch_place_tests.rs"]
+mod place_tests;

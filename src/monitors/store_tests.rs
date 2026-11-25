@@ -26,7 +26,7 @@ fn a_project_with_no_store_reads_empty() {
     assert!(store.history("uptime").unwrap().is_empty());
 }
 
-/// §FS-021-monitors.9.4: `monitors.json` is written whole and renamed into
+/// §FS-021-monitors.9.1: `monitors.json` is written whole and renamed into
 /// place, leaving no temporary file behind, and reads back as written.
 #[test]
 fn an_update_rewrites_the_document_whole() {
@@ -53,7 +53,7 @@ fn an_update_rewrites_the_document_whole() {
     assert!(names.contains(&FILE.to_string()), "{names:?}");
 }
 
-/// A change that fails writes nothing (§FS-021-monitors.9.4).
+/// A change that fails writes nothing (§FS-021-monitors.9.1).
 #[test]
 fn a_failed_change_leaves_the_store_as_it_was() {
     let root = tempfile::tempdir().unwrap();
@@ -79,7 +79,7 @@ fn a_store_that_does_not_read_is_an_error() {
     assert!(store.update(|_| Ok(())).is_err());
 }
 
-/// §FS-021-monitors.9.4: changes made under the lock from many threads at
+/// §FS-021-monitors.6.9: changes made under the lock from many threads at
 /// once all land, none lost to another's rewrite.
 #[test]
 fn concurrent_updates_all_land_under_the_lock() {
@@ -103,7 +103,7 @@ fn concurrent_updates_all_land_under_the_lock() {
     assert_eq!(store.load().unwrap().monitors.len(), 8);
 }
 
-/// §FS-021-monitors.9.4: a history's half-written last line is passed over,
+/// §FS-021-monitors.9.1: a history's half-written last line is passed over,
 /// and the next append starts on a line of its own.
 #[test]
 fn a_torn_last_line_is_passed_over_and_cut_before_the_next_append() {
@@ -153,4 +153,27 @@ fn size_counts_every_file_under_the_store() {
     assert!(size.bytes > 0);
     assert_eq!(size.path, root.path());
     assert_eq!(super::size(&root.path().join("none")).files, 0);
+}
+
+/// §FS-021-monitors.9.1: appends taken back together leave each history as
+/// it was, a history the appends began included.
+#[test]
+fn appends_taken_back_leave_each_history_as_it_was() {
+    let root = tempfile::tempdir().unwrap();
+    let store = Store::at(root.path(), "alpha");
+    std::fs::create_dir_all(root.path().join("alpha")).unwrap();
+    store.append("uptime", &[reading(0, 1.0)]).unwrap();
+    let before = std::fs::read(store.history_path("uptime")).unwrap();
+
+    let mut appends = store.appends();
+    appends.append("uptime", &[reading(10, 2.0)]).unwrap();
+    appends.append("latency", &[reading(10, 3.0)]).unwrap();
+    appends.append("empty", &[]).unwrap();
+    std::fs::create_dir_all(store.history_path("broken")).unwrap();
+    assert!(appends.append("broken", &[reading(10, 4.0)]).is_err());
+    appends.undo();
+
+    assert_eq!(std::fs::read(store.history_path("uptime")).unwrap(), before);
+    assert!(store.history("latency").unwrap().is_empty());
+    assert!(!store.history_path("empty").exists());
 }
