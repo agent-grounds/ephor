@@ -103,9 +103,133 @@
       "type": "array",
       "items": { "$ref": "#/$defs/offer" },
       "description": "The project's offers (FS-006-project-interface.9): menu entries beside the person's own, person's same-id entries winning. Invoked by a person, run as a summons, gated by 'requires'."
+    },
+    "monitors": {
+      "type": "array",
+      "items": {
+        "description": "One monitor's declaration. Any entry is accepted here so that one declaration ephor cannot use costs that monitor alone: ephor checks each entry on its own against $defs/monitor, and one that fails is shown with what is wrong and not read, while the manifest's other monitors, checks, offers and task stores are read as usual. 'ephor validate --manifest' holds every entry to $defs/monitor and refuses the manifest, naming each that fails (FS-021-monitors.4.6)."
+      },
+      "description": "Quantities the project asks ephor to read at their own cadence, keep as history and draw (FS-021-monitors.4.1). A monitor something judges is a status, and its drop is a matter; one nothing judges is a KPI (FS-021-monitors.1.2). Site configuration overrides any field by naming the id (FS-021-monitors.4.4). Rules that join two fields (a warn laxer than healthy, an 'at' that does not fit 'every', an id declared twice) are judged per monitor too, and cost that monitor alone (FS-021-monitors.4.6)."
     }
   },
   "$defs": {
+    "monitor": {
+      "type": "object",
+      "required": ["id"],
+      "description": "One monitor's declaration, the shape each entry of 'monitors' is checked against, in the manifest and in site configuration alike (FS-021-monitors.4.1, FS-021-monitors.4.2). Only 'id' is required; a title defaults to the id. The site may write null for 'warn', 'at', 'from', 'workflow' or 'action' to set aside what the manifest says (FS-021-monitors.4.4).",
+      "properties": {
+        "id": { "$ref": "#/$defs/monitorId" },
+        "title": { "type": "string", "minLength": 1 },
+        "description": { "type": "string", "description": "One line saying what the number is for." },
+        "kind": { "$ref": "#/$defs/monitorKind" },
+        "unit": { "type": "string", "description": "'%', 'ms', 's', 'bytes', 'count', '$' or free text (FS-021-monitors.2.2)." },
+        "better": { "enum": ["higher", "lower"], "description": "Which direction is better; colours a change and says which way is worse (FS-021-monitors.2.2)." },
+        "of": { "type": "number", "description": "The whole the value is a fraction of, shown as '12/15'. A sample's own 'of' is that reading's, and this stands where a sample states none (FS-021-monitors.2.2)." },
+        "levels": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "minItems": 1,
+          "uniqueItems": true,
+          "description": "A level's values, best first (FS-021-monitors.2.3)."
+        },
+        "healthy": {
+          "anyOf": [{ "$ref": "#/$defs/monitorCondition" }, { "type": "null" }],
+          "description": "The condition (FS-021-monitors.3.1), taken whole from the home that names it. Absent from every home, a boolean is healthy when true and a level at its first level, and a number or a series is judged by its samples' own ok where they state one and is a KPI otherwise; null makes any monitor a KPI whatever its samples say (FS-021-monitors.3.2, FS-021-monitors.3.6)."
+        },
+        "warn": {
+          "anyOf": [{ "$ref": "#/$defs/monitorCondition" }, { "type": "null" }],
+          "description": "A second condition a passing value must also meet to be shown ok; a value that meets 'healthy' and fails this is warn, shown in amber and never a matter (FS-021-monitors.3.3, FS-021-monitors.3.7). It narrows whichever 'healthy' applies, and a warn with none to narrow is a declaration error (FS-021-monitors.3.5)."
+        },
+        "from": {
+          "anyOf": [{ "$ref": "#/$defs/monitorFrom" }, { "type": "null" }],
+          "description": "Where the value comes from (FS-021-monitors.5), taken whole from the home that names it."
+        },
+        "every": {
+          "$ref": "#/$defs/monitorDuration",
+          "description": "How often the monitor is read: a floor between reads, not a promise (FS-021-monitors.6.1, FS-021-monitors.6.5). Defaults to '10m', or to '1d' where 'at' is stated and '1w' where that 'at' names a day."
+        },
+        "at": {
+          "type": ["string", "null"],
+          "pattern": "^((Mon|Tue|Wed|Thu|Fri|Sat|Sun) )?([01][0-9]|2[0-3]):[0-5][0-9]$",
+          "description": "Pins the slots to the local clock: 'HH:MM', or 'Mon 06:00' with an 'every' of whole weeks (FS-021-monitors.6.1); null at the site unpins the manifest's (FS-021-monitors.6.2)."
+        },
+        "timeout": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Seconds a command may run before it is stopped and the read is unreadable. Defaults to 30 (FS-021-monitors.5.5)."
+        },
+        "drop_after": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Failing readings in a row that make the monitor down. Defaults to 1 (FS-021-monitors.10.1)."
+        },
+        "recover_after": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Passing readings in a row that end a drop. Defaults to 2 under an hourly interval and to 1 at an hour or longer (FS-021-monitors.10.1)."
+        },
+        "workflow": {
+          "type": ["string", "null"],
+          "minLength": 1,
+          "description": "A runtime workflow proposed for the monitor's drop: it heads the drop's menu, ahead even of what ephor itself recognized (FS-021-monitors.16.1). One choice with 'action', and the site's choice replaces the manifest's whole."
+        },
+        "action": {
+          "type": ["string", "null"],
+          "minLength": 1,
+          "description": "The id of a menu entry that hands work over, a recipe or a workflow, proposed for the monitor's drop in place of a workflow; one that names no such entry is passed over (FS-021-monitors.16.1)."
+        }
+      },
+      "not": { "required": ["workflow", "action"] }
+    },
+    "monitorId": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9-]*$",
+      "description": "A monitor's id, unique within its project; across the site the monitor is '<project>/<id>' (FS-021-monitors.1.1)."
+    },
+    "monitorKind": {
+      "enum": ["boolean", "number", "level", "series"],
+      "description": "What the value is (FS-021-monitors.2)."
+    },
+    "monitorCondition": {
+      "type": "object",
+      "minProperties": 1,
+      "description": "A condition on the value (FS-021-monitors.3.1): 'is' for a boolean; 'min' and 'max', inclusive, for a number or a series; 'in' or 'at_most' for a level. A value meets it when it meets every key it holds. A key that does not fit the monitor's kind, or a condition no value can meet, is that monitor's declaration error (FS-021-monitors.4.6).",
+      "properties": {
+        "is": { "type": "boolean" },
+        "min": { "type": "number" },
+        "max": { "type": "number" },
+        "in": { "type": "array", "items": { "type": "string" }, "minItems": 1 },
+        "at_most": { "type": "string" }
+      }
+    },
+    "monitorFrom": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": ["command"],
+          "properties": {
+            "command": { "type": "string", "minLength": 1 },
+            "cwd": { "$ref": "#/$defs/cwd" }
+          },
+          "not": { "required": ["file"] }
+        },
+        {
+          "type": "object",
+          "required": ["file"],
+          "properties": {
+            "file": { "type": "string", "minLength": 1 },
+            "cwd": { "$ref": "#/$defs/cwd" }
+          },
+          "not": { "required": ["command"] }
+        }
+      ],
+      "description": "Where the value comes from (FS-021-monitors.5): a command, run as a summons once per read however many monitors name it (FS-021-monitors.5.1), or a file in the answer shape, read and never run (FS-021-monitors.5.2). Both resolve in the project's checkout of its default branch, or the forest repository 'cwd' names (FS-021-monitors.5.3). Absent, the monitor is read from the answer that brings its samples (FS-021-monitors.5.6)."
+    },
+    "monitorDuration": {
+      "type": "string",
+      "pattern": "^[1-9][0-9]*[mhdw]$",
+      "description": "A whole number and a unit: m minutes, h hours, d days, w weeks (FS-021-monitors.6.1)."
+    },
     "taskStore": {
       "type": "object",
       "required": ["kind", "path"],

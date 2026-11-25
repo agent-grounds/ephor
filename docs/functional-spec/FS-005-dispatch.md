@@ -707,6 +707,15 @@ written: the dismissal stays in the ledger as the record of what was decided
 about the matter as it then was, and a reading that finds the matter moved
 simply no longer counts it.
 
+**A monitor's matter moves on its health, not its number.** Its state is its
+episode's, `down` or `unknown`, for as long as the episode is open, and its
+time is when it last moved ([§FS-021-monitors.12.2](FS-021-monitors.md#122-its-state-is-its-episodes-and-its-time-is-when-it-last-moved)), so a value moving inside
+its band changes neither. Its fingerprint takes the three moves
+[§FS-021-monitors.13.1](FS-021-monitors.md#131-what-is-movement) names besides: the worst level its drop has reached,
+its condition in words, and a mark for each piece of work laid on it that has
+ended. A ledger written before monitors existed holds none of them, and reads
+as it did.
+
 ## 6. Dispatch is offered where it would work, and refuses where it would not
 
 The rules of [§FS-004-quick-actions.2](FS-004-quick-actions.md#2-offered-only-where-it-would-work)

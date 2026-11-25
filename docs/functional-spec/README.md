@@ -26,6 +26,7 @@ Behavior and requirements, one declaration per file. Each H1 declares an
 | [FS-018-private-sources](FS-018-private-sources.md) | a source the person declares private keeps its work theirs |
 | [FS-019-waiting](FS-019-waiting.md) | ephor opens on what waits on the reader, and every matter is one key away |
 | [FS-020-guide](FS-020-guide.md) | how work gets into the shapes ephor reads is asked of the ephor that will read it |
+| [FS-021-monitors](FS-021-monitors.md) | a quantity a project declares is read on its own cadence and kept, and its drop is a matter |
 | [§FS-001-forge-interface](FS-001-forge-interface.md#fs-001-forge-interface-ephor-reaches-every-forge-and-issue-tracker-through-one-provider-interface) | ephor reaches every forge and issue tracker through one provider interface |
 | [§FS-002-release](FS-002-release.md#fs-002-release-ephor-releases-from-a-tag-and-the-release-writes-its-changelog-from-the-pull-requests-it-ships) | ephor releases from a tag, and the release writes its changelog from the pull requests it ships |
 | [§FS-003-feed-categories](FS-003-feed-categories.md#fs-003-feed-categories-the-feed-sorts-itself-into-categories-and-finished-work-lands-in-recent) | the feed sorts itself into categories, and finished work lands in Recent |
@@ -46,6 +47,7 @@ Behavior and requirements, one declaration per file. Each H1 declares an
 | [§FS-018-private-sources](FS-018-private-sources.md#fs-018-private-sources-a-source-the-person-declares-private-keeps-its-work-theirs) | a source the person declares private keeps its work theirs |
 | [§FS-019-waiting](FS-019-waiting.md#fs-019-waiting-ephor-opens-on-what-waits-on-the-reader-and-every-matter-is-one-key-away) | ephor opens on what waits on the reader, and every matter is one key away |
 | [§FS-020-guide](FS-020-guide.md#fs-020-guide-how-work-gets-into-the-shapes-ephor-reads-is-asked-of-the-ephor-that-will-read-it) | how work gets into the shapes ephor reads is asked of the ephor that will read it |
+| [§FS-021-monitors](FS-021-monitors.md#fs-021-monitors-a-quantity-a-project-declares-is-read-on-its-own-cadence-and-kept-and-its-drop-is-a-matter) | a quantity a project declares is read on its own cadence and kept, and its drop is a matter |
 
 This index is navigational — citations should target the declaration's ID
 directly, never this file.

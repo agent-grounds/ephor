@@ -59,9 +59,88 @@
     "data": {
       "type": "object",
       "description": "Free passthrough. Returns wherever the dossier's metadata goes (EPHOR_RAW, {meta.*})."
+    },
+    "monitors": {
+      "type": "array",
+      "items": {
+        "description": "One monitor's sample. Any entry is accepted here so that one bad sample never refuses the answer: ephor checks each entry on its own against $defs/monitorSample, and one that fails is an unreadable read of that monitor alone (FS-021-monitors.8.2)."
+      },
+      "description": "Samples of the project's monitors (FS-021-monitors.8.1). Read from a monitor's 'from' command or file, and from a custom-status answer on a plain refresh (FS-021-monitors.8.3); ignored by every other verb."
     }
   },
   "$defs": {
+    "monitorSample": {
+      "type": "object",
+      "required": ["id"],
+      "description": "One sample, the shape each entry of 'monitors' is checked against (FS-021-monitors.8.1). Its value must also fit its monitor's kind (FS-021-monitors.8.2). The fields from 'title' on describe a monitor nothing declared, and a declaration overrides each of them (FS-021-monitors.4.3, FS-021-monitors.4.4).",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9-]*$",
+          "description": "The monitor this sample is for (FS-021-monitors.1.1)."
+        },
+        "value": {
+          "type": ["boolean", "number", "string"],
+          "description": "true or false for a boolean, a number, or a level's name. A series' value is its last point, and this is ignored beside points (FS-021-monitors.2.4). NaN and Infinity are not JSON: a script with no number to give leaves this out, which is an unreadable read of that monitor (FS-021-monitors.8.2)."
+        },
+        "of": { "type": "number", "description": "The whole a number is a fraction of, this reading's; the declaration's stands where a sample states none (FS-021-monitors.2.2)." },
+        "at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "When the value was measured. Absent, or later than the moment the sample is read, it counts as measured when it was read. A sample measured more than one interval before the read, or no later than the reading ephor holds, is stale (FS-021-monitors.7.1)."
+        },
+        "ok": {
+          "type": "boolean",
+          "description": "The sample's own judgement, used only where no home gives a 'healthy'. It comes before the kind's default, and a monitor only it judges is a KPI once a sample states none (FS-021-monitors.3.6)."
+        },
+        "detail": { "type": "string", "description": "One line, shown on the row and carried by the matter (FS-021-monitors.12.1)." },
+        "url": { "type": "string", "description": "Where to look." },
+        "points": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/monitorPoint" },
+          "minItems": 1,
+          "anyOf": [
+            { "items": { "required": ["t"] } },
+            { "items": { "required": ["x"] } }
+          ],
+          "description": "A series' points, or a number's own history, drawn as given and never copied into ephor's history. Every point of one sample uses 't', or every point 'x', and a number's use 't' (FS-021-monitors.2.2, FS-021-monitors.2.4)."
+        },
+        "title": { "type": "string", "minLength": 1 },
+        "description": { "type": "string" },
+        "kind": { "enum": ["boolean", "number", "level", "series"] },
+        "unit": { "type": "string" },
+        "better": { "enum": ["higher", "lower"] },
+        "levels": { "type": "array", "items": { "type": "string", "minLength": 1 }, "minItems": 1, "uniqueItems": true },
+        "healthy": { "anyOf": [{ "$ref": "#/$defs/monitorCondition" }, { "type": "null" }] },
+        "warn": { "$ref": "#/$defs/monitorCondition" }
+      }
+    },
+    "monitorPoint": {
+      "type": "object",
+      "required": ["v"],
+      "oneOf": [
+        { "required": ["t"], "not": { "required": ["x"] } },
+        { "required": ["x"], "not": { "required": ["t"] } }
+      ],
+      "properties": {
+        "t": { "type": "string", "format": "date-time", "description": "When the point was measured." },
+        "x": { "type": "string", "description": "A label, such as a commit or a version." },
+        "v": { "type": "number" }
+      },
+      "description": "One point of a series: {t, v} or {x, v} (FS-021-monitors.2.4)."
+    },
+    "monitorCondition": {
+      "type": "object",
+      "minProperties": 1,
+      "properties": {
+        "is": { "type": "boolean" },
+        "min": { "type": "number" },
+        "max": { "type": "number" },
+        "in": { "type": "array", "items": { "type": "string" }, "minItems": 1 },
+        "at_most": { "type": "string" }
+      },
+      "description": "A condition on the value, in the manifest's language (FS-021-monitors.3.1)."
+    },
     "matter": {
       "type": "object",
       "required": ["key"],
