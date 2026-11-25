@@ -612,3 +612,34 @@ fn a_monitor_first_read_after_it_was_first_seen_holds_from_when_it_was_seen() {
         );
     }
 }
+
+#[test]
+fn an_edit_that_accepts_the_same_values_does_not_move_the_drop() {
+    let levels: Vec<String> = ["a", "b", "c"].map(String::from).to_vec();
+    let level = |condition: serde_json::Value| {
+        let judge = healthy(condition);
+        let terms = Terms {
+            kind: Some(Kind::Level),
+            levels: Some(&levels),
+            ..Terms::default()
+        };
+        Watch {
+            healthy_words: words::healthy(&judge, &terms),
+            kind: Some(Kind::Level),
+            levels: Some(&levels),
+            ..watch(judge, 1, 1)
+        }
+    };
+    let mut run = Run::new();
+    let first = level(json!({"in": ["a", "b"]}));
+    assert!(opened(&run.value(&first, Value::Level("c".into())), Sort::Drop).is_some());
+    for same in [json!({"in": ["b", "a"]}), json!({"at_most": "b"})] {
+        let effects = run.look(&level(same.clone()), run.clock);
+        assert!(moved(&effects).is_empty(), "{same}");
+    }
+    let narrower = run.look(&level(json!({"in": ["a"]})), run.clock);
+    assert_eq!(
+        moved(&narrower),
+        vec!["condition changed: healthy: a or b → healthy when a"]
+    );
+}

@@ -33,6 +33,26 @@ impl Judge {
     }
 }
 
+/// Whether two judges accept the same values (§FS-021-monitors.13.1): a
+/// boolean's by which of `true` and `false` each accepts, a level's by which
+/// of its levels, and a number's or a series' by its bounds. An edit that
+/// changes how a condition is written, `{"in": ["b", "a"]}` for
+/// `{"at_most": "b"}`, and not what it accepts, changes nothing.
+pub fn same_judge(a: &Judge, b: &Judge, kind: Option<Kind>, levels: Option<&[String]>) -> bool {
+    let (Judge::Condition(a), Judge::Condition(b)) = (a, b) else {
+        return a == b;
+    };
+    let probes: Vec<Value> = match (kind, levels) {
+        (Some(Kind::Boolean), _) => vec![Value::Boolean(true), Value::Boolean(false)],
+        (Some(Kind::Level), Some(levels)) => levels.iter().cloned().map(Value::Level).collect(),
+        (Some(Kind::Number | Kind::Series), _) => return (a.min, a.max) == (b.min, b.max),
+        _ => return a == b,
+    };
+    probes
+        .iter()
+        .all(|value| meets(a, value, levels) == meets(b, value, levels))
+}
+
 /// The condition a kind has where no home gives one (§FS-021-monitors.3.2):
 /// a boolean is healthy when `true`, a level at its first level, and a number
 /// or a series has none.

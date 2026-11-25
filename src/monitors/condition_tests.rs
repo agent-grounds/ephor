@@ -249,3 +249,22 @@ fn a_judge_keeps_its_shape_in_the_store() {
     assert!(Judge::Kpi.is_kpi());
     assert_eq!(Judge::SampleOk.condition(), None);
 }
+
+#[test]
+fn two_judges_are_the_same_when_they_accept_the_same_values() {
+    use serde_json::json;
+    let levels: Vec<String> = ["a", "b", "c"].map(String::from).to_vec();
+    let judge = |json| Judge::Condition(serde_json::from_value::<Condition>(json).unwrap());
+    let level = |a, b| same_judge(&judge(a), &judge(b), Some(Kind::Level), Some(&levels));
+    assert!(level(json!({"in": ["a", "b"]}), json!({"in": ["b", "a"]})));
+    assert!(level(json!({"in": ["a", "b"]}), json!({"at_most": "b"})));
+    assert!(!level(json!({"in": ["a", "b"]}), json!({"in": ["a"]})));
+    let boolean = |a, b| same_judge(&judge(a), &judge(b), Some(Kind::Boolean), None);
+    assert!(boolean(json!({"is": true}), json!({"is": true})));
+    assert!(!boolean(json!({"is": true}), json!({"is": false})));
+    let number = |a, b| same_judge(&judge(a), &judge(b), Some(Kind::Number), None);
+    assert!(number(json!({"min": 80}), json!({"min": 80.0})));
+    assert!(!number(json!({"min": 80}), json!({"min": 85})));
+    assert!(!same_judge(&Judge::SampleOk, &Judge::Kpi, None, None));
+    assert!(same_judge(&Judge::SampleOk, &Judge::SampleOk, None, None));
+}
