@@ -164,7 +164,15 @@ LEDGER = (
 #: their pure halves out, and it never shrinks. `forest` is core by
 #: §AR-001-layers.1 and not yet core by structure -- it asks the git prober
 #: what is on disk, and joins this list when that prober moves to sources.
-CORE = ("matter", "attribution", "slug", "ticket_ids", "feed::model", "feed::gate")
+CORE = (
+    "matter",
+    "attribution",
+    "slug",
+    "ticket_ids",
+    "feed::model",
+    "feed::gate",
+    "interval",
+)
 
 IO_APIS = (
     (r"\bstd::fs\b", "std::fs"),
