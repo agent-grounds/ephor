@@ -12,6 +12,7 @@ use serde_json::Value as Json;
 
 use crate::monitors::cadence::{self, Cadence};
 use crate::monitors::model::{Sample, Source};
+use crate::monitors::overlay::Monitor;
 use crate::monitors::shape;
 
 /// How long a monitor nothing declared is kept with no answer bringing it
@@ -25,6 +26,21 @@ pub enum Route {
     From(Source),
     /// The answer that brings it: it names no `from`.
     Brought,
+    /// Nowhere: its declaration is in error (§FS-021-monitors.4.6), or its
+    /// registry row runs no command for it (§FS-021-monitors.4.5). A sample
+    /// for it in any answer is ignored.
+    NotRead,
+}
+
+impl Route {
+    /// Where a resolved monitor is read from.
+    pub fn of(monitor: &Monitor) -> Route {
+        match &monitor.from {
+            _ if !monitor.is_readable() => Route::NotRead,
+            Some(source) => Route::From(source.clone()),
+            None => Route::Brought,
+        }
+    }
 }
 
 /// An answer, by where it came from: the answer that owns a monitor read
@@ -97,32 +113,77 @@ pub struct Watched<'a> {
     pub plain: bool,
 }
 
-/// Gives each monitor the sample carrying its id, from the answer it is read
-/// from (§FS-021-monitors.5.6): a declared `from`'s answer while it is due
-/// (§FS-021-monitors.6.6), and otherwise the answer that owns it, the first
-/// to bring it owning it.
-pub fn route(watched: &Watched, answers: &[Answer]) -> Routed {
+/// The ids a run that takes `source`'s answer reads (§FS-021-monitors.5.4,
+/// §FS-021-monitors.5.6), which `EPHOR_MONITORS` names so a script that
+/// answers for many monitors may compute only those: the due monitors that
+/// name it as their `from`, the monitors it owns, and, on a plain refresh,
+/// every declared monitor that names no `from` while no answer owns it. A
+/// monitor nothing declared is named once an answer has brought it.
+pub fn reads(watched: &Watched, source: &Owner) -> BTreeSet<String> {
+    let owners = kept_owners(watched);
+    let mut reads = taken(watched, &owners, source);
+    if watched.plain {
+        reads.extend(
+            watched
+                .routes
+                .iter()
+                .filter(|(id, route)| **route == Route::Brought && !owners.contains_key(*id))
+                .map(|(id, _)| id.clone()),
+        );
+    }
+    reads
+}
+
+/// The owners the store records that still hold (§FS-021-monitors.5.6): an
+/// owner whose `from` no declared monitor names any more is gone, and so is
+/// one of a monitor now read from its own `from`, or not read at all.
+fn kept_owners(watched: &Watched) -> BTreeMap<String, Owner> {
     let named: BTreeSet<&Source> = watched
         .routes
         .values()
         .filter_map(|route| match route {
             Route::From(source) => Some(source),
-            Route::Brought => None,
+            Route::Brought | Route::NotRead => None,
         })
         .collect();
-    // An owner whose `from` no declared monitor names any more is gone.
-    let mut owners: BTreeMap<String, Owner> = watched
+    watched
         .owners
         .iter()
         .filter(|(id, owner)| {
-            !matches!(watched.routes.get(*id), Some(Route::From(_)))
+            matches!(watched.routes.get(*id), Some(Route::Brought) | None)
                 && match owner {
                     Owner::From(source) => named.contains(source),
                     Owner::CustomStatus => true,
                 }
         })
         .map(|(id, owner)| (id.clone(), owner.clone()))
-        .collect();
+        .collect()
+}
+
+/// The monitors an answer from `source` is taken to read before it is
+/// looked at: the due ones that name it, and the ones it owns.
+fn taken(watched: &Watched, owners: &BTreeMap<String, Owner>, source: &Owner) -> BTreeSet<String> {
+    let due_from = watched.routes.iter().filter(|(id, route)| {
+        matches!((route, source), (Route::From(from), Owner::From(source)) if from == source)
+            && watched.due.contains(*id)
+    });
+    due_from
+        .map(|(id, _)| id.clone())
+        .chain(
+            owners
+                .iter()
+                .filter(|(_, owner)| *owner == source)
+                .map(|(id, _)| id.clone()),
+        )
+        .collect()
+}
+
+/// Gives each monitor the sample carrying its id, from the answer it is read
+/// from (§FS-021-monitors.5.6): a declared `from`'s answer while it is due
+/// (§FS-021-monitors.6.6), and otherwise the answer that owns it, the first
+/// to bring it owning it.
+pub fn route(watched: &Watched, answers: &[Answer]) -> Routed {
+    let mut owners = kept_owners(watched);
     let mut routed = Routed::default();
 
     for answer in answers {
@@ -136,25 +197,11 @@ pub fn route(watched: &Watched, answers: &[Answer]) -> Routed {
             }
         }
         // The monitors this answer was taken to read.
-        let mut taken: BTreeSet<String> = watched
-            .routes
-            .iter()
-            .filter(|(id, route)| {
-                matches!((route, &answer.source), (Route::From(from), Owner::From(source)) if from == source)
-                    && watched.due.contains(*id)
-            })
-            .map(|(id, _)| id.clone())
-            .collect();
-        taken.extend(
-            owners
-                .iter()
-                .filter(|(_, owner)| **owner == answer.source)
-                .map(|(id, _)| id.clone()),
-        );
+        let mut taken = taken(watched, &owners, &answer.source);
         // The first answer to bring an unowned monitor owns it.
         for id in carried.keys() {
-            let free =
-                !owners.contains_key(id) && !matches!(watched.routes.get(id), Some(Route::From(_)));
+            let free = !owners.contains_key(id)
+                && matches!(watched.routes.get(id), Some(Route::Brought) | None);
             if free {
                 owners.insert(id.clone(), answer.source.clone());
                 taken.insert(id.clone());
