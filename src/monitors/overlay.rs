@@ -322,6 +322,9 @@ pub fn resolve(id: &str, homes: &Homes) -> Monitor {
         }
     };
 
+    if let Some(source) = &from {
+        faults.extend(outside(source));
+    }
     if let Healthy::Said(condition, _) = &healthy {
         faults.extend(condition::faults(
             "healthy",
@@ -374,6 +377,37 @@ pub fn resolve(id: &str, homes: &Homes) -> Monitor {
         notes,
         faults,
     }
+}
+
+/// Where a `from` leaves the place it is read in (§FS-021-monitors.5.3): a
+/// file's path resolves against that place, so one that is absolute or
+/// climbs out of it with `..` breaks the rule, and so does a `repo:` that
+/// names no repository but `.` or `..`.
+fn outside(source: &Source) -> Vec<String> {
+    let (file, cwd) = match source {
+        Source::Command { cwd, .. } => (None, cwd.as_deref()),
+        Source::File { file, cwd } => (Some(file.as_str()), cwd.as_deref()),
+    };
+    let mut faults = Vec::new();
+    if let Some(file) = file {
+        let path = std::path::Path::new(file);
+        let climbs = path
+            .components()
+            .any(|part| matches!(part, std::path::Component::ParentDir));
+        if path.is_absolute() || climbs {
+            faults.push(format!(
+                "from.file {file} is not a path inside the place it is read in"
+            ));
+        }
+    }
+    if let Some(name) = cwd.and_then(|cwd| cwd.strip_prefix("repo:")) {
+        if matches!(name, "." | "..") {
+            faults.push(format!(
+                "from.cwd repo:{name} names no repository of the forest"
+            ));
+        }
+    }
+    faults
 }
 
 /// The first home that states a nullable field, with what it states

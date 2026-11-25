@@ -418,3 +418,36 @@ fn a_row_that_trusts_only_descriptions_runs_no_command_of_the_manifest() {
     );
     assert!(!full.not_run && full.is_readable());
 }
+
+/// §FS-021-monitors.5.3: a file's path resolves against the place it is
+/// read in, so one that leaves it, and a `repo:` that names no repository,
+/// break a rule and are not read.
+#[test]
+fn a_from_that_leaves_the_checkout_is_a_declaration_error() {
+    for from in [
+        json!({"file": "/etc/kpi.json"}),
+        json!({"file": "../kpi.json"}),
+        json!({"file": "out/../../kpi.json"}),
+        json!({"command": "sh kpis.sh", "cwd": "repo:.."}),
+        json!({"file": "kpi.json", "cwd": "repo:."}),
+    ] {
+        let monitor = resolve_with(
+            Some(json!({"id": "m", "kind": "number", "from": from.clone()})),
+            None,
+            None,
+        );
+        assert!(!monitor.is_readable(), "{from} is read: {monitor:?}");
+    }
+    for from in [
+        json!({"file": "out/kpi.json"}),
+        json!({"file": "./kpi.json", "cwd": "repo:sub"}),
+        json!({"command": "sh ../kpis.sh", "cwd": "root"}),
+    ] {
+        let monitor = resolve_with(
+            Some(json!({"id": "m", "kind": "number", "from": from.clone()})),
+            None,
+            None,
+        );
+        assert!(monitor.is_readable(), "{from}: {:?}", monitor.faults);
+    }
+}
