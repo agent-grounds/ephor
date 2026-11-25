@@ -722,6 +722,8 @@ never loses history. `monitors.json` holds, per monitor:
 `<id>.jsonl` holds the monitor's readings in the order ephor took them, one
 line each: `{t, v, health}`, where `t` is when the sample was measured and
 `health` is the reading's own, before the hold of [§FS-021-monitors.10.1](FS-021-monitors.md#101-drop_after-and-recover_after).
+A reading taken out of cadence ([§FS-021-monitors.6.7](FS-021-monitors.md#67-reading-out-of-cadence)) also carries
+`out_of_cadence: true`, which the detail view notes ([§FS-021-monitors.19](FS-021-monitors.md#19-the-detail-view)).
 
 ### 9.2 What a reading is
 
