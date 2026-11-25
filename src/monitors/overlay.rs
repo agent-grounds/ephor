@@ -29,7 +29,14 @@ pub struct Homes<'a> {
     /// The kind the monitor's first accepted sample gave it, where nothing
     /// else states one (§FS-021-monitors.4.4).
     pub first_kind: Option<Kind>,
+    /// The registry row trusts the manifest for its descriptions only, so a
+    /// command the manifest names is not run (§FS-021-monitors.4.5).
+    pub descriptions_only: bool,
 }
+
+/// What a monitor whose registry row reads the manifest's descriptions only
+/// shows, where the manifest names a command for it (§FS-021-monitors.4.5).
+pub const NOT_RUN: &str = "not run: this registry row reads descriptions only";
 
 /// The `healthy` the first three homes resolve to (§FS-021-monitors.3.6).
 #[derive(Debug, Clone, PartialEq)]
@@ -62,14 +69,21 @@ pub struct Monitor {
     /// (§FS-021-monitors.3.5).
     pub warn: Option<Condition>,
     /// Absent: read from the answer that brings its samples
-    /// (§FS-021-monitors.5.6).
+    /// (§FS-021-monitors.5.6), unless it is [`Monitor::not_run`].
     pub from: Option<Source>,
+    /// The manifest names a command for it and its registry row reads the
+    /// manifest's descriptions only: it is shown with [`NOT_RUN`], its health
+    /// is `unknown`, and it is never read, overdue or a matter
+    /// (§FS-021-monitors.4.5).
+    pub not_run: bool,
     /// The effective cadence (§FS-021-monitors.6.2), or the default where
     /// what the homes state cannot pair (that is one of its `faults`).
     pub cadence: Cadence,
-    /// Whether any home states `every` or `at`; one that states neither and
-    /// names no `from` takes its cadence from the answer that brings it
-    /// (§FS-021-monitors.6.8).
+    /// Whether a home that may state its cadence states `every` or `at`: the
+    /// site or the manifest for a monitor that names a `from`, and the site
+    /// alone for one read from the answer that brings it, which otherwise
+    /// takes that answer's cadence, as [`crate::monitors::route::brought_cadence`]
+    /// gives it (§FS-021-monitors.6.8).
     pub cadence_stated: bool,
     /// Seconds a command reading it may run (§FS-021-monitors.5.5).
     pub timeout: u64,
@@ -132,9 +146,10 @@ impl Monitor {
     }
 
     /// Whether it is read: a monitor whose declaration breaks a rule is shown
-    /// and not read (§FS-021-monitors.4.6).
+    /// and not read (§FS-021-monitors.4.6), and neither is one its registry
+    /// row runs no command for (§FS-021-monitors.4.5).
     pub fn is_readable(&self) -> bool {
-        self.faults.is_empty()
+        self.faults.is_empty() && !self.not_run
     }
 }
 
@@ -237,15 +252,23 @@ pub fn resolve(id: &str, homes: &Homes) -> Monitor {
     if let Some((home, _)) = &from {
         origins.insert("from", *home);
     }
-    let from = from.and_then(|(_, source)| source.cloned());
+    // §FS-021-monitors.4.5: a row that trusts only descriptions drops the manifest's command.
+    let not_run = homes.descriptions_only
+        && matches!(&from, Some((Home::Manifest, Some(source))) if source.is_command());
+    let from = from
+        .and_then(|(_, source)| source.cloned())
+        .filter(|_| !not_run);
 
+    // §FS-021-monitors.6.8: one read from the answer that brings it takes that answer's
+    // cadence, and only the site may state its own.
+    let manifest_cadence = manifest.filter(|_| from.is_some() || not_run);
     let every = field!(
         "every",
         site.and_then(|d| d.every.clone()),
-        manifest.and_then(|d| d.every.clone()),
+        manifest_cadence.and_then(|d| d.every.clone()),
         None
     );
-    let at = stated(site.map(|d| &d.at), manifest.map(|d| &d.at), None);
+    let at = stated(site.map(|d| &d.at), manifest_cadence.map(|d| &d.at), None);
     if let Some((home, _)) = &at {
         origins.insert("at", *home);
     }
@@ -340,6 +363,7 @@ pub fn resolve(id: &str, homes: &Homes) -> Monitor {
         healthy,
         warn,
         from,
+        not_run,
         cadence,
         cadence_stated: every.is_some() || at.is_some(),
         timeout: timeout.unwrap_or(DEFAULT_TIMEOUT_SECONDS),
