@@ -398,3 +398,7 @@ impl From<Band> for Health {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "model_tests.rs"]
+mod tests;
