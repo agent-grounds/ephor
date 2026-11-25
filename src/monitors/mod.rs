@@ -17,13 +17,19 @@
 //!   rules that hold only on the whole;
 //! - [`cadence`], [`slots`] and [`schedule`] say when a monitor is read, and
 //!   [`freshness`] how long what it read holds;
-//! - [`sample`] checks one sample against its monitor.
+//! - [`sample`] checks one sample against its monitor, and [`route`] gives an
+//!   answer's samples to the monitors they are for;
+//! - [`history`] is a reading's line and the history judged again for
+//!   display, and [`retention`] what of it is kept.
 
 pub mod cadence;
 pub mod condition;
 pub mod freshness;
+pub mod history;
 pub mod model;
 pub mod overlay;
+pub mod retention;
+pub mod route;
 pub mod sample;
 pub mod schedule;
 pub mod shape;
