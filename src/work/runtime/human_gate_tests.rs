@@ -17,6 +17,8 @@ impl World {
         std::fs::write(
             &runner,
             r#"#!/bin/sh
+# §REQ-003-test-isolation.5: a no-argument readiness probe must not write evidence.
+[ "$#" -eq 0 ] && exit 0
 if [ "$1" = states ]; then
     cat machine.json
 else
@@ -30,6 +32,8 @@ fi
         )
         .unwrap();
         std::fs::set_permissions(&runner, std::fs::Permissions::from_mode(0o755)).unwrap();
+        // §REQ-003-test-isolation.5: publish the runner only after it can execute.
+        crate::seams::summons::settle_executable(&runner);
         let config = WorkConfig {
             runner: Some(runner.display().to_string()),
             ..WorkConfig::default()
@@ -88,7 +92,6 @@ fi
 }
 
 #[test]
-#[ignore = "red until #271: no-argument runtime probes preserve invocation evidence; implement removes this"]
 fn runtime_stub_readiness_probe_is_inert() {
     // §REQ-003-test-isolation.5: a probe writes neither to its caller nor to invocation evidence.
     let world = World::new();

@@ -55,6 +55,8 @@ impl World {
         let runner = root.join("runtime-stub");
         std::fs::write(&runner, RUNNER).unwrap();
         std::fs::set_permissions(&runner, std::fs::Permissions::from_mode(0o755)).unwrap();
+        // §REQ-003-test-isolation.5: publish the runner only after it can execute.
+        crate::seams::summons::settle_executable(&runner);
         if older {
             std::fs::write(root.join("older"), "").unwrap();
         }

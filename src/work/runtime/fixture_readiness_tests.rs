@@ -4,7 +4,6 @@
 use std::process::Command;
 
 #[test]
-#[ignore = "red until #271: both runtime-stub constructors wait out executable contention; implement removes this"]
 fn runtime_stubs_are_ready_before_gate_operations() {
     let scratch = tempfile::tempdir().unwrap();
     let source = scratch.path().join("contention.c");
