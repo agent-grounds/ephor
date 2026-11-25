@@ -30,6 +30,7 @@ fn resolve_with(
             manifest: manifest.as_ref(),
             sample: sample.as_ref(),
             first_kind: None,
+            descriptions_only: false,
         },
     )
 }
@@ -292,9 +293,10 @@ fn a_condition_that_does_not_fit_the_resolved_kind_is_a_fault() {
 
 #[test]
 fn at_and_every_are_paired_on_the_resolved_monitor() {
+    let manifest = json!({"id": "m", "at": "Mon 06:00", "from": {"command": "scripts/kpis.sh"}});
     let monitor = resolve_with(
         Some(json!({"id": "m", "every": "1d"})),
-        Some(json!({"id": "m", "at": "Mon 06:00"})),
+        Some(manifest.clone()),
         None,
     );
     assert_eq!(
@@ -303,7 +305,7 @@ fn at_and_every_are_paired_on_the_resolved_monitor() {
     );
     let cleared = resolve_with(
         Some(json!({"id": "m", "every": "1d", "at": null})),
-        Some(json!({"id": "m", "at": "Mon 06:00"})),
+        Some(manifest),
         None,
     );
     assert!(cleared.is_readable());
@@ -332,4 +334,87 @@ fn the_condition_is_said_with_the_readings_whole() {
     );
     assert_eq!(monitor.words(None, None), "healthy at 4/4");
     assert_eq!(monitor.words(None, Some(5.0)), "healthy ≥ 4/5");
+}
+
+#[test]
+fn a_monitor_read_from_the_answer_that_brings_it_takes_only_the_sites_cadence() {
+    // The manifest's `every` sets no cadence for a monitor that names no `from`.
+    let brought = resolve_with(
+        None,
+        Some(json!({"id": "m", "kind": "number", "every": "1d", "at": "06:00"})),
+        None,
+    );
+    assert!(!brought.cadence_stated);
+    assert_eq!(brought.cadence, Cadence::default_every());
+    assert_eq!(brought.origins.get("every"), None);
+    assert_eq!(brought.origins.get("at"), None);
+    // The site may state its own for freshness.
+    let site = resolve_with(
+        Some(json!({"id": "m", "every": "1h"})),
+        Some(json!({"id": "m", "every": "1d", "at": "06:00"})),
+        None,
+    );
+    assert!(site.cadence_stated);
+    assert_eq!(site.cadence.say(), "every 1h");
+    assert_eq!(site.origins["every"], Home::Site);
+    // A monitor that names a `from` keeps the manifest's.
+    let from = resolve_with(
+        None,
+        Some(json!({"id": "m", "every": "1d", "from": {"command": "scripts/kpis.sh"}})),
+        None,
+    );
+    assert!(from.cadence_stated);
+    assert_eq!(from.cadence.say(), "every 1d");
+}
+
+#[test]
+fn a_row_that_trusts_only_descriptions_runs_no_command_of_the_manifest() {
+    let manifest = |from: serde_json::Value| {
+        declared(json!({"id": "m", "kind": "number", "every": "1h", "from": from}))
+    };
+    let site_from = declared(json!({"id": "m", "from": {"command": "scripts/site.sh"}}));
+    let resolve_row = |site: Option<&Declaration>, manifest: &Declaration| {
+        resolve(
+            "m",
+            &Homes {
+                site,
+                manifest: Some(manifest),
+                descriptions_only: true,
+                ..Homes::default()
+            },
+        )
+    };
+    let command = manifest(json!({"command": "scripts/kpis.sh"}));
+    let not_run = resolve_row(None, &command);
+    assert!(not_run.not_run);
+    assert_eq!(not_run.from, None);
+    assert!(!not_run.is_readable());
+    assert!(not_run.faults.is_empty());
+    assert_eq!(
+        NOT_RUN,
+        "not run: this registry row reads descriptions only"
+    );
+    // A file is data, and is read.
+    let file = resolve_row(None, &manifest(json!({"file": "target/kpi.json"})));
+    assert!(!file.not_run && file.is_readable());
+    assert_eq!(file.cadence.say(), "every 1h");
+    // A site declaration that names its own `from` is read as the site declares it.
+    let site = resolve_row(Some(&site_from), &command);
+    assert!(!site.not_run && site.is_readable());
+    assert_eq!(
+        site.from,
+        Some(Source::Command {
+            command: "scripts/site.sh".into(),
+            cwd: None
+        })
+    );
+    // A row that trusts the manifest fully runs its command.
+    let full = resolve(
+        "m",
+        &Homes {
+            manifest: Some(&command),
+            ..Homes::default()
+        },
+    );
+    assert!(!full.not_run && full.is_readable());
 }
