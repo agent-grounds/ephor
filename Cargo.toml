@@ -405,6 +405,10 @@ path = "tests/e2e/cases/E2E-077-a-monitor-that-cannot-be-read-costs-itself.rs"
 name = "e2e_078_where_a_monitor_is_declared_and_what_brings_it"
 path = "tests/e2e/cases/E2E-078-where-a-monitor-is-declared-and-what-brings-it.rs"
 
+[[test]]
+name = "e2e_079_the_doctor_names_what_was_overdue"
+path = "tests/e2e/cases/E2E-079-the-doctor-names-what-was-overdue.rs"
+
 [dependencies]
 clap = { version = "4", features = ["derive"] }
 serde = { version = "1", features = ["derive"] }

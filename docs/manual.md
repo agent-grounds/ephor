@@ -1149,6 +1149,14 @@ configuration or the file-size budget under the deprecated `.agents/` name
 ([§4.3.3](#433-where-the-toolchain-keeps-its-own-files)): news rather than a fault, saying where the file belongs now,
 carried in `--json` as `deprecated`, moving neither health nor the exit code.
 
+Where projects have monitors it adds two notes, in `--json` under `notes`:
+the monitor store's size, its files and where it is, and each monitor that was
+overdue when the doctor began, read before its own refresh reads it, since
+after that it would look well
+([§FS-021-monitors.20.2](functional-spec/FS-021-monitors.md#202-the-doctor-reads-the-store-and-names-what-was-overdue)). The `monitor` slot counts as one configured source
+and never makes a project reachable
+([§FS-021-monitors.17.5](functional-spec/FS-021-monitors.md#175-it-counts-as-one-source-and-for-nothing-more)).
+
 **The self pass** builds a throwaway project in a temporary place — its own
 state directory, registry, configuration and checkout — and walks the seams
 against it: a forge reached out of process, a refresh that categorizes what
