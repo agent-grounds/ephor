@@ -129,6 +129,15 @@ pub fn resolve(
              by `--source`, with or without `--only`. A plain `ephor refresh` reads it."
         )));
     }
+    // Refusal 6, by name: nothing binds ephor's own reading of the monitors
+    // (§FS-021-monitors.17.4).
+    if source == crate::monitors::watch::SLOT {
+        return Err(registry_error(format!(
+            "'{source}' is ephor's own reading of each project's monitors, and nothing binds \
+             it; `--source` cannot name it. A plain `ephor refresh` reads the due monitors, \
+             and `ephor refresh --monitors-now` reads every one now."
+        )));
+    }
     // Refusal 3, by name: ephor's own providers have one
     // history, their whole answer.
     if let Some(only) = only {

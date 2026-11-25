@@ -603,7 +603,12 @@ impl Session {
                 .get(project)
                 .and_then(crate::branches::Placement::manifest);
             let bindings = Bindings {
-                sources: self.provider_blocks.get(project).map(Vec::len).unwrap_or(0),
+                // §FS-021-monitors.17.5: the monitor slot counts as one source, and no more.
+                sources: self.provider_blocks.get(project).map(Vec::len).unwrap_or(0)
+                    + usize::from(
+                        self.feed(project)
+                            .is_some_and(crate::feed::cache::ProjectFeed::has_monitors),
+                    ),
                 // What answered at the last refresh, out of the cache the
                 // refresh wrote (§FS-006-project-interface.10). No cache yet
                 // is nothing answered, which is the honest reading before the

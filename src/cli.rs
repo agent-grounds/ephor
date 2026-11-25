@@ -977,6 +977,12 @@ pub struct RefreshArgs {
     #[arg(long, value_name = "CAP")]
     pub only: Option<String>,
 
+    /// Read every monitor of every project refreshed, now and out of
+    /// cadence, rather than only the due ones. Refused beside --source or
+    /// --only, which read no monitor (§FS-021-monitors.21.4).
+    #[arg(long)]
+    pub monitors_now: bool,
+
     /// Emit what each project fetched as JSON.
     #[arg(long)]
     pub json: bool,

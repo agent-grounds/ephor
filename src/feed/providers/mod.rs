@@ -34,6 +34,12 @@ pub fn build_provider(config: &Value) -> Result<Box<dyn Provider>, ProviderError
             config,
         )?)),
         "custom-status" => Ok(Box::new(custom_status::CustomStatus::from_config(config)?)),
+        // Ephor's own reading of a project's monitors, which nothing binds
+        // (§FS-021-monitors.17.4).
+        crate::monitors::watch::SLOT => Err(ProviderError(format!(
+            "'{name}' is ephor's own reading of a project's monitors, not a provider block; \
+             declare monitors under the project's 'monitors'"
+        ))),
         // Anything else names a forge rather than a built-in provider: reach
         // it out of process (§FS-001-forge-interface.2). `ephor-forge-<name>`
         // on PATH, or an explicit "command". Chat and mail are among them:
@@ -109,6 +115,7 @@ pub(crate) fn built_in(name: &str) -> bool {
             | "github-notifications"
             | "github-threads"
             | "custom-status"
+            | crate::monitors::watch::SLOT
     )
 }
 

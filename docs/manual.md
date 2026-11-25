@@ -424,7 +424,7 @@ the registry — that is where its root and branches come from.
 ### 4.1 Commands
 
 ```bash
-ephor refresh [PROJECT ...] [--source NAME [--only CAP]] [--quiet]   # fetch into the cache
+ephor refresh [PROJECT ...] [--source NAME [--only CAP] | --monitors-now] [--quiet]   # fetch into the cache
 ephor status [PROJECT] [--refresh|--cached] [--max-age SECS] [--json] [--check]
 ephor feed [--project P ...] [--unread] [--kind pr|ci|issue|task|message|status] [--json]
 ephor mark-read PROJECT | --all | --id ITEM_ID [--kind K]   # --all: every watched project
@@ -468,6 +468,16 @@ ephor doctor [--project P] [--skip-self|--self-only] [--json]
   `--source` that nothing in scope binds. A plain `ephor refresh`, with
   neither flag, asks and writes exactly what it did before
   ([§FS-011-command-line.9.2](functional-spec/FS-011-command-line.md#92-a-refresh-narrowed-to-one-source-or-one-capability)).
+
+  A plain refresh also reads each project's monitors that are due, running a
+  command several of them share once, and answers the project's `monitor`
+  slot whatever one monitor's read found
+  ([§FS-021-monitors.17.1](functional-spec/FS-021-monitors.md#171-one-answer-on-every-plain-refresh)). `--monitors-now` reads every monitor now, out of
+  its cadence
+  ([§FS-021-monitors.21.4](functional-spec/FS-021-monitors.md#214-reading-is-refresh)). A refresh narrowed by `--source` reads none, and
+  `monitor` is not a source it can name, so `--monitors-now` with `--source`
+  is refused
+  ([§FS-021-monitors.17.4](functional-spec/FS-021-monitors.md#174-a-narrowed-refresh-reads-no-monitor)).
 - **`status`** with no project prints one row per project (items, unread,
   needs-response, failing). With a project, it prints that project's feed,
   headed by its age. It refetches any project older than the TTL — pass
