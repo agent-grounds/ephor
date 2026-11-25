@@ -383,7 +383,9 @@ monitor is about no item, so no item's workspace takes part. `from.cwd` may
 name another repository of the forest as `repo:<name>`, or the forest root as
 `root`, as a manifest entry may elsewhere ([§FS-006-project-interface.3](FS-006-project-interface.md#3-a-summons-environment-in-exit-code-and-answer-out)), each
 resolved from that checkout. A command runs there, and a file's path
-resolves against it.
+resolves against it. A file's path that is absolute or climbs out of that
+place with `..`, and a `repo:` that names `.` or `..`, break a rule, and the
+declaration is shown and not read ([§FS-021-monitors.4.6](FS-021-monitors.md#46-a-declaration-ephor-cannot-use-is-shown-and-not-read)).
 
 ### 5.4 The environment
 
