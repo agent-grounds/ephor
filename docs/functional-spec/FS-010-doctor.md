@@ -70,6 +70,14 @@ refreshed rather than read from cache, since a cached answer cannot say
 whether a source still answers. What it reports is per project, and a
 project that is entirely well says so in one line.
 
+Where a project has monitors, declared or kept in its store, the site pass
+counts their slot as one of the project's configured sources, and for nothing
+more: it never makes the project reachable ([§FS-021-monitors.17.5](FS-021-monitors.md#175-it-counts-as-one-source-and-for-nothing-more)). It says
+two things more, as news
+that moves neither the project's health nor the exit code: the monitors that
+were overdue when it began, before its own refresh read them, and the size of
+the monitor store and where it is ([§FS-021-monitors.20.2](FS-021-monitors.md#202-the-doctor-reads-the-store-and-names-what-was-overdue)).
+
 **The self pass** asks the binary. It builds a throwaway project — its own
 state directory, registry, configuration and checkout, in a temporary place —
 and walks the seams end to end against it: a forge reached out of process

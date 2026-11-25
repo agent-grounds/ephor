@@ -15,7 +15,7 @@ role on it:
 
 | Category | Holds |
 | --- | --- |
-| Status | project status lines |
+| Status | project status lines, and a monitor's drop or unknown matter ([§FS-021-monitors.11.4](FS-021-monitors.md#114-a-matter-of-the-monitor-source-of-kind-status)) |
 | My Pull Requests | pull requests the user authored |
 | Reviewing | pull requests the user is on as a reviewer |
 | CI | gate and build results |
@@ -63,6 +63,10 @@ There are three such things, and they are the whole list:
   in the archive and nobody's to run, so its tasks hold the matter here no
   longer, whatever state they were left in, and the work rows they stood on go
   with them.
+
+A monitor's matter is terminal the same way: its source states it when the
+monitor's episode ends ([§FS-021-monitors.14](FS-021-monitors.md#14-recovery-resolves-the-matter)), and Recent then holds it by the
+same three as any finished matter.
 
 A matter whose only loose end was retired work leaves Recent when it is
 retired, unless a missing answer or a red gate inside the window still holds it

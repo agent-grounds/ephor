@@ -315,7 +315,7 @@ runs over the whole site and nothing in what it prints says so
 
 The three project selectors — `--workspace`, `--tag`, `--org` — name a set of
 projects, read from the registry. The verbs that read a set of projects honour
-them: `list`, `status`, `feed`, `refresh`, `mark-read`, `branches`, the screen,
+them: `list`, `status`, `feed`, `monitors`, `refresh`, `mark-read`, `branches`, the screen,
 `work list`, `work dispatch`, `work sync`, `work run`, `work process`, and the managed-workspace
 verbs `validate`, `ensure-agents` and `update` — and `rebase`, on the condition
 below. Every other verb refuses each
@@ -355,8 +355,9 @@ needs none: it writes the sweep's own report, one file, the same contract it
 has for one checkout.
 
 The registry and the site's watch list are two different files, and the
-selectors name rows of the first while `status`, `feed`, `refresh`,
-`mark-read`, `branches` and the screen pick their projects from the second. A
+selectors name rows of the first while `status`, `feed`, `monitors`,
+`refresh`, `mark-read`, `branches` and the screen pick their projects from the
+second. A
 selector is therefore resolved against the registry and then intersected with
 what the site watches, and the intersection is applied where each verb picks
 its projects rather than in a helper beside them.
@@ -517,20 +518,29 @@ is decided **before any data call** — no `pull-requests`, `branch-gates`,
 5. `--only` naming a capability none of the source's blocks declares. Knowing
    that takes the source's `capabilities` probe, which is not a data call; a
    probe that fails is a fetch failure (exit 3 or 4), not a refusal.
-6. `--source` naming nothing any selected project or the site binds.
+6. `--source` naming nothing any selected project or the site binds. The
+   `monitor` source is ephor's own reading and nothing binds it, so it is
+   refused here too ([§FS-021-monitors.17.4](FS-021-monitors.md#174-a-narrowed-refresh-reads-no-monitor)).
+7. `--monitors-now` beside `--source` or `--only`: a narrowed run reads no
+   monitor, so there is nothing for it to read now.
 
 **What a narrowed run asks.** `--source NAME` asks every capability of that
 source and commits it whole; `--only CAP` asks that one capability of every
 block that declares it — a block that does not declare it is not called for it
 — and commits that one history ([§FS-001-forge-interface.6.1](FS-001-forge-interface.md#61-every-contribution-to-one-provider-answer-counts)). Nothing else is
-asked: no other configured source, no task store, no other site source, and no
-headroom probe ([§FS-005-dispatch.29](FS-005-dispatch.md#29-headroom-is-reported-to-ephor-and-vetoes-a-member-it-never-reorders)). Every history the run did not ask keeps
+asked: no other configured source, no task store, no other site source, no
+monitor, and no headroom probe ([§FS-005-dispatch.29](FS-005-dispatch.md#29-headroom-is-reported-to-ephor-and-vetoes-a-member-it-never-reorders)). Every history the run did not ask keeps
 its reports and its times, so it reads exactly as old as it is
 ([§FS-011-command-line.12](FS-011-command-line.md#12-a-feed-read-from-a-cache-past-its-ttl-says-so)).
 
 Exit codes count the contributions the run asked, as a plain refresh's do. A
-plain `ephor refresh`, with neither flag, asks and writes exactly what it did
-before these flags existed.
+plain `ephor refresh`, with neither flag, asks every source it asked before
+these flags existed, and reads each refreshed project's due monitors besides
+([§FS-021-monitors.6.4](FS-021-monitors.md#64-a-refresh-reads-the-monitors-that-are-due-and-no-others)). `ephor refresh [<project>...] --monitors-now` is a
+plain refresh that reads every monitor of every project it refreshes, now and
+out of cadence, and with no project named that is every watched project
+([§FS-021-monitors.21.4](FS-021-monitors.md#214-reading-is-refresh)). Neither adds a field to what `refresh --json`
+prints.
 
 **The screen.** On the feed screen, `R` opens a picker for a source, then its
 whole answer or one capability, using the CLI's resolution and refusals for the
@@ -824,3 +834,14 @@ rows, and the `feed --json` document a program parses
 ([§FS-011-command-line.7](FS-011-command-line.md#7---json-is-the-same-answer-not-a-second-one), [§REQ-002-parity.4](../requirements/REQ-002-parity.md#4-the-machine-form-is-a-contract-not-a-dump)) — the exit code does not change,
 and `feed` still does not refetch. A project whose cache is younger than its
 TTL draws no line.
+
+## 13. The monitors, as a table and one by one
+
+`ephor monitors` prints the Monitors page as a table, and `ephor monitors show
+<project>/<id>` one monitor's detail view, each with `--window` and `--json`
+([§FS-021-monitors.21](FS-021-monitors.md#21-the-commands)). `monitors` reads a set of projects and honours the scope
+selectors ([§FS-011-command-line.9](FS-011-command-line.md#9-a-scope-selector-is-honoured-or-refused)); `monitors show` is about the one monitor it is given and
+refuses them. Both read the store and the cache, and neither fetches, runs a
+monitor or writes. `ephor monitors --check` exits `4` when a status it prints
+is down or unknown, as `status --check` does on unread needs-response items
+([§FS-021-monitors.21.2](FS-021-monitors.md#212---check-turns-down-and-unknown-into-an-exit-code)).

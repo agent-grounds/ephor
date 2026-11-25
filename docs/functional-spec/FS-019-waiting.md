@@ -119,7 +119,10 @@ A matter is **new** when all of these hold:
 - it is not held.
 
 A matter a recipe dispatched on its own is therefore never new: its dispatch
-is in the ledger. Rows are listed newest first and carry the matter's kind,
+is in the ledger. A monitor's matter still down, or still unknown, after the
+work laid on it ended is the one exception: it is new again, though the ledger
+records that work, and processing it adds to the work already recorded
+([§FS-021-monitors.15](FS-021-monitors.md#15-work-ended-still-down)). Rows are listed newest first and carry the matter's kind,
 project, title, how long ago it last moved, and the proposal: the rhei ephor
 would assign it ([§FS-019-waiting.7.1](FS-019-waiting.md#71-every-new-row-carries-a-proposal)). On the screen the proposal reads after
 the title as the entry, the hand the work would go to and the branch its
@@ -203,6 +206,12 @@ many matters the overview would show, and the second is how many of them are
 unread. Both are counted from the same feed the overview draws, so the two
 screens never disagree about how much there is.
 
+Where a watched project has a status, a monitor something judges, the line
+goes on to count the statuses, `monitors: 1 down · 2 unknown · 1 overdue`, so
+a quiet screen still says when the watch itself has degraded
+([§FS-021-monitors.20.1](FS-021-monitors.md#201-waitings-overview-line-names-the-monitors)). On the screen the footer adds `M opens them`;
+`ephor waiting` prints the line without it.
+
 ## 4. Keys
 
 One cursor runs over the rows of all three sections, top to bottom, with the
@@ -230,6 +239,7 @@ motion keys every screen has.
   Waiting.
 - `;` and `$` open the operations board and the burn page over the screen, as
   they do everywhere ([§FS-005-dispatch.15](FS-005-dispatch.md#15-every-operation-is-visible-in-one-place), [§FS-013-burn.8](FS-013-burn.md#8-the-page-and-its-command)).
+- `M` opens the Monitors page, as it does everywhere ([§FS-021-monitors.18.1](FS-021-monitors.md#181-m-opens-it-from-any-screen)).
 - `r` refreshes, and `q` leaves.
 
 `esc` from a screen opened from Waiting comes back to Waiting, and `esc` from
@@ -268,7 +278,9 @@ line, in the screen's order. `ephor waiting --json` prints the published
   automatic, where there is one ([§FS-019-waiting.7.7](FS-019-waiting.md#77-a-proposal-confirmed-again-and-again-names-the-setting-that-would-make-it-automatic));
 - `decided`: what the reader decided today, `laid` and `dismissed`
   ([§FS-019-waiting.2](FS-019-waiting.md#2-an-empty-section-is-one-line));
-- `overview`: the two counts of [§FS-019-waiting.3](FS-019-waiting.md#3-the-header-and-the-overview-line), and `refreshed_at`, the
+- `overview`: the two counts of [§FS-019-waiting.3](FS-019-waiting.md#3-the-header-and-the-overview-line), `monitors`, the
+  statuses' counts `{down, unknown, overdue}` where the line carries them
+  ([§FS-021-monitors.20.1](FS-021-monitors.md#201-waitings-overview-line-names-the-monitors)), and `refreshed_at`, the
   newest fetch, where the feed was ever fetched; and
 - `refusal`: the workable rung's sentence, where the runtime cannot run
   anything.
@@ -313,6 +325,9 @@ work going about the matter ([§FS-005-dispatch.21](FS-005-dispatch.md#21-what-i
 entries, their order, their gates, the hand, the branch a template would mint
 and the workspace it belongs in ([§FS-005-dispatch.25](FS-005-dispatch.md#25-work-about-a-matter-with-no-branch-can-mint-the-branch-it-needs)), and the work root
 ([§FS-005-dispatch.6.1](FS-005-dispatch.md#61-the-work-root-is-a-template-and-it-may-reach-above-the-project)) are all the menu's, read through the same session.
+A monitor's drop carries its monitor's own `workflow` or `action` at the head
+of that order, ahead even of what ephor itself recognized, the site's choice
+over the manifest's, so that is its proposal ([§FS-021-monitors.16.1](FS-021-monitors.md#161-the-monitors-own-workflow-comes-first)).
 
 The proposal carries the entry's id, kind and description, the hand, the
 branch and workspace where the entry mints them and whether that workspace is

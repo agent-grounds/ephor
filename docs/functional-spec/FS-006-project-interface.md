@@ -27,15 +27,20 @@ declaration, and the person always has the last word.
 
 A project that chooses to speak places one file, `ephor.json`, at its forest
 root (decided in [§DF-001-manifest-offered](../decisions/functional/DF-001-manifest-offered.md#df-001-manifest-offered-the-manifest-is-offered-never-required)). It may declare identity hints,
-the forest's own layout, check verbs, gate verbs, task stores, and
-offers — every field optional, an empty
+the forest's own layout, check verbs, gate verbs, task stores, offers, and
+monitors ([§FS-021-monitors.4.1](FS-021-monitors.md#41-the-manifest)) — every field optional, an empty
 manifest valid, and nothing in it able to gate a capability that probing or
-site configuration could not establish alone. Identity fields are hints the
+site configuration could not establish alone. Monitors are about the project
+rather than one branch of it, so ephor reads them from the manifest in the
+project's checkout of its default branch where one resolves, and from the
+forest root's otherwise; every other field is read at the forest root. Identity fields are hints the
 registry row adopts unless it overrides: **the row is authoritative, because
 attribution keys must not be forgeable by a checkout.** Manifest commands
 run with exactly the trust a person extends to running the project's own
 build, and the row can narrow it — honoring the manifest fully, reading only
-its descriptions, or ignoring it — for checkouts trusted less. Offers are
+its descriptions, or ignoring it — for checkouts trusted less. A row that
+reads only descriptions still reads a monitor from a file, which is data, and
+runs no monitor command ([§FS-021-monitors.4.5](FS-021-monitors.md#45-a-row-that-trusts-only-descriptions-reads-files-and-runs-no-command)). Offers are
 menu entries a person invokes; what spends agent time on its own match (a
 recipe) is site configuration only, because a repository does not get to
 spend it.
@@ -43,14 +48,18 @@ spend it.
 ## 3. A summons: environment in, exit code and answer out
 
 Every command the interface names — a check verb, a gate verb, a checkout, a
-task store's CLI, an offer — is invoked one way. It runs in the resolved
-place: the item's branch workspace where one resolves, the forest root
-otherwise, a manifest-designated repository of the forest where the entry
-says so. It receives the dossier as `EPHOR_*` environment — one vocabulary,
-identical to what a shell action and a state-machine script receive
+task store's CLI, an offer, a monitor's command — is invoked one way. It runs
+in the resolved place: the item's branch workspace where one resolves, the
+forest root otherwise, a manifest-designated repository of the forest where
+the entry says so. A monitor is about no item, so its command runs in the
+project's default branch's workspace where one resolves, and at the forest
+root otherwise ([§FS-021-monitors.5.3](FS-021-monitors.md#53-the-place)). It receives the dossier as `EPHOR_*` environment — one
+vocabulary, identical to what a shell action and a state-machine script receive
 ([§FS-005-dispatch.8](FS-005-dispatch.md#8-the-ticket-carries-the-item-as-data-not-only-as-prose)). It answers first with its exit code — `0` for done,
 non-zero for failed, `75` for *parked*: not applicable now, ask again later —
-and optionally in structure, written to the file named by `$EPHOR_ANSWER`.
+and optionally in structure, written to the file named by `$EPHOR_ANSWER`. A
+monitor's command receives every item variable empty, and `EPHOR_MONITORS`
+naming the monitors it reads ([§FS-021-monitors.5.4](FS-021-monitors.md#54-the-environment)).
 Standard output and error remain the command's own, streamed to the person
 or the log; a contract that parsed them would make every honest build log a
 protocol violation.
@@ -113,7 +122,9 @@ Structured answers share one envelope, speaking the model's nouns
 something to report; `summary`, `url`, and `needs_response` for the common
 one-line cases; `failures` and `features` as verb-level conveniences that
 ephor normalizes into events and facts; `data` as free passthrough that
-returns wherever the dossier's metadata goes. Each verb's contract names the
+returns wherever the dossier's metadata goes; and `monitors`, the samples of
+a project's monitors ([§FS-021-monitors.8.1](FS-021-monitors.md#81-a-sample)), which a custom-status answer may
+carry beside its matters ([§FS-021-monitors.8.3](FS-021-monitors.md#83-a-custom-status-answer-may-carry-samples-too)). Each verb's contract names the
 fields it reads and ignores the rest, and unknown fields are ignored
 everywhere — the envelope evolves by addition, and an incompatible change is
 a version bump with a changelog entry ([§FS-006-project-interface.11](FS-006-project-interface.md#11-the-interface-is-versioned)). Paths in an answer resolve

@@ -15,8 +15,9 @@ prose, which is what lets a routine move leave the person's hands
 
 `ephor guide` with no topic lists each topic by its name, with one line saying
 what it explains, and says how to ask for one. A topic it does not know is
-refused, and the refusal names the topics there are. Today there are two:
-`gate` ([§FS-020-guide.2](FS-020-guide.md#2-gate-how-a-workflow-prepares-the-question-its-gate-asks)) and `matter` ([§FS-020-guide.3](FS-020-guide.md#3-matter-what-makes-a-matter-new-and-how-a-workflow-becomes-its-proposal)).
+refused, and the refusal names the topics there are. Today there are three:
+`gate` ([§FS-020-guide.2](FS-020-guide.md#2-gate-how-a-workflow-prepares-the-question-its-gate-asks)), `matter` ([§FS-020-guide.3](FS-020-guide.md#3-matter-what-makes-a-matter-new-and-how-a-workflow-becomes-its-proposal)) and `monitors`
+([§FS-020-guide.6](FS-020-guide.md#6-monitors-how-a-repository-makes-its-numbers-watchable)).
 
 The text is written for an agent to read: short, plain, no decoration, and a
 topic's explanation fits one screen of 80 columns and 48 lines. A topic that
@@ -98,3 +99,29 @@ The guide has no key. Nothing on a screen waits on it, and what a screen
 needs to say about a gate it already says from the brief itself. A screen
 that shows it later shows this reading, so the two cannot word the guide two
 ways ([§REQ-002-parity.2](../requirements/REQ-002-parity.md#2-parity-runs-both-ways)).
+
+## 6. `monitors`: how a repository makes its numbers watchable
+
+`ephor guide monitors` explains the monitor protocol in ephor's own words,
+with no runtime named, for the reader who is usually an agent asked to add a
+number to a repository's watch. It gets the whole contract in one call rather
+than by reading ephor's specification ([§FS-021-monitors](FS-021-monitors.md#fs-021-monitors-a-quantity-a-project-declares-is-read-on-its-own-cadence-and-kept-and-its-drop-is-a-matter)):
+
+- the four kinds and what each value is ([§FS-021-monitors.2](FS-021-monitors.md#2-a-value-is-one-of-four-kinds));
+- conditions, `warn`, and who decides health ([§FS-021-monitors.3](FS-021-monitors.md#3-a-condition-says-what-healthy-means));
+- the two `from` bindings, a command and a file, with the exit codes and the
+  environment a command gets ([§FS-021-monitors.5](FS-021-monitors.md#5-where-a-value-comes-from-from));
+- the answer's `monitors` and the fields of one sample, that one bad sample
+  is that monitor unreadable, and that `NaN` is not JSON, so a script with no
+  number writes its sample without `value` ([§FS-021-monitors.8](FS-021-monitors.md#8-the-answer-carries-monitors));
+- `every` and `at`, and that cadence is a floor between reads
+  ([§FS-021-monitors.6](FS-021-monitors.md#6-cadence-when-a-monitor-is-read)); and
+- that a monitor command must not run `ephor refresh` ([§FS-021-monitors.5.5](FS-021-monitors.md#55-exit-codes-and-the-timeout)),
+  and the commands that check the result: `ephor validate --manifest`,
+  `ephor refresh`, and `ephor monitors show`.
+
+It ends with one complete worked example: a `scripts/kpis.sh` that answers
+three monitors, and the `ephor.json` that declares them. The text is the same
+on every machine, because the protocol is ephor's and reads nothing of the
+site's, and the view carries no schemas: the manifest and answer schemas are
+`ephor schema manifest` and `ephor schema answer`.
