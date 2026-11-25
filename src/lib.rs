@@ -29,6 +29,7 @@ pub mod git;
 pub mod given;
 pub mod grounds;
 pub mod hooks;
+pub mod interval;
 pub mod manifest;
 pub mod matter;
 pub mod paths;

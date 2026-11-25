@@ -711,50 +711,26 @@ impl Sweep {
         }
     }
 
-    /// The longest wait that could still come due: the whole span the calendar
-    /// can represent. `TimeDelta` reaches some ten thousand times further than
-    /// a `DateTime` does, so an interval it accepts is not yet one a rhythm can
-    /// be written in — beyond this the recipe would simply never sweep.
-    fn longest() -> chrono::TimeDelta {
-        DateTime::<Utc>::MAX_UTC.signed_duration_since(DateTime::<Utc>::MIN_UTC)
-    }
-
-    /// `<n><unit>`, where the unit is `m`, `h` or `d`. Refused rather than
+    /// `<n><unit>`, where the unit is `m`, `h` or `d`, read the way every
+    /// interval in ephor is ([`crate::interval::read`]). Refused rather than
     /// defaulted: a rhythm nobody can read is a recipe that would sweep at a
     /// rate its author never chose, and this is the field that spends agents
     /// unattended.
     fn parse_every(text: &str) -> std::result::Result<chrono::TimeDelta, String> {
+        use crate::interval::{Unit, Unread};
         let text = text.trim();
-        let unsaid = || {
-            format!(
-                "'{text}' is not an interval; write it as '<number><unit>' with a unit of \
-                 'm', 'h' or 'd' — '0h' is every sweep"
-            )
-        };
-        // Stripped by unit rather than sliced at `len() - 1`: the unit is a
-        // character and the length is bytes, so a tail nobody meant — '6µ',
-        // a pasted smart quote — would split mid-character and panic where
-        // this is meant to refuse. Nothing but 'm', 'h' and 'd' is read.
-        let (count, per_minute) = if let Some(count) = text.strip_suffix('m') {
-            (count, 1)
-        } else if let Some(count) = text.strip_suffix('h') {
-            (count, 60)
-        } else if let Some(count) = text.strip_suffix('d') {
-            (count, 60 * 24)
-        } else {
-            return Err(unsaid());
-        };
-        let count: i64 = count.parse().map_err(|_| unsaid())?;
-        if count < 0 {
-            return Err(format!(
-                "interval '{text}' is negative; '0h' is every sweep"
-            ));
-        }
-        let minutes = count.saturating_mul(per_minute);
-        let every = chrono::TimeDelta::try_minutes(minutes)
-            .filter(|every| *every <= Self::longest())
-            .ok_or_else(|| format!("interval '{text}' is longer than anything can wait"))?;
-        Ok(every)
+        crate::interval::read(text, &[Unit::Minute, Unit::Hour, Unit::Day]).map_err(|unread| {
+            match unread {
+                Unread::NoUnit | Unread::NotACount => format!(
+                    "'{text}' is not an interval; write it as '<number><unit>' with a unit of \
+                     'm', 'h' or 'd' — '0h' is every sweep"
+                ),
+                Unread::Negative => {
+                    format!("interval '{text}' is negative; '0h' is every sweep")
+                }
+                Unread::TooLong => format!("interval '{text}' is longer than anything can wait"),
+            }
+        })
     }
 }
 
@@ -2675,7 +2651,7 @@ mod tests {
         assert!(!typo.due(Some(moment(0)), moment(1)));
 
         let far = Sweep {
-            every: Sweep::longest(),
+            every: crate::interval::longest(),
             limit: None,
         };
         assert!(!far.due(Some(moment(0)), moment(1)));
