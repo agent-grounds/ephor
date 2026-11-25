@@ -10,7 +10,7 @@
 use chrono::{DateTime, FixedOffset, TimeZone, Utc};
 
 use crate::monitors::cadence::Cadence;
-use crate::monitors::condition::Judge;
+use crate::monitors::condition::{self, Judge};
 use crate::monitors::episode::{self, Ending, Movement, Sort, Unwatched};
 use crate::monitors::freshness::{self, Attempt, Cause, Freshness};
 use crate::monitors::history::Line;
@@ -145,13 +145,18 @@ pub fn step<Tz: TimeZone>(
     if watch.judge.is_kpi() {
         end_all(record, Unwatched::Kpi, now, &mut effects);
     } else if let Some(drop) = &mut record.drop {
-        // §FS-021-monitors.13.1: the healthy that judges it changed, from whichever home.
-        if drop.judged_under != watch.judge {
+        // §FS-021-monitors.13.1: the healthy that judges it changed, from whichever home;
+        // one written anew that accepts the same values, or reads the same, did not.
+        let changed =
+            !condition::same_judge(&drop.judged_under, &watch.judge, watch.kind, watch.levels)
+                && drop.judged_words != watch.healthy_words;
+        let from = std::mem::replace(&mut drop.judged_words, watch.healthy_words.clone());
+        drop.judged_under = watch.judge.clone();
+        if changed {
             let why = Movement::ConditionChanged {
-                from: std::mem::replace(&mut drop.judged_words, watch.healthy_words.clone()),
+                from,
                 to: watch.healthy_words.clone(),
             };
-            drop.judged_under = watch.judge.clone();
             drop.moved = Some(now);
             effects.push(Effect::Moved {
                 sort: Sort::Drop,
