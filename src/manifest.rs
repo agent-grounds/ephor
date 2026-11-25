@@ -288,9 +288,30 @@ pub struct Manifest {
     pub tasks: Vec<TaskStore>,
     #[serde(default, rename = "actions")]
     pub offers: Vec<Offer>,
+    /// The monitors the project declares, as written: each is checked on its
+    /// own, so one that breaks a rule costs that monitor and never the
+    /// manifest (§FS-021-monitors.4.1, §FS-021-monitors.4.6). Kept under a
+    /// row that trusts only descriptions, which drops each one's command
+    /// rather than the declaration (§FS-021-monitors.4.5).
+    #[serde(default)]
+    pub monitors: Vec<serde_json::Value>,
 }
 
 impl Manifest {
+    /// The monitor declarations that break a rule, each named with why
+    /// (§FS-021-monitors.4.6): what `ephor validate --manifest` refuses.
+    pub fn refused_monitors(&self) -> Vec<String> {
+        let declared = crate::monitors::shape::read_declarations(
+            &self.monitors,
+            crate::monitors::model::Home::Manifest,
+        );
+        declared
+            .refused
+            .iter()
+            .map(crate::monitors::declared::say_refused)
+            .collect()
+    }
+
     /// Read the manifest a project placed at `root`, under the trust the row
     /// extends to it. None where there is none — which is most projects, and
     /// is a complete answer (§DF-001-manifest-offered).

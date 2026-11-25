@@ -17,6 +17,7 @@ use crate::feed::model::Item;
 use crate::feed::provider::{Fetched, ProviderContext};
 use crate::feed::providers::build_provider;
 use crate::feed::reachability;
+use crate::monitors::watch::{When, SLOT};
 use crate::paths;
 use crate::registry::{self, Workspace};
 
@@ -465,6 +466,27 @@ pub fn refresh_project(
     defaults: &Defaults,
     ask: &Ask,
 ) -> Result<RefreshOutcome> {
+    let project = (project_id, project_config);
+    refresh_project_when(
+        registry_doc,
+        project,
+        site_sources,
+        defaults,
+        ask,
+        When::Due,
+    )
+}
+
+/// [`refresh_project`], with which of the project's monitors a plain refresh
+/// reads: the due ones, or every one now (§FS-021-monitors.21.4).
+pub fn refresh_project_when(
+    registry_doc: &Value,
+    (project_id, project_config): (&str, &ProjectFeedConfig),
+    site_sources: &[String],
+    defaults: &Defaults,
+    ask: &Ask,
+    when: When,
+) -> Result<RefreshOutcome> {
     let ctx = build_context(registry_doc, project_id, defaults)?;
 
     // The same reducer handles configured blocks and discovered stores
@@ -495,9 +517,9 @@ pub fn refresh_project(
         Ask::Everything => crate::branches::Placement::load(registry_doc, project_id),
         _ => None,
     };
-    if let Some(placement) = placement {
+    if let Some(placement) = &placement {
         let manifest = placement.manifest();
-        for store in stores_to_read(&placement, manifest.as_ref()) {
+        for store in stores_to_read(placement, manifest.as_ref()) {
             let name = store.kind.name().to_string();
             match crate::seams::tasks::read_reporting(&store, project_id) {
                 // A store that answered lands its matters, empty answer
@@ -528,6 +550,28 @@ pub fn refresh_project(
         }
     }
 
+    // §FS-021-monitors.17.1: a plain refresh answers a project's monitor slot once.
+    if let Ask::Everything = ask {
+        let report = crate::monitors::watch::answer(&crate::monitors::watch::Request {
+            project: project_id,
+            placement: placement.as_ref(),
+            site: &project_config.monitors,
+            brought: samples_brought(&results),
+            when,
+            recent_days: defaults.recent_days,
+        });
+        notes.extend(
+            report
+                .notes
+                .into_iter()
+                .map(|note| format!("{SLOT}: {note}")),
+        );
+        if let Some(slot) = report.slot {
+            let answer = Fetched::whole(slot.map(|()| Vec::new()));
+            results.entry(SLOT.to_string()).or_default().push(answer);
+        }
+    }
+
     let now = Utc::now();
     let mut failures = Vec::new();
     let mut contributions = ContributionTally::default();
@@ -552,7 +596,14 @@ pub fn refresh_project(
     let item_count = cache::update(project_id, |feed| {
         let mut asked = ProjectFeed::default();
         for (name, answer) in &results {
-            contributions.add(answer.answer.contributions);
+            contributions.add(match name.as_str() {
+                // §FS-021-monitors.17.5: ephor's own reading never spares a total failure.
+                SLOT => ContributionTally {
+                    answered: 0,
+                    ..answer.answer.contributions
+                },
+                _ => answer.answer.contributions,
+            });
             let failure = answer.answer.failure(name);
             let previous = feed.providers.get(name);
             let slot = match ask {
@@ -598,6 +649,23 @@ pub fn refresh_project(
         contributions,
         asked: asked_histories,
     })
+}
+
+/// What this refresh's custom-status answers carried for the monitors
+/// (§FS-021-monitors.8.3).
+fn samples_brought(
+    results: &BTreeMap<String, SourceAnswer>,
+) -> Vec<crate::monitors::route::Outcome> {
+    results
+        .get("custom-status")
+        .map(|answer| {
+            answer
+                .blocks
+                .iter()
+                .filter_map(|block| block.samples.clone())
+                .collect()
+        })
+        .unwrap_or_default()
 }
 
 /// Ask one block for one capability, with the declaration its probe already
@@ -1591,6 +1659,7 @@ mod tests {
     /// One block's answer, declaring pull requests and issues.
     fn block(answers: Vec<(&'static str, std::result::Result<Vec<Item>, String>)>) -> Fetched {
         Fetched {
+            samples: None,
             declared: Some(vec!["pull-requests", "issues"]),
             answers: answers
                 .into_iter()
@@ -1686,6 +1755,7 @@ mod tests {
     fn repeated_block_declarations_commit_independently_of_data() {
         let now = Utc::now();
         let issues = || Fetched {
+            samples: None,
             declared: Some(vec!["issues"]),
             answers: vec![(Some("issues"), Ok(vec![forge_item("ticket")]))],
         };
@@ -1797,6 +1867,7 @@ mod tests {
         legacy.declarations.clear();
         legacy.histories[0].cursor = Some("keep-cursor".to_string());
         let issues = || Fetched {
+            samples: None,
             declared: Some(vec!["issues"]),
             answers: vec![(Some("issues"), Ok(Vec::new()))],
         };

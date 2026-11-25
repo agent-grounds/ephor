@@ -287,7 +287,7 @@ impl Answer {
 /// that answer is validated against the published envelope and normalized
 /// before it is handed back, and the file is discarded either way.
 pub fn run(summons: &Summons, site: &Site, mode: Mode) -> Result<Answer> {
-    run_with_answer_reader(summons, site, mode, answer::parse)
+    run_with_answer_reader(summons, site, mode, &answer::parse)
 }
 
 /// The invocation boundary records errors at their source, never by interpreting
@@ -316,7 +316,13 @@ pub(crate) fn run_captured_shell(
     site: &Site,
     timeout: Duration,
 ) -> std::result::Result<Answer, ExecutionError> {
-    execute(summons, site, Mode::Captured(timeout), answer::parse, false)
+    execute(
+        summons,
+        site,
+        Mode::Captured(timeout),
+        &answer::parse,
+        false,
+    )
 }
 
 /// Let an adapter retain input presence while reading the same validated
@@ -326,7 +332,7 @@ pub(crate) fn run_with_answer_reader(
     summons: &Summons,
     site: &Site,
     mode: Mode,
-    read_answer: fn(&str, &str, &std::path::Path) -> Result<Normalized>,
+    read_answer: &dyn Fn(&str, &str, &std::path::Path) -> Result<Normalized>,
 ) -> Result<Answer> {
     execute(summons, site, mode, read_answer, true).map_err(ExecutionError::into_error)
 }
@@ -335,7 +341,7 @@ fn execute(
     summons: &Summons,
     site: &Site,
     mode: Mode,
-    read_answer: fn(&str, &str, &std::path::Path) -> Result<Normalized>,
+    read_answer: &dyn Fn(&str, &str, &std::path::Path) -> Result<Normalized>,
     check_binding: bool,
 ) -> std::result::Result<Answer, ExecutionError> {
     // The two things a summons leans on are re-checked here, at invocation,

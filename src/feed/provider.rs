@@ -35,6 +35,11 @@ pub struct Fetched {
     /// and its answer. A block stops at its first failure, so a failure is
     /// always last.
     pub answers: Vec<(Option<&'static str>, Result<Vec<Item>, String>)>,
+    /// What a custom-status answer carried in its `monitors`, for the
+    /// monitor machinery rather than the feed (§FS-021-monitors.8.3). None
+    /// for every other block, and for a custom-status block whose binding
+    /// does not answer in the envelope.
+    pub samples: Option<crate::monitors::route::Outcome>,
 }
 
 impl Fetched {
@@ -43,6 +48,7 @@ impl Fetched {
         Fetched {
             declared: None,
             answers: vec![(None, answer)],
+            samples: None,
         }
     }
 

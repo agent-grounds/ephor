@@ -10,6 +10,7 @@
 //! envelope with, kept and marked as such: a contract that parses stdout would
 //! make every honest log line a protocol violation.
 
+use std::cell::RefCell;
 use std::path::Path;
 use std::time::Duration;
 
@@ -19,8 +20,9 @@ use serde_json::{Map, Value};
 use crate::feed::model::{
     custom_status_raw, Item, ItemKind, CUSTOM_STATUS_ANSWER, SOURCE_METADATA,
 };
-use crate::feed::provider::{Provider, ProviderContext, ProviderError, ProviderResult};
+use crate::feed::provider::{Fetched, Provider, ProviderContext, ProviderError, ProviderResult};
 use crate::feed::providers::parse_config;
+use crate::monitors::route::Outcome as Samples;
 use crate::seams::dossier;
 use crate::seams::summons::{self, Mode, Outcome, Place, Site, Summons};
 
@@ -251,31 +253,63 @@ impl Provider for CustomStatus {
     }
 
     fn fetch(&self, ctx: &ProviderContext) -> ProviderResult {
+        self.answer(ctx).0
+    }
+
+    /// The feed's answer, and beside it what the envelope carried in its
+    /// `monitors`, handed to the monitor machinery on a plain refresh
+    /// (§FS-021-monitors.8.3).
+    fn fetch_histories(&self, ctx: &ProviderContext) -> Fetched {
+        let (answer, samples) = self.answer(ctx);
+        Fetched {
+            samples,
+            ..Fetched::whole(answer.map_err(|err| err.0))
+        }
+    }
+}
+
+impl CustomStatus {
+    fn answer(&self, ctx: &ProviderContext) -> (ProviderResult, Option<Samples>) {
         let cwd = match &self.config.cwd {
             Some(cwd) => cwd.replace("{project_root}", &ctx.project_root.to_string_lossy()),
             None => ctx.project_root.to_string_lossy().into_owned(),
         };
-        let answer = run(&self.config.command, ctx, Path::new(&cwd), ctx.timeout)?;
+        let (answer, carried) = match run(&self.config.command, ctx, Path::new(&cwd), ctx.timeout) {
+            Ok(ran) => ran,
+            Err(err) => {
+                let samples = Samples::Failed(err.0.clone());
+                return (Err(err), Some(samples));
+            }
+        };
         // Parked is a source saying "nothing to report just now", which is a
         // status of none rather than a failure (§FS-006-project-interface.3).
         match answer.outcome {
             Outcome::Done => {}
-            Outcome::Parked => return Ok(Vec::new()),
+            Outcome::Parked => return (Ok(Vec::new()), Some(Samples::Parked)),
             Outcome::Failed => {
-                return Err(ProviderError(format!(
+                let why = format!(
                     "custom-status command {}",
                     match answer.exit_code {
                         Some(code) => format!("failed ({code})"),
                         None => "was killed".to_string(),
                     }
-                )))
+                );
+                return (Err(ProviderError(why.clone())), Some(Samples::Failed(why)));
             }
         }
+        let samples = match carried {
+            Some(carried) => Some(Samples::Answered(carried)),
+            None if self.config.format == Format::Answer => Some(Samples::Answered(Vec::new())),
+            None => None,
+        };
+        (self.items(ctx, &answer), samples)
+    }
 
+    fn items(&self, ctx: &ProviderContext, answer: &summons::Answer) -> ProviderResult {
         // An envelope answers whatever the binding's format says: a command
         // that wrote one meant it.
         if answer.answer.is_some() || self.config.format == Format::Answer {
-            return self.items_from_answer(ctx, &answer);
+            return self.items_from_answer(ctx, answer);
         }
 
         let stdout = answer.output.clone().unwrap_or_default();
@@ -324,7 +358,7 @@ fn run(
     ctx: &ProviderContext,
     cwd: &Path,
     timeout: Duration,
-) -> Result<summons::Answer, ProviderError> {
+) -> Result<(summons::Answer, Option<Vec<Value>>), ProviderError> {
     let site = Site::root(cwd);
     // The organization the registry places the project in travels with the
     // context, so this command is told it the way a menu action and a ticket
@@ -339,7 +373,16 @@ fn run(
     let summons = Summons::new("custom-status", command)
         .at(Place::Workspace)
         .carrying(dossier);
-    summons::run_with_answer_reader(&summons, &site, Mode::Captured(timeout), read_answer)
+    // The samples ride beside the envelope rather than in it, so the public
+    // answer types stay as every other consumer reads them.
+    let carried: RefCell<Option<Vec<Value>>> = RefCell::new(None);
+    let reader = |text: &str, verb: &str, place: &Path| {
+        let normalized = read_answer(text, verb, place)?;
+        *carried.borrow_mut() = Some(crate::monitors::reader::samples(text));
+        Ok(normalized)
+    };
+    summons::run_with_answer_reader(&summons, &site, Mode::Captured(timeout), &reader)
+        .map(|answer| (answer, carried.take()))
         .map_err(|err| ProviderError(err.to_string()))
 }
 
