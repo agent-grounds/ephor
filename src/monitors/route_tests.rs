@@ -271,3 +271,71 @@ fn an_owner_keeps_its_shape_in_the_store() {
     assert_eq!(json, json!({"from": {"command": "x"}}));
     assert_eq!(serde_json::from_value::<Owner>(json).unwrap(), owner);
 }
+
+#[test]
+fn a_run_names_the_monitors_it_reads() {
+    let mut fixture = Fixture::new(
+        &[
+            ("due", Route::From(command("x"))),
+            ("waiting", Route::From(command("x"))),
+            ("other", Route::From(command("y"))),
+            ("brought", Route::Brought),
+            ("held", Route::Brought),
+            ("broken", Route::NotRead),
+        ],
+        &["due", "other"],
+    );
+    fixture.owners.insert("held".into(), Owner::CustomStatus);
+    fixture.owners.insert("stray".into(), from("x"));
+    let reads = |plain: bool, source: &Owner| {
+        let watched = Watched {
+            routes: &fixture.routes,
+            owners: &fixture.owners,
+            due: &fixture.due,
+            plain,
+        };
+        reads(&watched, source).into_iter().collect::<Vec<_>>()
+    };
+    assert_eq!(reads(true, &from("x")), vec!["brought", "due", "stray"]);
+    assert_eq!(reads(false, &from("x")), vec!["due", "stray"]);
+    assert_eq!(reads(true, &Owner::CustomStatus), vec!["brought", "held"]);
+    assert_eq!(reads(false, &from("y")), vec!["other"]);
+}
+
+#[test]
+fn a_monitor_not_read_takes_no_sample_from_any_answer() {
+    let fixture = Fixture::new(&[("broken", Route::NotRead)], &["broken"]);
+    let routed = fixture.route(
+        true,
+        &[answered(
+            Owner::CustomStatus,
+            json!([{"id": "broken", "value": 1}]),
+        )],
+    );
+    assert!(routed.deliveries.is_empty());
+    assert!(routed.owners.is_empty());
+    assert!(routed.brought.is_empty());
+}
+
+#[test]
+fn a_monitor_is_routed_by_what_its_declaration_resolves_to() {
+    use crate::monitors::overlay::{resolve, Homes};
+    use crate::monitors::shape::read_declaration;
+    let monitor = |entry: serde_json::Value| {
+        let declaration = read_declaration(&entry).unwrap();
+        resolve(
+            "m",
+            &Homes {
+                manifest: Some(&declaration),
+                ..Homes::default()
+            },
+        )
+    };
+    assert_eq!(
+        Route::of(&monitor(json!({"id": "m", "from": {"command": "x"}}))),
+        Route::From(command("x"))
+    );
+    assert_eq!(Route::of(&monitor(json!({"id": "m"}))), Route::Brought);
+    let broken = monitor(json!({"id": "m", "kind": "boolean", "healthy": {"min": 1}}));
+    assert_eq!(Route::of(&broken), Route::NotRead);
+}
