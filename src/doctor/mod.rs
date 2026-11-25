@@ -13,6 +13,7 @@
 //! unreachable split. A second opinion here would drift from the one the menu
 //! refuses with, and a reader holding two answers has none.
 
+mod monitors;
 mod scratch;
 
 use std::process::ExitCode;
@@ -173,7 +174,9 @@ fn diagnose(
         .as_ref()
         .and_then(crate::branches::Placement::manifest);
     let project_config = config.projects.get(project);
-    let configured = project_config.map(|p| p.providers.len()).unwrap_or(0);
+    // §FS-021-monitors.17.5: the monitor slot is one configured source, and no more.
+    let configured = project_config.map(|p| p.providers.len()).unwrap_or(0)
+        + usize::from(feed.is_some_and(ProjectFeed::has_monitors));
     let answering = feed.and_then(ProjectFeed::answering);
     let asked = feed.and_then(ProjectFeed::asked);
 
@@ -577,6 +580,8 @@ fn site(args: &DoctorArgs, style: &Style, say: &Narrator) -> Result<(Health, Opt
     // half — it takes as long as the slowest forge — so every project is
     // announced before it is asked and answered when it comes back
     // (§FS-010-doctor.3).
+    // §FS-021-monitors.20.2: what was overdue is read before this run's refresh reads it.
+    let overdue = monitors::overdue(&registry_doc, &config, &projects);
     say.pass(&format!(
         "asking {} project(s) — every source, this run rather than the cache …",
         projects.len()
@@ -673,7 +678,9 @@ fn site(args: &DoctorArgs, style: &Style, say: &Narrator) -> Result<(Health, Opt
     // A row's fallback claim that can place nothing, in the sentence `refresh`
     // prints. News rather than a fault: it moves neither a project's health
     // nor the exit code (§FS-008-attribution.4).
-    let notes = crate::registry::fallback_claims_over_nothing(&registry_doc, &config);
+    let mut notes = crate::registry::fallback_claims_over_nothing(&registry_doc, &config);
+    notes.extend(overdue);
+    notes.extend(monitors::store_note());
     say.pass("reading each project's ladder …");
 
     let mut rows = Vec::new();
