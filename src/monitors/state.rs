@@ -27,6 +27,11 @@ pub struct Document {
     pub thinned: Option<DateTime<Utc>>,
     #[serde(default)]
     pub monitors: BTreeMap<String, Record>,
+    /// What is left of each monitor the store forgot (§FS-021-monitors.5.6):
+    /// its ended episodes, kept while the recency window still reports their
+    /// matters (§FS-021-monitors.14.3, §FS-021-monitors.17.1).
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub forgotten: BTreeMap<String, Vec<Past>>,
 }
 
 fn version() -> u32 {
@@ -40,6 +45,7 @@ impl Default for Document {
             version: version(),
             thinned: None,
             monitors: BTreeMap::new(),
+            forgotten: BTreeMap::new(),
         }
     }
 }
@@ -50,6 +56,21 @@ impl Document {
     pub fn due_to_thin(&self, now: DateTime<Utc>) -> bool {
         self.thinned
             .is_none_or(|thinned| now.signed_duration_since(thinned) >= TimeDelta::days(1))
+    }
+
+    /// Whether the project has monitors by the store alone: it keeps a record
+    /// of one, or a forgotten one's finished matters (§FS-021-monitors.1.4).
+    pub fn keeps_any(&self) -> bool {
+        !self.monitors.is_empty() || !self.forgotten.is_empty()
+    }
+
+    /// Lets a forgotten monitor's ended episodes go once the recency window
+    /// no longer reports them (§FS-021-monitors.14.3).
+    pub fn prune_forgotten(&mut self, recent: TimeDelta, now: DateTime<Utc>) {
+        for past in self.forgotten.values_mut() {
+            past.retain(|episode| now.signed_duration_since(episode.ended) <= recent);
+        }
+        self.forgotten.retain(|_, past| !past.is_empty());
     }
 }
 

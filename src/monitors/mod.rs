@@ -23,6 +23,9 @@
 //!   movement of a monitor's matters, as one state machine;
 //! - [`history`] is a reading's line and the history judged again for
 //!   display, and [`retention`] what of it is kept.
+//!
+//! Above the core, and outside it: [`store`] keeps the records and the
+//! histories on disk under the project's lock.
 
 pub mod cadence;
 pub mod condition;
@@ -39,6 +42,7 @@ pub mod schedule;
 pub mod shape;
 pub mod slots;
 pub mod state;
+pub mod store;
 pub mod words;
 
 #[cfg(test)]
