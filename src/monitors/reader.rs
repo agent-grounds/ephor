@@ -5,8 +5,9 @@
 
 use std::cell::RefCell;
 use std::collections::BTreeSet;
+use std::io::Read;
 use std::path::{Path, PathBuf};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use chrono::{DateTime, Utc};
 use serde_json::Value as Json;
@@ -42,23 +43,56 @@ pub struct Job {
     pub timeout: u64,
 }
 
-/// What one read brought: the answer's samples, or why there are none, and
-/// a file's mark where the `from` is a file (§FS-021-monitors.9.2).
+/// The most of a file a read takes (§FS-021-monitors.5.2): an answer is a
+/// few samples, and a file that keeps growing must not hold the refresh.
+pub const FILE_LIMIT_BYTES: u64 = 16 * 1024 * 1024;
+
+/// What one read brought: the answer's samples, or why there are none, a
+/// file's mark where the `from` is a file (§FS-021-monitors.9.2), and the
+/// moment the answer was taken, which a sample is measured at where it says
+/// no other (§FS-021-monitors.7.1).
 #[derive(Debug, Clone, PartialEq)]
 pub struct Got {
     pub source: Source,
     pub outcome: Outcome,
     pub mark: Option<FileMark>,
+    pub read_at: DateTime<Utc>,
+}
+
+/// The clock a refresh reads by: the moment it began, and how long has
+/// passed since, so an answer is timed when it is taken rather than when the
+/// refresh began (§FS-021-monitors.7.1), and a test that fixes the moment
+/// still times its reads after it.
+#[derive(Debug, Clone, Copy)]
+pub struct Clock {
+    began: DateTime<Utc>,
+    instant: Instant,
+}
+
+impl Clock {
+    pub fn starting(began: DateTime<Utc>) -> Clock {
+        Clock {
+            began,
+            instant: Instant::now(),
+        }
+    }
+
+    pub fn now(&self) -> DateTime<Utc> {
+        chrono::TimeDelta::from_std(self.instant.elapsed())
+            .ok()
+            .and_then(|elapsed| self.began.checked_add_signed(elapsed))
+            .unwrap_or(self.began)
+    }
 }
 
 /// Reads every job at once, one thread each, and gives each answer back in
 /// the jobs' order. A project with no place on disk runs nothing: each of
 /// its reads is unreadable with why.
-pub fn read_all(jobs: &[Job], place: Option<&Where>) -> Vec<Got> {
+pub fn read_all(jobs: &[Job], place: Option<&Where>, clock: &Clock) -> Vec<Got> {
     std::thread::scope(|scope| {
         let running: Vec<_> = jobs
             .iter()
-            .map(|job| scope.spawn(move || read(job, place)))
+            .map(|job| scope.spawn(move || read(job, place, clock)))
             .collect();
         running
             .into_iter()
@@ -68,13 +102,14 @@ pub fn read_all(jobs: &[Job], place: Option<&Where>) -> Vec<Got> {
                     source: job.source.clone(),
                     outcome: Outcome::Failed("the read panicked".to_string()),
                     mark: None,
+                    read_at: clock.now(),
                 })
             })
             .collect()
     })
 }
 
-fn read(job: &Job, place: Option<&Where>) -> Got {
+fn read(job: &Job, place: Option<&Where>, clock: &Clock) -> Got {
     let Some(place) = place else {
         return Got {
             source: job.source.clone(),
@@ -82,6 +117,7 @@ fn read(job: &Job, place: Option<&Where>) -> Got {
                 "the project has no checkout on disk to read its monitors in".to_string(),
             ),
             mark: None,
+            read_at: clock.now(),
         };
     };
     let (outcome, mark) = match &job.source {
@@ -95,6 +131,7 @@ fn read(job: &Job, place: Option<&Where>) -> Got {
         source: job.source.clone(),
         outcome,
         mark,
+        read_at: clock.now(),
     }
 }
 
@@ -138,7 +175,8 @@ fn run(command: &str, cwd: Option<&str>, job: &Job, at: &Where) -> Outcome {
         *carried.borrow_mut() = Some(samples(text));
         Ok(normalized)
     };
-    let timeout = Mode::Captured(Duration::from_secs(job.timeout));
+    // §FS-021-monitors.5.5: a monitor answers by its exit code and its answer, never its output.
+    let timeout = Mode::Drained(Duration::from_secs(job.timeout));
     match summons::run_with_answer_reader(&summons, &Site::root(at.checkout), timeout, &reader) {
         Err(err) => Outcome::Failed(err.to_string()),
         Ok(answer) => match answer.outcome {
@@ -161,21 +199,36 @@ pub fn samples(text: &str) -> Vec<Json> {
 }
 
 /// Reads a file in the answer shape (§FS-021-monitors.5.2): a file that is
-/// not there, or not an answer, is unreadable. Its mark says whether the
-/// next read finds it unchanged (§FS-021-monitors.9.2).
+/// missing, or not an answer, is unreadable, in the words a matter's title
+/// says it (§FS-021-monitors.12.1). Only a regular file is read, and no more
+/// of it than [`FILE_LIMIT_BYTES`]: a pipe or a device would hold the
+/// refresh, and every project's after it, for one monitor's mistake
+/// (§FS-021-monitors.17.2). Its mark says whether the next read finds it
+/// unchanged (§FS-021-monitors.9.2).
 fn file_read(file: &str, cwd: Option<&str>, at: &Where) -> Result<(Outcome, FileMark), String> {
     let site = Site::root(at.checkout);
     let dir = site
         .resolve(&place_of(cwd)?)
         .map_err(|err| err.to_string())?;
     let path: PathBuf = dir.join(file);
-    let bytes = std::fs::read(&path).map_err(|err| match err.kind() {
-        std::io::ErrorKind::NotFound => format!("{file} is not there"),
-        _ => format!("cannot read {file}: {err}"),
+    let cannot = |err: std::io::Error| format!("cannot read {file}: {err}");
+    let meta = std::fs::metadata(&path).map_err(|err| match err.kind() {
+        std::io::ErrorKind::NotFound => format!("{file} is missing"),
+        _ => cannot(err),
     })?;
-    let modified = std::fs::metadata(&path)
-        .and_then(|meta| meta.modified())
-        .map_err(|err| format!("cannot read {file}: {err}"))?;
+    if !meta.is_file() {
+        return Err(format!("{file} is not a regular file"));
+    }
+    let mut bytes = Vec::new();
+    std::fs::File::open(&path)
+        .and_then(|opened| opened.take(FILE_LIMIT_BYTES + 1).read_to_end(&mut bytes))
+        .map_err(cannot)?;
+    if bytes.len() as u64 > FILE_LIMIT_BYTES {
+        return Err(format!(
+            "{file} is larger than {FILE_LIMIT_BYTES} bytes, more than an answer is"
+        ));
+    }
+    let modified = meta.modified().map_err(cannot)?;
     let mark = FileMark {
         mtime: DateTime::<Utc>::from(modified),
         digest: digest(&bytes),

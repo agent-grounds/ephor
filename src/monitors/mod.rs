@@ -26,9 +26,10 @@
 //!
 //! Above the core, and outside it: [`store`] keeps the records and the
 //! histories on disk under the project's lock; [`declared`] reads the
-//! declarations from the site and the project's checkout; [`reader`] runs a
-//! command or reads a file; [`found`] judges what one read found; and
-//! [`watch`] is the monitor slot a plain refresh answers.
+//! declarations from the site and the project's checkout; [`known`] is every
+//! monitor a project has, with the cadence it is judged at, and the ones
+//! overdue; [`reader`] runs a command or reads a file; [`found`] judges what
+//! one read found; and [`watch`] is the monitor slot a plain refresh answers.
 
 pub mod cadence;
 pub mod condition;
@@ -37,6 +38,7 @@ pub mod episode;
 pub mod found;
 pub mod freshness;
 pub mod history;
+pub mod known;
 pub mod machine;
 pub mod model;
 pub mod overlay;
@@ -51,6 +53,9 @@ pub mod state;
 pub mod store;
 pub mod watch;
 pub mod words;
+
+#[cfg(test)]
+mod test_site;
 
 #[cfg(test)]
 mod test_zone;

@@ -6,13 +6,16 @@
 use chrono::Utc;
 use serde_json::Value;
 
+use crate::feed::cache;
 use crate::feed::config::StatusConfig;
+use crate::monitors::known;
 use crate::monitors::store::{self, Store};
-use crate::monitors::watch;
 
 /// Each selected project's monitors that were overdue now, read before the
 /// doctor's own refresh reads them: after it they would look well, and a
 /// watch that works only while the doctor runs is the failure worth naming.
+/// Where the last refresh's monitor slot failed, that failure is every
+/// monitor's cause, and none of them is named overdue (§FS-021-monitors.7.2).
 pub fn overdue(registry_doc: &Value, config: &StatusConfig, projects: &[String]) -> Vec<String> {
     let now = Utc::now();
     let mut said = Vec::new();
@@ -21,10 +24,13 @@ pub fn overdue(registry_doc: &Value, config: &StatusConfig, projects: &[String])
             continue;
         };
         let placement = crate::branches::Placement::load(registry_doc, project);
-        for id in watch::overdue(
+        let feed = cache::load_feed(project).ok().flatten();
+        for id in known::overdue(
             &Store::of(project),
             placement.as_ref(),
             &project_config.monitors,
+            feed.as_ref()
+                .and_then(cache::ProjectFeed::monitor_slot_error),
             now,
         ) {
             said.push(format!(

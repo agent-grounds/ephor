@@ -373,7 +373,10 @@ the same command and the same `cwd`.
 shape ([§FS-021-monitors.8](FS-021-monitors.md#8-the-answer-carries-monitors)). Ephor reads it and runs nothing. This is the
 cheapest binding: whatever already produces the number, a build step or a
 hook, writes the file, and ephor only reads it. A missing file, or one that
-is not an answer, is an unreadable read ([§FS-021-monitors.7.2](FS-021-monitors.md#72-four-causes)).
+is not an answer, is an unreadable read ([§FS-021-monitors.7.2](FS-021-monitors.md#72-four-causes)). Only a
+regular file is read, and no more than 16 MiB of it: a pipe, a device or a
+directory, and a file larger than an answer is, are unreadable reads that say
+so, so a file never holds the refresh waiting on a writer.
 
 ### 5.3 The place
 
@@ -553,6 +556,9 @@ So a read **claims** its monitors first:
 
 A claim older than the command's timeout plus a minute is void, because the
 process that wrote it is gone, and the next refresh reads the monitor as due.
+The timeout is the claiming run's, the longest among the monitors its command
+reads ([§FS-021-monitors.5.5](FS-021-monitors.md#55-exit-codes-and-the-timeout)), which the claim keeps. A read that cannot keep
+what it read lets its claims go, so the next refresh reads again.
 An out-of-cadence read claims too. A refresh that finds a monitor claimed
 reports its previous state.
 

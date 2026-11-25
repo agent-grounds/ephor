@@ -1,90 +1,9 @@
 use super::*;
 
-use std::path::{Path, PathBuf};
-
-use chrono::TimeZone;
 use serde_json::json;
 
 use crate::monitors::freshness::Found;
-
-struct Site {
-    _dir: tempfile::TempDir,
-    root: PathBuf,
-    store: Store,
-    placement: Placement,
-}
-
-/// A project `alpha` with its checkout on disk and a store of its own.
-fn site(trust: Option<&str>) -> Site {
-    let dir = tempfile::tempdir().unwrap();
-    let root = dir.path().join("alpha");
-    std::fs::create_dir_all(&root).unwrap();
-    let mut row = json!({"id": "alpha", "root": root});
-    if let Some(trust) = trust {
-        row["manifest_trust"] = json!(trust);
-    }
-    let placement = Placement::load(&json!({ "projects": [row] }), "alpha").unwrap();
-    let store = Store::at(&dir.path().join("state"), "alpha");
-    Site {
-        _dir: dir,
-        root,
-        store,
-        placement,
-    }
-}
-
-/// A script that says which monitors it was asked for, then answers.
-fn script(root: &Path, answer: &str, exit: i32) {
-    std::fs::write(
-        root.join("kpis.sh"),
-        format!(
-            "echo \"$EPHOR_MONITORS\" >> runs.log\nprintf '%s' '{answer}' > \"$EPHOR_ANSWER\"\nexit {exit}\n"
-        ),
-    )
-    .unwrap();
-}
-
-fn runs(root: &Path) -> Vec<String> {
-    std::fs::read_to_string(root.join("runs.log"))
-        .unwrap_or_default()
-        .lines()
-        .map(str::to_string)
-        .collect()
-}
-
-fn from_kpis(id: &str) -> Json {
-    json!({"id": id, "healthy": {"min": 1}, "from": {"command": "sh kpis.sh"}})
-}
-
-fn at(minutes: i64) -> DateTime<Utc> {
-    Utc.with_ymd_and_hms(2026, 11, 2, 9, 0, 0).unwrap() + TimeDelta::minutes(minutes)
-}
-
-fn refresh_at(site: &Site, declared: &[Json], when: When, minutes: i64) -> Report {
-    refresh_then(site, declared, when, at(minutes))
-}
-
-fn refresh_then(site: &Site, declared: &[Json], when: When, now: DateTime<Utc>) -> Report {
-    let request = Request {
-        project: "alpha",
-        placement: Some(&site.placement),
-        site: declared,
-        brought: Vec::new(),
-        when,
-        recent_days: 7,
-    };
-    refresh(&site.store, &request, now)
-}
-
-fn found(site: &Site, id: &str) -> Option<Found> {
-    let document = site.store.load().unwrap();
-    document.monitors[id]
-        .last_attempt
-        .as_ref()
-        .map(|attempt| attempt.found.clone())
-}
-
-const BOTH: &str = r#"{"v":1,"monitors":[{"id":"a","value":81},{"id":"b","value":3}]}"#;
+use crate::monitors::test_site::*;
 
 /// §FS-021-monitors.5.1, §FS-021-monitors.6.4: a plain refresh reads the
 /// due monitors and runs their shared command once, naming both in
@@ -133,13 +52,6 @@ fn reading_now_reads_out_of_cadence() {
         ),
         "{history:?}"
     );
-}
-
-fn unreadable(site: &Site, id: &str) -> String {
-    match found(site, id) {
-        Some(Found::Unreadable { why }) => why,
-        other => panic!("{id} is not unreadable: {other:?}"),
-    }
 }
 
 /// §FS-021-monitors.5.5, §FS-021-monitors.17.2: a command that fails, one
@@ -206,7 +118,7 @@ fn a_file_is_read_and_an_unchanged_one_is_stale() {
     let site = site(None);
     let declared = [json!({"id": "f", "healthy": {"min": 1}, "from": {"file": "out/f.json"}})];
     refresh_at(&site, &declared, When::Due, 0);
-    assert_eq!(unreadable(&site, "f"), "out/f.json is not there");
+    assert_eq!(unreadable(&site, "f"), "out/f.json is missing");
 
     std::fs::create_dir_all(site.root.join("out")).unwrap();
     std::fs::write(
@@ -244,6 +156,7 @@ fn a_live_claim_elsewhere_is_respected_and_a_void_one_is_not() {
                     pid: 1,
                     at,
                     slot: None,
+                    timeout: None,
                 });
                 Ok(())
             })
@@ -412,17 +325,4 @@ fn a_project_with_no_monitors_has_no_slot() {
     let site = site(None);
     assert_eq!(refresh_at(&site, &[], When::Due, 0).slot, None);
     assert!(!site.store.path().exists());
-}
-
-/// §FS-021-monitors.20.2: a monitor whose slot passed with no reading is
-/// overdue.
-#[test]
-fn overdue_names_a_monitor_whose_slot_passed() {
-    let site = site(None);
-    script(&site.root, BOTH, 0);
-    let declared = [from_kpis("a")];
-    refresh_at(&site, &declared, When::Due, 0);
-    let overdue = |minutes| overdue(&site.store, Some(&site.placement), &declared, at(minutes));
-    assert!(overdue(5).is_empty());
-    assert_eq!(overdue(60 * 24), vec!["a".to_string()]);
 }

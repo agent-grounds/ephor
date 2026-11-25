@@ -2,11 +2,13 @@
 //! directory, one directory per project holding `monitors.json` and one
 //! `<id>.jsonl` history per monitor.
 //!
-//! Every change is made under the project's lock, over the store as it is
-//! then rather than as the run first read it, and `monitors.json` is rewritten
-//! whole and renamed into place, so a reader never sees half of it
-//! (§FS-021-monitors.9.4). A history is appended to; a reader takes every
-//! line it can read and passes over a last line a crash left half-written.
+//! Every change is made under the project's lock (§FS-021-monitors.6.9),
+//! over the store as it is then rather than as the run first read it, and
+//! `monitors.json` is rewritten whole and renamed into place, so a reader
+//! never sees half of it (§FS-021-monitors.9.1). A history is appended to; a
+//! reader takes every line it can read and passes over a last line a crash
+//! left half-written, and a change that fails takes back what it appended,
+//! so the records and the histories never disagree.
 
 use std::fs::{self, File, OpenOptions};
 use std::io::{Read, Seek, SeekFrom, Write};
@@ -73,7 +75,7 @@ impl Store {
         })
     }
 
-    /// Changes the store under the project's lock (§FS-021-monitors.9.4):
+    /// Changes the store under the project's lock (§FS-021-monitors.6.9):
     /// the store is read again once the lock is held, `change` makes its
     /// change, histories included, and `monitors.json` is written whole and
     /// renamed into place before the lock is let go. A `change` that fails
@@ -108,7 +110,7 @@ impl Store {
 
     /// Every line of a monitor's history that reads, oldest first. A line
     /// that does not read — the half-written last line of a crashed append —
-    /// is passed over rather than costing the history (§FS-021-monitors.9.4).
+    /// is passed over rather than costing the history (§FS-021-monitors.9.1).
     pub fn history(&self, id: &str) -> Result<Vec<Line>> {
         let path = self.history_path(id);
         let text = match fs::read(&path) {
@@ -127,8 +129,14 @@ impl Store {
     /// crash left without its newline is cut first, so the next line starts
     /// on a line of its own.
     pub fn append(&self, id: &str, lines: &[Line]) -> Result<()> {
+        self.appended(id, lines).map(|_| ())
+    }
+
+    /// [`Store::append`], giving back where the history ended before it, so
+    /// the append can be taken back; none where nothing was appended.
+    fn appended(&self, id: &str, lines: &[Line]) -> Result<Option<u64>> {
         if lines.is_empty() {
-            return Ok(());
+            return Ok(None);
         }
         let path = self.history_path(id);
         let mut file = OpenOptions::new()
@@ -142,8 +150,21 @@ impl Store {
         file.set_len(whole)
             .and_then(|()| file.seek(SeekFrom::End(0)).map(|_| ()))
             .map_err(|err| failed("write", &path, err))?;
-        file.write_all(encode(lines)?.as_bytes())
-            .map_err(|err| failed("write", &path, err))
+        if let Err(err) = file.write_all(encode(lines)?.as_bytes()) {
+            let _ = file.set_len(whole);
+            return Err(failed("write", &path, err));
+        }
+        Ok(Some(whole))
+    }
+
+    /// Appends that are taken back together where the change they belong to
+    /// fails, so a history never keeps a reading its record does not
+    /// (§FS-021-monitors.9.1).
+    pub fn appends(&self) -> Appends<'_> {
+        Appends {
+            store: self,
+            made: Vec::new(),
+        }
     }
 
     /// Writes a monitor's history anew, as thinning keeps it
@@ -156,7 +177,7 @@ impl Store {
     }
 
     /// Lets a monitor's history go: a kind changed under it
-    /// (§FS-021-monitors.4.3), or the store forgot it (§FS-021-monitors.5.6).
+    /// (§FS-021-monitors.4.4), or the store forgot it (§FS-021-monitors.5.6).
     pub fn remove(&self, id: &str) -> Result<()> {
         let path = self.history_path(id);
         match fs::remove_file(&path) {
@@ -164,6 +185,34 @@ impl Store {
                 Err(failed("remove", &path, err))
             }
             _ => Ok(()),
+        }
+    }
+}
+
+/// The appends one change made, each with where its history ended before.
+#[derive(Debug)]
+pub struct Appends<'a> {
+    store: &'a Store,
+    made: Vec<(PathBuf, u64)>,
+}
+
+impl Appends<'_> {
+    /// Appends lines to a monitor's history, remembering where it ended.
+    pub fn append(&mut self, id: &str, lines: &[Line]) -> Result<()> {
+        if let Some(before) = self.store.appended(id, lines)? {
+            self.made.push((self.store.history_path(id), before));
+        }
+        Ok(())
+    }
+
+    /// Takes back every append made, newest first. What cannot be taken
+    /// back is left: the reader passes over nothing it cannot read, and the
+    /// change failing already says why.
+    pub fn undo(self) {
+        for (path, before) in self.made.into_iter().rev() {
+            if let Ok(file) = OpenOptions::new().write(true).open(&path) {
+                let _ = file.set_len(before);
+            }
         }
     }
 }

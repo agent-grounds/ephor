@@ -71,6 +71,7 @@ fn a_record_keeps_every_field_through_the_store() {
         pid: 42,
         at: utc("2026-11-25T08:00:00Z"),
         slot: None,
+        timeout: Some(120),
     });
     record.kind = Some(Kind::Level);
     record.last_ok = Some(Kept {
@@ -128,10 +129,20 @@ fn a_claim_is_void_after_the_timeout_and_a_minute() {
         pid: 7,
         at: utc("2026-11-25T06:00:00Z"),
         slot: Some(utc("2026-11-25T06:00:00Z")),
+        timeout: None,
     };
     assert!(!claim.is_void(30, utc("2026-11-25T06:01:30Z")));
     assert!(claim.is_void(30, utc("2026-11-25T06:01:31Z")));
     assert!(!claim.is_void(u64::MAX, utc("2030-01-01T00:00:00Z")));
+
+    // The claiming run's timeout is the one it keeps, whatever the caller
+    // would judge it by (§FS-021-monitors.5.5).
+    let run = Claim {
+        timeout: Some(300),
+        ..claim
+    };
+    assert!(!run.is_void(30, utc("2026-11-25T06:05:59Z")));
+    assert!(run.is_void(30, utc("2026-11-25T06:06:01Z")));
 }
 
 #[test]
