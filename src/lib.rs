@@ -32,6 +32,7 @@ pub mod hooks;
 pub mod interval;
 pub mod manifest;
 pub mod matter;
+pub mod monitors;
 pub mod paths;
 pub mod rebase;
 pub mod registry;

@@ -172,6 +172,16 @@ CORE = (
     "feed::model",
     "feed::gate",
     "interval",
+    "monitors::cadence",
+    "monitors::condition",
+    "monitors::freshness",
+    "monitors::model",
+    "monitors::overlay",
+    "monitors::sample",
+    "monitors::schedule",
+    "monitors::shape",
+    "monitors::slots",
+    "monitors::words",
 )
 
 IO_APIS = (
