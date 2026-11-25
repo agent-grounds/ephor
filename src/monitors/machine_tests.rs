@@ -575,3 +575,40 @@ fn what_a_read_records_and_whether_it_moves_the_schedule() {
     assert_eq!(run.record.schedule.parked_since, None);
     assert_eq!(run.record.last_ok.as_ref().unwrap().v, Value::Number(86.0));
 }
+
+#[test]
+fn a_monitor_first_read_after_it_was_first_seen_holds_from_when_it_was_seen() {
+    for (every, quiet, unknown) in [
+        ("10m", "2026-11-25T13:09:59Z", "2026-11-25T13:10:00Z"),
+        ("1w", "2026-12-04T05:59:59Z", "2026-12-04T06:00:00Z"),
+    ] {
+        let watch = Watch {
+            cadence: Cadence::resolve(Some(every), None).unwrap(),
+            ..coverage(1, 2)
+        };
+        let mut record = Record::new(utc("2026-11-25T12:00:00Z"));
+        let mut unreadable = |at: &str| {
+            let read = Read {
+                at: utc(at),
+                in_cadence: true,
+                found: Found::Unreadable {
+                    why: "exit 2".into(),
+                },
+                after_work: Vec::new(),
+            };
+            step(&mut record, &watch, &Event::Read(read), utc(at), &Utc)
+        };
+        // Its first read comes after ephor first saw it, and sets the anchor.
+        let first = unreadable("2026-11-25T12:00:20Z");
+        assert!(opened(&first, Sort::Unknown).is_none(), "{every}");
+        assert!(
+            opened(&unreadable(quiet), Sort::Unknown).is_none(),
+            "{every}"
+        );
+        assert_eq!(
+            opened(&unreadable(unknown), Sort::Unknown),
+            Some(utc(unknown)),
+            "{every}"
+        );
+    }
+}

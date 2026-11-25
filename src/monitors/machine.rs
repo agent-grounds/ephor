@@ -12,7 +12,7 @@ use chrono::{DateTime, FixedOffset, TimeZone, Utc};
 use crate::monitors::cadence::Cadence;
 use crate::monitors::condition::Judge;
 use crate::monitors::episode::{self, Ending, Movement, Sort, Unwatched};
-use crate::monitors::freshness::{self, Attempt, Basis, Cause, Freshness};
+use crate::monitors::freshness::{self, Attempt, Cause, Freshness};
 use crate::monitors::history::Line;
 use crate::monitors::model::{Band, Health, Kind, Value};
 use crate::monitors::state::{Hold, Kept, OpenDrop, OpenUnknown, Past, Record};
@@ -386,14 +386,7 @@ fn judge_freshness<Tz: TimeZone>(
     slot_error: Option<&str>,
     effects: &mut Vec<Effect>,
 ) {
-    let basis = Basis {
-        held_from: record.held_from.unwrap_or(record.schedule.first_seen),
-        has_reading: record.held_from.is_some(),
-        origin: record.schedule.origin(),
-        last_attempt: record.last_attempt.as_ref(),
-        parked_since: record.schedule.parked_since,
-    };
-    let freshness = freshness::freshness(&basis, &watch.cadence, now, zone, slot_error);
+    let freshness = record.freshness(&watch.cadence, now, zone, slot_error);
     record.cause = freshness.cause().cloned();
     let Freshness::Unknown { cause, since } = freshness else {
         return;
