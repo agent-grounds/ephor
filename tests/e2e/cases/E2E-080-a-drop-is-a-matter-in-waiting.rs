@@ -90,6 +90,8 @@ fn a_drop_is_new_in_waiting_with_its_monitors_workflow() {
         .filter(|row| row["id"] == key)
         .collect();
     assert_eq!(new.len(), 1, "{reading}");
+    // A status, so it sits in the overview's Status (§FS-021-monitors.11.4).
+    assert_eq!(new[0]["kind"], json!("status"), "{reading}");
     assert_eq!(
         new[0]["proposal"]["entry"],
         json!("fix-coverage"),
