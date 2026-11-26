@@ -40,10 +40,15 @@ impl Counts {
     }
 }
 
-/// One project's statuses at `now`, None where it has none. A monitor not
-/// run, and one with no reading yet inside its first grace, counts in none
-/// of them, and neither does a KPI (§FS-021-monitors.18.2). While the slot
-/// fails, `slot_error` is every monitor's cause (§FS-021-monitors.7.2).
+/// One project's statuses at `now`, None where it has none. Each counts once,
+/// by the rank its row shows (§FS-021-monitors.18.2, §FS-021-monitors.18.3):
+/// down while its drop is open, whatever its freshness; unknown when its
+/// value no longer holds, or its declaration is in error
+/// (§FS-021-monitors.4.6, §FS-021-monitors.21.2); and overdue a second time
+/// when that is why it is unknown (§FS-021-monitors.7.5). A monitor not run,
+/// and one with no reading yet inside its first grace, counts in none of
+/// them, and neither does a KPI. While the slot fails, `slot_error` is every
+/// monitor's cause (§FS-021-monitors.7.2).
 pub fn of(
     store: &Store,
     placement: Option<&Placement>,
@@ -56,23 +61,34 @@ pub fn of(
     let mut counts = Counts::default();
     let mut statuses = 0;
     for (id, known) in known::all(&declarations, &document) {
-        let Some(record) = document.monitors.get(&id) else {
-            continue;
-        };
-        let ok = record.last_sample.as_ref().and_then(|sample| sample.ok);
-        if known.monitor.judge(ok).is_kpi() || !known.monitor.is_readable() {
+        let record = document.monitors.get(&id);
+        let ok = record
+            .and_then(|record| record.last_sample.as_ref())
+            .and_then(|sample| sample.ok);
+        let faulted = !known.monitor.faults.is_empty();
+        if known.monitor.judge(ok).is_kpi() || (known.monitor.not_run && !faulted) {
             continue;
         }
         statuses += 1;
+        if faulted {
+            counts.unknown += 1;
+            continue;
+        }
+        let Some(record) = record else {
+            continue;
+        };
+        let down = record.drop.is_some() || record.hold.health == Some(Health::Down);
         match record.freshness(&known.cadence, now, &Local, slot_error) {
-            Freshness::NotReadYet { .. } => {}
             Freshness::Unknown { cause, .. } => {
-                counts.unknown += 1;
+                match down {
+                    true => counts.down += 1,
+                    false => counts.unknown += 1,
+                }
                 if cause == Cause::Overdue {
                     counts.overdue += 1;
                 }
             }
-            _ if record.hold.health == Some(Health::Down) => counts.down += 1,
+            _ if down => counts.down += 1,
             _ => {}
         }
     }
