@@ -97,7 +97,7 @@ fn a_moved_drop_is_timed_at_its_move_and_states_why() {
     let item = one(&document(record), utc("2026-11-25T10:00:00Z"));
     assert_eq!(item.updated_at, utc("2026-11-25T09:00:00Z"));
     let stated = stated(&item.source, &item.raw).unwrap();
-    assert_eq!(stated.renewed, Some(utc("2026-11-25T09:00:00Z")));
+    assert_eq!(stated.moves.renewed, Some(utc("2026-11-25T09:00:00Z")));
     assert_eq!(
         stated.moves.since(&Moves {
             condition: "healthy ≥ 80%".into(),
@@ -267,8 +267,8 @@ fn only_the_monitor_source_states_its_record() {
     assert!(!item.is_finished());
 }
 
-/// Movement is the worst level, the condition and the ended work, said in
-/// the spec's sentences (§FS-021-monitors.13.1, §FS-021-monitors.13.2).
+/// Movement is the worst level, the condition and being still down or
+/// unknown after the work ended, said in the spec's sentences (§FS-021-monitors.13.1, §FS-021-monitors.13.2).
 #[test]
 fn moves_say_what_moved() {
     let was = Moves {
@@ -279,7 +279,7 @@ fn moves_say_what_moved() {
     let now = Moves {
         worst: Some("failed".into()),
         condition: "healthy ≥ 85%".into(),
-        ended: vec!["w1".into()],
+        renewed: Some(utc("2026-11-25T09:00:00Z")),
         still: Some("still unreadable after its work ended".into()),
     };
     assert_eq!(
