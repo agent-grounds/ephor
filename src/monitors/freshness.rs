@@ -31,6 +31,18 @@ pub enum Found {
     },
 }
 
+impl Found {
+    /// `reading`, `unreadable`, `parked` or `stale`.
+    pub fn name(&self) -> &'static str {
+        match self {
+            Found::Reading => "reading",
+            Found::Unreadable { .. } => "unreadable",
+            Found::Parked => "parked",
+            Found::Stale { .. } => "stale",
+        }
+    }
+}
+
 /// One attempt, and when it was made.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Attempt {

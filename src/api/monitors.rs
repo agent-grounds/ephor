@@ -22,7 +22,7 @@ use crate::monitors::condition::Judge;
 use crate::monitors::declared::{self, Declarations};
 use crate::monitors::episode::{self, Sort};
 use crate::monitors::freshness::{self, Cause, Freshness};
-use crate::monitors::history::Line;
+use crate::monitors::history::{self, Line};
 use crate::monitors::known::{self, Known};
 use crate::monitors::model::{Health, Home, Kind, Point, Source, Value};
 use crate::monitors::overlay::Healthy;
@@ -48,7 +48,11 @@ struct Gathered {
 struct Built {
     row: MonitorRow,
     standing: Standing,
+    /// Ephor's own lines, which the readings list.
     lines: Vec<Line>,
+    /// What the strip and the chart draw: a number's supplied points before
+    /// ephor's own lines (§FS-021-monitors.2.2).
+    drawn: Vec<Line>,
     span: Span,
     judge: Judge,
 }
@@ -281,19 +285,30 @@ fn build(
     let standing = page::standing(&facts, now, &Local);
     let sample = record.and_then(|record| record.last_sample.as_ref());
     let judge = monitor.judge(sample.and_then(|sample| sample.ok));
-    let span = strip::span(&lines, window, now);
-    let points = series_points(monitor.kind, record);
+    let last = record.and_then(|record| record.last_reading.as_ref());
+    let kind = monitor
+        .kind
+        .or(record.and_then(|record| record.kind))
+        .or(last.map(|kept| kind_of(&kept.v)));
+    let points = series_points(kind, record);
+    // §FS-021-monitors.2.2: a number's points are drawn before its first reading.
+    let drawn = match (kind, record.and_then(Record::points)) {
+        (Some(Kind::Number), Some(supplied)) => {
+            history::handed_over(supplied, &lines, &judge, monitor.warn.as_ref())
+        }
+        _ => lines.clone(),
+    };
+    let span = strip::span(&drawn, window, now);
     let (cells, change) = match points {
         Some(points) => (
             strip::series(points, monitor, &judge),
             strip::series_change(points, monitor),
         ),
         None => (
-            strip::strip(&lines, &span, monitor, &judge),
-            strip::change(&lines, &span, monitor, &judge),
+            strip::strip(&drawn, &span, monitor, &judge),
+            strip::change(&drawn, &span, monitor, &judge),
         ),
     };
-    let last = record.and_then(|record| record.last_reading.as_ref());
     let of = last.and_then(|kept| kept.of).or(monitor.of);
     let shows = Shows {
         rank: standing.rank,
@@ -317,10 +332,7 @@ fn build(
         project: project.to_string(),
         id: id.to_string(),
         title: monitor.title.clone(),
-        kind: monitor
-            .kind
-            .or(record.and_then(|record| record.kind))
-            .or(last.map(|kept| kind_of(&kept.v))),
+        kind,
         value: last.map(|kept| kept.v.clone()),
         of,
         unit: monitor.unit.clone(),
@@ -329,7 +341,7 @@ fn build(
         since: standing.since,
         shows,
         cadence: cadence_view(known),
-        freshness: freshness_view(project, id, known, record, &standing),
+        freshness: freshness_view(project, id, known, record, &standing, now),
         condition: condition_view(
             known,
             &judge,
@@ -345,6 +357,7 @@ fn build(
         row,
         standing,
         lines,
+        drawn,
         span,
         judge,
     }
@@ -400,15 +413,21 @@ fn detail(
         row,
         standing,
         lines,
+        drawn,
         span,
         judge,
     } = built;
     let monitor = &known.monitor;
     let record = gathered.document.monitors.get(&monitor.id);
-    let points: Vec<Point> = series_points(monitor.kind, record)
+    let series: Vec<Point> = series_points(row.kind, record)
         .map(<[Point]>::to_vec)
         .unwrap_or_default();
-    let windowed = !points.iter().any(|point| point.t.is_none());
+    let windowed = !series.iter().any(|point| point.t.is_none());
+    // §FS-021-monitors.19: the repository's points, a number's as a series'.
+    let points = match (row.kind, record.and_then(Record::points)) {
+        (Some(Kind::Number), Some(supplied)) => supplied.to_vec(),
+        _ => series.clone(),
+    };
     let no_matter = row.matter.is_none().then(|| no_matter(known, &standing));
     let from = monitor.from.clone().map(|source| {
         let cwd = match &source {
@@ -435,7 +454,7 @@ fn detail(
             drop_after: monitor.drop_after,
             recover_after: monitor.recover_after(&known.cadence),
         }),
-        chart: chart(&lines, &span, &points, windowed, known, &judge),
+        chart: chart(&drawn, &span, &series, windowed, known, &judge),
         thresholds: thresholds(&judge, known),
         episodes: episodes(project, &monitor.id, record, &span),
         readings: readings(&lines, &span, windowed, known, &judge),
@@ -485,6 +504,7 @@ fn freshness_view(
     known: &Known,
     record: Option<&Record>,
     standing: &Standing,
+    now: DateTime<Utc>,
 ) -> FreshnessView {
     let monitor = &known.monitor;
     if !monitor.faults.is_empty() {
@@ -506,12 +526,17 @@ fn freshness_view(
         };
     };
     let basis = record.basis();
-    let next_slot = freshness::late_from(&basis, &known.cadence, &Local);
+    let late_from = freshness::late_from(&basis, &known.cadence, &Local);
     let holds_until = freshness::holds_until(&basis, &known.cadence, &Local);
+    // §FS-021-monitors.19, §FS-021-monitors.9.1: the schedule's last read and
+    // next slot, a failed or out-of-cadence read included, not the reading
+    // the value holds from.
+    let last = record.last_attempt.as_ref();
     let mut view = FreshnessView {
         state: "fresh",
-        last_read: record.held_from,
-        next_slot,
+        last_read: last.map(|attempt| attempt.at).or(record.schedule.last_read),
+        last_found: last.map(|attempt| attempt.found.name()),
+        next_slot: record.schedule.next_slot(&known.cadence, now, &Local),
         holds_until,
         ..FreshnessView::default()
     };
@@ -536,7 +561,7 @@ fn freshness_view(
     };
     if let Some(cause) = cause {
         view.cause = Some(cause.name());
-        view.since = next_slot;
+        view.since = late_from;
         match cause {
             Cause::Unreadable { why } => view.why = Some(why.clone()),
             Cause::Stale { measured } => view.measured = *measured,

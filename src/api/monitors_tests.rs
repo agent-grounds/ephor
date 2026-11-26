@@ -8,6 +8,7 @@ use serde_json::{json, Value as Json};
 
 use super::*;
 use crate::monitors::episode::Ending;
+use crate::monitors::freshness::{Attempt, Found};
 use crate::monitors::model::{Band, Value};
 use crate::monitors::shape;
 use crate::monitors::state::{Hold, Kept, OpenDrop, OpenUnknown, Past, Shown};
@@ -366,6 +367,41 @@ fn a_row_carries_what_its_columns_say() {
     assert_eq!(lines.shows.matter, "—");
 }
 
+/// §FS-021-monitors.19, §FS-021-monitors.9.1: the cadence line says the
+/// schedule's last read, a failed one included, and its next slot, not the
+/// reading the value holds from and the slot after it; a late monitor's
+/// cause still runs from the slot that passed without a reading.
+#[test]
+fn the_cadence_says_the_last_read_and_the_next_slot_of_the_schedule() {
+    let dir = tempfile::tempdir().unwrap();
+    let site = [json!({"id": "coverage", "unit": "%", "healthy": {"min": 80}, "every": "1h"})];
+    let mut record = read_at(
+        hours(5),
+        Value::Number(81.0),
+        Some(Health::Ok),
+        Some(Band::Ok),
+    );
+    record.schedule.anchor = Some(hours(5));
+    record.schedule.last_read = Some(hours(1));
+    record.last_attempt = Some(Attempt {
+        at: hours(1),
+        found: Found::Unreadable {
+            why: "scripts/kpis.sh exited 3".into(),
+        },
+    });
+    let gathered = gather(dir.path(), &site, vec![("coverage", record)], Vec::new());
+    let row = built(&gathered, "coverage").row;
+    assert_eq!(row.freshness.last_read, Some(hours(1)));
+    assert_eq!(row.freshness.last_found, Some("unreadable"));
+    assert_eq!(row.freshness.next_slot, Some(hours(0)));
+    assert_eq!(row.freshness.since, Some(hours(4)));
+    let says = row.cadence_says(|at| at.format("%H:%M").to_string());
+    assert_eq!(
+        says,
+        "every 1h · last read 11:00 (failed) · next slot 12:00 · grace 1h"
+    );
+}
+
 /// §FS-021-monitors.18.3: the matter column takes the open drop's before
 /// the open unknown one's, a finished one while it is still reported, and
 /// none after.
@@ -535,6 +571,67 @@ fn a_labelled_series_has_no_window() {
     assert_eq!(detail.points.len(), 3);
 }
 
+/// §FS-021-monitors.2.2, §FS-021-monitors.18.6: a number's points are drawn
+/// over the span before ephor's first reading of it, so its strip, change and
+/// chart start from the repository's history; the readings are ephor's own,
+/// and the detail lists the points the repository supplied.
+#[test]
+fn a_numbers_points_are_drawn_before_its_first_reading() {
+    let dir = tempfile::tempdir().unwrap();
+    let site = [json!({"id": "lines", "title": "Lines of code", "every": "1h"})];
+    let mut record = read_at(hours(1), Value::Number(1200.0), None, None);
+    let point = |at: DateTime<Utc>, v: f64| Point {
+        t: Some(at.fixed_offset()),
+        x: None,
+        v,
+    };
+    record.last_sample = Some(crate::monitors::model::Sample {
+        id: "lines".into(),
+        value: Some(Value::Number(1200.0)),
+        points: Some(vec![
+            point(hours(48), 1000.0),
+            point(hours(24), 1100.0),
+            point(hours(1), 1150.0),
+        ]),
+        ..Default::default()
+    });
+    let own = vec![Line::Reading {
+        t: hours(1),
+        v: Value::Number(1200.0),
+        health: None,
+        out_of_cadence: false,
+    }];
+    let gathered = gather(
+        dir.path(),
+        &site,
+        vec![("lines", record)],
+        vec![("lines", own)],
+    );
+    let built = built(&gathered, "lines");
+    assert_eq!(built.row.kind, Some(Kind::Number));
+    assert_eq!(built.row.shows.change.says, "▴ 200");
+    let read = built
+        .row
+        .shows
+        .strip
+        .iter()
+        .filter(|cell| cell.mark == strip::Mark::Read)
+        .count();
+    assert!(read >= 3, "{:?}", built.row.shows.strip);
+    let detail = detail(
+        "widget",
+        &gathered.known["lines"],
+        &gathered,
+        built,
+        Window::Week,
+        None,
+    );
+    let charted: Vec<Option<f64>> = detail.chart.iter().map(|point| point.value).collect();
+    assert_eq!(charted, [Some(1000.0), Some(1100.0), Some(1200.0)]);
+    assert_eq!(detail.points.len(), 3);
+    assert_eq!(detail.readings.len(), 1);
+}
+
 /// §FS-021-monitors.19, §FS-021-monitors.21.5: the site's condition over the
 /// manifest's says what it overrode, and the detail names both homes.
 #[test]
@@ -602,6 +699,6 @@ fn the_detail_says_why_there_is_no_matter() {
     known.monitor.not_run = true;
     let standing = built(&gathered, "latency").standing;
     assert!(no_matter(&known, &standing).starts_with("none: "));
-    let freshness = freshness_view("widget", "latency", &known, None, &standing);
+    let freshness = freshness_view("widget", "latency", &known, None, &standing, now());
     assert_eq!(freshness.state, "not-run");
 }

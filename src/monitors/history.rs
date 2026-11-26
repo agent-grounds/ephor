@@ -7,7 +7,7 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
 use crate::monitors::condition::{self, Judge};
-use crate::monitors::model::{Condition, Health, Value};
+use crate::monitors::model::{Condition, Health, Point, Value};
 
 /// One line of `<id>.jsonl` (§FS-021-monitors.9.1).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -93,6 +93,36 @@ pub fn rejudged(
         Line::Reading { v, .. } => judged(v),
         Line::Thinned { min, max, .. } => worst([judged(min), judged(max)]),
     }
+}
+
+/// A number's lines as the page draws them: the points its repository
+/// supplied, each a reading judged under today's condition, over the span
+/// before ephor's own first line of it, then ephor's own lines
+/// (§FS-021-monitors.2.2). A point labelled by `x` has no time to stand at.
+pub fn handed_over(
+    points: &[Point],
+    lines: &[Line],
+    judge: &Judge,
+    warn: Option<&Condition>,
+) -> Vec<Line> {
+    let first = lines.first().map(Line::t);
+    let mut drawn: Vec<Line> = points
+        .iter()
+        .filter_map(|point| Some((point.t?.with_timezone(&Utc), point.v)))
+        .filter(|(t, _)| first.is_none_or(|first| *t < first))
+        .map(|(t, v)| {
+            let v = Value::Number(v);
+            Line::Reading {
+                t,
+                health: condition::band(judge, warn, &v, None, None).map(Health::from),
+                v,
+                out_of_cadence: false,
+            }
+        })
+        .collect();
+    drawn.sort_by_key(Line::t);
+    drawn.extend(lines.iter().cloned());
+    drawn
 }
 
 /// The worst of some healths: down, then unknown, then warn, then ok
