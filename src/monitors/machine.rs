@@ -197,9 +197,19 @@ pub fn step<Tz: TimeZone>(
         drop.shown = shown.clone();
     }
     if let Some(unknown) = &mut record.unknown {
-        unknown.shown = shown;
+        unknown.shown = unknown_since(shown, unknown.named);
     }
     effects
+}
+
+/// An unknown matter's health is `unknown`, which began when its episode
+/// opened, whatever health the hold kept beside it (§FS-021-monitors.12.3,
+/// §FS-021-monitors.11.2).
+fn unknown_since(shown: Shown, named: DateTime<Utc>) -> Shown {
+    Shown {
+        since: Some(named),
+        ..shown
+    }
 }
 
 /// What a matter of the monitor says of it now (§FS-021-monitors.12.1,
@@ -516,6 +526,10 @@ fn end(
             None => return,
         },
     };
+    let shown = match sort {
+        Sort::Drop => shown(record, watch),
+        Sort::Unknown => unknown_since(shown(record, watch), named),
+    };
     record.past.push(Past {
         sort,
         named,
@@ -523,7 +537,7 @@ fn end(
         how: ending.clone(),
         moved,
         cause,
-        shown: shown(record, watch),
+        shown,
     });
     effects.push(Effect::Ended {
         sort,
