@@ -38,7 +38,7 @@ use crate::monitors::reader::{self, Clock, Got, Job, Where};
 use crate::monitors::retention;
 use crate::monitors::route::{self, Answer, Outcome, Owner, Route, Watched};
 use crate::monitors::state::{Claim, Document, FileMark, Record};
-use crate::monitors::store::Store;
+use crate::monitors::store::{Appends, Store};
 
 /// The name of the slot a project's monitors answer in, ephor's own reading
 /// rather than a source anything binds (§FS-021-monitors.17.4).
@@ -176,8 +176,11 @@ pub fn refresh(store: &Store, request: &Request, now: DateTime<Utc>) -> Report {
             forest: forest.as_ref(),
         });
     let got = reader::read_all(&plan.jobs, place.as_ref(), &clock);
-    match store.update(|document| commit(store, document, &declarations, request, &plan, &got, now))
-    {
+    let committed = store.appending(|document, appends| {
+        let read = (&declarations, request, &plan, got.as_slice());
+        commit(store, document, appends, read, now)
+    });
+    match committed {
         Ok(said) => {
             notes.extend(said);
             match store.load() {
@@ -457,10 +460,8 @@ struct Kept {
 fn commit(
     store: &Store,
     document: &mut Document,
-    declarations: &Declarations,
-    request: &Request,
-    plan: &Plan,
-    got: &[Got],
+    appends: &mut Appends,
+    (declarations, request, plan, got): (&Declarations, &Request, &Plan, &[Got]),
     now: DateTime<Utc>,
 ) -> Result<Vec<String>> {
     let monitors = known::declared(declarations, document);
@@ -620,7 +621,7 @@ fn commit(
         let known = known::all(declarations, document);
         thin(store, document, &known, now)?;
     }
-    keep(store, &kept, &gone)?;
+    keep(store, appends, &kept, &gone)?;
     Ok(notes)
 }
 
@@ -644,26 +645,19 @@ fn history(id: &str, effects: Vec<Effect>) -> Kept {
 }
 
 /// Writes what every step kept, and lets the forgotten histories go
-/// (§FS-021-monitors.5.6). Where one write fails, every line this commit
-/// appended is taken back before the failure fails the slot
-/// (§FS-021-monitors.17.3): `monitors.json` is then not written either, so
-/// the records and the histories still agree, and the next read appends no
-/// line twice.
-fn keep(store: &Store, kept: &[Kept], gone: &[String]) -> Result<()> {
-    let mut appends = store.appends();
-    let written = (|| {
-        for kept in kept {
-            if kept.restart {
-                store.remove(&kept.id)?;
-            }
-            appends.append(&kept.id, &kept.lines)?;
+/// (§FS-021-monitors.5.6). Where one write fails, or `monitors.json` cannot
+/// be written after them, [`Store::appending`] takes back every line this
+/// commit appended before the failure fails the slot
+/// (§FS-021-monitors.17.3): the records and the histories still agree, and
+/// the next read appends no line twice.
+fn keep(store: &Store, appends: &mut Appends, kept: &[Kept], gone: &[String]) -> Result<()> {
+    for kept in kept {
+        if kept.restart {
+            store.remove(&kept.id)?;
         }
-        gone.iter().try_for_each(|id| store.remove(id))
-    })();
-    if written.is_err() {
-        appends.undo();
+        appends.append(&kept.id, &kept.lines)?;
     }
-    written
+    gone.iter().try_for_each(|id| store.remove(id))
 }
 
 /// Thins every history and lets go of the episodes no history keeps any

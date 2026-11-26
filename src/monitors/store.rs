@@ -81,6 +81,18 @@ impl Store {
     /// renamed into place before the lock is let go. A `change` that fails
     /// writes nothing of `monitors.json`.
     pub fn update<T>(&self, change: impl FnOnce(&mut Document) -> Result<T>) -> Result<T> {
+        self.appending(|document, _| change(document))
+    }
+
+    /// [`Store::update`] for a change that appends to histories: every line
+    /// it appends through `appends` is taken back where the change fails or
+    /// `monitors.json` cannot be written after it, so a history never keeps
+    /// a reading its record does not (§FS-021-monitors.9.1), and a read that
+    /// could not keep what it read is read again whole (§FS-021-monitors.6.9).
+    pub fn appending<T>(
+        &self,
+        change: impl FnOnce(&mut Document, &mut Appends) -> Result<T>,
+    ) -> Result<T> {
         fs::create_dir_all(&self.dir).map_err(|err| failed("create", &self.dir, err))?;
         let lock_path = self.dir.join(format!("{FILE}.lock"));
         let lock = OpenOptions::new()
@@ -92,10 +104,14 @@ impl Store {
             .map_err(|err| failed("open", &lock_path, err))?;
         lock.lock().map_err(|err| failed("lock", &lock_path, err))?;
         let mut document = self.load()?;
-        let changed = change(&mut document)?;
-        self.write(&document)?;
+        let mut appends = self.appends();
+        let changed = change(&mut document, &mut appends)
+            .and_then(|changed| self.write(&document).map(|()| changed));
+        if changed.is_err() {
+            appends.undo();
+        }
         drop(lock);
-        Ok(changed)
+        changed
     }
 
     fn write(&self, document: &Document) -> Result<()> {
@@ -208,8 +224,8 @@ impl Appends<'_> {
     /// Takes back every append made, newest first. What cannot be taken
     /// back is left: the reader passes over nothing it cannot read, and the
     /// change failing already says why.
-    pub fn undo(self) {
-        for (path, before) in self.made.into_iter().rev() {
+    pub fn undo(&mut self) {
+        for (path, before) in self.made.drain(..).rev() {
             if let Ok(file) = OpenOptions::new().write(true).open(&path) {
                 let _ = file.set_len(before);
             }
