@@ -476,3 +476,23 @@ fn the_page_and_the_detail_fit_80_by_24() {
     );
     render(&mut screen, 20, 5);
 }
+
+/// §FS-021-monitors.4.6, §FS-021-monitors.7.1: a row's notes follow its
+/// condition on the page, as `ephor monitors` prints them, so a misspelt
+/// `healthy` is seen on the row and not only in the detail view.
+#[test]
+fn a_rows_notes_follow_its_condition_on_the_page() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut page = page_of_six(dir.path());
+    page.projects[0].rows[0].notes = vec!["unknown field heathy".into()];
+    let mut screen = screen(page);
+    let (text, _) = render(&mut screen, 240, 20);
+    let row = text
+        .lines()
+        .find(|line| line.contains("Line coverage"))
+        .unwrap();
+    assert!(
+        row.contains("healthy ≥ 80% · unknown field heathy"),
+        "{row}"
+    );
+}

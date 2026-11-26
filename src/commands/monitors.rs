@@ -172,11 +172,7 @@ fn cells(row: &MonitorRow) -> [String; 6] {
         row.health_says(),
         shows.held.clone().unwrap_or_else(|| "—".to_string()),
         shows.change.says.clone(),
-        // §FS-021-monitors.4.6, §FS-021-monitors.7.1: the row's notes follow its condition.
-        std::iter::once(row.condition_says())
-            .chain(row.notes_say(when))
-            .collect::<Vec<_>>()
-            .join(" · "),
+        row.condition_noted_says(when),
     ]
 }
 
