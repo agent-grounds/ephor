@@ -34,6 +34,7 @@
 pub mod after;
 pub mod cadence;
 pub mod condition;
+pub mod counts;
 pub mod declared;
 pub mod episode;
 pub mod found;

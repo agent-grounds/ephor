@@ -967,7 +967,18 @@
           "properties": {
             "matters": { "type": "integer", "minimum": 0 },
             "unread": { "type": "integer", "minimum": 0, "description": "How many of them changed since the reader last looked." },
-            "refreshed_at": { "type": "string", "format": "date-time", "description": "The newest fetch the feed's cache records. Absent where it was never fetched." }
+            "refreshed_at": { "type": "string", "format": "date-time", "description": "The newest fetch the feed's cache records. Absent where it was never fetched." },
+            "monitors": {
+              "type": "object",
+              "description": "The watched projects' statuses, counted as the line counts them; absent where no watched project has a status (FS-021-monitors.20.1).",
+              "required": ["down", "unknown", "overdue"],
+              "additionalProperties": false,
+              "properties": {
+                "down": { "type": "integer", "minimum": 0 },
+                "unknown": { "type": "integer", "minimum": 0 },
+                "overdue": { "type": "integer", "minimum": 0, "description": "The unknown statuses whose cause is overdue, counted a second time." }
+              }
+            }
           }
         }
       }

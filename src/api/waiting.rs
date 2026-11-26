@@ -16,6 +16,7 @@ use chrono::{DateTime, Utc};
 
 use crate::feed::cache;
 use crate::feed::model::{Item, ItemRole};
+use crate::monitors::counts::{self, Counts};
 use crate::work::runtime::watch::{Doing, RootPlans};
 
 use super::read::BoardReading;
@@ -52,6 +53,7 @@ impl Session {
             // The newest fetch any feed in the reading records
             // (§FS-019-waiting.3).
             refreshed_at: self.feeds.iter().filter_map(|feed| feed.fetched_at).max(),
+            monitors: self.monitor_counts(now),
         };
         // Processed: a rhei is assigned, or a person said none is needed and
         // the matter has not moved since (§FS-019-waiting.7).
@@ -138,6 +140,28 @@ impl Session {
         reading
     }
 
+    /// The watched projects' statuses, summed, where any project has one
+    /// (§FS-021-monitors.20.1): read from each store the last plain refresh
+    /// answered a monitor slot for.
+    fn monitor_counts(&self, now: chrono::DateTime<Utc>) -> Option<Counts> {
+        let mut total: Option<Counts> = None;
+        for feed in self.feeds.iter().filter(|feed| feed.has_monitors()) {
+            let site = self
+                .config
+                .projects
+                .get(&feed.project)
+                .map(|project| project.monitors.as_slice())
+                .unwrap_or_default();
+            let store = crate::monitors::store::Store::of(&feed.project);
+            let placement = self.placement(&feed.project);
+            let slot_error = feed.monitor_slot_error();
+            if let Some(counts) = counts::of(&store, placement, site, slot_error, now) {
+                total.get_or_insert_with(Counts::default).add(counts);
+            }
+        }
+        total
+    }
+
     /// Every label some selector of the site excludes by name: what holds a
     /// matter out of the machine's hands (§FS-019-waiting.1.2). Read from the
     /// site's actions and recipes and from each project's, so ephor names no
@@ -178,17 +202,23 @@ impl views::Waiting {
         )
     }
 
-    /// `overview: 143 matters · 12 changed since you looked`.
+    /// `overview: 143 matters · 12 changed since you looked`, then the
+    /// statuses where a watched project has any, `   monitors: 1 down · 2
+    /// unknown` (§FS-021-monitors.20.1).
     pub fn overview_line(&self) -> String {
         let noun = if self.overview.matters == 1 {
             "matter"
         } else {
             "matters"
         };
-        format!(
+        let mut line = format!(
             "overview: {} {noun} · {} changed since you looked",
             self.overview.matters, self.overview.unread
-        )
+        );
+        if let Some(monitors) = &self.overview.monitors {
+            line = format!("{line}   {}", monitors.say());
+        }
+        line
     }
 
     /// Whether neither of the first two sections has a row — the screen
