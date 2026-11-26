@@ -120,24 +120,94 @@ fn an_unreadable_monitor_opens_its_own_matter_and_the_next_reading_ends_it() {
     );
 }
 
+/// Every time the store keeps moved `hours` back, as if they had passed.
+fn shift(value: &mut Value, hours: i64) {
+    match value {
+        Value::String(text) => {
+            if let Ok(at) = chrono::DateTime::parse_from_rfc3339(text) {
+                let at = at.with_timezone(&chrono::Utc) - chrono::Duration::hours(hours);
+                *text = at.to_rfc3339_opts(chrono::SecondsFormat::AutoSi, true);
+            }
+        }
+        Value::Array(values) => values.iter_mut().for_each(|value| shift(value, hours)),
+        Value::Object(fields) => fields.values_mut().for_each(|value| shift(value, hours)),
+        _ => {}
+    }
+}
+
+/// A monitor whose site says its value is fresh for ten minutes, brought by
+/// a daily command, is overdue two hours on: no read was tried since its
+/// slot (§FS-021-monitors.6.8, §FS-021-monitors.7.2). A plain refresh then
+/// judges it, finds the daily command not due, and opens nothing for it,
+/// while Waiting's overview line counts it (§FS-021-monitors.7.5,
+/// §FS-021-monitors.11.2, §FS-021-monitors.20.1).
 #[test]
 fn an_overdue_monitor_opens_nothing_and_the_overview_line_counts_it() {
-    let world = world(GOOD, 0);
-    refresh_now(&world);
-    aged(&world);
+    let world = World::new();
+    let runs = world.path().join("kpis.runs");
+    world.script(
+        "scripts/kpis.sh",
+        &format!(
+            "#!/bin/sh\necho run >> '{}'\nprintf '%s' '{}' > \"$EPHOR_ANSWER\"\n",
+            runs.display(),
+            r#"{"v":1,"monitors":[{"id":"daily","value":5},{"id":"pipeline","value":90}]}"#
+        ),
+    );
+    world.configure(json!({ "projects": { PROJECT: {
+        "providers": [],
+        "monitors": [
+            { "id": "daily", "title": "Daily", "healthy": { "min": 1 }, "every": "1d",
+              "from": { "command": "scripts/kpis.sh" } },
+            { "id": "pipeline", "title": "Pipeline", "healthy": { "min": 80 }, "every": "10m" }
+        ]
+    } } }));
+    let ran = || {
+        std::fs::read_to_string(&runs)
+            .unwrap_or_default()
+            .lines()
+            .count()
+    };
+    world.ephor().args(["refresh", PROJECT]).assert().success();
+    assert_eq!(ran(), 1);
+
+    let path = world
+        .path()
+        .join("state/ephor/monitors")
+        .join(PROJECT)
+        .join("monitors.json");
+    let mut kept = read_json(&path);
+    assert_eq!(
+        kept["monitors"]["pipeline"]["owner"],
+        json!({"from": {"command": "scripts/kpis.sh"}}),
+        "{kept:#}"
+    );
+    assert_eq!(kept["monitors"]["pipeline"].get("cause"), None);
+    shift(&mut kept["monitors"], 2);
+    write_json(&path, &kept);
+
+    world.ephor().args(["refresh", PROJECT]).assert().success();
+    assert_eq!(ran(), 1, "the daily command is not due");
+    let kept = read_json(&path);
+    assert_eq!(
+        kept["monitors"]["pipeline"]["cause"],
+        json!({"cause": "overdue"}),
+        "judged overdue by this refresh: {kept:#}"
+    );
+    assert_eq!(kept["monitors"]["pipeline"].get("unknown"), None);
+    assert!(world.feed()["providers"]["monitor"].is_object());
+    assert!(monitor_matters(&world).is_empty(), "{:#}", world.feed());
 
     let output = world.ephor().args(["waiting"]).output().unwrap();
     let text = String::from_utf8_lossy(&output.stdout);
     assert!(
-        text.contains("   monitors: 0 down · 2 unknown · 2 overdue"),
+        text.contains("   monitors: 0 down · 1 unknown · 1 overdue"),
         "{text}"
     );
     let reading = json_of(&world.ephor().args(["waiting", "--json"]).output().unwrap());
     assert_eq!(
         reading["overview"]["monitors"],
-        json!({"down": 0, "unknown": 2, "overdue": 2})
+        json!({"down": 0, "unknown": 1, "overdue": 1})
     );
-    assert!(monitor_matters(&world).is_empty());
 }
 
 #[test]
