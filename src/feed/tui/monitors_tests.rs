@@ -533,3 +533,14 @@ fn a_rows_notes_follow_its_condition_on_the_page() {
         "{row}"
     );
 }
+
+/// §FS-021-monitors.18.5: where a row's last 24 readings reach further back
+/// than the window, the strip's heading says so.
+#[test]
+fn the_strip_heading_names_the_readings_that_set_a_span() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut page = page_of_six(dir.path());
+    page.projects[0].rows[3].shows.span.by_readings = true;
+    let (text, _) = render(&mut screen(page), 240, 20);
+    assert!(text.contains("last 7d or 24 readings"), "{text}");
+}

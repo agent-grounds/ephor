@@ -5,10 +5,14 @@
 
 use chrono::{DateTime, Local, Utc};
 
-use super::{ChartPoint, EpisodeView, FromView, MonitorDetail, MonitorRow, ReadingView};
+use super::{
+    refreshed, ChartPoint, EpisodeView, FromView, MonitorDetail, MonitorProject, MonitorRow,
+    Monitors, ReadingView,
+};
 use crate::api::monitors::NEW;
 use crate::monitors::episode::Sort;
 use crate::monitors::model::{Point, Source};
+use crate::monitors::window::Window;
 
 /// The footnote under the page (§FS-021-monitors.18.5, §FS-021-monitors.21.1).
 pub const FOOTNOTE: &str =
@@ -83,6 +87,53 @@ impl ReadingView {
     }
 }
 
+impl Monitors {
+    /// The header's three parts (§FS-021-monitors.18.2): `ephor — monitors`,
+    /// the counts, and `window 7d · refreshed 4m ago`, so a screen too
+    /// narrow for the header can say each on a line of its own.
+    pub fn header_says(&self, now: DateTime<Utc>) -> [String; 3] {
+        [
+            "ephor — monitors".to_string(),
+            self.counts.say(),
+            format!(
+                "window {} · {}",
+                self.window.label(),
+                refreshed(self.refreshed_at, now)
+            ),
+        ]
+    }
+
+    /// `widget has no monitors`, for each project `--project` named that has
+    /// none (§FS-021-monitors.21.1).
+    pub fn without_say(&self) -> Vec<String> {
+        self.without
+            .iter()
+            .map(|project| format!("{project} has no monitors"))
+            .collect()
+    }
+}
+
+impl MonitorProject {
+    /// `note: …`, for each thing its declarations or its store could not be
+    /// read for (§FS-021-monitors.17.3).
+    pub fn notes_say(&self) -> Vec<String> {
+        self.notes
+            .iter()
+            .map(|note| format!("note: {note}"))
+            .collect()
+    }
+
+    /// The strip's heading (§FS-021-monitors.18.5): `last 7d`, or `last 7d
+    /// or 24 readings` where a row's last 24 readings reach further back
+    /// than the window and so set its span.
+    pub fn strip_heading(&self, window: Window) -> String {
+        match self.rows.iter().any(|row| row.shows.span.by_readings) {
+            true => format!("last {} or 24 readings", window.label()),
+            false => format!("last {}", window.label()),
+        }
+    }
+}
+
 impl MonitorRow {
     /// The condition column as the page and `ephor monitors` both show it:
     /// the condition with the sample's `detail`, then the row's notes
@@ -122,6 +173,44 @@ impl MonitorRow {
 }
 
 impl MonitorDetail {
+    /// The detail view's header (§FS-021-monitors.19): its title, then
+    /// `window 7d · refreshed 4m ago`, so a screen too narrow for both can
+    /// say the second on a line of its own.
+    pub fn header_says(&self, now: DateTime<Utc>) -> [String; 2] {
+        [
+            self.title(),
+            format!(
+                "{} · {}",
+                self.window_says(),
+                refreshed(self.refreshed_at, now)
+            ),
+        ]
+    }
+
+    /// The header on one line, as `ephor monitors show` prints it.
+    pub fn header(&self, now: DateTime<Utc>) -> String {
+        self.header_says(now).join("   ")
+    }
+
+    /// The strip of health under the chart (§FS-021-monitors.19): the row's
+    /// cells each drawn by its health, `health: ▇▇▁▁▇`, so it reads without
+    /// colour.
+    pub fn strip_says(&self) -> String {
+        let cells: String = self
+            .row
+            .shows
+            .strip
+            .iter()
+            .map(|cell| cell.health_glyph())
+            .collect();
+        format!("health: {cells}")
+    }
+
+    /// `change ▾ 2 ms` (§FS-021-monitors.18.6).
+    pub fn change_says(&self) -> String {
+        format!("change {}", self.row.shows.change.says)
+    }
+
     /// What the detail view says of the monitor under its health, one
     /// `label: text` line each (§FS-021-monitors.19): its sentence where
     /// ephor does not read it, its value, its condition in words, the
