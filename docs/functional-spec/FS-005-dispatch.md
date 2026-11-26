@@ -712,9 +712,9 @@ episode's, `down` or `unknown`, for as long as the episode is open, and its
 time is when it last moved ([§FS-021-monitors.12.2](FS-021-monitors.md#122-its-state-is-its-episodes-and-its-time-is-when-it-last-moved)), so a value moving inside
 its band changes neither. Its fingerprint takes the three moves
 [§FS-021-monitors.13.1](FS-021-monitors.md#131-what-is-movement) names besides: the worst level its drop has reached,
-its condition in words, and a mark for each piece of work laid on it that has
-ended. A ledger written before monitors existed holds none of them, and reads
-as it did.
+its condition in words, and a mark for each piece of work laid on it that
+ended while it was still down or still unknown. A ledger written before
+monitors existed holds none of them, and reads as it did.
 
 ## 6. Dispatch is offered where it would work, and refuses where it would not
 
