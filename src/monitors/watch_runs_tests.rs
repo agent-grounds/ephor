@@ -239,6 +239,44 @@ fn a_history_that_cannot_be_written_leaves_the_store_as_it_was() {
     assert_eq!(site.store.history("a").unwrap().len(), 2);
 }
 
+/// §FS-021-monitors.9.1, §FS-021-monitors.6.9: where `monitors.json` cannot
+/// be written after the histories were appended to, the appends are taken
+/// back too, so a reading the record never counted is never in a history,
+/// and the read is taken again whole once its claim is void.
+#[test]
+fn a_store_that_cannot_be_written_takes_back_what_the_read_appended() {
+    let site = site(None);
+    let failing = r#"{"v":1,"monitors":[{"id":"a","value":0}]}"#;
+    script(&site.root, failing, 0);
+    let declared = [json!({"id": "a", "healthy": {"min": 1}, "drop_after": 2,
+        "from": {"command": "sh kpis.sh"}})];
+    refresh_at(&site, &declared, When::Due, 0);
+    let lines = || site.store.history("a").unwrap().len();
+    assert_eq!(lines(), 1);
+    // The command blocks the write of `monitors.json` while it runs, after
+    // the claims were written and before the readings are.
+    let blocker = site.store.path().with_extension("json.tmp");
+    std::fs::write(
+        site.root.join("kpis.sh"),
+        format!(
+            "mkdir -p '{}'\nprintf '%s' '{failing}' > \"$EPHOR_ANSWER\"\n",
+            blocker.display()
+        ),
+    )
+    .unwrap();
+    let report = refresh_at(&site, &declared, When::Due, 11);
+    assert!(matches!(report.slot, Some(Err(_))), "{:?}", report.slot);
+    assert_eq!(lines(), 1, "{:?}", site.store.history("a").unwrap());
+
+    std::fs::remove_dir(&blocker).unwrap();
+    script(&site.root, failing, 0);
+    refresh_at(&site, &declared, When::Due, 13);
+    assert_eq!(lines(), 2);
+    let record = &site.store.load().unwrap().monitors["a"];
+    assert_eq!(record.hold.run, 2);
+    assert!(record.drop.is_some(), "{record:?}");
+}
+
 /// §FS-021-monitors.5.6, §FS-021-monitors.14.4: a monitor nothing declares
 /// that no answer brought for 30 days is forgotten: its open episodes end,
 /// and what they were is kept for the finished matters to say, after its
