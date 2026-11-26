@@ -101,6 +101,10 @@ struct Plan {
     /// The due monitors whose slot had come, as opposed to the ones read now
     /// out of cadence (§FS-021-monitors.6.7).
     in_cadence: BTreeSet<String>,
+    /// The `from`s this run reads because a slot of theirs came: a monitor
+    /// their answer brings is read out of cadence in any other run of them
+    /// (§FS-021-monitors.6.7, §FS-021-monitors.6.8).
+    cadenced: BTreeSet<Source>,
     claim: Claim,
     /// The matters whose work has ended, as asked when this read began.
     ended: BTreeMap<String, String>,
@@ -373,6 +377,14 @@ fn prepare(
             due.insert(id.clone());
         }
     }
+    let cadenced: BTreeSet<Source> = in_cadence
+        .iter()
+        .filter_map(|id| match routes.get(id) {
+            Some(Route::From(source)) => Some(source.clone()),
+            _ => None,
+        })
+        .collect();
+    let brought_after_work = brought_after_work(document, &routes, &elsewhere, request, ended);
     let owners = owners(document);
     let watched = Watched {
         routes: &routes,
@@ -386,6 +398,7 @@ fn prepare(
             Some(Route::From(source)) => Some(source),
             _ => None,
         })
+        .chain(&brought_after_work)
         .collect();
     let jobs: Vec<Job> = sources
         .into_iter()
@@ -442,9 +455,42 @@ fn prepare(
         jobs,
         due,
         in_cadence,
+        cadenced,
         claim,
         ended: ended.clone(),
     }
+}
+
+/// The `from`s that own a monitor their answer brings whose matter's work
+/// ended unseen: each is run now, so that monitor is read when its work
+/// ends rather than at the next slot of its owner (§FS-021-monitors.6.7,
+/// §FS-021-monitors.15). A `from` no declared monitor names is run by none.
+fn brought_after_work(
+    document: &Document,
+    routes: &BTreeMap<String, Route>,
+    elsewhere: &BTreeSet<String>,
+    request: &Request,
+    ended: &BTreeMap<String, String>,
+) -> BTreeSet<Source> {
+    let named: BTreeSet<&Source> = routes
+        .values()
+        .filter_map(|route| match route {
+            Route::From(source) => Some(source),
+            Route::Brought | Route::NotRead => None,
+        })
+        .collect();
+    document
+        .monitors
+        .iter()
+        .filter(|(id, _)| matches!(routes.get(*id), Some(Route::Brought) | None))
+        .filter(|(id, _)| !elsewhere.contains(*id))
+        .filter_map(|(id, record)| match &record.owner {
+            Some(Owner::From(source)) if named.contains(source) => Some((id, record, source)),
+            _ => None,
+        })
+        .filter(|(id, record, _)| !after::unseen(request.project, id, record, ended).is_empty())
+        .map(|(_, _, source)| source.clone())
+        .collect()
 }
 
 /// What one monitor's step keeps in its history: whether the history
@@ -542,9 +588,16 @@ fn commit(
                 let homes = declarations.homes(&id, Some(&snapshot));
                 let mark = from.and_then(|from| marks.get(from).copied());
                 let found = found::found(delivery, monitor, &homes, &snapshot, mark, &cadence, at);
-                let out_of_cadence = plan.due.contains(&id)
-                    && matches!(routes.get(&id), Some(Route::From(_)))
-                    && !plan.in_cadence.contains(&id);
+                let out_of_cadence = match routes.get(&id) {
+                    Some(Route::From(_)) => {
+                        plan.due.contains(&id) && !plan.in_cadence.contains(&id)
+                    }
+                    // §FS-021-monitors.6.8: brought by a run of its owner no slot called for.
+                    _ => from.is_some_and(|from| {
+                        !plan.cadenced.contains(from)
+                            && !snapshot.schedule.is_due(&cadence, now, &Local)
+                    }),
+                };
                 let event = Event::Read(Read {
                     at,
                     in_cadence: !out_of_cadence,
