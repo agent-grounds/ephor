@@ -240,11 +240,19 @@ impl MonitorRow {
     pub fn cadence_says(&self, when: impl Fn(DateTime<Utc>) -> String) -> String {
         let mut said = vec![self.cadence.says.clone()];
         if let Some(at) = self.freshness.last_read {
+            // A late monitor's freshness line says why; before then, this one.
+            let early = self.freshness.cause.is_none();
             let found = match self.freshness.last_found {
-                Some("unreadable") => " (failed)",
-                Some("parked") => " (parked)",
-                Some("stale") => " (stale)",
-                _ => "",
+                Some("unreadable") => match self.freshness.why.as_ref().filter(|_| early) {
+                    Some(why) => format!(" (failed: {why})"),
+                    None => " (failed)".to_string(),
+                },
+                Some("parked") => " (parked)".to_string(),
+                Some("stale") => match self.freshness.measured.filter(|_| early) {
+                    Some(measured) => format!(" (stale: measured {})", when(measured)),
+                    None => " (stale)".to_string(),
+                },
+                _ => String::new(),
             };
             said.push(format!("last read {}{found}", when(at)));
         }
@@ -331,13 +339,14 @@ pub struct FreshnessView {
     /// monitor (§FS-021-monitors.7.2).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cause: Option<&'static str>,
-    /// Why a read failed, for an unreadable one.
+    /// Why the read failed, for an unreadable monitor and wherever the last
+    /// read failed, before the monitor is late too (§FS-021-monitors.19).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub why: Option<String>,
     /// When the cause began to apply: the slot that passed without a reading.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub since: Option<DateTime<Utc>>,
-    /// When a stale value was measured.
+    /// When a stale value was measured, and the last read's stale sample.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub measured: Option<DateTime<Utc>>,
     /// The unknown matter's key, where one is open (§FS-021-monitors.11.2).
