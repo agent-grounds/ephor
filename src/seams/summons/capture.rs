@@ -7,6 +7,10 @@ use std::time::{Duration, Instant};
 
 use super::{spawn, EphorError, ExecutionError};
 
+/// The longest wait a deadline is set to: a hundred years, which every
+/// clock can add to now.
+const LONGEST_WAIT: Duration = Duration::from_secs(100 * 365 * 24 * 60 * 60);
+
 /// Runs `command` with its output captured, all of it within `timeout`.
 /// Where `lenient`, a byte of output that is not UTF-8 is read as the
 /// replacement character; otherwise it fails the capture.
@@ -27,7 +31,12 @@ pub(super) fn captured(
         // (§FS-016-browser-opening.2, §AR-002-summons.2).
         command.process_group(0);
     }
-    let deadline = Instant::now() + timeout;
+    // A timeout past what the clock can name waits as long as it can name,
+    // rather than failing the read on the arithmetic (§AR-002-summons.2).
+    let now = Instant::now();
+    let deadline = now
+        .checked_add(timeout)
+        .unwrap_or_else(|| now + LONGEST_WAIT);
     let mut child = spawn(&mut command).map_err(|error| {
         ExecutionError::BeforeSpawn(EphorError::Command(format!(
             "{verb}: failed to run: {error}"

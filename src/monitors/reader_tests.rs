@@ -90,6 +90,29 @@ fn an_answer_is_timed_when_it_is_taken() {
     );
 }
 
+/// §FS-021-monitors.5.5: a declared timeout too long for the clock to add
+/// to now is waited as long as it can be, and the command is read as any
+/// other, never a panic of the refresh.
+#[test]
+fn a_timeout_past_what_the_clock_names_still_reads() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(
+        dir.path().join("kpis.sh"),
+        "printf '{\"v\":1}' > \"$EPHOR_ANSWER\"\n",
+    )
+    .unwrap();
+    let command = Source::Command {
+        command: "sh kpis.sh".to_string(),
+        cwd: None,
+    };
+    let got = read_all(
+        &[job(command, u64::MAX)],
+        Some(&place(dir.path())),
+        &Clock::starting(Utc::now()),
+    );
+    assert!(matches!(got[0].outcome, Outcome::Answered(_)), "{got:?}");
+}
+
 /// §FS-021-monitors.12.1: a file that is not there is said missing, in the
 /// words an unknown matter's title says it.
 #[test]
