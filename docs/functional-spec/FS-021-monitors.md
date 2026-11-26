@@ -731,6 +731,9 @@ never loses history. `monitors.json` holds, per monitor:
 - any claim ([§FS-021-monitors.6.9](FS-021-monitors.md#69-a-due-monitor-is-read-once-however-many-refreshes-find-it-due)); and
 - the last accepted sample whole.
 
+It also keeps the manifest's monitor declarations as last parsed, which
+stand for the manifest while it cannot be parsed ([§FS-021-monitors.17.3](FS-021-monitors.md#173-the-slot-fails-only-when-the-machinery-does)).
+
 `<id>.jsonl` holds the monitor's readings in the order ephor took them, one
 line each: `{t, v, health}`, where `t` is when the sample was measured and
 `health` is the reading's own, before the hold of [§FS-021-monitors.10.1](FS-021-monitors.md#101-drop_after-and-recover_after).
@@ -1036,6 +1039,13 @@ A manifest that cannot be parsed fails the slot only where the project has
 monitors without it: the site declares some, or the store keeps a record of
 one. Otherwise nobody can tell whether it declares any, so the refresh notes
 the manifest's error and reads no monitor of the project.
+
+While the manifest cannot be parsed, its monitors are judged as it was last
+parsed, which the store keeps ([§FS-021-monitors.9.1](FS-021-monitors.md#91-where-it-is-kept)): each keeps its title, its
+condition and its health, so a status stays a status rather than reading as
+a KPI nothing declares. A monitor first seen while the slot fails is first
+seen then, and turns unknown with the slot's error once its first grace
+ends, as one whose first reads fail does ([§FS-021-monitors.7.1](FS-021-monitors.md#71-a-value-holds-until-the-next-slot-plus-a-grace)).
 
 ### 17.4 A narrowed refresh reads no monitor
 

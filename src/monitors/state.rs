@@ -6,6 +6,7 @@ use std::collections::BTreeMap;
 
 use chrono::{DateTime, FixedOffset, TimeDelta, TimeZone, Utc};
 use serde::{Deserialize, Deserializer, Serialize};
+use serde_json::Value as Json;
 
 use crate::monitors::cadence::Cadence;
 use crate::monitors::condition::Judge;
@@ -32,6 +33,10 @@ pub struct Document {
     /// matters (§FS-021-monitors.14.3, §FS-021-monitors.17.1).
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub forgotten: BTreeMap<String, Vec<Past>>,
+    /// The manifest's monitor declarations as last parsed, which stand for
+    /// it while it cannot be parsed (§FS-021-monitors.17.3).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub manifest: Option<Vec<Json>>,
 }
 
 fn version() -> u32 {
@@ -46,6 +51,7 @@ impl Default for Document {
             thinned: None,
             monitors: BTreeMap::new(),
             forgotten: BTreeMap::new(),
+            manifest: None,
         }
     }
 }

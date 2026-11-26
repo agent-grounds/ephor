@@ -227,15 +227,21 @@ pub const NEW: &str = "New";
 pub const RECENT: &str = "Recent";
 
 /// What one project's declarations and store hold.
-fn gathered(declarations: Declarations, store: Store, slot_error: Option<String>) -> Gathered {
+fn gathered(mut declarations: Declarations, store: Store, slot_error: Option<String>) -> Gathered {
     let mut notes = Vec::new();
-    if let Some(error) = &declarations.manifest_error {
-        notes.push(format!("the manifest could not be read: {error}"));
-    }
     let document = store.load().unwrap_or_else(|err| {
         notes.push(format!("the monitor store could not be read: {err}"));
         Document::default()
     });
+    // §FS-021-monitors.17.3: its monitors are judged as it last declared them.
+    let recalled = declarations.recall(&document);
+    if let Some(error) = &declarations.manifest_error {
+        let shown = match recalled {
+            true => ", so its monitors are shown as it last declared them",
+            false => "",
+        };
+        notes.insert(0, format!("the manifest could not be read: {error}{shown}"));
+    }
     let known = known::all(&declarations, &document);
     Gathered {
         declarations,

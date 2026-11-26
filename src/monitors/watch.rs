@@ -118,15 +118,21 @@ pub fn answer(request: &Request) -> Report {
 /// Reads a project's monitors on a plain refresh, which began at `now`.
 pub fn refresh(store: &Store, request: &Request, now: DateTime<Utc>) -> Report {
     let clock = Clock::starting(now);
-    let declarations = declared::read(request.placement, request.site);
+    let mut declarations = declared::read(request.placement, request.site);
     let mut notes = declarations.notes();
     let kept = match store.load() {
         Ok(kept) => kept,
         Err(err) => return failed(err.to_string(), notes),
     };
+    declarations.recall(&kept);
     notes.extend(declarations.faulted(&kept));
     if let Some(error) = &declarations.manifest_error {
         if declarations.site_declares() || kept.keeps_any() {
+            // §FS-021-monitors.7.1: a monitor first seen while the slot fails ages from then.
+            let _ = store.update(|document| {
+                seen(document, &declarations, now);
+                Ok(())
+            });
             return failed(format!("the manifest cannot be read: {error}"), notes);
         }
         // Nobody can tell whether it declares any (§FS-021-monitors.17.3).
@@ -335,15 +341,9 @@ fn prepare(
     ended: &BTreeMap<String, String>,
     now: DateTime<Utc>,
 ) -> Plan {
-    let monitors = known::declared(declarations, document);
-    for (id, monitor) in &monitors {
-        if monitor.is_readable() {
-            document
-                .monitors
-                .entry(id.clone())
-                .or_insert_with(|| Record::new(now));
-        }
-    }
+    let monitors = seen(document, declarations, now);
+    // §FS-021-monitors.17.3: kept for a refresh that cannot parse it.
+    document.manifest.clone_from(&declarations.parsed);
     let claim = Claim {
         pid: std::process::id(),
         at: now,
@@ -459,6 +459,25 @@ fn prepare(
         claim,
         ended: ended.clone(),
     }
+}
+
+/// Every declared monitor, recording when ephor first saw each one it reads,
+/// which one with no reading yet holds from (§FS-021-monitors.7.1).
+fn seen(
+    document: &mut Document,
+    declarations: &Declarations,
+    now: DateTime<Utc>,
+) -> BTreeMap<String, Monitor> {
+    let monitors = known::declared(declarations, document);
+    for (id, monitor) in &monitors {
+        if monitor.is_readable() {
+            document
+                .monitors
+                .entry(id.clone())
+                .or_insert_with(|| Record::new(now));
+        }
+    }
+    monitors
 }
 
 /// The `from`s that own a monitor their answer brings whose matter's work

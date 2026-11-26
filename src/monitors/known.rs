@@ -108,10 +108,11 @@ pub fn overdue(
     slot_error: Option<&str>,
     now: DateTime<Utc>,
 ) -> Vec<String> {
-    let declarations = declared::read(placement, site);
+    let mut declarations = declared::read(placement, site);
     let Ok(document) = store.load() else {
         return Vec::new();
     };
+    declarations.recall(&document);
     all(&declarations, &document)
         .into_iter()
         .filter(|(id, known)| {

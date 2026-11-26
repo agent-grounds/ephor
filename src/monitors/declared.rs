@@ -26,6 +26,9 @@ pub struct Declarations {
     /// Why the manifest could not be read, where it could not
     /// (§FS-021-monitors.17.3).
     pub manifest_error: Option<String>,
+    /// The manifest's `monitors` as parsed, which the store keeps to stand
+    /// for it while it cannot be (§FS-021-monitors.17.3).
+    pub parsed: Option<Vec<Json>>,
     /// The registry row trusts only what the manifest says about itself, so
     /// none of its commands is run (§FS-021-monitors.4.5).
     pub descriptions_only: bool,
@@ -55,6 +58,7 @@ pub fn read(placement: Option<&Placement>, site: &[Json]) -> Declarations {
     match Manifest::read(&checkout(placement), placement.trust) {
         Ok(Some(manifest)) => {
             declarations.manifest = shape::read_declarations(&manifest.monitors, Home::Manifest);
+            declarations.parsed = Some(manifest.monitors);
         }
         Ok(None) => {}
         Err(err) => declarations.manifest_error = Some(err.to_string()),
@@ -63,6 +67,22 @@ pub fn read(placement: Option<&Placement>, site: &[Json]) -> Declarations {
 }
 
 impl Declarations {
+    /// Lays the manifest's declarations as the store last kept them over a
+    /// manifest that cannot be parsed, so its monitors keep their titles,
+    /// conditions and health while its error fails the slot
+    /// (§FS-021-monitors.17.3). Whether it did.
+    pub fn recall(&mut self, document: &Document) -> bool {
+        let Some(kept) = document
+            .manifest
+            .as_ref()
+            .filter(|_| self.manifest_error.is_some())
+        else {
+            return false;
+        };
+        self.manifest = shape::read_declarations(kept, Home::Manifest);
+        true
+    }
+
     /// Every id either home declares, a refused declaration's included: a
     /// declared monitor is shown even where it is not read
     /// (§FS-021-monitors.4.6).

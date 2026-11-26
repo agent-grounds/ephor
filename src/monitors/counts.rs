@@ -56,8 +56,9 @@ pub fn of(
     slot_error: Option<&str>,
     now: DateTime<Utc>,
 ) -> Option<Counts> {
-    let declarations = declared::read(placement, site);
+    let mut declarations = declared::read(placement, site);
     let document = store.load().ok()?;
+    declarations.recall(&document);
     let mut counts = Counts::default();
     let mut statuses = 0;
     for (id, known) in known::all(&declarations, &document) {

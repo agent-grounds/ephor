@@ -2,6 +2,7 @@ use super::*;
 
 use serde_json::json;
 
+use crate::monitors::counts::{self, Counts};
 use crate::monitors::freshness::Found;
 use crate::monitors::test_site::*;
 
@@ -296,6 +297,57 @@ fn an_unreadable_manifest_fails_the_slot_only_where_monitors_are_known() {
 
     let report = refresh_at(&site, &[from_kpis("a")], When::Due, 0);
     assert!(matches!(report.slot, Some(Err(ref why)) if why.contains("manifest")));
+}
+
+/// §FS-021-monitors.7.1, §FS-021-monitors.17.3: a site monitor first seen
+/// while the manifest cannot be parsed ages from then, so it turns unknown
+/// with the slot's error once its first grace ends.
+#[test]
+fn a_monitor_first_seen_while_the_manifest_cannot_be_read_ages_from_then() {
+    let site = site(None);
+    std::fs::write(site.root.join("ephor.json"), "{ not json").unwrap();
+    let declared = [from_kpis("a")];
+    let report = refresh_at(&site, &declared, When::Due, 0);
+    assert!(matches!(report.slot, Some(Err(_))), "{:?}", report.notes);
+    let document = site.store.load().unwrap();
+    assert_eq!(document.monitors["a"].schedule.first_seen, at(0));
+    let error = Some("the manifest cannot be read");
+    assert_eq!(
+        counts::of(&site.store, Some(&site.placement), &declared, error, at(75)),
+        Some(Counts {
+            unknown: 1,
+            ..Counts::default()
+        })
+    );
+}
+
+/// §FS-021-monitors.17.3: while the manifest cannot be parsed, its monitors
+/// are judged as it last declared them, so a status stays a status.
+#[test]
+fn a_manifest_that_cannot_be_read_stands_as_it_was_last_read() {
+    let site = site(None);
+    script(&site.root, BOTH, 0);
+    let manifest = json!({"monitors": [{
+        "id": "a", "title": "Line coverage", "healthy": {"min": 80},
+        "from": {"command": "sh kpis.sh"}
+    }]});
+    std::fs::write(site.root.join("ephor.json"), manifest.to_string()).unwrap();
+    assert_eq!(refresh_at(&site, &[], When::Due, 0).slot, Some(Ok(())));
+
+    std::fs::write(site.root.join("ephor.json"), "{ not json").unwrap();
+    let report = refresh_at(&site, &[], When::Due, 1);
+    assert!(matches!(report.slot, Some(Err(ref why)) if why.contains("manifest")));
+    let error = Some("the manifest cannot be read");
+    assert_eq!(
+        counts::of(&site.store, Some(&site.placement), &[], error, at(75)),
+        Some(Counts {
+            unknown: 1,
+            ..Counts::default()
+        })
+    );
+    let mut declarations = declared::read(Some(&site.placement), &[]);
+    assert!(declarations.recall(&site.store.load().unwrap()));
+    assert_eq!(declarations.resolve("a", None).title, "Line coverage");
 }
 
 /// §FS-021-monitors.4.5: a row that trusts only descriptions runs no command
