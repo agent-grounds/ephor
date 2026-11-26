@@ -11,22 +11,15 @@ use ratatui::symbols::Marker;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Axis, Chart, Dataset, GraphType, Paragraph};
 
-use crate::api::monitor_views::{
-    self as views, clip, when, MonitorRow, FOOTNOTE, NO_MONITORS, TITLE,
-};
+use crate::api::monitor_views::{self as views, clip, when};
 use crate::monitors::model::Health;
 use crate::monitors::page::Rank;
 use crate::monitors::strip::{Cell, Way};
-use crate::monitors::window::Window;
 
-use super::highlight_style;
 use super::monitors::MonitorsScreen;
 
 /// The strip's width on the page: its 24 cells (§FS-021-monitors.18.5).
 const STRIP: usize = crate::monitors::strip::CELLS;
-
-/// The narrowest a title or a condition is cut to before a column goes.
-const NARROWEST: usize = 12;
 
 /// The colour a rank is drawn in: down red, failing and warn amber, ok
 /// green, and unknown and a KPI dim (§FS-021-monitors.3.7).
@@ -40,7 +33,7 @@ pub(super) fn rank_style(rank: Rank) -> Style {
 }
 
 /// The colour a health is drawn in, a cell's or a point's, as its rank's.
-fn health_style(health: Option<Health>) -> Style {
+pub(super) fn health_style(health: Option<Health>) -> Style {
     match health {
         Some(Health::Down) => Style::default().fg(Color::Red),
         Some(Health::Warn) => Style::default().fg(Color::Yellow),
@@ -52,7 +45,7 @@ fn health_style(health: Option<Health>) -> Style {
 
 /// The change, green the better way and amber the worse
 /// (§FS-021-monitors.18.6).
-fn way_style(way: Way) -> Style {
+pub(super) fn way_style(way: Way) -> Style {
     match way {
         Way::Better => Style::default().fg(Color::Green),
         Way::Worse => Style::default().fg(Color::Yellow),
@@ -60,7 +53,7 @@ fn way_style(way: Way) -> Style {
     }
 }
 
-fn dim() -> Style {
+pub(super) fn dim() -> Style {
     Style::default().fg(Color::DarkGray)
 }
 
@@ -74,92 +67,10 @@ pub(super) fn wrapped(text: &str, indent: usize, width: usize) -> Vec<String> {
         .collect()
 }
 
-fn pad(text: &str, width: usize) -> String {
+pub(super) fn pad(text: &str, width: usize) -> String {
     let text = clip(text, width);
     let short = width.saturating_sub(text.chars().count());
     format!("{text}{}", " ".repeat(short))
-}
-
-/// What fits across the page: each column's width, and whether the strip
-/// and the condition are drawn. A narrow screen gives up the condition
-/// first, then cuts the titles, then the strip, and clips the rest at its
-/// edge; the detail view still says everything (§FS-021-monitors.19).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) struct Columns {
-    pub title: usize,
-    value: usize,
-    every: usize,
-    pub condition: Option<usize>,
-    pub strip: bool,
-    change: usize,
-    health: usize,
-}
-
-impl Columns {
-    pub(super) fn fit(page: &views::Monitors, width: usize) -> Columns {
-        let widest = |say: &dyn Fn(&MonitorRow) -> usize, heading: &str| {
-            page.rows()
-                .map(say)
-                .chain([heading.chars().count()])
-                .max()
-                .unwrap_or(0)
-        };
-        let title = page
-            .projects
-            .iter()
-            .map(|group| group.project.chars().count())
-            .chain(page.rows().map(|row| row.title.chars().count()))
-            .max()
-            .unwrap_or(0)
-            .min(TITLE);
-        let mut columns = Columns {
-            title,
-            value: widest(&|row| row.shows.value.chars().count(), "value"),
-            every: widest(&|row| row.shows.every.chars().count(), "every"),
-            condition: None,
-            strip: true,
-            change: widest(&|row| row.shows.change.says.chars().count(), "change"),
-            health: widest(&|row| row.shows.health.text().chars().count(), "health"),
-        };
-        let matter = widest(&|row| row.shows.matter.chars().count(), "matter");
-        let condition = widest(
-            &|row| row.condition_noted_says(when).chars().count(),
-            "condition",
-        );
-        // The glyph and its space, and two spaces after each column but the matter.
-        let fixed = |columns: &Columns| {
-            2 + columns.title
-                + 2
-                + columns.value
-                + 2
-                + columns.every
-                + 2
-                + columns.change
-                + 2
-                + columns.health
-                + 2
-                + matter
-        };
-        let room = width.saturating_sub(fixed(&columns) + STRIP + 2);
-        if room >= NARROWEST + 2 {
-            columns.condition = Some(condition.min(room - 2));
-            return columns;
-        }
-        let short = fixed(&columns) + STRIP + 2;
-        if short > width {
-            columns.title = columns
-                .title
-                .saturating_sub(short - width)
-                .max(NARROWEST.min(columns.title));
-        }
-        if fixed(&columns) + STRIP + 2 > width {
-            columns.strip = false;
-            columns.title = title;
-            let over = fixed(&columns).saturating_sub(width);
-            columns.title = title.saturating_sub(over).max(NARROWEST.min(title));
-        }
-        columns
-    }
 }
 
 impl MonitorsScreen {
@@ -169,138 +80,6 @@ impl MonitorsScreen {
             false => self.draw_page(frame, area),
         }
     }
-
-    fn draw_page(&mut self, frame: &mut ratatui::Frame, area: Rect) {
-        self.viewport = area.height;
-        let (lines, at) = self.page_lines(usize::from(area.width));
-        let height = usize::from(area.height.max(1));
-        let mut scroll = usize::from(self.scroll);
-        if let Some(at) = at {
-            if at < scroll {
-                scroll = at;
-            } else if at >= scroll + height {
-                scroll = at + 1 - height;
-            }
-        }
-        scroll = scroll.min(lines.len().saturating_sub(height));
-        self.scroll = u16::try_from(scroll).unwrap_or(u16::MAX);
-        frame.render_widget(Paragraph::new(lines).scroll((self.scroll, 0)), area);
-    }
-
-    /// The page's lines, and which of them the cursor is on
-    /// (§FS-021-monitors.18.3, §FS-021-monitors.18.4).
-    pub(super) fn page_lines(&self, width: usize) -> (Vec<Line<'static>>, Option<usize>) {
-        let page = self.page();
-        let mut lines = Vec::new();
-        // The title bar carries the header; where it cannot fit, what `w`
-        // changes is said again here so the window is never cut off.
-        lines.extend(
-            self.header_lines(width)
-                .into_iter()
-                .map(|line| Line::styled(line, dim())),
-        );
-        if page.projects.is_empty() {
-            lines.push(Line::raw(""));
-            lines.push(Line::raw(format!(" {NO_MONITORS}")));
-        }
-        let columns = Columns::fit(page, width);
-        let mut at = None;
-        let mut index = 0;
-        for group in &page.projects {
-            lines.push(Line::raw(""));
-            lines.push(heading(group, &columns, page.window));
-            for row in &group.rows {
-                let mut line = row_line(row, &columns);
-                if index == self.selected() {
-                    line = line.style(highlight_style());
-                    at = Some(lines.len());
-                }
-                lines.push(line);
-                index += 1;
-            }
-            for note in group.notes_say() {
-                lines.push(Line::styled(
-                    format!("  {note}"),
-                    Style::default().fg(Color::Yellow),
-                ));
-            }
-        }
-        for without in page.without_say() {
-            lines.push(Line::raw(""));
-            lines.push(Line::styled(format!("  {without}"), dim()));
-        }
-        if !page.is_empty() {
-            lines.push(Line::raw(""));
-            lines.push(Line::styled(format!("  {FOOTNOTE}"), dim()));
-        }
-        (lines, at)
-    }
-}
-
-/// A project's heading: its name, then the columns' names, dim
-/// (§FS-021-monitors.18.3).
-fn heading(group: &views::MonitorProject, columns: &Columns, window: Window) -> Line<'static> {
-    let name = Span::styled(
-        format!("  {}", pad(&group.project, columns.title)),
-        Style::default().add_modifier(Modifier::BOLD),
-    );
-    if group.rows.is_empty() {
-        return Line::from(name);
-    }
-    let strip = group.strip_heading(window);
-    let mut names = vec![pad("value", columns.value), pad("every", columns.every)];
-    if let Some(width) = columns.condition {
-        names.push(pad("condition", width));
-    }
-    if columns.strip {
-        names.push(pad(&strip, STRIP));
-    }
-    names.push(pad("change", columns.change));
-    names.push(pad("health", columns.health));
-    names.push("matter".to_string());
-    Line::from(vec![
-        name,
-        Span::styled(format!("  {}", names.join("  ")), dim()),
-    ])
-}
-
-/// One monitor's row (§FS-021-monitors.18.4): the glyph and the health in
-/// the rank's colour, the strip cell by cell in each cell's health, and the
-/// change by `better`.
-fn row_line(row: &MonitorRow, columns: &Columns) -> Line<'static> {
-    let shows = &row.shows;
-    let rank = rank_style(shows.rank);
-    let mut spans = vec![
-        Span::styled(shows.glyph.to_string(), rank),
-        Span::raw(format!(" {}  ", pad(&row.title, columns.title))),
-        Span::raw(format!("{}  ", pad(&shows.value, columns.value))),
-        Span::styled(format!("{}  ", pad(&shows.every, columns.every)), dim()),
-    ];
-    if let Some(width) = columns.condition {
-        spans.push(Span::styled(
-            format!("{}  ", pad(&row.condition_noted_says(when), width)),
-            dim(),
-        ));
-    }
-    if columns.strip {
-        spans.extend(
-            shows
-                .strip
-                .iter()
-                .map(|cell| Span::styled(cell.glyph().to_string(), health_style(cell.health))),
-        );
-        spans.push(Span::raw("  "));
-    }
-    spans.push(Span::styled(
-        format!("{}  ", pad(&shows.change.says, columns.change)),
-        way_style(shows.change.way),
-    ));
-    spans.push(Span::styled(
-        format!("{}  ", pad(&shows.health.text(), columns.health)),
-        rank,
-    ));
-    spans.push(Span::raw(shows.matter.to_string()));
-    Line::from(spans)
 }
 
 /// Where a band of the detail view's rows lands once the view is scrolled:

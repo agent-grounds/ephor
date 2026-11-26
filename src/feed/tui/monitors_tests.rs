@@ -13,12 +13,15 @@ use ratatui::Terminal;
 use serde_json::json;
 
 use super::MonitorsScreen;
-use crate::api::monitor_views::{self as views, NO_MONITORS};
+use crate::api::monitor_views::{self as views, NO_MONITORS, TITLE};
 use crate::api::monitors::tests::fixtures::{green_detail, latency_detail, page_of_projects};
 use crate::api::monitors::tests::page_of_six;
 use crate::feed::model::{Item, ItemKind};
-use crate::feed::tui::monitors_draw::{Columns, Plot};
+use crate::feed::tui::monitors_draw::Plot;
+use crate::feed::tui::monitors_page::{Columns, Shape};
 use crate::feed::tui::Action;
+use crate::monitors::model::Health;
+use crate::monitors::strip::{Cell, Mark};
 use crate::monitors::window::Window;
 
 fn now() -> DateTime<Utc> {
@@ -465,11 +468,84 @@ fn a_boolean_is_drawn_stepped_with_its_states_on_the_axis() {
 fn a_narrow_screen_gives_up_columns_in_order() {
     let dir = tempfile::tempdir().unwrap();
     let page = page_of_projects(dir.path());
-    let wide = Columns::fit(&page, 220);
-    assert!(wide.strip && wide.condition.is_some(), "{wide:?}");
+    let shapes: Vec<Shape> = (60..=240)
+        .rev()
+        .map(|width| Columns::fit(&page, width).shape)
+        .collect();
+    assert_eq!(shapes[0], Shape::One);
+    let under = shapes.iter().position(|shape| *shape == Shape::Under);
+    let split = shapes.iter().position(|shape| *shape == Shape::Split);
+    assert!(under.is_some() && under < split, "{shapes:?}");
+    assert!(shapes[split.unwrap()..]
+        .iter()
+        .all(|shape| *shape == Shape::Split));
     let narrow = Columns::fit(&page, 80);
-    assert!(narrow.condition.is_none(), "{narrow:?}");
-    assert!(narrow.title >= 12, "{narrow:?}");
+    assert_eq!(narrow.shape, Shape::Split);
+    assert_eq!(narrow.title, TITLE.min(narrow.title), "{narrow:?}");
+}
+
+/// §FS-021-monitors.18.4, §FS-021-monitors.4.5, §FS-021-monitors.4.6: an
+/// 80-column page keeps every column: a row too wide for one line goes on
+/// to a second, where the strip, the change and the whole condition are
+/// said, a not-read row's sentence and the row's notes included; titles
+/// are clipped only past the page's 25 characters, nothing is drawn past
+/// the edge, and the cursor's row is lit on both of its lines.
+#[test]
+fn an_80_column_page_puts_what_one_line_cannot_hold_on_a_second() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut page = page_of_six(dir.path());
+    let sentence = "not read: its healthy says is, which a number does not take";
+    page.projects[0].rows[0].shows.health.sentence = Some(sentence.into());
+    page.projects[0].rows[0].notes = vec!["unknown field heathy".into()];
+    page.projects[0].rows[1].title = "Build green on every supported platform".into();
+    let cell = |height: u8, health| Cell {
+        mark: Mark::Read,
+        value: Some(f64::from(height)),
+        health: Some(health),
+        height: Some(height),
+    };
+    page.projects[0].rows[0].shows.strip = vec![cell(0, Health::Down); 24];
+    page.projects[0].rows[0].shows.strip[23] = cell(7, Health::Ok);
+    let mut screen = screen(page);
+    let (text, buffer) = render(&mut screen, 80, 24);
+    assert!(
+        text.lines().all(|line| line.chars().count() <= 80),
+        "{text}"
+    );
+    let lines: Vec<&str> = text.lines().collect();
+    let first = lines.iter().position(|line| line.starts_with('✖')).unwrap();
+    let second = lines[first + 1];
+    assert!(
+        second.contains('▁') || second.contains('█'),
+        "the strip:\n{text}"
+    );
+    let said: String = lines[first + 1..]
+        .iter()
+        .take_while(|line| line.starts_with("    "))
+        .map(|line| line.trim())
+        .collect::<Vec<_>>()
+        .join(" ");
+    assert!(said.contains(sentence), "{text}");
+    assert!(said.contains("unknown field heathy"), "{text}");
+    assert!(text.contains("Build green on every sup…"), "{text}");
+    assert!(text.contains("last 7d"), "the strip's heading:\n{text}");
+    let lit = |y: usize| buffer[(2, u16::try_from(y).unwrap())].bg;
+    let next = lines.iter().position(|line| line.starts_with('?')).unwrap();
+    assert!(
+        (first..next).all(|y| lit(y) == lit(first)),
+        "every line of the cursor's row"
+    );
+    assert_ne!(lit(first), lit(next), "the next row is not lit");
+
+    // Scrolled to the last row, both of its lines are on screen.
+    screen.handle_key(KeyCode::Char('G'));
+    let (text, _) = render(&mut screen, 80, 10);
+    let lines: Vec<&str> = text.lines().collect();
+    let last = lines.iter().position(|line| line.starts_with('◆')).unwrap();
+    assert!(
+        lines.get(last + 1).is_some_and(|line| line.contains("KPI")),
+        "{text}"
+    );
 }
 
 /// §FS-021-monitors.18.4, §FS-021-monitors.21.1: at 80 by 24 the page and
@@ -485,7 +561,7 @@ fn the_page_and_the_detail_fit_80_by_24() {
     let (text, _) = render(&mut screen, 80, 22);
     assert!(text.contains("window 7d · refreshed 4m ago"), "{text}");
     let first = text.lines().find(|line| line.starts_with('✖')).unwrap();
-    assert!(first.contains('…'), "{first}");
+    assert!(first.contains("Line coverage of every c…"), "{first}");
     assert!(!text.contains("integration tests included"), "{text}");
     let flaky = text
         .lines()

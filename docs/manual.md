@@ -6997,9 +6997,13 @@ and the matter
 ([§FS-021-monitors.18.4](functional-spec/FS-021-monitors.md#184-the-columns)).
 The glyph and the health take their rank's colour, each cell of the strip its
 own health's, and the change its `better`'s; a boolean's strip is its health,
-tall while ok and low while down, so the page reads without colour. A narrow
-screen gives up the condition first, then shortens the titles, then the strip;
-the detail view still says all of it.
+tall while ok and low while down, so the page reads without colour. A row too
+wide for the screen goes on to a second line rather than leaving a column out:
+the condition first, and on a narrower screen the strip and the change with
+it, a long condition wrapped. Titles are clipped past 25 characters, as
+`ephor monitors` clips them, and the strip's heading says `last 7d or 24
+readings` where a monitor's last 24 readings reach further back than the
+window.
 
 | Key | Does |
 |---|---|
