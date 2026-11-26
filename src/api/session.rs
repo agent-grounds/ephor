@@ -1221,8 +1221,9 @@ impl Session {
     }
 
     /// Whether the runtime still holds a ticket open about this matter — a
-    /// line the plan is going on with, or one parked for a person
-    /// (§FS-005-dispatch.23). What is over is one line and is not one of them.
+    /// line a live run has in hand, one the plan is going on with, or one
+    /// parked for a person (§FS-005-dispatch.23). What is over is one line and
+    /// is not one of them.
     ///
     /// It is the third loose end of §FS-003-feed-categories.2, and the ledger's
     /// rather than any report's: a finished matter with a run still on it stays
@@ -1233,7 +1234,9 @@ impl Session {
             lines.iter().any(|line| {
                 matches!(
                     line.tone,
-                    crate::work::Tone::Going | crate::work::Tone::Waiting
+                    crate::work::Tone::Running
+                        | crate::work::Tone::Going
+                        | crate::work::Tone::Waiting
                 )
             })
         })
@@ -1758,6 +1761,30 @@ mod tests {
             .insert(item.id.clone(), vec![work_line(crate::work::Tone::Over)]);
         assert!(!session.working(&item.id));
         assert!(!session.shows(&item, now));
+    }
+
+    /// A ticket a live run has in hand this moment is open work too
+    /// (§FS-005-dispatch.23): a finished matter whose only open ticket is
+    /// being run stays on the feed while the run lasts, rather than blinking
+    /// out until the run lets the ticket go (§FS-003-feed-categories.2,
+    /// §FS-021-monitors.14.3).
+    #[test]
+    fn a_finished_matter_stays_while_a_run_has_its_ticket_in_hand() {
+        let now = Utc::now();
+        let item = merged(now - chrono::Duration::hours(2));
+        let mut session = Session {
+            recent_days: 7,
+            ..Session::default()
+        };
+        session
+            .work
+            .insert(item.id.clone(), vec![work_line(crate::work::Tone::Running)]);
+        assert!(session.working(&item.id));
+        assert!(session.shows(&item, now));
+        assert_eq!(
+            session.loose_end(&item, now),
+            Some(crate::feed::model::LooseEnd::Working)
+        );
     }
 
     /// Retired work is not open work (§FS-003-feed-categories.2,
