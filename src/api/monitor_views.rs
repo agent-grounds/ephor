@@ -665,6 +665,9 @@ pub struct Threshold {
     pub of: &'static str,
     /// `min` or `max`.
     pub bound: &'static str,
+    /// The bound in the condition's words: `healthy ≤ 50 ms`, `warn above
+    /// 40 ms` (§FS-021-monitors.3.4).
+    pub says: String,
 }
 
 /// One episode inside the window (§FS-021-monitors.11).

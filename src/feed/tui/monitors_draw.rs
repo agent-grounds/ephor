@@ -373,12 +373,7 @@ impl MonitorsScreen {
             let mut spans = vec![Span::styled("bounds:", dim())];
             for line in &detail.thresholds {
                 spans.push(Span::styled(
-                    format!(
-                        "  ── {} {} {}",
-                        line.of,
-                        line.bound,
-                        detail.row.say(line.at)
-                    ),
+                    format!("  ── {}", line.says),
                     threshold_style(line.of),
                 ));
             }

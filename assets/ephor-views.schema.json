@@ -2412,11 +2412,12 @@
           "type": "array",
           "items": {
             "type": "object",
-            "required": ["at", "of", "bound"],
+            "required": ["at", "of", "bound", "says"],
             "properties": {
               "at": { "type": "number" },
               "of": { "enum": ["healthy", "warn"] },
-              "bound": { "enum": ["min", "max"] }
+              "bound": { "enum": ["min", "max"] },
+              "says": { "type": "string", "description": "The bound in the condition's words: `healthy ≤ 50 ms`, `warn above 40 ms` (FS-021-monitors.3.4)." }
             }
           }
         },

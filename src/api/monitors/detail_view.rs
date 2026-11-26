@@ -15,7 +15,7 @@ use crate::monitors::declared::Declarations;
 use crate::monitors::episode::{self, Sort};
 use crate::monitors::history::Line;
 use crate::monitors::known::Known;
-use crate::monitors::model::{Health, Home, Kind, Point, Source, Value};
+use crate::monitors::model::{Condition, Health, Home, Kind, Point, Source, Value};
 use crate::monitors::page::{Rank, Standing};
 use crate::monitors::state::Record;
 use crate::monitors::strip::{self, Span};
@@ -79,7 +79,7 @@ pub(super) fn detail(
         }),
         chart: chart(&drawn, &span, &series, windowed, known, &judge),
         steps: steps(row.kind, monitor.levels.as_deref()),
-        thresholds: thresholds(&judge, known),
+        thresholds: thresholds(&judge, known, row.of),
         episodes: episodes(project, &monitor.id, record, &span),
         readings: readings(&lines, &span, windowed, known, (&judge, row.of)),
         points,
@@ -190,21 +190,46 @@ fn steps(kind: Option<Kind>, levels: Option<&[String]>) -> Vec<String> {
     }
 }
 
-/// Today's `healthy` and `warn` bounds, as threshold lines.
-fn thresholds(judge: &Judge, known: &Known) -> Vec<views::Threshold> {
+/// Today's `healthy` and `warn` bounds, as threshold lines, each said in the
+/// condition's own words, `healthy ≤ 50 ms` or `warn above 40 ms`
+/// (§FS-021-monitors.3.4, §FS-021-monitors.19), with `of` the whole a
+/// fraction is of.
+fn thresholds(judge: &Judge, known: &Known, of: Option<f64>) -> Vec<views::Threshold> {
+    let monitor = &known.monitor;
+    let terms = monitor.terms(of);
     let mut lines = Vec::new();
     let conditions = [
         ("healthy", judge.condition()),
-        ("warn", known.monitor.warn.as_ref()),
+        ("warn", monitor.warn.as_ref()),
     ];
-    for (of, condition) in conditions {
+    for (named, condition) in conditions {
         let Some(condition) = condition else {
             continue;
         };
         for (bound, at) in [("min", condition.min), ("max", condition.max)] {
-            if let Some(at) = at {
-                lines.push(views::Threshold { at, of, bound });
-            }
+            let Some(at) = at else {
+                continue;
+            };
+            let one = match bound {
+                "min" => Condition {
+                    min: Some(at),
+                    ..Condition::default()
+                },
+                _ => Condition {
+                    max: Some(at),
+                    ..Condition::default()
+                },
+            };
+            let says = match named {
+                "healthy" => words::healthy(&Judge::Condition(one), &terms),
+                _ => words::warn(&one, None, &terms),
+            };
+            lines.push(views::Threshold {
+                at,
+                of: named,
+                bound,
+                says,
+            });
         }
     }
     lines

@@ -591,9 +591,10 @@ fn the_detail_draws_the_window_under_todays_condition() {
         (
             detail.thresholds[0].at,
             detail.thresholds[0].of,
-            detail.thresholds[0].bound
+            detail.thresholds[0].bound,
+            detail.thresholds[0].says.as_str()
         ),
-        (50.0, "healthy", "max")
+        (50.0, "healthy", "max", "healthy ≤ 50 ms")
     );
     let notes: Vec<Option<&str>> = detail
         .readings
