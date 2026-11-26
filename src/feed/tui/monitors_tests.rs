@@ -402,7 +402,7 @@ fn the_chart_draws_the_thresholds_across_it() {
     screen.show(latency_detail(&dir.path().join("latency")));
     let (text, buffer) = render(&mut screen, 120, 48);
     assert!(
-        text.contains("bounds:  ── healthy max 50 ms  ── warn max 40 ms"),
+        text.contains("bounds:  ── healthy ≤ 50 ms  ── warn above 40 ms"),
         "{text}"
     );
     let run = |colour: Color| {
@@ -501,7 +501,7 @@ fn the_page_and_the_detail_fit_80_by_24() {
     screen.show(latency_detail(&dir.path().join("latency")));
     let (text, _) = render(&mut screen, 80, 22);
     assert!(text.lines().next().unwrap().starts_with("✖ "), "{text}");
-    assert!(text.contains("bounds:  ── healthy max 50 ms"), "{text}");
+    assert!(text.contains("bounds:  ── healthy ≤ 50 ms"), "{text}");
     for _ in 0..40 {
         screen.handle_key(KeyCode::Char('j'));
         render(&mut screen, 80, 22);

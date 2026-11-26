@@ -83,7 +83,7 @@ fn the_detail_says_where_each_part_came_from() {
     assert_eq!(detail["hold"]["drop_after"], json!(1));
     assert_eq!(
         detail["thresholds"],
-        json!([{ "at": 80.0, "of": "healthy", "bound": "min" }])
+        json!([{ "at": 80.0, "of": "healthy", "bound": "min", "says": "healthy ≥ 80%" }])
     );
     assert_eq!(detail["readings"].as_array().unwrap().len(), 1);
     assert_eq!(detail["readings"][0]["value"], json!("79.2%"));
