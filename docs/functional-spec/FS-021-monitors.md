@@ -34,8 +34,8 @@ machine form ([§REQ-002-parity.1](../requirements/REQ-002-parity.md#1-an-abilit
 - A monitor's **health** is what its condition makes of its readings.
 
 The id is lowercase letters, digits and `-`, starts with a letter or digit,
-and is unique within its project. A monitor is named across the site as
-`<project>/<id>`.
+is at most 64 characters long, and is unique within its project. A monitor
+is named across the site as `<project>/<id>`.
 
 ### 1.2 A KPI is a monitor nothing judges
 

@@ -184,6 +184,7 @@
     "monitorId": {
       "type": "string",
       "pattern": "^[a-z0-9][a-z0-9-]*$",
+      "maxLength": 64,
       "description": "A monitor's id, unique within its project; across the site the monitor is '<project>/<id>' (FS-021-monitors.1.1)."
     },
     "monitorKind": {

@@ -17,6 +17,9 @@ fn an_id_is_lowercase_letters_digits_and_dashes() {
     assert!(!is_id("Coverage"));
     assert!(!is_id("a_b"));
     assert!(!is_id("a.b"));
+    // §FS-021-monitors.1.1: its history is a file named after it.
+    assert!(is_id(&"a".repeat(LONGEST_ID)));
+    assert!(!is_id(&"a".repeat(LONGEST_ID + 1)));
 }
 
 #[test]
