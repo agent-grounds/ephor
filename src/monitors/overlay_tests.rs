@@ -467,3 +467,19 @@ fn a_from_that_leaves_the_checkout_is_a_declaration_error() {
         assert!(monitor.is_readable(), "{from}: {:?}", monitor.faults);
     }
 }
+
+#[test]
+fn a_manifest_cadence_the_answer_overrides_is_still_held_to_its_pairing() {
+    // §FS-021-monitors.6.8: it sets no slot, and an `at` its `every` does not fit is an error.
+    let unpaired = resolve_with(
+        None,
+        Some(json!({"id": "m", "every": "5h", "at": "06:00", "healthy": {"max": 3}})),
+        None,
+    );
+    assert_eq!(unpaired.faults.len(), 1, "{:?}", unpaired.faults);
+    assert!(unpaired.faults[0].starts_with("at 06:00 needs an every"));
+    assert!(!unpaired.is_readable());
+    let paired = resolve_with(None, Some(json!({"id": "m", "every": "4h"})), None);
+    assert!(paired.faults.is_empty(), "{:?}", paired.faults);
+    assert!(!paired.cadence_stated);
+}

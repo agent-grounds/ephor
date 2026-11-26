@@ -545,7 +545,9 @@ effective cadence among the declared monitors that name that `from`, and
 every run of the `from` reads it. For a custom-status answer, and before any
 answer owns it, that is the refresh itself, judged as `every: 10m` for
 freshness. A site declaration of the id may state its own cadence for
-freshness, and the read that brings it still decides when it is read.
+freshness, and the read that brings it still decides when it is read. A
+manifest's `every` and `at` for such a monitor set no slot, and are still
+held to the pairing of [§FS-021-monitors.6.1](FS-021-monitors.md#61-every-and-at), as any declaration's are.
 
 ### 6.9 A due monitor is read once, however many refreshes find it due
 
