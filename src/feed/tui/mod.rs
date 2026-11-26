@@ -25,6 +25,7 @@ mod cache_freshness;
 mod footer;
 mod gate;
 mod human_gate;
+mod loading;
 mod monitors;
 mod monitors_chart;
 mod monitors_draw;
@@ -69,6 +70,7 @@ use burn::BurnScreen;
 use cache_freshness::CacheFreshness;
 use gate::GateScreen;
 use human_gate::{HumanGateScreen, Return};
+use loading::Waited;
 use monitors::MonitorsScreen;
 use navigator::NavigatorState;
 use operations::OperationsScreen;
@@ -407,12 +409,24 @@ struct App {
     message: String,
 }
 
+/// The interface: the terminal is entered before the session is opened, and
+/// the session opens behind a frame that says what it is reading
+/// (§FS-019-waiting.5.1). The configuration is read first, so a setting it
+/// refuses is said on the plain terminal, as every command says it.
 pub fn run(scope: &crate::scope::Projects, args: &crate::cli::TuiArgs) -> Result<ExitCode> {
     let config = load_config()?;
-    let mut app = App::load(&config, scope)?;
-    app.go_home_to(start_home(&config.defaults, args));
+    let home = start_home(&config.defaults, args);
     let mut terminal = ratatui::init();
-    let result = app.event_loop(&mut terminal, &config);
+    let load = |say: crate::api::opening::Progress| App::load_saying(&config, scope, say);
+    let waited = loading::wait_for(&mut terminal, load, loading::terminal_key, loading::leave);
+    let result = match waited {
+        Ok(Waited::Loaded(mut app)) => {
+            app.go_home_to(home);
+            app.event_loop(&mut terminal, &config)
+        }
+        Ok(Waited::Quit) => Ok(ExitCode::SUCCESS),
+        Err(err) => Err(err),
+    };
     ratatui::restore();
     result
 }
@@ -433,7 +447,19 @@ pub(crate) fn highlight_style() -> Style {
 }
 
 impl App {
+    #[cfg(test)]
     fn load(config: &StatusConfig, scope: &crate::scope::Projects) -> Result<Self> {
+        App::load_saying(config, scope, &crate::api::opening::silent)
+    }
+
+    /// Everything the first frame reads, saying each step to `say` as it
+    /// begins (§FS-019-waiting.5.1): what [`run`] does behind the loading
+    /// frame, on a thread of its own.
+    fn load_saying(
+        config: &StatusConfig,
+        scope: &crate::scope::Projects,
+        say: crate::api::opening::Progress,
+    ) -> Result<Self> {
         // The same scope as the session below, captured before it reads any
         // feed: a later stat could conceal a replacement during initial load
         // (§FS-001-forge-interface.7.1).
@@ -449,7 +475,7 @@ impl App {
         // over the same scope, so the screen and the table agree about which
         // projects a selector left (§FS-011-command-line.9).
         let mut app = App {
-            ctx: Ctx::open_over(config, scope)?,
+            ctx: Ctx::open_saying(config, scope, say)?,
             cache_freshness,
             navigator: NavigatorState::new(),
             waiting: WaitingScreen::pending(),
@@ -474,11 +500,13 @@ impl App {
         // Whatever is still going from an earlier session is the reader's
         // news on the first frame, and what is long over is swept here rather
         // than on a path a keystroke waits on (§FS-005-dispatch.17).
+        say(crate::api::opening::Opening::Jobs);
         crate::seams::jobs::sweep();
         app.jobs = crate::seams::jobs::all();
         // Opening the session already loaded feeds, standings and work. Only
         // the screen's groups and view remain to initialize (§AR-009-surfaces.2);
         // explicit reloads still take the full path through reload_feeds.
+        say(crate::api::opening::Opening::Roots);
         app.walk_work_groups();
         app.rebuild_view();
         // What is on disk now is the baseline the tick moves from: the load

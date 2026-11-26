@@ -1655,7 +1655,12 @@ every matter has work laid or a recorded decision.`, then `decided today: 5 laid
 1 needs no work`, and still shows what is running. The header ends with how old
 the feed is, `refreshed 2m ago`, so a quiet screen read from an old cache says
 so. Reading the work roots takes as long as the operations board does, so the
-first frame says `Reading what waits on you…` until it lands. The footer always
+first frame says `Reading what waits on you…` until it lands. Before that, the
+inbox is on the screen the moment it starts and says what it is reading while
+it loads — `Reading the cached feeds of 15 projects…`, `Reading the branches of
+29 checkouts — 12 done…` — rather than leaving the terminal blank, and `q`
+quits there too
+([§FS-019-waiting.5.1](functional-spec/FS-019-waiting.md#51-the-interface-is-on-the-screen-before-it-reads-anything)). The footer always
 opens with `overview: 143 matters · 12 changed since you looked`, so a quiet
 screen is never mistaken for a quiet feed. Where a watched project has
 monitors with a status, the line adds `monitors: 1 down · 2 unknown · 1

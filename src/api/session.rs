@@ -776,6 +776,14 @@ impl Session {
     /// branch measurements use at most eight workers, then fold in the original
     /// project/branch order, at startup and on reload (§AR-004-forest.2).
     pub fn recompute_behind(&mut self) {
+        self.recompute_behind_saying(&super::opening::silent);
+    }
+
+    /// The same measurements, saying how many checkouts there are before the
+    /// first and how many are done after each (§FS-019-waiting.5.1). The
+    /// count is kept under a lock with its saying, so the steps arrive in the
+    /// order they count, whichever worker finished.
+    fn recompute_behind_saying(&mut self, say: super::opening::Progress) {
         let mut measurements = Vec::new();
         for project in &self.projects {
             let Some(placement) = self.placements.get(project) else {
@@ -799,6 +807,11 @@ impl Session {
         // before measuring standings (§AR-004-forest.2). A shared cursor lets
         // each worker take the next branch as soon as its current one finishes.
         let next = AtomicUsize::new(0);
+        let checkouts = measurements.len();
+        let done = std::sync::Mutex::new(0);
+        if checkouts > 0 {
+            say(super::opening::Opening::Branches { checkouts, done: 0 });
+        }
         let mut measured = std::thread::scope(|scope| {
             let workers: Vec<_> = (0..measurements.len().min(8))
                 .map(|_| {
@@ -810,6 +823,12 @@ impl Session {
                                 break;
                             };
                             completed.push((index, placement.forest(workspace).standing()));
+                            let mut done = done.lock().unwrap_or_else(|held| held.into_inner());
+                            *done += 1;
+                            say(super::opening::Opening::Branches {
+                                checkouts,
+                                done: *done,
+                            });
                         }
                         completed
                     })
@@ -1094,11 +1113,24 @@ impl Session {
     /// what makes the branch rows, the feeds, the stats and the screen agree
     /// about what is in scope — they all read `Session::projects`.
     pub fn open_over(config: &StatusConfig, scope: &crate::scope::Projects) -> Result<Session> {
+        Session::open_saying(config, scope, &super::opening::silent)
+    }
+
+    /// The same session, saying each step of the reading to `say` as it
+    /// begins: what the interface opens behind the frame that says what it is
+    /// reading (§FS-019-waiting.5.1). The reading and its order are exactly
+    /// [`Session::open_over`]'s; the steps only name them.
+    pub fn open_saying(
+        config: &StatusConfig,
+        scope: &crate::scope::Projects,
+        say: super::opening::Progress,
+    ) -> Result<Session> {
         let configured: Vec<String> = scope
             .over(config.projects.keys())?
             .into_iter()
             .cloned()
             .collect();
+        say(super::opening::Opening::Registry);
         let info = load_registry_info(&configured)?;
 
         // Order projects by organization (registry order), then by name.
@@ -1162,7 +1194,8 @@ impl Session {
             work_config: config.work.clone(),
             config: config.clone(),
         };
-        session.reload_feeds()?;
+        session.reload_feeds_saying(say)?;
+        say(super::opening::Opening::Work);
         session.reload_work();
         Ok(session)
     }
@@ -1171,6 +1204,15 @@ impl Session {
     /// claimed is read like any other feed, so it can be shown rather than
     /// only counted (§FS-008-attribution.4).
     pub fn reload_feeds(&mut self) -> Result<()> {
+        self.reload_feeds_saying(&super::opening::silent)
+    }
+
+    /// The same reading, saying the feeds and the branch measurements as they
+    /// begin (§FS-019-waiting.5.1).
+    fn reload_feeds_saying(&mut self, say: super::opening::Progress) -> Result<()> {
+        say(super::opening::Opening::Feeds {
+            projects: self.projects.len(),
+        });
         self.feeds.clear();
         let unattributed = cache::load_feed(crate::feed::refresh::UNATTRIBUTED)?;
         self.unattributed = unattributed
@@ -1187,7 +1229,7 @@ impl Session {
                 }),
             }
         }
-        self.recompute_behind();
+        self.recompute_behind_saying(say);
         self.recompute_placements();
         self.recompute_capabilities();
         self.recompute_resurfacing();

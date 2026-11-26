@@ -441,6 +441,10 @@ path = "tests/e2e/cases/E2E-086-the-monitors-guide-and-its-worked-example.rs"
 name = "e2e_087_what_a_monitors_matter_is_proposed"
 path = "tests/e2e/cases/E2E-087-what-a-monitors-matter-is-proposed.rs"
 
+[[test]]
+name = "e2e_088_the_screen_says_what_it_reads"
+path = "tests/e2e/cases/E2E-088-the-screen-says-what-it-reads.rs"
+
 [dependencies]
 clap = { version = "4", features = ["derive"] }
 serde = { version = "1", features = ["derive"] }

@@ -16,6 +16,7 @@ pub mod monitor_menu;
 pub mod monitor_views;
 pub mod monitors;
 pub mod offers;
+pub mod opening;
 pub mod parity;
 pub mod process;
 pub mod read;
