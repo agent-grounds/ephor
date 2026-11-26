@@ -333,6 +333,12 @@ const WORK_TICK: Duration = Duration::from_secs(2);
 /// faster than this anyway.
 const BURN_TICK: Duration = Duration::from_secs(10);
 
+/// How often the open Monitors page takes its reading again from the store
+/// and the cache, so the header's age and each health's duration move as
+/// Waiting's do (§FS-021-monitors.18.2). It reads no monitor: a minute is
+/// the finest any of those ages is said in.
+const MONITORS_TICK: Duration = Duration::from_secs(60);
+
 /// The two screens a reader stands on, rather than opens over something
 /// (§FS-019-waiting.4): `esc` from anything else comes back to whichever of
 /// them the reader was last on.
@@ -390,6 +396,9 @@ struct App {
     work_seen: Option<std::time::SystemTime>,
     /// When the burn store was last read from the tick (§FS-013-burn.8).
     burn_ticked_at: std::time::Instant,
+    /// When the open Monitors page last took its reading from the tick
+    /// (§FS-021-monitors.18.2).
+    monitors_ticked_at: std::time::Instant,
     /// What ephor is running beneath this screen (§FS-005-dispatch.17), read
     /// from where jobs are written rather than from anything that remembers
     /// starting one — a job another ephor started is in here too. Refreshed
@@ -458,6 +467,7 @@ impl App {
             ticked_at: std::time::Instant::now(),
             work_seen: None,
             burn_ticked_at: std::time::Instant::now(),
+            monitors_ticked_at: std::time::Instant::now(),
             jobs: Vec::new(),
             message: String::new(),
         };
@@ -2718,9 +2728,10 @@ impl App {
         // known local caches, asking for a frame only when the displayed
         // warning changes (§FS-001-forge-interface.7.1).
         let cache_moved = self.cache_freshness.observe(&self.ctx.feeds);
-        // The burn store, where the page that reads it is open, stays on its
-        // own slower clock (§FS-013-burn.8).
-        let burned = self.tick_burn();
+        // The burn store and the Monitors page, where the page that reads
+        // one is open, stay on their own slower clocks (§FS-013-burn.8,
+        // §FS-021-monitors.18.2).
+        let burned = self.tick_burn() | self.tick_monitors();
         // Jobs first, and whatever screen the reader is on: a job ending is
         // news exactly as a ticket parking is (§FS-005-dispatch.17), and the
         // re-listing below must not take an ended job away before it is said.
