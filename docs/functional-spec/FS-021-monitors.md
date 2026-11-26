@@ -344,7 +344,8 @@ that does not fit its kind ([§FS-021-monitors.3.1](FS-021-monitors.md#31-the-la
 with its `healthy` ([§FS-021-monitors.3.5](FS-021-monitors.md#35-a-condition-that-cannot-hold-together-is-a-declaration-error)); an `at` that does not fit its
 `every` ([§FS-021-monitors.6.1](FS-021-monitors.md#61-every-and-at)); or an id declared twice in one home. The page
 and the command show it with what is wrong, its health is `unknown`, and
-every refresh notes it. It opens no matter: the error is in a declaration,
+every refresh notes it; one with no id it can be named by is shown by its
+place in its home, `monitors[0]`. It opens no matter: the error is in a declaration,
 which the person or the repository mends, not in what the monitor measures.
 The rest of the project's monitors are read as usual.
 

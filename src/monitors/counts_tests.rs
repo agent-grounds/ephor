@@ -148,6 +148,36 @@ fn a_status_whose_declaration_is_in_error_counts_unknown() {
     );
 }
 
+/// §FS-021-monitors.4.6, §FS-021-monitors.21.2: a manifest declaration
+/// refused for an id that is not one is shown by its place and counts as an
+/// unknown status, and nothing is kept of it.
+#[test]
+fn a_declaration_with_no_id_to_name_it_counts_unknown() {
+    let site = site(None);
+    let manifest = json!({"monitors": [
+        {"id": "Coverage", "healthy": {"min": 80}, "from": {"command": "sh kpis.sh"}}
+    ]});
+    std::fs::write(site.root.join("ephor.json"), manifest.to_string()).unwrap();
+    let report = refresh_at(&site, &[], When::Due, 0);
+    assert_eq!(report.slot, Some(Ok(())), "{:?}", report.notes);
+    assert!(
+        report
+            .notes
+            .iter()
+            .any(|note| note.starts_with("manifest monitor monitors[0] is not read: ")),
+        "{:?}",
+        report.notes
+    );
+    assert_eq!(
+        of(&site.store, Some(&site.placement), &[], None, at(1)),
+        Some(Counts {
+            unknown: 1,
+            ..Counts::default()
+        })
+    );
+    assert!(site.store.load().unwrap().monitors.is_empty());
+}
+
 /// §FS-021-monitors.18.2: a status not run because its row trusts only
 /// descriptions counts in none of them.
 #[test]
