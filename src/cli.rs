@@ -1422,8 +1422,10 @@ pub struct BurnArgs {
 
 /// `ephor monitors` (§FS-021-monitors.21.1): the Monitors page as a table.
 /// The window and the project are the page's keys, spelled as arguments
-/// (§REQ-002-parity.2).
+/// (§REQ-002-parity.2). The page's flags are refused before `show`, which
+/// takes its own, rather than dropped (§FS-021-monitors.21.3).
 #[derive(Args, Debug, Default)]
+#[command(args_conflicts_with_subcommands = true)]
 pub struct MonitorsArgs {
     #[command(subcommand)]
     pub command: Option<MonitorsCommand>,
@@ -1448,8 +1450,9 @@ pub struct MonitorsArgs {
 
 #[derive(Subcommand, Debug)]
 pub enum MonitorsCommand {
-    /// One monitor in detail: its chart, its condition and where each part
-    /// came from, its cadence, its episodes and its matter
+    /// One monitor in detail: its health and since when, its condition and
+    /// where each part came from, its cadence and hold, its strip, points,
+    /// episodes and readings, and its matter; `--json` adds the chart
     /// (§FS-021-monitors.21.3).
     Show(MonitorsShowArgs),
 }

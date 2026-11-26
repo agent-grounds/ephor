@@ -970,7 +970,21 @@
             "from": { "enum": ["site", "manifest", "sample", "ok", "default", "kpi"] },
             "warn_from": { "enum": ["site", "manifest", "sample"] },
             "says": { "type": "string" },
-            "overrides": { "type": "array", "items": { "type": "object", "required": ["from"] } }
+            "overrides": { "type": "array", "items": { "type": "object", "required": ["from"] } },
+            "parts": {
+              "type": "array",
+              "description": "Each part, `healthy` then `warn`, in words, with what it came from and the manifest's part it overrides in words (FS-021-monitors.19); a KPI's `warn` is not said.",
+              "items": {
+                "type": "object",
+                "required": ["part", "says", "from"],
+                "properties": {
+                  "part": { "enum": ["healthy", "warn"] },
+                  "says": { "type": "string" },
+                  "from": { "type": "string", "description": "`site`, `manifest`, `sample`, `ok`, `default` or `kpi`, as `from` says it for `healthy` and `warn_from` for `warn`." },
+                  "over": { "type": "string", "description": "The manifest's part the site's overrides, in words." }
+                }
+              }
+            }
           }
         },
         "matter": { "$ref": "#/$defs/monitor_matter" },
@@ -2330,7 +2344,7 @@
       }
     },
     "monitor": {
-      "description": "`ephor monitors show <project>/<id> --json` (FS-021-monitors.19, FS-021-monitors.21.3) — one monitor's row, and what the detail view adds: where it is read from and declared, its hold, the chart of the span under today's condition with today's bounds as threshold lines, the repository's points, the episodes inside the window, the last readings newest first, and why there is no matter where there is none. `windowed` is false for a series drawn by `x` labels, which has no time to set a window on.",
+      "description": "`ephor monitors show <project>/<id> --json` (FS-021-monitors.19, FS-021-monitors.21.3) — one monitor's row, and what the detail view adds: where it is read from and declared, its hold, the chart of the span under today's condition with today's bounds as threshold lines, the repository's points, the episodes inside the window, every reading in the window newest first, and why there is no matter where there is none. `windowed` is false for a series drawn by `x` labels, which has no time to set a window on.",
       "allOf": [{ "$ref": "#/$defs/monitor_row" }],
       "type": "object",
       "required": ["window", "windowed", "declared", "chart", "thresholds", "episodes", "readings"],

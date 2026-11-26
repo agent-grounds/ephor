@@ -6,10 +6,13 @@ use std::path::Path;
 
 use serde_json::{json, Value as Json};
 
+use super::detail_view::no_matter;
 use super::*;
 use crate::monitors::episode::Ending;
 use crate::monitors::freshness::{Attempt, Found};
+use crate::monitors::model::Health;
 use crate::monitors::model::{Band, Value};
+use crate::monitors::page::Rank;
 use crate::monitors::shape;
 use crate::monitors::state::{Hold, Kept, OpenDrop, OpenUnknown, Past, Shown};
 
@@ -549,6 +552,10 @@ fn the_detail_draws_the_window_under_todays_condition() {
 
     assert_eq!(detail.title(), "ephor — monitors › widget › Latency");
     assert_eq!(detail.window_says(), "window 7d");
+    assert_eq!(
+        detail.health_says(|at| at.format("%d %H:%M").to_string()),
+        "✖ overdue 0m · down since 23 11:00"
+    );
     assert_eq!(detail.chart.len(), 3);
     assert_eq!(detail.chart[0].value, Some(40.0));
     assert_eq!(
@@ -593,6 +600,62 @@ fn the_detail_draws_the_window_under_todays_condition() {
     let from = detail.from.as_ref().unwrap();
     assert_eq!(from.runs_in.as_deref(), Some(Path::new("/w/widget/tools")));
     assert_eq!(from.home, Some(Home::Site));
+}
+
+/// §FS-021-monitors.19, §FS-021-monitors.18.5: the detail lists every
+/// reading in the window, not a few of them, and says when the last 24
+/// readings reach further back than the window and so draw the span.
+#[test]
+fn the_detail_lists_every_reading_in_the_window() {
+    let dir = tempfile::tempdir().unwrap();
+    let site = [json!({"id": "latency", "unit": "ms", "healthy": {"max": 50}, "every": "1h"})];
+    let record = read_at(
+        hours(0),
+        Value::Number(40.0),
+        Some(Health::Ok),
+        Some(Band::Ok),
+    );
+    let hourly: Vec<Line> = (0..30)
+        .rev()
+        .map(|ago| Line::Reading {
+            t: hours(ago),
+            v: Value::Number(40.0),
+            health: Some(Health::Ok),
+            out_of_cadence: false,
+        })
+        .collect();
+    let gathered = gather(
+        dir.path(),
+        &site,
+        vec![("latency", record.clone())],
+        vec![("latency", hourly)],
+    );
+    let shown = |gathered: &Gathered, window| {
+        let built = build(
+            "widget",
+            "latency",
+            &gathered.known["latency"],
+            gathered,
+            window,
+            now(),
+            recent(),
+            None,
+        );
+        detail(
+            "widget",
+            &gathered.known["latency"],
+            gathered,
+            built,
+            window,
+            None,
+        )
+    };
+    let week = shown(&gathered, Window::Week);
+    assert_eq!(week.readings.len(), 30);
+    assert_eq!(week.window_says(), "window 7d");
+    let six = shown(&gathered, Window::SixHours);
+    assert_eq!(six.readings.len(), 24);
+    assert_eq!(six.window_says(), "window 6h · over the last 24 readings");
 }
 
 /// §FS-021-monitors.19: a series drawn by `x` labels has no time to set a
@@ -715,7 +778,8 @@ fn a_site_override_names_what_the_manifest_said() {
         manifest: shape::read_declarations(
             &[json!({
                 "id": "coverage", "title": "Line coverage", "unit": "%",
-                "healthy": {"min": 75}, "every": "1h", "from": {"file": "coverage.json"}
+                "healthy": {"min": 75}, "warn": {"min": 90}, "every": "1h",
+                "from": {"file": "coverage.json"}
             })],
             Home::Manifest,
         ),
@@ -725,10 +789,16 @@ fn a_site_override_names_what_the_manifest_said() {
     let built = built(&gathered, "coverage");
     let condition = &built.row.condition;
     assert_eq!(condition.from, "site");
-    assert_eq!(condition.says, "healthy ≥ 80%");
+    assert_eq!(condition.says, "healthy ≥ 80% · warn below 90%");
     assert_eq!(
         condition.overrides,
         [json!({"healthy": {"min": 75.0}, "from": "manifest"})]
+    );
+    // §FS-021-monitors.19: each part in words, with its home and what it overrode.
+    assert_eq!(
+        condition.parts_say(),
+        "healthy ≥ 80% (the site's, over the manifest's healthy ≥ 75%) · \
+         warn below 90% (the manifest's)"
     );
     assert_eq!(built.row.cadence.from, "manifest");
     let detail = detail(
