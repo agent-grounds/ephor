@@ -162,9 +162,11 @@ pub fn step<Tz: TimeZone>(
         let changed =
             !condition::same_judge(&drop.judged_under, &watch.judge, watch.kind, watch.levels)
                 && drop.judged_words != watch.healthy_words;
-        let from = std::mem::replace(&mut drop.judged_words, watch.healthy_words.clone());
         drop.judged_under = watch.judge.clone();
+        // Its words stand as they were when it last changed: a fraction's `of`
+        // and the unit are said in them, and neither is movement (§FS-021-monitors.12.2).
         if changed {
+            let from = std::mem::replace(&mut drop.judged_words, watch.healthy_words.clone());
             let why = Movement::ConditionChanged {
                 from,
                 to: watch.healthy_words.clone(),

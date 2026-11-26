@@ -355,7 +355,10 @@ pub struct OpenDrop {
     /// The worst level it has reached, for a level monitor.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub worst: Option<String>,
-    /// The condition it was last judged under, and that condition in words.
+    /// The condition it was last judged under, and that condition in words
+    /// as they were when it opened or the condition last changed: what the
+    /// feed compares, so a fraction's `of` or the unit moving in them is not
+    /// movement (§FS-021-monitors.13.1).
     pub judged_under: Judge,
     pub judged_words: String,
     /// The work laid on it it has seen end (§FS-021-monitors.15).
