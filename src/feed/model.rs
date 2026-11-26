@@ -174,7 +174,14 @@ pub(crate) fn custom_status_answer<'a>(source: &str, raw: &'a Value) -> Option<&
 /// Finality explicitly stated by a structured source. Passthrough that merely
 /// uses the same public field name has no authority
 /// (§FS-003-feed-categories.2).
+///
+/// A monitor's matter states it too, through the record only the monitor slot
+/// writes (§FS-021-monitors.14.1): never through its state's words, so a
+/// state that merely contains a terminal word cannot end it.
 pub(crate) fn source_terminal(source: &str, raw: &Value) -> Option<bool> {
+    if let Some(stated) = crate::monitors::matters::stated(source, raw) {
+        return Some(stated.terminal);
+    }
     custom_status_answer(source, raw)?
         .get("terminal")?
         .as_bool()
