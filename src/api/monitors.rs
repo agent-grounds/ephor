@@ -84,7 +84,9 @@ impl super::Session {
                 .iter()
                 .map(|(id, known)| self.built(&project, id, known, &gathered, window, now).row)
                 .collect();
-            if rows.is_empty() {
+            // §FS-021-monitors.17.3: a manifest that cannot be read is said,
+            // even where nothing else tells that the project has monitors.
+            if rows.is_empty() && gathered.notes.is_empty() {
                 if only.contains(&project) {
                     without.push(project);
                 }
@@ -118,11 +120,16 @@ impl super::Session {
         let gathered = self.gather(project);
         let Some(known) = gathered.known.get(id) else {
             let has: Vec<&str> = gathered.known.keys().map(String::as_str).collect();
-            return Err(match has.is_empty() {
-                true => format!(
+            return Err(match (has.is_empty(), gathered.notes.is_empty()) {
+                // §FS-021-monitors.17.3: what kept its monitors from being read.
+                (true, false) => format!(
+                    "{project} has no monitor '{id}' to show: {}.",
+                    gathered.notes.join("; ")
+                ),
+                (true, true) => format!(
                     "{project} has no monitors — ephor guide monitors says how to declare one."
                 ),
-                false => format!(
+                (false, _) => format!(
                     "{project} has no monitor '{id}' (it has: {}).",
                     has.join(", ")
                 ),
@@ -256,7 +263,11 @@ fn group(project: String, mut rows: Vec<MonitorRow>, notes: Vec<String>) -> Moni
 /// The groups, the one holding the worst row first, then by name
 /// (§FS-021-monitors.18.3).
 fn arrange(projects: &mut [MonitorProject]) {
-    let worst = |group: &MonitorProject| group.rows.first().map(|row| row.shows.rank);
+    // A group that holds only notes goes after every group with a row.
+    let worst = |group: &MonitorProject| {
+        let worst = group.rows.first().map(|row| row.shows.rank);
+        (worst.is_none(), worst)
+    };
     projects.sort_by(|a, b| (worst(a), &a.project).cmp(&(worst(b), &b.project)));
 }
 

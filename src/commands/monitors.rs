@@ -52,7 +52,7 @@ pub fn monitors(args: &MonitorsArgs, scope: &Projects) -> Result<ExitCode> {
 
 fn print_page(page: &Monitors, now: DateTime<Utc>) {
     println!("{}", page.header(now));
-    if page.is_empty() {
+    if page.projects.is_empty() {
         println!();
         println!("{NO_MONITORS}");
     }
@@ -74,7 +74,10 @@ fn print_page(page: &Monitors, now: DateTime<Utc>) {
     let mut rows = rows.into_iter();
     for group in &page.projects {
         println!();
-        let heading: Vec<String> = COLUMNS.iter().map(|name| name.to_string()).collect();
+        let heading: Vec<String> = match group.rows.is_empty() {
+            true => Vec::new(),
+            false => COLUMNS.iter().map(|name| name.to_string()).collect(),
+        };
         println!("  {}", line(&group.project, &heading, title, &widths));
         for row in &group.rows {
             let cells = rows.next().unwrap_or_default();

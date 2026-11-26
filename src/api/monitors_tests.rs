@@ -319,8 +319,10 @@ fn groups_go_by_their_worst_row_then_by_name() {
         .filter(|row| row.id == "latency")
         .cloned()
         .collect();
+    let broken = vec!["the manifest could not be read: EOF".to_string()];
     let mut projects = vec![
         group("gadget".into(), ok.clone(), Vec::new()),
+        group("aaa".into(), Vec::new(), broken),
         group("widget".into(), all, Vec::new()),
         group("acme".into(), ok, Vec::new()),
     ];
@@ -329,7 +331,11 @@ fn groups_go_by_their_worst_row_then_by_name() {
         .iter()
         .map(|group| group.project.as_str())
         .collect();
-    assert_eq!(names, ["widget", "acme", "gadget"]);
+    assert_eq!(
+        names,
+        ["widget", "acme", "gadget", "aaa"],
+        "a group of notes alone goes last"
+    );
 }
 
 /// §FS-021-monitors.18.4, §FS-021-monitors.21.5: a row's value, cadence,
