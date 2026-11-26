@@ -943,12 +943,13 @@
         },
         "freshness": {
           "type": "object",
-          "description": "Where its value stands (FS-021-monitors.7): `{state, last_read, next_slot, holds_until}`, and for a late or unknown monitor its `cause`, `since` the slot that passed without a reading, `measured` for a stale value, and the unknown matter's key.",
+          "description": "Where its value stands (FS-021-monitors.7): `{state, last_read, last_found, next_slot, holds_until}`, and for a late or unknown monitor its `cause`, `since` the slot that passed without a reading, `measured` for a stale value, and the unknown matter's key.",
           "required": ["state"],
           "properties": {
             "state": { "enum": ["fresh", "late", "unknown", "not-read-yet", "not-run", "not-read"] },
-            "last_read": { "type": "string", "format": "date-time" },
-            "next_slot": { "type": "string", "format": "date-time" },
+            "last_read": { "type": "string", "format": "date-time", "description": "When it was last read, whatever the read found (FS-021-monitors.9.1)." },
+            "last_found": { "enum": ["reading", "unreadable", "parked", "stale"], "description": "What that last read found." },
+            "next_slot": { "type": "string", "format": "date-time", "description": "The schedule's next slot (FS-021-monitors.6.4)." },
             "holds_until": { "type": "string", "format": "date-time" },
             "cause": { "enum": ["unreadable", "parked", "stale", "overdue"] },
             "why": { "type": "string" },
@@ -2327,7 +2328,7 @@
       }
     },
     "monitor": {
-      "description": "`ephor monitors show <project>/<id> --json` (FS-021-monitors.19, FS-021-monitors.21.3) — one monitor's row, and what the detail view adds: where it is read from and declared, its hold, the chart of the span under today's condition with today's bounds as threshold lines, a series' points, the episodes inside the window, the last readings newest first, and why there is no matter where there is none. `windowed` is false for a series drawn by `x` labels, which has no time to set a window on.",
+      "description": "`ephor monitors show <project>/<id> --json` (FS-021-monitors.19, FS-021-monitors.21.3) — one monitor's row, and what the detail view adds: where it is read from and declared, its hold, the chart of the span under today's condition with today's bounds as threshold lines, the repository's points, the episodes inside the window, the last readings newest first, and why there is no matter where there is none. `windowed` is false for a series drawn by `x` labels, which has no time to set a window on.",
       "allOf": [{ "$ref": "#/$defs/monitor_row" }],
       "type": "object",
       "required": ["window", "windowed", "declared", "chart", "thresholds", "episodes", "readings"],
@@ -2397,6 +2398,7 @@
         },
         "points": {
           "type": "array",
+          "description": "The points the repository supplied: a series' points, or the history a number hands over, drawn before ephor's first reading of it (FS-021-monitors.2.2, FS-021-monitors.2.4).",
           "items": {
             "type": "object",
             "required": ["v"],

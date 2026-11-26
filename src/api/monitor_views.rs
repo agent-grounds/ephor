@@ -193,7 +193,13 @@ impl MonitorRow {
     pub fn cadence_says(&self, when: impl Fn(DateTime<Utc>) -> String) -> String {
         let mut said = vec![self.cadence.says.clone()];
         if let Some(at) = self.freshness.last_read {
-            said.push(format!("last read {}", when(at)));
+            let found = match self.freshness.last_found {
+                Some("unreadable") => " (failed)",
+                Some("parked") => " (parked)",
+                Some("stale") => " (stale)",
+                _ => "",
+            };
+            said.push(format!("last read {}{found}", when(at)));
         }
         if let Some(at) = self.freshness.next_slot {
             said.push(format!("next slot {}", when(at)));
@@ -253,10 +259,14 @@ pub struct CadenceView {
 pub struct FreshnessView {
     /// `fresh`, `late`, `unknown`, `not-read-yet`, `not-run` or `not-read`.
     pub state: &'static str,
-    /// When the reading its value holds from was read.
+    /// When it was last read, whatever the read found
+    /// (§FS-021-monitors.9.1).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub last_read: Option<DateTime<Utc>>,
-    /// The first slot after that reading.
+    /// What that read found: `reading`, `unreadable`, `parked` or `stale`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub last_found: Option<&'static str>,
+    /// The schedule's next slot (§FS-021-monitors.6.4).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub next_slot: Option<DateTime<Utc>>,
     #[serde(skip_serializing_if = "Option::is_none")]

@@ -90,3 +90,47 @@ fn the_worst_health_is_down_then_unknown_then_warn_then_ok() {
     );
     assert_eq!(worst([None, None]), None);
 }
+
+/// §FS-021-monitors.2.2: a number's points stand before ephor's own first
+/// line, in time order and judged under today's condition; a point at or
+/// after that line, or labelled by `x`, is not drawn.
+#[test]
+fn a_numbers_points_are_drawn_before_its_own_first_line() {
+    let at = |text: &str| chrono::DateTime::parse_from_rfc3339(text).unwrap();
+    let point = |t: &str, v: f64| Point {
+        t: Some(at(t)),
+        x: None,
+        v,
+    };
+    let points = [
+        point("2026-11-03T00:00:00Z", 85.0),
+        point("2026-11-01T00:00:00Z", 70.0),
+        point("2026-11-05T00:00:00Z", 99.0),
+        Point {
+            t: None,
+            x: Some("a4f5f87".into()),
+            v: 1.0,
+        },
+    ];
+    let own = [line(
+        serde_json::json!({"t": "2026-11-05T00:00:00Z", "v": 90, "health": "ok"}),
+    )];
+    let judge = Judge::Condition(Condition {
+        min: Some(80.0),
+        ..Condition::default()
+    });
+    let drawn = handed_over(&points, &own, &judge, None);
+    let seen: Vec<(String, Option<Health>)> = drawn
+        .iter()
+        .map(|line| (line.t().format("%d").to_string(), line.health()))
+        .collect();
+    assert_eq!(
+        seen,
+        [
+            ("01".to_string(), Some(Health::Down)),
+            ("03".to_string(), Some(Health::Ok)),
+            ("05".to_string(), Some(Health::Ok)),
+        ]
+    );
+    assert_eq!(drawn[2], own[0]);
+}
