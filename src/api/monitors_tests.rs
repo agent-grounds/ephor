@@ -1037,3 +1037,43 @@ fn a_steps_chart_puts_the_healthy_value_on_top() {
         "healthy when yes stays yes on top"
     );
 }
+
+/// §FS-021-monitors.18.5, §FS-021-monitors.19, §FS-021-monitors.18.2: the
+/// words both surfaces say once: the strip's heading names the 24 readings
+/// where they set a row's span, the detail's strip is of health, and each
+/// header comes in parts a narrow screen can say on lines of their own.
+#[test]
+fn the_page_and_the_detail_say_their_headings_once() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut page = page_of_six(dir.path());
+    assert_eq!(page.projects[0].strip_heading(Window::Week), "last 7d");
+    page.projects[0].rows[3].shows.span.by_readings = true;
+    assert_eq!(
+        page.projects[0].strip_heading(Window::Week),
+        "last 7d or 24 readings"
+    );
+    let [title, counts, window] = page.header_says(now());
+    assert_eq!(page.header(now()), format!("{title}   {counts}   {window}"));
+    assert_eq!(window, "window 7d · never refreshed");
+    page.projects[0].notes = vec!["the manifest is not JSON".into()];
+    page.without = vec!["gizmo".into()];
+    assert_eq!(
+        page.projects[0].notes_say(),
+        ["note: the manifest is not JSON"]
+    );
+    assert_eq!(page.without_say(), ["gizmo has no monitors"]);
+
+    let green = fixtures::green_detail(dir.path());
+    let strip = green.strip_says();
+    assert!(strip.starts_with("health: "), "{strip}");
+    assert_eq!(strip.chars().count(), "health: ".len() + 24);
+    assert!(strip.contains('▁'), "a down cell is drawn low: {strip}");
+    assert_eq!(
+        green.change_says(),
+        format!("change {}", green.row.shows.change.says)
+    );
+    assert_eq!(
+        green.header(now()),
+        "ephor — monitors › widget › Build green   window 7d · never refreshed"
+    );
+}

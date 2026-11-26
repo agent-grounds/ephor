@@ -155,12 +155,7 @@ impl MonitorsScreen {
 
     pub fn title(&self) -> String {
         match self.detail() {
-            Some(detail) => format!(
-                " {}   {} · {}",
-                detail.title(),
-                detail.window_says(),
-                views::refreshed(detail.refreshed_at, self.now)
-            ),
+            Some(detail) => format!(" {}", detail.header(self.now)),
             None => format!(" {}", self.page.header(self.now)),
         }
     }

@@ -111,13 +111,16 @@ fn page_lines(page: &Monitors, now: DateTime<Utc>, style: &Style) -> Vec<String>
                 line(&clipped(&row.title), &cells, title, &widths, paint)
             ));
         }
-        for note in &group.notes {
-            lines.push(format!("  note: {note}"));
-        }
+        lines.extend(
+            group
+                .notes_say()
+                .into_iter()
+                .map(|note| format!("  {note}")),
+        );
     }
-    for project in &page.without {
+    for without in page.without_say() {
         lines.push(String::new());
-        lines.push(format!("  {project} has no monitors"));
+        lines.push(format!("  {without}"));
     }
     if !page.is_empty() {
         lines.push(String::new());
@@ -203,21 +206,13 @@ fn monitor(args: &MonitorsShowArgs) -> Result<ExitCode> {
 }
 
 fn print_detail(detail: &MonitorDetail, now: DateTime<Utc>) {
-    let row = &detail.row;
-    let shows = &row.shows;
-    println!(
-        "{}   {} · {}",
-        detail.title(),
-        detail.window_says(),
-        crate::api::monitor_views::refreshed(detail.refreshed_at, now)
-    );
+    println!("{}", detail.header(now));
     println!();
     println!("{}", detail.health_says(when));
     for fact in detail.facts_say(when) {
         println!("{fact}");
     }
-    let strip: String = shows.strip.iter().map(|cell| cell.glyph()).collect();
-    println!("strip: {strip}  change {}", shows.change.says);
+    println!("{}  {}", detail.strip_says(), detail.change_says());
     if !detail.points.is_empty() {
         println!();
         println!("points ({})", detail.points.len());

@@ -17,6 +17,7 @@ use crate::api::monitor_views::{
 use crate::monitors::model::Health;
 use crate::monitors::page::Rank;
 use crate::monitors::strip::{Cell, Way};
+use crate::monitors::window::Window;
 
 use super::highlight_style;
 use super::monitors::MonitorsScreen;
@@ -203,12 +204,7 @@ impl MonitorsScreen {
         let mut index = 0;
         for group in &page.projects {
             lines.push(Line::raw(""));
-            lines.push(heading(
-                &group.project,
-                &columns,
-                page,
-                !group.rows.is_empty(),
-            ));
+            lines.push(heading(group, &columns, page.window));
             for row in &group.rows {
                 let mut line = row_line(row, &columns);
                 if index == self.selected() {
@@ -218,16 +214,16 @@ impl MonitorsScreen {
                 lines.push(line);
                 index += 1;
             }
-            for note in &group.notes {
+            for note in group.notes_say() {
                 lines.push(Line::styled(
-                    format!("  note: {note}"),
+                    format!("  {note}"),
                     Style::default().fg(Color::Yellow),
                 ));
             }
         }
-        for project in &page.without {
+        for without in page.without_say() {
             lines.push(Line::raw(""));
-            lines.push(Line::styled(format!("  {project} has no monitors"), dim()));
+            lines.push(Line::styled(format!("  {without}"), dim()));
         }
         if !page.is_empty() {
             lines.push(Line::raw(""));
@@ -239,15 +235,15 @@ impl MonitorsScreen {
 
 /// A project's heading: its name, then the columns' names, dim
 /// (§FS-021-monitors.18.3).
-fn heading(project: &str, columns: &Columns, page: &views::Monitors, named: bool) -> Line<'static> {
+fn heading(group: &views::MonitorProject, columns: &Columns, window: Window) -> Line<'static> {
     let name = Span::styled(
-        format!("  {}", pad(project, columns.title)),
+        format!("  {}", pad(&group.project, columns.title)),
         Style::default().add_modifier(Modifier::BOLD),
     );
-    if !named {
+    if group.rows.is_empty() {
         return Line::from(name);
     }
-    let strip = format!("last {}", page.window.label());
+    let strip = group.strip_heading(window);
     let mut names = vec![pad("value", columns.value), pad("every", columns.every)];
     if let Some(width) = columns.condition {
         names.push(pad("condition", width));

@@ -65,12 +65,7 @@ impl Monitors {
     /// The header (§FS-021-monitors.18.2): `ephor — monitors   1 down · 2
     /// unknown · … · 1 overdue   window 7d · refreshed 4m ago`.
     pub fn header(&self, now: DateTime<Utc>) -> String {
-        format!(
-            "ephor — monitors   {}   window {} · {}",
-            self.counts.say(),
-            self.window.label(),
-            refreshed(self.refreshed_at, now)
-        )
+        self.header_says(now).join("   ")
     }
 }
 

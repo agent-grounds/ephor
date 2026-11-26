@@ -140,6 +140,9 @@ fn the_detail_as_text() {
         "declared: site, manifest · the site overrides healthy",
         "cadence: every 1h · last read ",
         "hold: drop after 1 failing reading",
+        // §FS-021-monitors.19: the strip of health, as the screen draws it.
+        "\nhealth: ",
+        "  change ",
         "episodes (1)",
         "readings (1)",
         &format!("matter: monitor:{PROJECT}/coverage@"),
