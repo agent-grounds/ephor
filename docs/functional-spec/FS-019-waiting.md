@@ -372,7 +372,10 @@ every string ephor shows does ([§REQ-001-boundary.5](../requirements/REQ-001-bo
 
 Nothing is written until the reader confirms with `Enter`. `n` moves to the
 next new row's processing screen without deciding this one, and `esc` comes
-back to Waiting. What the screen reads is what `ephor work process --item <id>
+back to Waiting. Opened from the Monitors page, the screen is about the one
+matter that row names: it counts no new rows and offers no `n`, and `esc` and
+a confirmed move come back to the page
+([§FS-021-monitors.18.10](FS-021-monitors.md#1810-keys)). What the screen reads is what `ephor work process --item <id>
 --dry-run` reads, and each line of it is that command's or the menu's.
 
 Confirming makes the move `ephor actions run` makes with that entry

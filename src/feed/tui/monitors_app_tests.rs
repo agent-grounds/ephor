@@ -96,19 +96,30 @@ fn m_opens_the_page_from_any_screen_and_closes_it_back() {
     key(&mut app, KeyCode::Esc);
     assert!(matches!(app.screen, Screen::Waiting));
 
-    // Over the board, the page replaces it and keeps what the pair opened over.
+    // Over the board or the burn page, it closes back to that page, and
+    // that page then closes back to where it opened.
     key(&mut app, KeyCode::Char(';'));
     assert!(matches!(app.screen, Screen::Operations(_)));
     key(&mut app, KeyCode::Char('M'));
     assert!(matches!(app.screen, Screen::Monitors(_)));
+    key(&mut app, KeyCode::Char('M'));
+    assert!(
+        matches!(app.screen, Screen::Operations(_)),
+        "M closes back to the board"
+    );
     key(&mut app, KeyCode::Char('$'));
     assert!(matches!(app.screen, Screen::Burn(_)));
     key(&mut app, KeyCode::Char('M'));
     assert!(matches!(app.screen, Screen::Monitors(_)));
     key(&mut app, KeyCode::Esc);
     assert!(
+        matches!(app.screen, Screen::Burn(_)),
+        "esc closes back to the burn page"
+    );
+    key(&mut app, KeyCode::Esc);
+    assert!(
         matches!(app.screen, Screen::Waiting),
-        "back to where the layer opened"
+        "and the burn page back to where it opened"
     );
 
     // From the overview too, and back to it.
@@ -167,7 +178,76 @@ fn p_processes_the_matter_in_place() {
     key(&mut app, KeyCode::Esc);
     key(&mut app, KeyCode::Esc);
     assert!(matches!(app.screen, Screen::Waiting));
-    assert!(app.monitors_beneath.is_none());
+}
+
+/// §FS-021-monitors.18.10, §FS-019-waiting.7.2: processing opened from the
+/// page is about the one matter the row names: it says nothing of Waiting's
+/// new rows, offers no `n` through them, names the page `esc` goes back to,
+/// and leaves no message of the page's beside it.
+#[test]
+fn processing_from_the_page_is_about_its_one_matter() {
+    if isolated("feed::tui::monitors_app_tests::processing_from_the_page_is_about_its_one_matter") {
+        return;
+    }
+    let (config, item) = demo();
+    let mut app = App::load(&config, &crate::scope::Projects::every()).unwrap();
+    app.go_home_to(Home::Waiting);
+    app.freshen_waiting();
+    key(&mut app, KeyCode::Char('M'));
+    app.message = "p: an earlier row's refusal".to_string();
+    key(&mut app, KeyCode::Char('p'));
+    let Screen::Process(screen) = &app.screen else {
+        panic!("p opens processing: {}", app.message);
+    };
+    assert!(!screen.title().ends_with(" new"), "{}", screen.title());
+    let footer = screen.footer();
+    assert!(footer.ends_with("esc monitors"), "{footer}");
+    assert!(!footer.contains("n next"), "{footer}");
+    assert!(app.message.is_empty(), "{}", app.message);
+
+    // Waiting's own processing still goes back to Waiting.
+    app.go_home_to(Home::Waiting);
+    app.open_processing(item, None, false);
+    let Screen::Process(screen) = &app.screen else {
+        panic!("Enter opens processing: {}", app.message);
+    };
+    assert!(screen.title().contains("1 of 1 new"), "{}", screen.title());
+    assert!(
+        screen.footer().ends_with("esc waiting"),
+        "{}",
+        screen.footer()
+    );
+}
+
+/// §FS-021-monitors.18.10: the page goes back only with the processing
+/// screen it was opened under. Once that screen is left by another road,
+/// a later processing screen, `A`'s preview included, comes back to
+/// Waiting rather than to a page from before.
+#[test]
+fn a_page_left_behind_does_not_come_back_later() {
+    if isolated("feed::tui::monitors_app_tests::a_page_left_behind_does_not_come_back_later") {
+        return;
+    }
+    let (config, _) = demo();
+    let mut app = App::load(&config, &crate::scope::Projects::every()).unwrap();
+    app.go_home_to(Home::Waiting);
+    app.freshen_waiting();
+    key(&mut app, KeyCode::Char('M'));
+    key(&mut app, KeyCode::Char('p'));
+    assert!(matches!(app.screen, Screen::Process(_)), "{}", app.message);
+    // A move that lands on the floor without `back`, as settling does.
+    app.screen = app.home_screen();
+    let view = app.ctx.process_all(&[], true);
+    app.preview_process_all(view);
+    app.back();
+    assert!(
+        matches!(app.screen, Screen::Waiting),
+        "esc from A's preview is Waiting"
+    );
+    let view = app.ctx.process_all(&[], true);
+    app.preview_process_all(view);
+    app.processed();
+    assert!(matches!(app.screen, Screen::Waiting));
 }
 
 /// §FS-021-monitors.18.10: `r` refreshes the row's project and reads every

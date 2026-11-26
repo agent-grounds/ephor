@@ -392,9 +392,6 @@ struct App {
     /// starting one — a job another ephor started is in here too. Refreshed
     /// when rows are built and probed on the tick, exactly as a run is.
     jobs: Vec<crate::seams::jobs::Job>,
-    /// The Monitors page a matter's processing was opened from, where `esc`
-    /// and a confirmed move come back to (§FS-021-monitors.18.10).
-    monitors_beneath: Option<MonitorsScreen>,
     message: String,
 }
 
@@ -459,7 +456,6 @@ impl App {
             work_seen: None,
             burn_ticked_at: std::time::Instant::now(),
             jobs: Vec::new(),
-            monitors_beneath: None,
             message: String::new(),
         };
         // Whatever is still going from an earlier session is the reader's
@@ -1253,7 +1249,7 @@ impl App {
                     .map_err(|err| EphorError::Command(format!("draw failed: {err}")))?;
                 let view = self.ctx.process_all(&[], true);
                 self.message.clear();
-                self.screen = Screen::Process(ProcessScreen::all(view));
+                self.preview_process_all(view);
             }
             Action::ConfirmProcessAll => {
                 self.message = "Processing…".to_string();
@@ -1266,6 +1262,12 @@ impl App {
             }
         }
         Ok(false)
+    }
+
+    /// `A`'s preview (§FS-019-waiting.7.5): what processing every
+    /// unambiguous row would lay, over the screen it was asked from.
+    fn preview_process_all(&mut self, view: crate::api::views::Processing) {
+        self.screen = Screen::Process(ProcessScreen::all(view));
     }
 
     /// The processing screen for one new matter (§FS-019-waiting.7.2): the
@@ -1308,7 +1310,14 @@ impl App {
                 Err(_) => false,
             };
         let choices = self.ctx.process_choices(&item);
-        let place = self.waiting.place_of(&item.id);
+        // Processing opened from the Monitors page is about the one matter
+        // its row names, not a place among Waiting's new rows
+        // (§FS-021-monitors.18.10).
+        let in_place = monitors::processing_in_place(&self.screen);
+        let place = match in_place {
+            true => process::Place::default(),
+            false => self.waiting.place_of(&item.id),
+        };
         let screen = ProcessScreen::one(item, place, proposal, account, wants, choices);
         let previous = std::mem::replace(
             &mut self.screen,
@@ -1317,7 +1326,12 @@ impl App {
                 false => screen,
             }),
         );
-        self.processing_over(previous);
+        if let Screen::Process(screen) = &mut self.screen {
+            screen.monitors = monitors::page_beneath(previous);
+        }
+        if in_place {
+            self.message.clear();
+        }
     }
 
     /// `Enter` on the processing screen: the move `ephor work process` makes,
@@ -2540,13 +2554,12 @@ impl App {
         if self.back_to_monitors() {
             return;
         }
+        if matches!(self.screen, Screen::Monitors(_)) {
+            self.close_monitors();
+            return;
+        }
         self.screen = match self.saved.take() {
-            Some(previous)
-                if matches!(
-                    self.screen,
-                    Screen::Operations(_) | Screen::Burn(_) | Screen::Monitors(_)
-                ) =>
-            {
+            Some(previous) if matches!(self.screen, Screen::Operations(_) | Screen::Burn(_)) => {
                 previous
             }
             _ => self.home_screen(),
@@ -2566,7 +2579,6 @@ impl App {
     fn go_home_to(&mut self, home: Home) {
         self.home = home;
         self.saved = None;
-        self.monitors_beneath = None;
         self.screen = self.home_screen();
     }
 

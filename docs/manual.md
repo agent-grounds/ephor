@@ -6981,10 +6981,10 @@ says.
 
 `M` opens the Monitors page over whatever screen you are on, and `M` or `Esc`
 closes it back to that screen
-([§FS-021-monitors.18.1](functional-spec/FS-021-monitors.md#181-m-opens-it-from-any-screen)).
-It is one modal layer with the operations board and the burn page: `;` or `$`
-from the page replaces it, and closing that comes back to where the layer
-opened. The header is the one `ephor monitors` prints; on a screen too narrow
+([§FS-021-monitors.18.1](functional-spec/FS-021-monitors.md#181-m-opens-it-from-any-screen)),
+the operations board and the burn page included, which then close back to
+where they opened. `;` or `$` from the page replaces it instead, and closing
+that comes back to where the page opened. The header is the one `ephor monitors` prints; on a screen too narrow
 for it, the window and the feed's age are said again above the first project.
 
 Each row is the glyph, the title, the value, the cadence, the condition with
@@ -7017,7 +7017,9 @@ processes in place
 ([§FS-021-monitors.18.10](functional-spec/FS-021-monitors.md#1810-keys)): it
 opens the processing screen Waiting's `Enter` opens, over the matter the
 matter column names, and `Esc` there, or a move confirmed, comes back to the
-Monitors page rather than to Waiting. On a row with nothing to process it says
+Monitors page rather than to Waiting. The screen is about that one matter: its
+title counts none of Waiting's new rows, it has no `n`, and its footer says
+`esc monitors`. On a row with nothing to process it says
 why, in the words of the detail view's matter line: a KPI is never a matter, a
 failing monitor drops only after its hold, and overdue is the watch's own
 failure. A running matter is shown on Waiting, a dismissed one comes back if
