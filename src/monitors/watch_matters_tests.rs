@@ -119,3 +119,27 @@ fn a_wobble_inside_the_band_does_not_move_the_matter() {
     assert_eq!(moves(now).since(&moves(was)), Vec::<String>::new());
     assert_eq!(moves(now), Moves { ..moves(was) });
 }
+
+/// §FS-021-monitors.13.1, §FS-021-monitors.12.2: a fraction whose `of`
+/// moves says its condition anew in the title, and moves nothing the feed
+/// compares, as the work laid on it reads it.
+#[test]
+fn a_fraction_whose_whole_moves_does_not_move_the_matter() {
+    let site = site(None);
+    let tests = json!({
+        "id": "t", "title": "Tests passing", "healthy": {"min": 12},
+        "from": {"command": "sh kpis.sh"}
+    });
+    let answer = |of: u32| format!(r#"{{"v":1,"monitors":[{{"id":"t","value":11,"of":{of}}}]}}"#);
+    script(&site.root, &answer(15), 0);
+    let first = refresh_at(&site, &[tests.clone()], When::Due, 0);
+    script(&site.root, &answer(16), 0);
+    let later = refresh_at(&site, &[tests], When::Now, 30);
+    let (was, now) = (&first.items[0], &later.items[0]);
+    assert_eq!(was.title, "Tests passing dropped: 11/15 (healthy ≥ 12/15)");
+    assert_eq!(now.title, "Tests passing dropped: 11/16 (healthy ≥ 12/16)");
+    assert_eq!(was.updated_at, now.updated_at);
+    let moves = |item: &crate::feed::model::Item| stated("monitor", &item.raw).unwrap().moves;
+    assert_eq!(moves(now).since(&moves(was)), Vec::<String>::new());
+    assert_eq!(moves(now), moves(was));
+}

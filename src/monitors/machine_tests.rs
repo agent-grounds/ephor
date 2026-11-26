@@ -375,6 +375,46 @@ fn a_condition_edited_mid_episode_moves_the_matter_once_and_keeps_the_count() {
     assert!(ended(&run.number(&at_85, 86.0), Sort::Drop).is_some());
 }
 
+/// §FS-021-monitors.13.1, §FS-021-monitors.12.2: a fraction's `of` and the
+/// unit are said in the condition's words, and neither moving is the
+/// `healthy` that judges it changing.
+#[test]
+fn the_words_moving_without_the_condition_do_not_move_the_drop() {
+    let judge = healthy(json!({"min": 12}));
+    let said = |of: f64, unit: Option<&'static str>| Watch {
+        healthy_words: words::healthy(
+            &judge,
+            &Terms {
+                unit,
+                of: Some(of),
+                ..Terms::default()
+            },
+        ),
+        unit,
+        ..watch(judge.clone(), 1, 2)
+    };
+    let mut run = Run::new();
+    assert!(opened(&run.number(&said(15.0, None), 11.0), Sort::Drop).is_some());
+    let words = run.record.drop.as_ref().unwrap().judged_words.clone();
+    assert_eq!(words, "healthy ≥ 12/15");
+    for (of, unit) in [(16.0, None), (16.0, Some("tests"))] {
+        let moving = said(of, unit);
+        assert_ne!(moving.healthy_words, words);
+        assert!(moved(&run.look(&moving, run.clock)).is_empty(), "{of}");
+        assert_eq!(run.record.drop.as_ref().unwrap().judged_words, words);
+        assert!(run.record.drop.as_ref().unwrap().moved.is_none());
+    }
+    let stricter = Watch {
+        judge: healthy(json!({"min": 13})),
+        healthy_words: "healthy ≥ 13/16".into(),
+        ..said(16.0, None)
+    };
+    assert_eq!(
+        moved(&run.look(&stricter, run.clock)),
+        vec!["condition changed: healthy ≥ 12/15 → healthy ≥ 13/16"]
+    );
+}
+
 #[test]
 fn a_level_worse_than_any_the_drop_reached_moves_it() {
     let levels: Vec<String> = ["clean", "degraded", "failed"].map(String::from).to_vec();
