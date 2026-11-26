@@ -181,6 +181,7 @@ CORE = (
     "monitors::matters",
     "monitors::model",
     "monitors::overlay",
+    "monitors::page",
     "monitors::retention",
     "monitors::route",
     "monitors::sample",
@@ -188,6 +189,8 @@ CORE = (
     "monitors::shape",
     "monitors::slots",
     "monitors::state",
+    "monitors::strip",
+    "monitors::window",
     "monitors::words",
 )
 

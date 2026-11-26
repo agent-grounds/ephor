@@ -22,7 +22,9 @@
 //! - [`state`], [`episode`] and [`machine`] are the hold, the episodes and the
 //!   movement of a monitor's matters, as one state machine;
 //! - [`history`] is a reading's line and the history judged again for
-//!   display, and [`retention`] what of it is kept.
+//!   display, and [`retention`] what of it is kept;
+//! - [`page`] is where a monitor stands on the Monitors page, and [`strip`]
+//!   what its strip and its change cover, over a [`window`].
 //!
 //! Above the core, and outside it: [`store`] keeps the records and the
 //! histories on disk under the project's lock; [`declared`] reads the
@@ -45,6 +47,7 @@ pub mod machine;
 pub mod matters;
 pub mod model;
 pub mod overlay;
+pub mod page;
 pub mod reader;
 pub mod retention;
 pub mod route;
@@ -54,7 +57,9 @@ pub mod shape;
 pub mod slots;
 pub mod state;
 pub mod store;
+pub mod strip;
 pub mod watch;
+pub mod window;
 pub mod words;
 
 #[cfg(test)]
