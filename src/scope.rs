@@ -166,6 +166,12 @@ pub fn honoured(command: &Command) -> (String, Honours) {
         // session was working in, and then answers for the machine rather
         // than for a group (§FS-013-burn.4).
         Command::Burn(_) => said("burn", Honours::NothingOverTheSite),
+        // One monitor, named by `<project>/<id>`: nothing for a selector to narrow (§FS-021-monitors.21.3).
+        Command::Monitors(args) if args.command.is_some() => {
+            said("monitors show", Honours::Nothing)
+        }
+        // Reads the monitors of a set of watched projects (§FS-021-monitors.21.1).
+        Command::Monitors(_) => said("monitors", Honours::Watched),
         Command::Thread(_) => said("thread", Honours::Nothing),
         Command::React(_) => said("react", Honours::Nothing),
         Command::Tick(_) => said("tick", Honours::Nothing),
@@ -311,6 +317,8 @@ pub fn sweeps(command: &Command, scope: &Scope) -> Sweeps {
         // folds them into ephor's own store; like `mark-read` it writes ephor's
         // memory, never a project's work root.
         | Command::Burn(_)
+        // Reads the monitors' store and writes nothing (§FS-021-monitors.21.1).
+        | Command::Monitors(_)
         | Command::Tui(_) => Sweeps::Nothing,
     }
 }

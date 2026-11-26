@@ -528,6 +528,10 @@ const SWEEP: &[(&str, &[&str])] = &[
     ("guide", &["guide", "gate", "--json"]),
     ("guide", &["guide", "matter", "--json"]),
     ("burn", &["burn", "--json"]),
+    // This world declares no monitor, so the page is its empty state
+    // (§FS-021-monitors.18.2).
+    ("monitors", &["monitors", "--json"]),
+    ("monitors", &["monitors", "--window", "30d", "--json"]),
     (
         "burn",
         &["burn", "--window", "7d", "--by", "model", "--json"],
@@ -602,6 +606,10 @@ const SWEEP: &[(&str, &[&str])] = &[
 /// them. Written down rather than left out, so that "not swept" is a decision
 /// somebody made rather than an oversight nobody noticed.
 const ELSEWHERE: &[(&str, &str)] = &[
+    (
+        "monitor",
+        "E2E-084's the_detail_says_where_each_part_came_from — it needs a monitor declared and read",
+    ),
     (
         "work-review",
         "human_gate_commands_print_the_shapes_they_publish",
