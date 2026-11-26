@@ -32,6 +32,7 @@ the way it does, and every `§ID` here points into it.
 11. [Extending ephor](#11-extending-ephor)
 12. [Reference](#12-reference)
 13. [Troubleshooting](#13-troubleshooting)
+14. [Monitors — the numbers a project is watched by](#14-monitors--the-numbers-a-project-is-watched-by)
 
 ---
 
@@ -110,13 +111,22 @@ Its state, in one directory:
   work.json               the work ledger (§8)
   burn/<date>.json        five-minute token buckets, thirty days of them (§9)
   burn/cursors.json       how far each transcript has been read (§9.3)
+  monitors/<project>/     each monitor's schedule, hold, episodes and readings (§14)
 ```
 
 Deleting any of it is safe. The feed comes back on the next `ephor refresh`;
 `seen.json` coming back empty means everything reads as unread once;
 `work.json` coming back empty forgets which plans belong to which item, and
 the plans themselves stay where they are; `burn/` coming back empty costs one
-full scan of the transcripts it is built from.
+full scan of the transcripts it is built from. `monitors/` coming back empty
+costs more, because ephor is the only keeper of what it held
+([§FS-021-monitors.9.4](functional-spec/FS-021-monitors.md#94-what-deleting-the-store-loses)): each monitor's own history, so its graph starts
+again (a repository's `points` survive, since the repository keeps them);
+each schedule, so every monitor is due at once; and every hold count, every
+open episode, and which answer owns a monitor read from the answer that
+brings it. A monitor still down afterwards opens a new episode, which is a
+new matter, and the old one's matter leaves the feed. The work laid on it
+stays in the ledger.
 
 One thing is not state, and is kept apart for that reason: the archive that
 retiring moves a finished matter's leftover work into (§8.7.3).
@@ -466,18 +476,21 @@ ephor doctor [--project P] [--skip-self|--self-only] [--json]
   binding, because a shared source is placed on all of its answer at once;
   `--only` on a capability none of the source's blocks declares; and a
   `--source` that nothing in scope binds. A plain `ephor refresh`, with
-  neither flag, asks and writes exactly what it did before
+  neither flag, asks every source it asked before these flags existed, and
+  reads each refreshed project's due monitors besides
   ([§FS-011-command-line.9.2](functional-spec/FS-011-command-line.md#92-a-refresh-narrowed-to-one-source-or-one-capability)).
 
-  A plain refresh also reads each project's monitors that are due, running a
-  command several of them share once, and answers the project's `monitor`
-  slot whatever one monitor's read found
-  ([§FS-021-monitors.17.1](functional-spec/FS-021-monitors.md#171-one-answer-on-every-plain-refresh)). `--monitors-now` reads every monitor now, out of
-  its cadence
-  ([§FS-021-monitors.21.4](functional-spec/FS-021-monitors.md#214-reading-is-refresh)). A refresh narrowed by `--source` reads none, and
-  `monitor` is not a source it can name, so `--monitors-now` with `--source`
-  is refused
-  ([§FS-021-monitors.17.4](functional-spec/FS-021-monitors.md#174-a-narrowed-refresh-reads-no-monitor)).
+  Reading those monitors runs a command several of them share once, and
+  answers the project's `monitor` slot whatever one monitor's read found
+  ([§FS-021-monitors.17.1](functional-spec/FS-021-monitors.md#171-one-answer-on-every-plain-refresh)). `ephor refresh [PROJECT ...] --monitors-now` is a
+  plain refresh that reads every monitor of every project it refreshes, now
+  and out of cadence, and with no project named that is every watched project
+  ([§FS-021-monitors.21.4](functional-spec/FS-021-monitors.md#214-reading-is-refresh)). A refresh narrowed by `--source` or `--only` reads no
+  monitor, and `monitor` is not a source it can name, so `--monitors-now`
+  beside either is refused, and so is `--source monitor`
+  ([§FS-021-monitors.17.4](functional-spec/FS-021-monitors.md#174-a-narrowed-refresh-reads-no-monitor)). Neither form adds a field to what
+  `refresh --json` prints. Chapter 14 says what a monitor is and how a
+  reading is judged.
 - **`status`** with no project prints one row per project (items, unread,
   needs-response, failing). With a project, it prints that project's feed,
   headed by its age. It refetches any project older than the TTL — pass
@@ -1118,10 +1131,11 @@ ephor schema answer > answer.schema.json    # validate your verb's output offlin
 | 1 | the command failed |
 | 2 | configuration or registry error, or a value you gave that the command will not act on |
 | 3 | every provider failed — nothing could be fetched at all |
-| 4 | some providers were lost (`refresh`, `doctor`), or unread needs-response items exist (`status --check`) |
+| 4 | some providers were lost (`refresh`, `doctor`), unread needs-response items exist (`status --check`), or a monitor's status is down or unknown (`monitors --check`) |
 
 `status --check` is built for a shell prompt: it prints nothing and exits 4
-when something is waiting on you.
+when something is waiting on you. `monitors --check` prints the page as it
+always does and exits 4 while a status on it is down or unknown (§14.6).
 
 ### 4.3.1 Is it still working? — `doctor`
 
@@ -6403,6 +6417,8 @@ ephor work list | offers | dispatch | ask | sync | cancel | retire | lay | run |
 ephor work workflows | states                             # what the runtime carries
 ephor operations [attach <run>]                           # the board — alias: ops
 ephor burn [--window 1h|6h|24h|7d] [--by project|model|session|plan|matter]
+ephor monitors [--project P ...] [--window W] [--check]   # the Monitors page
+ephor monitors show <project>/<id> [--window W]           # one monitor
 ephor job list | log <id>                                 # what runs beneath the screen
 ephor tui                                                 # alias: inbox
 ```
@@ -6456,6 +6472,7 @@ A checkout is enough for those three, which is why CI can run them
 | `~/.local/state/ephor/jobs/<id>/` | one job: `job.json`, `log` (none for a windowed job), `lock`, `outcome.json` (§8.14) |
 | `~/.local/state/ephor/burn/<date>.json` | five-minute token buckets, thirty days kept (§9.3) |
 | `~/.local/state/ephor/burn/cursors.json` | how far each transcript has been read (§9.3) |
+| `~/.local/state/ephor/monitors/<project>/` | `monitors.json`, each monitor's schedule, hold and episodes, and one `<id>.jsonl` of readings per monitor (§14); deleting it starts every graph again (§1.3) |
 | `~/.claude/projects/**/*.jsonl`, `~/.codex/sessions/**/*.jsonl` | read, never written: what the burn page is built from (§9) |
 | `<forest root>/ephor.json` | the project's own manifest, if it wrote one (§4.2.1) |
 | `<checkout>/panta/` | work roots: plans, state machine, runtime artifacts |
@@ -6677,3 +6694,267 @@ predates the rule: the grund 0.13.0 gate did not have it, so moving the pin is
 what surfaced them. Each site needs its own decision between escaping the token
 and writing the citation out, so they are held out together until that pass is
 done, and the flag goes when it is.
+
+---
+
+## 14. Monitors — the numbers a project is watched by
+
+The feed watches what happened: a pull request opened, a gate went red. Some
+of what you keep an eye on is not an event but a quantity: whether the main
+branch is releasable, how many reports wait, line coverage, a benchmark. A
+**monitor** is one such quantity, declared in the protocol a project already
+speaks. ephor reads each one at its own cadence, keeps its history, and draws
+it on the Monitors page. When a monitor stops meeting its condition, the drop
+becomes a matter in Waiting and is processed like any other
+([§FS-021-monitors](functional-spec/FS-021-monitors.md#fs-021-monitors-a-quantity-a-project-declares-is-read-on-its-own-cadence-and-kept-and-its-drop-is-a-matter)).
+
+A monitor something judges is a **status**: it is `ok`, `warn`, `down` or
+`unknown`, and a drop is a matter. A monitor nothing judges is a **KPI**: it
+is read, kept and drawn, and never becomes a matter. What judges a monitor is
+almost always the one field `healthy`, so a KPI becomes a status by gaining a
+condition and nothing else
+([§FS-021-monitors.1.2](functional-spec/FS-021-monitors.md#12-a-kpi-is-a-monitor-nothing-judges)).
+
+### 14.1 Declaring a monitor
+
+**In the repository.** `ephor.json` (§4.2.1) carries a `monitors` list. The
+repository knows how often its number changes and what a read costs, so it
+says how often each is worth reading
+([§FS-021-monitors.4.1](functional-spec/FS-021-monitors.md#41-the-manifest)):
+
+```json
+{
+  "v": 1,
+  "monitors": [
+    { "id": "releasable", "title": "Releasable", "kind": "boolean",
+      "from": { "command": "scripts/kpis.sh" },
+      "workflow": "release-readiness" },
+    { "id": "reports-waiting", "title": "Reports waiting",
+      "kind": "number", "unit": "count", "better": "lower",
+      "healthy": { "max": 5 }, "warn": { "max": 0 },
+      "from": { "command": "scripts/kpis.sh" } },
+    { "id": "coverage", "title": "Line coverage", "kind": "number",
+      "unit": "%", "better": "higher", "healthy": { "min": 80 },
+      "from": { "file": "target/kpi/coverage.json" },
+      "every": "1d", "at": "06:00" }
+  ]
+}
+```
+
+Only `id` is required, and a title defaults to it. The other fields are
+`kind` (`boolean`, `number`, `level` or `series`), `unit`, `better`, `of`,
+`levels`, `healthy`, `warn`, `from`, `every`, `at`, `timeout`, `drop_after`,
+`recover_after`, `workflow` or `action`, and `description`. A boolean is
+healthy when `true` and a level at its first level unless it says otherwise;
+a number or a series has no default and is a KPI until something judges it,
+and `"healthy": null` makes any monitor a KPI
+([§FS-021-monitors.3.2](functional-spec/FS-021-monitors.md#32-each-kind-has-a-default-and-null-removes-it)).
+
+**At the site.** A project's block in `status.json` takes the same
+`monitors` list. It adds monitors to a repository that says nothing, which is
+how you watch a repository without touching it, and it overrides a manifest's
+monitor field by field by naming its id
+([§FS-021-monitors.4.2](functional-spec/FS-021-monitors.md#42-the-site)):
+
+```json
+{ "projects": { "widget": {
+    "monitors": [
+      { "id": "coverage", "healthy": { "min": 75 } },
+      { "id": "open-bugs", "title": "Open bugs", "kind": "number",
+        "healthy": { "max": 20 }, "every": "4h",
+        "from": { "command": "scripts/count-bugs.sh", "cwd": "repo:tools" } }
+    ] } } }
+```
+
+The first entry changes the bound and keeps everything else the repository
+said; `healthy`, `warn` and `from` are each taken whole from the home that
+names them, never merged key by key, and the site may write `null` for
+`warn`, `at`, `from`, `workflow` or `action` to set aside what the manifest
+says ([§FS-021-monitors.4.4](functional-spec/FS-021-monitors.md#44-the-homes-overlay-field-by-field)). The detail view says which home each
+part came from (§14.6).
+
+**Install this ephor before writing the site key.** The site configuration
+refuses a key it does not know, so an older ephor refuses the whole of
+`status.json` once it carries `monitors`, rather than ignoring the key. A
+manifest's `monitors` costs an older ephor nothing: it ignores what it does
+not know.
+
+A declaration ephor cannot use (a misspelt kind, a condition that does not
+fit its kind, a `warn` that cannot hold with its `healthy`, an `at` that does
+not fit its `every`, an id declared twice in one home) is shown with what is
+wrong, reads as `unknown`, opens no matter, and costs that one monitor and
+nothing else. `ephor validate --manifest` refuses it, so a repository's own
+check catches it first
+([§FS-021-monitors.4.6](functional-spec/FS-021-monitors.md#46-a-declaration-ephor-cannot-use-is-shown-and-not-read)).
+
+### 14.2 Where a value comes from — `from`
+
+`from` names one of two things:
+
+- **A command**, `{"command": "scripts/kpis.sh"}`. It is a summons like
+  every other (§4.2.1): it runs through a shell with the `EPHOR_*`
+  environment, and answers with its exit code and the envelope it writes to
+  `$EPHOR_ANSWER`, which carries a `monitors` list of samples, one per
+  monitor: `{"id": "coverage", "value": 82.4}`, with `at`, `detail`, `url`
+  and `points` where it has them. Several monitors may name the same command,
+  and it runs once per read however many there are, so one script can answer
+  for ten numbers ([§FS-021-monitors.5.1](functional-spec/FS-021-monitors.md#51-a-command-is-a-summons-run-once-however-many-monitors-name-it)).
+- **A file**, `{"file": "target/kpi/coverage.json"}`, in the same answer
+  shape. ephor reads it and runs nothing, which makes it the cheapest
+  binding: whatever already produces the number writes the file
+  ([§FS-021-monitors.5.2](functional-spec/FS-021-monitors.md#52-a-file-is-read-and-nothing-is-run)).
+
+Either is placed in the project's checkout of its default branch, or the
+forest root where there is none; `cwd` may name the root as `root` or another
+repository of the forest as `repo:<name>`
+([§FS-021-monitors.5.3](functional-spec/FS-021-monitors.md#53-the-place)). Exit `0` is a read and `75`
+is parked, as everywhere; any other exit, a missing file, or an answer with no
+sample for the monitor is an unreadable read. A command gets 30 seconds, or
+the `timeout` the monitor declares
+([§FS-021-monitors.5.5](functional-spec/FS-021-monitors.md#55-exit-codes-and-the-timeout)).
+
+A monitor command must not run `ephor refresh`: the refresh that runs it has
+already claimed the monitors it reads, so the inner one would read none of
+them.
+
+A declaration with no `from` is read from whichever answer brings its
+samples: a custom-status answer may carry `monitors` beside its items, and a
+monitor is then read every time that source is
+([§FS-021-monitors.5.6](functional-spec/FS-021-monitors.md#56-which-samples-an-answer-gives)).
+
+### 14.3 Cadence is a floor, not a promise
+
+`every` is how often a monitor is worth reading: `10m`, `4h`, `1d`, `1w`.
+`at` pins its slots to the local clock, `06:00` or `Mon 06:00`. `every`
+defaults to `10m`, to `1d` beside an `at`, and to `1w` beside an `at` that
+names a day ([§FS-021-monitors.6.1](functional-spec/FS-021-monitors.md#61-every-and-at)). The manifest states the
+cadence and the site may change it either way, or write `"at": null` to
+unpin it.
+
+A refresh is the tick. ephor reads a monitor no more often than its cadence
+and no sooner than a refresh comes, so a slot is read up to one refresh
+interval late: on a machine whose timer refreshes every thirty minutes, a
+`10m` monitor is read about every thirty minutes
+([§FS-021-monitors.6.5](functional-spec/FS-021-monitors.md#65-cadence-is-a-floor-between-reads-not-a-promise)). A fast monitor needs a
+fast refresh, and how often refresh runs is yours to arrange (§10.1).
+
+To read every monitor of a project now, whatever its cadence, run
+`ephor refresh <project> --monitors-now` (§4.1), or press `r` on its row of
+the page. A read out of cadence counts toward a drop or a recovery and never
+moves the schedule ([§FS-021-monitors.6.7](functional-spec/FS-021-monitors.md#67-reading-out-of-cadence)).
+
+### 14.4 When a value goes missing
+
+A value holds until the slot after the reading that brought it, plus a grace
+of a quarter of the interval and at least an hour: a `10m` monitor's value
+holds for 1h 10m, a daily one's for 30 hours
+([§FS-021-monitors.7.1](functional-spec/FS-021-monitors.md#71-a-value-holds-until-the-next-slot-plus-a-grace)). When a slot passes with no new
+reading the monitor is **late**: it keeps its health and the page names the
+cause. Once the value no longer holds it is **unknown**, whatever the cause.
+
+| Cause | What happened | Whose problem |
+|---|---|---|
+| `unreadable` | the read failed: a bad exit, a timeout, a missing file, an answer the schema refuses, or no sample for the monitor | the project's |
+| `parked` | the command exited `75` at every try since the slot | the project's, once it outlasts the grace |
+| `stale` | the read worked, but brought the measurement already held, or one measured more than an interval before | the project's |
+| `overdue` | nothing tried: no refresh read the project since the slot | the watch's |
+
+([§FS-021-monitors.7.2](functional-spec/FS-021-monitors.md#72-four-causes)). A status that turns unknown
+opens a matter of its own, so a broken read is not mistaken for a passing
+one, unless the cause is `overdue`. That one means ephor did not look, which
+is no fault of the project, so it is never laid on the project: the page's
+header, Waiting's overview line and `ephor doctor` say it instead
+([§FS-021-monitors.7.5](functional-spec/FS-021-monitors.md#75-overdue-is-the-watchs-own-failure)). A monitor with no reading yet
+is `not read yet` until its first interval and grace have passed.
+
+### 14.5 Drops, matters and recovery
+
+A status drops by readings in a row: `drop_after` failing readings make it
+`down`, 1 unless it says otherwise, so a red main branch is news at once.
+`recover_after` passing readings end the drop: 2 for a monitor read more
+often than hourly, so one good reading in a flap does not close the matter,
+and 1 otherwise ([§FS-021-monitors.10.1](functional-spec/FS-021-monitors.md#101-drop_after-and-recover_after)). Only readings count: a
+parked or stale read moves nothing. `warn` is drawn amber and is never a
+matter.
+
+Every drop is an episode, and every episode is a matter of kind status, keyed
+`monitor:<project>/<id>@<episode>`, or `monitor:<project>/<id>.unknown@<episode>`
+for an unknown one ([§FS-021-monitors.11.3](functional-spec/FS-021-monitors.md#113-the-keys)). In Waiting it
+is New, with a proposal: the monitor's own `workflow` or `action` heads its
+menu for a drop, and otherwise it is proposed what any matter is, ending in
+the runtime's `triage` workflow
+([§FS-021-monitors.16](functional-spec/FS-021-monitors.md#16-the-proposal)). Process it as any other
+matter (§6). The matter moves on the monitor's health, not its number: a
+coverage that slips from 79% to 78% while down does not resurface it.
+
+Recovery resolves it. A drop ends after `recover_after` passing readings and
+its matter says `recovered at <time> (<value>)`; an unknown episode ends on
+the next reading and says `read again at <time> (<value>)`
+([§FS-021-monitors.14.1](functional-spec/FS-021-monitors.md#141-a-drop-ends-after-recover_after)). Work still running on a
+recovered monitor is the runtime's to finish or cancel. When work laid on a
+matter ends, the next plain refresh reads that monitor at once, so a fix is
+confirmed when it lands; if the monitor is still down, the matter resurfaces
+as `still down after its work ended` and is offered work again
+([§FS-021-monitors.15](functional-spec/FS-021-monitors.md#15-work-ended-still-down)).
+
+### 14.6 The commands
+
+`M` opens the Monitors page from any screen, and `ephor monitors` prints the
+same page ([§FS-021-monitors.21.1](functional-spec/FS-021-monitors.md#211-ephor-monitors-is-the-page-as-a-table)):
+
+```
+ephor — monitors   1 down · 0 unknown · 0 failing · 0 warn · 1 ok · 1 KPIs   window 7d · refreshed 4m ago
+
+  widget                    value  every  health  since  change    condition
+✖ Line coverage             79.2%  daily  down    2d 4h  ▾ 1.3 pt  healthy ≥ 80% · src/ is 71%
+● Releasable                yes    10m    ok      12d    no drops  healthy when yes
+◆ Lines of code             1200   1h     KPI     —      ▴ 40      KPI
+
+  change: over the window, or over the last 24 readings when those reach further back
+```
+
+The header counts each monitor once, by what its row shows, and adds
+`overdue` when the watch itself fell behind. Each project's rows go worst
+first, and the projects by their worst row. With no monitors at all the page
+says `no monitors — ephor guide monitors says how to declare one`, and a
+project named with `--project` that has none says so.
+
+```bash
+ephor monitors                              # every watched project, the last week
+ephor monitors --project widget --window 30d
+ephor monitors --check                      # exit 4 while a status is down or unknown
+ephor monitors show widget/coverage         # one monitor in detail
+ephor monitors show widget/coverage --json  # the published `monitor` view
+```
+
+- `--window` is `6h`, `1d`, `7d`, `30d`, `90d` or `1y`, and defaults to `7d`;
+  it is the page's `w` key spelled as an argument. The strip and the change
+  cover the window, or the last 24 readings when those reach further back,
+  and the history is drawn under today's condition, so a bound you moved
+  redraws the past rather than leaving it judged by the old one
+  ([§FS-021-monitors.18.9](functional-spec/FS-021-monitors.md#189-history-is-drawn-under-todays-condition)).
+- `--project` narrows the page, and the scope selectors (`--org`, `--tag`,
+  `--workspace`) narrow it as they narrow every reading of a set of projects.
+- `--check` exits `4` when any status on the page is down or unknown,
+  overdue included, so a build step can fail on a dropped monitor. A KPI never
+  counts, and neither does a monitor not yet read whose first grace has not
+  ended ([§FS-021-monitors.21.2](functional-spec/FS-021-monitors.md#212---check-turns-down-and-unknown-into-an-exit-code)).
+- `ephor monitors show <project>/<id>` is the detail view: the health and
+  since when, the value, the condition and the home each part came from, the
+  cadence and freshness, the hold, the readings in the window, the episodes
+  and the matter, or why there is none. It is about one monitor, so it
+  refuses the scope selectors, and an id the project does not have is
+  refused with the ids it has
+  ([§FS-021-monitors.21.3](functional-spec/FS-021-monitors.md#213-ephor-monitors-show-is-the-detail-view)).
+
+Neither command fetches, runs a monitor or writes anything: they read the
+store and the cache, and reading is refresh (§4.1). `--json` prints the
+published `monitors` and `monitor` views (`ephor schema views`), which carry
+each monitor's value, health, cadence, freshness, condition with its homes
+and the site's overrides, and matter
+([§FS-021-monitors.21.5](functional-spec/FS-021-monitors.md#215-the-machine-forms)).
+
+The store lives under `~/.local/state/ephor/monitors/<project>/`, and
+`ephor doctor` reports its size and each monitor that was overdue before its
+own refresh read it. Deleting it is allowed and costs the history, as §1.3
+says.
