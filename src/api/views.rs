@@ -1126,6 +1126,10 @@ pub struct Overview {
     /// fetched.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub refreshed_at: Option<DateTime<Utc>>,
+    /// The watched projects' statuses, where any has one
+    /// (§FS-021-monitors.20.1, §FS-019-waiting.6).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub monitors: Option<crate::monitors::counts::Counts>,
 }
 
 /// What the reader decided today, from ephor's own records of processing

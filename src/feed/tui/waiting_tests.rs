@@ -124,6 +124,7 @@ fn reading(
             matters: 143,
             unread: 12,
             refreshed_at: None,
+            monitors: None,
         },
     }
 }
@@ -593,5 +594,27 @@ fn queued_work_and_the_adopt_sentence_are_shown() {
             .starts_with(" fix-gate confirmed for 3 pull requests"),
         "{}",
         screen.footer()
+    );
+}
+
+/// §FS-021-monitors.20.1: where a watched project has a status, the overview
+/// line counts the statuses, `down` and `unknown` always and `overdue` only
+/// when it is not zero.
+#[test]
+fn the_overview_line_counts_the_statuses() {
+    let mut view = reading(Vec::new(), Vec::new(), Vec::new());
+    assert_eq!(
+        view.overview_line(),
+        "overview: 143 matters · 12 changed since you looked"
+    );
+    view.overview.monitors = Some(crate::monitors::counts::Counts {
+        down: 1,
+        unknown: 2,
+        overdue: 1,
+    });
+    assert_eq!(
+        view.overview_line(),
+        "overview: 143 matters · 12 changed since you looked   \
+         monitors: 1 down · 2 unknown · 1 overdue"
     );
 }
