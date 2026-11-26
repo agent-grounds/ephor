@@ -87,11 +87,17 @@ pub(super) fn detail(
     }
 }
 
-/// Every home that says something of it, and the fields the site names
-/// where the manifest also does (§FS-021-monitors.19).
+/// Every home that says something of it, each one that declares it among
+/// them whatever it sets or however it was refused, and the fields the site
+/// names where the manifest also does (§FS-021-monitors.19).
 fn declared_view(known: &Known, declarations: &Declarations) -> views::DeclaredView {
     let monitor = &known.monitor;
-    let homes: BTreeSet<Home> = monitor.origins.values().copied().collect();
+    let homes: BTreeSet<Home> = monitor
+        .origins
+        .values()
+        .copied()
+        .chain(declarations.declaring(&monitor.id))
+        .collect();
     let manifest = declarations
         .manifest
         .get(&monitor.id)

@@ -840,6 +840,54 @@ fn a_site_override_names_what_the_manifest_said() {
     );
 }
 
+/// §FS-021-monitors.19, §FS-021-monitors.4.6: the detail names the home
+/// that declares a monitor whatever the declaration sets, and one refused
+/// for its shape is shown as far as it reads: its title and its condition,
+/// never a KPI the answer brings.
+#[test]
+fn the_detail_names_the_home_that_declares_it() {
+    let dir = tempfile::tempdir().unwrap();
+    let declarations = Declarations {
+        manifest: shape::read_declarations(
+            &[
+                json!({"id": "only-id"}),
+                json!({"id": "bad", "title": "Bad one", "healthy": {"min": 1},
+                       "every": "90s", "from": {"command": "scripts/kpis.sh"}}),
+                json!({"id": "typo", "healthy": {"min": "one"}}),
+            ],
+            Home::Manifest,
+        ),
+        ..Declarations::default()
+    };
+    let gathered = gathered(declarations, Store::at(dir.path(), "widget"), None);
+    let detail_of = |id: &str| {
+        detail(
+            "widget",
+            &gathered.known[id],
+            &gathered,
+            built(&gathered, id),
+            Window::Week,
+            None,
+        )
+    };
+    let only = detail_of("only-id");
+    assert_eq!(only.declared.homes, [Home::Manifest]);
+    assert_eq!(only.declared.says(), "manifest");
+
+    let bad = detail_of("bad");
+    assert_eq!(bad.declared.homes, [Home::Manifest]);
+    assert_eq!(bad.row.title, "Bad one");
+    assert!(bad.row.shows.status);
+    assert_eq!(bad.row.condition.says, "healthy ≥ 1");
+    assert_eq!(bad.row.condition.from, "manifest");
+
+    // A status whose condition did not read is not said to be a KPI.
+    let typo = detail_of("typo");
+    assert!(typo.row.shows.status);
+    assert_eq!(typo.row.condition.says, "in error");
+    assert_eq!(typo.row.condition.from, "error");
+}
+
 /// §FS-021-monitors.19: why a monitor has no matter, for one not run, a
 /// KPI, and one failing toward its drop.
 #[test]

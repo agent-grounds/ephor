@@ -965,12 +965,12 @@
         },
         "condition": {
           "type": "object",
-          "description": "The condition, what judges it (a home's `healthy`, the sample's `ok`, the kind's default, or nothing for a KPI), and the manifest's `healthy` and `warn` the site's override (FS-021-monitors.3.6).",
+          "description": "The condition, what judges it (a home's `healthy`, the sample's `ok`, the kind's default, nothing for a KPI, or `error` for a status whose condition did not read, said `in error`), and the manifest's `healthy` and `warn` the site's override (FS-021-monitors.3.6, FS-021-monitors.4.6).",
           "required": ["from", "says"],
           "properties": {
             "healthy": { "$ref": "#/$defs/monitor_condition" },
             "warn": { "$ref": "#/$defs/monitor_condition" },
-            "from": { "enum": ["site", "manifest", "sample", "ok", "default", "kpi"] },
+            "from": { "enum": ["site", "manifest", "sample", "ok", "default", "kpi", "error"] },
             "warn_from": { "enum": ["site", "manifest", "sample"] },
             "says": { "type": "string" },
             "overrides": { "type": "array", "items": { "type": "object", "required": ["from"] } },

@@ -113,11 +113,13 @@ impl Declarations {
     }
 
     /// The homes one monitor resolves from, with the description its last
-    /// accepted sample carried (§FS-021-monitors.4.4).
+    /// accepted sample carried (§FS-021-monitors.4.4). A refused declaration
+    /// stands in its home as far as it read, so it is shown with its title
+    /// and its condition (§FS-021-monitors.4.6).
     pub fn homes<'a>(&'a self, id: &str, record: Option<&'a Record>) -> Homes<'a> {
         Homes {
-            site: self.site.get(id),
-            manifest: self.manifest.get(id),
+            site: self.site.shown(id),
+            manifest: self.manifest.shown(id),
             sample: record
                 .and_then(|record| record.last_sample.as_ref())
                 .map(|sample| &sample.description),
@@ -150,6 +152,9 @@ impl Declarations {
         if refused().next().is_none() {
             return;
         }
+        // What a refusal says is why it is not read; what the rest of it reads
+        // as breaks no rule of its own.
+        monitor.faults.clear();
         for fault in refused().flat_map(|refused| refused.faults.iter()) {
             if !monitor.faults.contains(fault) {
                 monitor.faults.push(fault.clone());
@@ -219,6 +224,7 @@ impl Declarations {
     pub fn faulted(&self, document: &Document) -> Vec<String> {
         self.ids()
             .into_iter()
+            .filter(|id| !self.is_refused(id))
             .filter_map(|id| {
                 let faults =
                     overlay::resolve(&id, &self.homes(&id, document.monitors.get(&id))).faults;
@@ -226,6 +232,24 @@ impl Declarations {
                     .then(|| format!("monitor {id} is not read: {}", faults.join("; ")))
             })
             .collect()
+    }
+
+    /// The homes that declare `id`, a declaration they refused included
+    /// (§FS-021-monitors.4.6), site first.
+    pub fn declaring(&self, id: &str) -> Vec<Home> {
+        [(Home::Site, &self.site), (Home::Manifest, &self.manifest)]
+            .into_iter()
+            .filter(|(_, home)| {
+                home.get(id).is_some() || home.refused.iter().any(|refused| name(refused) == id)
+            })
+            .map(|(home, _)| home)
+            .collect()
+    }
+
+    fn is_refused(&self, id: &str) -> bool {
+        [&self.site, &self.manifest]
+            .into_iter()
+            .any(|home| home.refused.iter().any(|refused| name(refused) == id))
     }
 }
 

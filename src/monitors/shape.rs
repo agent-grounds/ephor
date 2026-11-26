@@ -60,6 +60,9 @@ pub struct Refused {
     /// declaration is in error counts as unknown, and a KPI never does
     /// (§FS-021-monitors.21.2).
     pub judged: Option<bool>,
+    /// What of it did read, which it is shown as in its place: its title and
+    /// its condition where those read (§FS-021-monitors.4.6).
+    pub read: Option<Box<Declaration>>,
 }
 
 /// What refused a declaration (§FS-021-monitors.4.2, §FS-021-monitors.4.6).
@@ -89,6 +92,17 @@ impl Declared {
         self.declarations
             .iter()
             .find(|declaration| declaration.id == id)
+    }
+
+    /// The declaration `id` is shown from: the one that fits its shape, or
+    /// what read of the first one refused (§FS-021-monitors.4.6).
+    pub fn shown(&self, id: &str) -> Option<&Declaration> {
+        self.get(id).or_else(|| {
+            self.refused
+                .iter()
+                .filter(|refused| refused.id.as_deref() == Some(id))
+                .find_map(|refused| refused.read.as_deref())
+        })
     }
 
     /// The faults that keep `id` from being read, where this home has any.
@@ -146,7 +160,7 @@ pub fn read_declarations(entries: &[Json], home: Home) -> Declared {
         .map(|(id, _)| id)
         .collect();
     let mut declarations = Vec::new();
-    for (index, declaration) in read {
+    for (index, mut declaration) in read {
         if twice.contains(&declaration.id) {
             refused.push(Refused {
                 index,
@@ -158,7 +172,8 @@ pub fn read_declarations(entries: &[Json], home: Home) -> Declared {
                     home.phrase()
                 )],
                 judged: judged_by(&declaration),
-                notes: declaration.notes,
+                notes: std::mem::take(&mut declaration.notes),
+                read: Some(Box::new(declaration)),
             });
         } else {
             declarations.push(declaration);
@@ -186,6 +201,7 @@ pub fn read_declaration(entry: &Json) -> Result<Declaration, Refused> {
             )],
             notes: Vec::new(),
             judged: None,
+            read: None,
         });
     };
     let mut fields = Fields::new(map);
@@ -249,6 +265,7 @@ pub fn read_declaration(entry: &Json) -> Result<Declaration, Refused> {
                 .get("healthy")
                 .map(|healthy| !healthy.is_null())
                 .or_else(|| judged_by(&declaration)),
+            read: Some(Box::new(declaration)),
         })
     }
 }
