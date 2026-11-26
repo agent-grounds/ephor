@@ -25,7 +25,7 @@ use crate::monitors::history::{self, Line};
 use crate::monitors::known::{self, Known};
 use crate::monitors::model::{Declaration, Home, Kind, Point, Stated, Value};
 use crate::monitors::overlay::Healthy;
-use crate::monitors::page::{self, Standing};
+use crate::monitors::page::{self, Rank, Standing};
 use crate::monitors::state::{Document, Record};
 use crate::monitors::store::Store;
 use crate::monitors::strip::{self, Span};
@@ -249,7 +249,8 @@ fn gathered(declarations: Declarations, store: Store, slot_error: Option<String>
 
 /// One project's group, its rows worst first (§FS-021-monitors.18.3).
 fn group(project: String, mut rows: Vec<MonitorRow>, notes: Vec<String>) -> MonitorProject {
-    rows.sort_by(|a, b| (a.shows.rank, &a.title, &a.id).cmp(&(b.shows.rank, &b.title, &b.id)));
+    // Titles by their letters, whatever their case (§FS-021-monitors.18.3).
+    rows.sort_by_cached_key(|row| (row.shows.rank, row.title.to_lowercase(), row.id.clone()));
     MonitorProject {
         project,
         rows,
@@ -324,16 +325,22 @@ fn build(
         ),
     };
     let of = last.and_then(|kept| kept.of).or(monitor.of);
+    // §FS-021-monitors.7.4: a value that no longer holds, or that ephor no
+    // longer reads, is not shown as one.
+    let holds = standing.rank != Rank::Unknown
+        && !matches!(standing.freshness, Some(Freshness::Unknown { .. }));
     let shows = Shows {
         rank: standing.rank,
         glyph: standing.rank.glyph(),
-        value: last.map_or_else(
+        value: last.filter(|_| holds).map_or_else(
             || "—".to_string(),
             |kept| words::value(&kept.v, monitor.unit.as_deref(), of),
         ),
         every: known.cadence.column(),
         condition: monitor.words(sample.and_then(|sample| sample.ok), of),
         health: standing.column.clone(),
+        word: word(&standing),
+        held: held(&standing, now),
         counts: standing.counts,
         overdue: standing.overdue,
         status: standing.status,
@@ -413,6 +420,25 @@ fn matter_of(
         }
     };
     Some((episode::key(project, id, sort, named), sort, finished))
+}
+
+/// The health as one word, or what keeps a monitor from having one
+/// (§FS-021-monitors.18.7).
+fn word(standing: &Standing) -> String {
+    match standing.column.state.as_str() {
+        unread @ ("not run" | "not read" | "not read yet") => unread.to_string(),
+        _ => standing.rank.word().to_string(),
+    }
+}
+
+/// How long the health has held: as the health column says it where that
+/// is the health, `ok 12d` or `ok 25 points`, else since it began.
+fn held(standing: &Standing, now: DateTime<Utc>) -> Option<String> {
+    let health = standing.health?;
+    match &standing.column.lasted {
+        Some(lasted) if standing.column.state == health.name() => Some(lasted.clone()),
+        _ => standing.since.map(|since| page::lasted(now - since)),
+    }
 }
 
 /// The kind a value reads as, for a monitor no home states one of
@@ -628,4 +654,4 @@ mod detail_view;
 
 #[cfg(test)]
 #[path = "monitors_tests.rs"]
-mod tests;
+pub(crate) mod tests;

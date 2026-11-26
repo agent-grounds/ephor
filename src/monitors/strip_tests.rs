@@ -221,7 +221,30 @@ fn a_booleans_change_counts_its_drops() {
     assert_eq!(change(&lines, &span, &monitor, &judge, 1).says, "no drops");
     let cells = strip(&lines, &span, &monitor, &judge);
     let read = cells.iter().find(|cell| cell.mark == Mark::Read).unwrap();
-    assert_eq!(read.height, Some(5));
+    assert_eq!(read.height, Some(7));
+}
+
+/// §FS-021-monitors.18.5: a boolean draws a strip of health, so it reads
+/// without colour: tall while ok, low while down; a KPI's by its value.
+#[test]
+fn a_booleans_strip_is_drawn_by_its_health() {
+    let yes = |ago| reading(ago, Value::Boolean(true), None);
+    let no = |ago| reading(ago, Value::Boolean(false), None);
+    let lines = vec![yes(3), no(2), no(1), yes(0)];
+    let span = span(&lines, Window::SixHours, now());
+    let drawn = |monitor: &Monitor| -> String {
+        strip(&lines, &span, monitor, &monitor.judge(None))
+            .iter()
+            .filter(|cell| cell.mark == Mark::Read)
+            .map(Cell::glyph)
+            .collect()
+    };
+    let green = monitor(json!({"id": "green", "kind": "boolean"}));
+    assert_eq!(drawn(&green), "█▁▁█");
+    let kpi = monitor(json!({"id": "green", "kind": "boolean", "healthy": null}));
+    assert_eq!(drawn(&kpi), "█▁▁█");
+    let inverted = monitor(json!({"id": "red", "kind": "boolean", "healthy": {"is": false}}));
+    assert_eq!(drawn(&inverted), "▁██▁");
 }
 
 /// §FS-021-monitors.18.5, §FS-021-monitors.18.6: a series draws its last 24

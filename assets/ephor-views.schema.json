@@ -888,16 +888,16 @@
         "shows": {
           "type": "object",
           "description": "What the row shows: its rank and glyph, its columns in words, the header count it falls under, its strip and its change (FS-021-monitors.18.2, FS-021-monitors.18.4).",
-          "required": ["rank", "glyph", "value", "every", "condition", "health", "overdue", "status", "span", "strip", "change", "matter"],
+          "required": ["rank", "glyph", "value", "every", "condition", "health", "word", "overdue", "status", "span", "strip", "change", "matter"],
           "properties": {
             "rank": { "$ref": "#/$defs/monitor_rank" },
             "glyph": { "type": "string" },
-            "value": { "type": "string", "description": "The value in words, `—` where none is read." },
+            "value": { "type": "string", "description": "The value in words, `—` where none is read, the last no longer holds, or ephor no longer reads it (FS-021-monitors.7.4); the row's `value` keeps the last reading." },
             "every": { "type": "string", "description": "The cadence column: `10m`, `1h`, `daily`, `weekly`, or the duration." },
             "condition": { "type": "string", "description": "The condition in words (FS-021-monitors.3.4)." },
             "health": {
               "type": "object",
-              "description": "The health column (FS-021-monitors.18.7): what it says, for how long, and the sentence a monitor ephor does not read carries. `ephor monitors` prints `state` and `lasted` as its health and since columns.",
+              "description": "The page's health column (FS-021-monitors.18.7): what it says, for how long, and the sentence a monitor ephor does not read carries. `ephor monitors` prints it beside `word` where it says more.",
               "required": ["state"],
               "properties": {
                 "state": { "type": "string" },
@@ -905,6 +905,8 @@
                 "sentence": { "type": "string" }
               }
             },
+            "word": { "type": "string", "description": "The health as one word, `down`, `unknown`, `failing`, `warn`, `ok` or `KPI`, or `not run`, `not read` or `not read yet`; `ephor monitors` prints it as its health column (FS-021-monitors.21.1)." },
+            "held": { "type": "string", "description": "How long that health has held, `2d 4h`, or in points for a series drawn by `x` labels; `ephor monitors` prints it as its since column. Absent for a KPI and before the first reading (FS-021-monitors.21.5)." },
             "counts": { "$ref": "#/$defs/monitor_rank", "description": "The header count the row falls under; absent for a monitor not run and one with no reading yet in its first grace (FS-021-monitors.18.2)." },
             "overdue": { "type": "boolean", "description": "Unknown because nothing tried since its slot, which the header counts a second time." },
             "status": { "type": "boolean", "description": "Something judges it, so `--check` reads it (FS-021-monitors.21.2)." },

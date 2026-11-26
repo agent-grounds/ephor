@@ -48,6 +48,15 @@ impl Rank {
         }
     }
 
+    /// The rank as one word, as the command's health column says it:
+    /// `down`, `unknown`, `failing`, `warn`, `ok` or `KPI`.
+    pub fn word(self) -> &'static str {
+        match self {
+            Rank::Kpi => "KPI",
+            rank => rank.counted(),
+        }
+    }
+
     /// The rank as the header counts it: `down`, `unknown`, `failing`,
     /// `warn`, `ok` or `KPIs` (§FS-021-monitors.18.2).
     pub fn counted(self) -> &'static str {
@@ -63,8 +72,8 @@ impl Rank {
 }
 
 /// The health column (§FS-021-monitors.18.7): what it says, and for how long
-/// where it says a duration. `ephor monitors` prints the two as its `health`
-/// and `since` columns (§FS-021-monitors.21.1).
+/// where it says a duration. `ephor monitors` prints it beside the health's
+/// word where it says more (§FS-021-monitors.21.1).
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct Column {
     /// `parked`, `not run`, `not read yet`, `failing 1 of 2`, `recovered`,

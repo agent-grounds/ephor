@@ -6915,7 +6915,13 @@ ephor — monitors   1 down · 0 unknown · 0 failing · 0 warn · 1 ok · 1 KPI
 
 The header counts each monitor once, by what its row shows, and adds
 `overdue` when the watch itself fell behind. Each project's rows go worst
-first, and the projects by their worst row. With no monitors at all the page
+first, and the projects by their worst row. `health` is the health in one
+word, with the page's health column beside it where that says more,
+`unknown (overdue 4h)` or `ok (parked 30m)`, and `since` is how long that
+health has held. A value that no longer holds, or that ephor no longer reads, shows as `—`. On a terminal the
+glyph and the health take their rank's colour and the change its `better`'s;
+the glyph and the strip say the same in shape. A title past 25 characters is
+clipped with `…`. With no monitors at all the page
 says `no monitors — ephor guide monitors says how to declare one`, and a
 project named with `--project` that has none says so.
 

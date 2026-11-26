@@ -14,6 +14,9 @@ use crate::cli::{MonitorsArgs, MonitorsCommand, MonitorsShowArgs};
 use crate::error::{EphorError, Result};
 use crate::feed::commands::known_project;
 use crate::feed::config::load_config;
+use crate::feed::render::Style;
+use crate::monitors::page::Rank;
+use crate::monitors::strip::Way;
 use crate::scope::Projects;
 
 /// The footnote under the table (§FS-021-monitors.21.1).
@@ -51,10 +54,20 @@ pub fn monitors(args: &MonitorsArgs, scope: &Projects) -> Result<ExitCode> {
 }
 
 fn print_page(page: &Monitors, now: DateTime<Utc>) {
-    println!("{}", page.header(now));
+    for line in page_lines(page, now, &Style::detect()) {
+        println!("{line}");
+    }
+}
+
+/// The page as lines of text, coloured by `style`: the glyph and the
+/// health by the row's rank and the change by `better`
+/// (§FS-021-monitors.3.7, §FS-021-monitors.18.6); the glyph and the strip
+/// carry the same in shape, so the table reads without colour.
+fn page_lines(page: &Monitors, now: DateTime<Utc>, style: &Style) -> Vec<String> {
+    let mut lines = vec![page.header(now)];
     if page.projects.is_empty() {
-        println!();
-        println!("{NO_MONITORS}");
+        lines.push(String::new());
+        lines.push(NO_MONITORS.to_string());
     }
     let rows: Vec<[String; 6]> = page.rows().map(cells).collect();
     let mut widths = COLUMNS.map(str::len);
@@ -66,49 +79,91 @@ fn print_page(page: &Monitors, now: DateTime<Utc>) {
     let title = page
         .projects
         .iter()
-        .map(|group| group.project.chars().count())
-        .chain(page.rows().map(|row| row.title.chars().count()))
+        .map(|group| clipped(&group.project).chars().count())
+        .chain(page.rows().map(|row| clipped(&row.title).chars().count()))
         .max()
         .unwrap_or(0)
-        .max(24);
+        .max(TITLE - 1);
     let mut rows = rows.into_iter();
     for group in &page.projects {
-        println!();
+        lines.push(String::new());
         let heading: Vec<String> = match group.rows.is_empty() {
             true => Vec::new(),
             false => COLUMNS.iter().map(|name| name.to_string()).collect(),
         };
-        println!("  {}", line(&group.project, &heading, title, &widths));
+        let plain = |_: usize, cell: &str| cell.to_string();
+        lines.push(format!(
+            "  {}",
+            line(&clipped(&group.project), &heading, title, &widths, plain)
+        ));
         for row in &group.rows {
             let cells = rows.next().unwrap_or_default();
-            println!(
+            let paint = |at: usize, cell: &str| match at {
+                2 => ranked(style, row.shows.rank, cell),
+                4 => match row.shows.change.way {
+                    Way::Better => style.green(cell),
+                    Way::Worse => style.amber(cell),
+                    Way::Plain => cell.to_string(),
+                },
+                _ => cell.to_string(),
+            };
+            lines.push(format!(
                 "{} {}",
-                row.shows.glyph,
-                line(&row.title, &cells, title, &widths)
-            );
+                ranked(style, row.shows.rank, row.shows.glyph),
+                line(&clipped(&row.title), &cells, title, &widths, paint)
+            ));
         }
         for note in &group.notes {
-            println!("  note: {note}");
+            lines.push(format!("  note: {note}"));
         }
     }
     for project in &page.without {
-        println!();
-        println!("  {project} has no monitors");
+        lines.push(String::new());
+        lines.push(format!("  {project} has no monitors"));
     }
     if !page.is_empty() {
-        println!();
-        println!("  {FOOTNOTE}");
+        lines.push(String::new());
+        lines.push(format!("  {FOOTNOTE}"));
+    }
+    lines
+}
+
+/// The colour a rank is shown in: down red, failing and warn amber, ok
+/// green, and unknown and a KPI dim (§FS-021-monitors.3.7).
+fn ranked(style: &Style, rank: Rank, text: &str) -> String {
+    match rank {
+        Rank::Down => style.red(text),
+        Rank::Failing | Rank::Warn => style.amber(text),
+        Rank::Ok => style.green(text),
+        Rank::Unknown | Rank::Kpi => style.dim(text),
+    }
+}
+
+/// The widest a title is printed, `…` standing for the rest, so one long
+/// title does not push every row of the page out of line.
+const TITLE: usize = 25;
+
+fn clipped(title: &str) -> String {
+    match title.chars().count() > TITLE {
+        true => title.chars().take(TITLE - 1).chain(['…']).collect(),
+        false => title.to_string(),
     }
 }
 
 /// One line of the table: the title padded, then each column padded but
-/// the last.
-fn line(title: &str, cells: &[String], title_width: usize, widths: &[usize; 6]) -> String {
+/// the last, each cell painted by `paint` after it is measured.
+fn line(
+    title: &str,
+    cells: &[String],
+    title_width: usize,
+    widths: &[usize; 6],
+    paint: impl Fn(usize, &str) -> String,
+) -> String {
     let mut said = pad(title, title_width + 2);
     for (at, (cell, width)) in cells.iter().zip(widths).enumerate() {
-        match at + 1 == widths.len() {
-            true => said.push_str(cell),
-            false => said.push_str(&pad(cell, width + 2)),
+        said.push_str(&paint(at, cell));
+        if at + 1 < widths.len() {
+            said.push_str(&" ".repeat((width + 2).saturating_sub(cell.chars().count())));
         }
     }
     said.trim_end().to_string()
@@ -119,18 +174,16 @@ fn pad(text: &str, width: usize) -> String {
     format!("{text}{}", " ".repeat(short))
 }
 
-/// A row's cells after its title.
+/// A row's cells after its title: its value, its cadence, its health and
+/// how long that has held, its change, and its condition with its notes
+/// (§FS-021-monitors.21.1).
 fn cells(row: &MonitorRow) -> [String; 6] {
     let shows = &row.shows;
     [
         shows.value.clone(),
         shows.every.clone(),
-        shows.health.state.clone(),
-        shows
-            .health
-            .lasted
-            .clone()
-            .unwrap_or_else(|| "—".to_string()),
+        row.health_says(),
+        shows.held.clone().unwrap_or_else(|| "—".to_string()),
         shows.change.says.clone(),
         // §FS-021-monitors.4.6, §FS-021-monitors.7.1: the row's notes follow its condition.
         std::iter::once(row.condition_says())
@@ -266,3 +319,7 @@ fn print_detail(detail: &MonitorDetail, now: DateTime<Utc>) {
     println!();
     println!("matter: {}", detail.matter_says());
 }
+
+#[cfg(test)]
+#[path = "monitors_tests.rs"]
+mod tests;

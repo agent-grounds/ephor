@@ -184,6 +184,21 @@ pub struct MonitorRow {
 }
 
 impl MonitorRow {
+    /// The command's health column (§FS-021-monitors.21.1): the health as
+    /// one word, with what the page's health column says beside it where
+    /// that is more (§FS-021-monitors.18.7): `ok`, `failing 1 of 2`,
+    /// `unknown (overdue 4h)`, `ok (parked 30m)`, `down (recovering 1 of 2)`.
+    pub fn health_says(&self) -> String {
+        let (word, column) = (&self.shows.word, &self.shows.health);
+        if column.state == *word {
+            return word.clone();
+        }
+        if column.state.starts_with(&format!("{word} ")) {
+            return column.state.clone();
+        }
+        format!("{word} ({})", column.text())
+    }
+
     /// A number in the row's terms, its unit and its whole, as its value is
     /// said: a point's value, `17.4 MiB`, `12/15`.
     pub fn say(&self, number: f64) -> String {
@@ -243,7 +258,8 @@ impl MonitorRow {
 pub struct Shows {
     pub rank: Rank,
     pub glyph: &'static str,
-    /// The value in words: `79.2%`, `12/15`, `yes`, `—` where none is read.
+    /// The value in words: `79.2%`, `12/15`, `yes`, `—` where none is read
+    /// or the last no longer holds (§FS-021-monitors.7.4).
     pub value: String,
     /// The cadence column: `10m`, `daily`, `weekly` (§FS-021-monitors.18.4).
     pub every: String,
@@ -251,6 +267,14 @@ pub struct Shows {
     pub condition: String,
     /// The health column (§FS-021-monitors.18.7).
     pub health: Column,
+    /// The health as one word: `down`, `unknown`, `failing`, `warn`, `ok`,
+    /// `KPI`, or `not run`, `not read` or `not read yet` for a monitor ephor
+    /// does not read or has not yet read.
+    pub word: String,
+    /// How long that health has held, `2d 4h`, or in points for a series
+    /// drawn by `x` labels; none for a KPI and before the first reading.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub held: Option<String>,
     /// The header count the row falls under, none where it is not yet a
     /// failure (§FS-021-monitors.18.2).
     #[serde(skip_serializing_if = "Option::is_none")]
