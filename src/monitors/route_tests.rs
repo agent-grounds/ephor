@@ -230,6 +230,27 @@ fn a_declared_monitor_no_answer_carries_is_unreadable_on_a_plain_refresh() {
     assert!(chosen.deliveries.is_empty());
 }
 
+/// §FS-021-monitors.5.6, §FS-021-monitors.5.5: every answer a plain refresh
+/// takes is taken to read a declared monitor no answer owns, so one that
+/// fails is an unreadable read of it saying why, rather than a sentence that
+/// blames the answers, and answers that all park are a parked read of it.
+#[test]
+fn an_unowned_monitor_is_read_as_the_answers_taken_for_it_ended() {
+    let fixture = Fixture::new(&[("wanted", Route::Brought)], &[]);
+    let failed = Answer {
+        source: Owner::CustomStatus,
+        outcome: Outcome::Failed("exited 2".into()),
+    };
+    let routed = fixture.route(true, &[answered(from("other"), json!([])), failed]);
+    assert_eq!(unreadable(routed.deliveries.get("wanted")), "exited 2");
+    let parked = Answer {
+        source: Owner::CustomStatus,
+        outcome: Outcome::Parked,
+    };
+    let routed = fixture.route(true, &[parked]);
+    assert_eq!(routed.deliveries.get("wanted"), Some(&Delivery::Parked));
+}
+
 #[test]
 fn a_monitor_nothing_declared_is_forgotten_after_30_days() {
     let brought = utc("2026-10-26T00:00:00Z");

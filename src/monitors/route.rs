@@ -236,12 +236,35 @@ pub fn route(watched: &Watched, answers: &[Answer]) -> Routed {
                 routed
                     .deliveries
                     .entry(id.clone())
-                    .or_insert_with(|| Delivery::Unreadable(format!("no answer carries {id}")));
+                    .or_insert_with(|| carried_by_none(id, answers));
             }
         }
     }
     routed.owners = owners;
     routed
+}
+
+/// What a plain refresh read of a declared monitor no answer owns, where none
+/// carried it (§FS-021-monitors.5.6): every answer it took was taken to read
+/// it, so one that failed is an unreadable read of it saying why, answers
+/// that all parked are a parked read, and otherwise `no answer carries <id>`
+/// (§FS-021-monitors.5.5).
+fn carried_by_none(id: &str, answers: &[Answer]) -> Delivery {
+    let failed = answers.iter().find_map(|answer| match &answer.outcome {
+        Outcome::Failed(why) => Some(why),
+        _ => None,
+    });
+    if let Some(why) = failed {
+        return Delivery::Unreadable(why.clone());
+    }
+    let parked = !answers.is_empty()
+        && answers
+            .iter()
+            .all(|answer| answer.outcome == Outcome::Parked);
+    match parked {
+        true => Delivery::Parked,
+        false => Delivery::Unreadable(format!("no answer carries {id}")),
+    }
 }
 
 /// Whether a monitor is forgotten: one nothing declared that no answer has
