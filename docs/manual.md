@@ -6941,10 +6941,11 @@ ephor monitors show widget/coverage --json  # the published `monitor` view
   ended ([§FS-021-monitors.21.2](functional-spec/FS-021-monitors.md#212---check-turns-down-and-unknown-into-an-exit-code)).
 - `ephor monitors show <project>/<id>` is the detail view: the health and
   since when, the value, the condition and the home each part came from, the
-  cadence and freshness, the hold, the readings in the window, the episodes
-  and the matter, or why there is none. It is about one monitor, so it
-  refuses the scope selectors, and an id the project does not have is
-  refused with the ids it has
+  cadence and freshness, the hold, the points a repository hands over, every
+  reading in the window, the episodes and the matter, or why there is none.
+  It is about one monitor, so it refuses the scope selectors, and the page's
+  own flags written before `show` rather than after it, and an id the
+  project does not have is refused with the ids it has
   ([§FS-021-monitors.21.3](functional-spec/FS-021-monitors.md#213-ephor-monitors-show-is-the-detail-view)).
 
 Neither command fetches, runs a monitor or writes anything: they read the

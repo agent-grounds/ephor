@@ -184,6 +184,12 @@ pub struct MonitorRow {
 }
 
 impl MonitorRow {
+    /// A number in the row's terms, its unit and its whole, as its value is
+    /// said: a point's value, `17.4 MiB`, `12/15`.
+    pub fn say(&self, number: f64) -> String {
+        crate::monitors::words::value(&Value::Number(number), self.unit.as_deref(), self.of)
+    }
+
     /// What the row notes beside its condition: each key its declarations
     /// do not know, and a sample measured after its read
     /// (§FS-021-monitors.4.6, §FS-021-monitors.7.1), each time said by `when`.
@@ -358,9 +364,59 @@ pub struct ConditionView {
     /// states them, `{"healthy": {"min": 75}, "from": "manifest"}`.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub overrides: Vec<Json>,
+    /// Each part in words, with the home it came from and what it overrode
+    /// (§FS-021-monitors.19): `healthy ≥ 80%` from the site over the
+    /// manifest's `healthy ≥ 75%`.
+    pub parts: Vec<ConditionPart>,
+}
+
+/// One part of a condition, `healthy` or `warn`, in words.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct ConditionPart {
+    /// `healthy` or `warn`.
+    pub part: &'static str,
+    /// `healthy ≥ 80%`, `warn below 90%`, `KPI`.
+    pub says: String,
+    /// What it came from, as `from` says it for `healthy` and `warn_from`
+    /// for `warn`.
+    pub from: String,
+    /// The manifest's, where the site's overrides it, in words.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub over: Option<String>,
+}
+
+impl ConditionPart {
+    /// `healthy ≥ 80% (the site's, over the manifest's healthy ≥ 75%)`.
+    pub fn say(&self) -> String {
+        let from = match self.from.as_str() {
+            "site" => "the site's",
+            "manifest" => "the manifest's",
+            "sample" => "its samples'",
+            "default" => "the kind's default",
+            _ => return self.says.clone(),
+        };
+        match &self.over {
+            Some(over) => format!("{} ({from}, over the manifest's {over})", self.says),
+            None => format!("{} ({from})", self.says),
+        }
+    }
 }
 
 impl ConditionView {
+    /// The condition and where each part came from, as the detail view
+    /// says it (§FS-021-monitors.19).
+    pub fn parts_say(&self) -> String {
+        match self.parts.is_empty() {
+            true => self.says.clone(),
+            false => self
+                .parts
+                .iter()
+                .map(ConditionPart::say)
+                .collect::<Vec<_>>()
+                .join(" · "),
+        }
+    }
+
     pub fn judge_from(judge: &Judge, healthy_home: Option<Home>) -> String {
         match (judge, healthy_home) {
             (Judge::Kpi, _) => "kpi".to_string(),
@@ -424,12 +480,13 @@ pub struct MonitorDetail {
     pub chart: Vec<ChartPoint>,
     /// Today's `healthy` and `warn` bounds, drawn as threshold lines.
     pub thresholds: Vec<Threshold>,
-    /// The repository's points, for a series (§FS-021-monitors.2.4).
+    /// The points the repository supplied: a series', or the history a
+    /// number hands over (§FS-021-monitors.2.2, §FS-021-monitors.2.4).
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub points: Vec<Point>,
     /// The episodes inside the window.
     pub episodes: Vec<EpisodeView>,
-    /// The last readings, newest first.
+    /// Every reading in the window, newest first.
     pub readings: Vec<ReadingView>,
     /// Why there is no open matter, where there is none.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -461,12 +518,26 @@ impl MonitorDetail {
         said
     }
 
-    /// `window 7d`, or `window n/a: series`.
+    /// `window 7d`, `window 7d · over the last 24 readings` where those
+    /// reach further back (§FS-021-monitors.18.5), or `window n/a: series`.
     pub fn window_says(&self) -> String {
-        match self.windowed {
-            true => format!("window {}", self.window.label()),
-            false => "window n/a: series".to_string(),
+        match (self.windowed, self.row.shows.span.by_readings) {
+            (false, _) => "window n/a: series".to_string(),
+            (true, true) => format!("window {} · over the last 24 readings", self.window.label()),
+            (true, false) => format!("window {}", self.window.label()),
         }
+    }
+
+    /// The first line under the title (§FS-021-monitors.19): the health as
+    /// the health column says it, then since when the health has held,
+    /// `✖ down 2h · down since 2026-11-25 10:00`.
+    pub fn health_says(&self, when: impl Fn(DateTime<Utc>) -> String) -> String {
+        let row = &self.row;
+        let mut said = format!("{} {}", row.shows.glyph, row.shows.health.text());
+        if let (Some(health), Some(since)) = (row.health, row.since) {
+            said.push_str(&format!(" · {} since {}", health.name(), when(since)));
+        }
+        said
     }
 }
 

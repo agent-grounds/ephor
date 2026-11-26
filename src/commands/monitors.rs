@@ -182,14 +182,15 @@ fn print_detail(detail: &MonitorDetail, now: DateTime<Utc>) {
         crate::api::monitor_views::refreshed(detail.refreshed_at, now)
     );
     println!();
-    let since = row.since.map(|since| format!(" · since {}", when(since)));
-    println!(
-        "{} {}{}",
-        shows.glyph,
-        shows.health.text(),
-        since.unwrap_or_default()
-    );
-    println!("value: {} · {}", shows.value, row.condition_says());
+    println!("{}", detail.health_says(when));
+    if let Some(sentence) = &shows.health.sentence {
+        println!("{sentence}");
+    }
+    println!("value: {}", shows.value);
+    println!("condition: {}", row.condition.parts_say());
+    if let Some(said) = &row.detail {
+        println!("detail: {said}");
+    }
     for note in row.notes_say(when) {
         println!("note: {note}");
     }
@@ -219,7 +220,16 @@ fn print_detail(detail: &MonitorDetail, now: DateTime<Utc>) {
     let strip: String = shows.strip.iter().map(|cell| cell.glyph()).collect();
     println!("strip: {strip}  change {}", shows.change.says);
     if !detail.points.is_empty() {
-        println!("points: {}", detail.points.len());
+        println!();
+        println!("points ({})", detail.points.len());
+        for point in &detail.points {
+            let at = match (&point.t, &point.x) {
+                (Some(t), _) => when(t.with_timezone(&Utc)),
+                (None, Some(x)) => x.clone(),
+                (None, None) => "—".to_string(),
+            };
+            println!("  {at:<16}  {}", row.say(point.v));
+        }
     }
     println!();
     println!("episodes ({})", detail.episodes.len());
