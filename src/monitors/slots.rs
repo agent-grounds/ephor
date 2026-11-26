@@ -7,7 +7,9 @@
 //! first occurrence. Every function here is generic over the zone, so the
 //! rules run under test with a zone that changes its clocks.
 
-use chrono::{DateTime, Datelike, Days, NaiveDate, NaiveDateTime, TimeDelta, TimeZone, Utc};
+use chrono::{
+    DateTime, Datelike, Days, MappedLocalTime, NaiveDate, NaiveDateTime, TimeDelta, TimeZone, Utc,
+};
 
 use crate::monitors::cadence::{At, Cadence};
 
@@ -144,15 +146,26 @@ fn times_of_day(minutes: i64, at: At) -> Vec<chrono::NaiveTime> {
 /// first occurrence where a change of clocks repeats it, and the first instant
 /// after the gap where a change skips it.
 pub fn instant<Tz: TimeZone>(zone: &Tz, wall: NaiveDateTime) -> Option<DateTime<Utc>> {
-    if let Some(first) = zone.from_local_datetime(&wall).earliest() {
-        return Some(first.with_timezone(&Utc));
+    if let Some(first) = first_occurrence(zone, wall) {
+        return Some(first);
     }
     (1..=LONGEST_GAP_MINUTES).find_map(|minute| {
         let later = wall.checked_add_signed(TimeDelta::minutes(minute))?;
-        zone.from_local_datetime(&later)
-            .earliest()
-            .map(|first| first.with_timezone(&Utc))
+        first_occurrence(zone, later)
     })
+}
+
+/// The earlier of the instants a wall time names. A zone need not list a
+/// repeated time earliest first, and the machine's own lists its standard
+/// reading first, which is the later instant where the clocks go back.
+fn first_occurrence<Tz: TimeZone>(zone: &Tz, wall: NaiveDateTime) -> Option<DateTime<Utc>> {
+    match zone.from_local_datetime(&wall) {
+        MappedLocalTime::Single(one) => Some(one.with_timezone(&Utc)),
+        MappedLocalTime::Ambiguous(one, other) => {
+            Some(one.with_timezone(&Utc).min(other.with_timezone(&Utc)))
+        }
+        MappedLocalTime::None => None,
+    }
 }
 
 #[cfg(test)]
