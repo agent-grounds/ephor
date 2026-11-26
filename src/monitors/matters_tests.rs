@@ -267,3 +267,21 @@ fn moves_say_what_moved() {
     );
     assert!(now.since(&now).is_empty());
 }
+
+/// Still down after its work ended, the matter is New again until work is
+/// laid on it anew (§FS-021-monitors.13.2, §FS-019-waiting.1.2); any other
+/// matter with work laid stays processed.
+#[test]
+fn a_renewed_matter_is_processed_only_by_work_laid_since() {
+    let mut record = Record::new(utc("2026-11-20T06:00:00Z"));
+    record.drop = Some(drop(Some(Moved {
+        at: utc("2026-11-25T09:00:00Z"),
+        why: Movement::StillDown,
+    })));
+    let item = one(&document(record), utc("2026-11-25T10:00:00Z"));
+    let before = utc("2026-11-25T07:00:00Z");
+    let after = utc("2026-11-25T09:30:00Z");
+    assert!(!still_processed(&item.source, &item.raw, [before]));
+    assert!(still_processed(&item.source, &item.raw, [before, after]));
+    assert!(still_processed("custom-status", &item.raw, [before]));
+}

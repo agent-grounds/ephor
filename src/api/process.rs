@@ -91,16 +91,17 @@ impl Session {
     /// still down or unknown after its work ended is New again until work is
     /// laid on it anew (§FS-019-waiting.1.2, §FS-021-monitors.13.2).
     pub(crate) fn has_work(&self, item: &Item) -> bool {
-        let renewed = crate::monitors::matters::stated(&item.source, &item.raw)
-            .and_then(|stated| stated.renewed);
         self.dispatcher.as_ref().is_some_and(|dispatcher| {
             dispatcher
                 .ledger
                 .entries
                 .get(&item.id)
-                .is_some_and(|entry| match renewed {
-                    Some(renewed) => entry.dispatches.iter().any(|laid| laid.at > renewed),
-                    None => true,
+                .is_some_and(|entry| {
+                    crate::monitors::matters::still_processed(
+                        &item.source,
+                        &item.raw,
+                        entry.dispatches.iter().map(|laid| laid.at),
+                    )
                 })
         })
     }

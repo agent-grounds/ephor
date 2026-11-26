@@ -96,6 +96,21 @@ impl Moves {
     }
 }
 
+/// Whether work laid at `laid` still processes the matter: always, except a
+/// monitor's matter still down or unknown after its work ended, which is New
+/// again until work is laid on it anew (§FS-021-monitors.13.2,
+/// §FS-019-waiting.1.2).
+pub fn still_processed(
+    source: &str,
+    raw: &Json,
+    laid: impl IntoIterator<Item = DateTime<Utc>>,
+) -> bool {
+    match stated(source, raw).and_then(|stated| stated.renewed) {
+        Some(renewed) => laid.into_iter().any(|at| at > renewed),
+        None => true,
+    }
+}
+
 /// What the monitor slot's matter states of itself. None for every other
 /// source, whatever it carries at the same key (§FS-003-feed-categories.2).
 pub fn stated(source: &str, raw: &Json) -> Option<Stated> {
