@@ -679,6 +679,13 @@ A sample's fields:
 Paths in a sample resolve against the place the monitor ran, as every
 answer's do.
 
+Text a sample or a declaration gives to be shown, a `title`, a `detail`, a
+`description`, a `unit` or a level's name, is read as one line: each run of
+whitespace, line breaks included, is one space and a control character is
+dropped, so it cannot break the row it is shown on or reach a terminal as
+anything but text, as for any name ephor does not trust
+([§FS-011-command-line.4](FS-011-command-line.md#4-a-conversation-and-the-moves-inside-it)).
+
 ### 8.2 One bad sample is that monitor unreadable, never the answer refused
 
 A sample is checked on its own. One that does not fit its shape, or whose

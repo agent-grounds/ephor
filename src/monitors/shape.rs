@@ -12,6 +12,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use chrono::{DateTime, FixedOffset};
 use serde_json::{Map, Value as Json};
 
+use crate::matter::one_line_of;
 use crate::monitors::model::{
     Better, Condition, Declaration, Description, Home, Kind, Point, Sample, Source, Stated, Value,
 };
@@ -222,9 +223,9 @@ pub fn read_declaration(entry: &Json) -> Result<Declaration, Refused> {
     let declaration = Declaration {
         id: id.clone().unwrap_or_default(),
         title: fields.title("title"),
-        description: fields.string("description"),
+        description: fields.text("description"),
         kind: fields.kind("kind"),
-        unit: fields.string("unit"),
+        unit: fields.text("unit"),
         better: fields.better("better"),
         of: fields.number("of"),
         levels: fields.levels("levels"),
@@ -246,7 +247,7 @@ pub fn read_declaration(entry: &Json) -> Result<Declaration, Refused> {
     let mut notes: Vec<String> = map
         .keys()
         .filter(|key| !DECLARATION_KEYS.contains(&key.as_str()))
-        .map(|key| format!("unknown field {key}"))
+        .map(|key| format!("unknown field {}", one_line_of(key)))
         .collect();
     notes.append(&mut fields.notes);
     if fields.faults.is_empty() {
@@ -309,7 +310,7 @@ pub fn read_sample(entry: &Json) -> Result<Sample, SampleFault> {
         None => None,
         Some(Json::Bool(value)) => Some(Value::Boolean(*value)),
         Some(Json::Number(number)) => number.as_f64().map(Value::Number),
-        Some(Json::String(level)) => Some(Value::Level(level.clone())),
+        Some(Json::String(level)) => Some(Value::Level(one_line_of(level))),
         Some(other) => {
             fields.fault(format!(
                 "the sample's value is {}, not true, false, a number or a level",
@@ -324,18 +325,18 @@ pub fn read_sample(entry: &Json) -> Result<Sample, SampleFault> {
         of: fields.number("of"),
         at: fields.time("at"),
         ok: fields.boolean("ok"),
-        detail: fields.string("detail"),
+        detail: fields.text("detail"),
         url: fields.string("url"),
         points: fields.points("points"),
         description: Description {
             title: fields.title("title"),
             kind: fields.kind("kind"),
-            unit: fields.string("unit"),
+            unit: fields.text("unit"),
             better: fields.better("better"),
             levels: fields.levels("levels"),
             healthy: fields.nullable("healthy", Fields::condition),
             warn: fields.condition_of("warn"),
-            description: fields.string("description"),
+            description: fields.text("description"),
         },
     };
     match fields.faults.into_iter().next() {
@@ -408,8 +409,15 @@ impl<'a> Fields<'a> {
         }
     }
 
+    /// Text it brings to be shown, as one line (§FS-021-monitors.8.1): each
+    /// run of whitespace one space and no control character, as for any
+    /// name ephor does not trust (§FS-011-command-line.4).
+    fn text(&mut self, key: &str) -> Option<String> {
+        self.string(key).map(|text| one_line_of(&text))
+    }
+
     fn title(&mut self, key: &str) -> Option<String> {
-        let title = self.string(key)?;
+        let title = self.text(key)?;
         if title.is_empty() {
             self.fault(format!("{key} is empty"));
             return None;
@@ -486,8 +494,8 @@ impl<'a> Fields<'a> {
                 .iter()
                 .map(|item| {
                     item.as_str()
+                        .map(one_line_of)
                         .filter(|name| !name.is_empty())
-                        .map(String::from)
                 })
                 .collect()
         });
@@ -551,7 +559,7 @@ impl<'a> Fields<'a> {
             unknown: map
                 .keys()
                 .filter(|name| !CONDITION_KEYS.contains(&name.as_str()))
-                .cloned()
+                .map(|name| one_line_of(name))
                 .collect(),
             ..Condition::default()
         };
@@ -560,11 +568,11 @@ impl<'a> Fields<'a> {
                 ("is", Json::Bool(is)) => condition.is = Some(*is),
                 ("min", Json::Number(min)) => condition.min = min.as_f64(),
                 ("max", Json::Number(max)) => condition.max = max.as_f64(),
-                ("at_most", Json::String(level)) => condition.at_most = Some(level.clone()),
+                ("at_most", Json::String(level)) => condition.at_most = Some(one_line_of(level)),
                 ("in", Json::Array(items)) if !items.is_empty() => {
                     match items
                         .iter()
-                        .map(|item| item.as_str().map(String::from))
+                        .map(|item| item.as_str().map(one_line_of))
                         .collect()
                     {
                         Some(levels) => condition.within = Some(levels),
@@ -607,7 +615,8 @@ impl<'a> Fields<'a> {
         };
         for name in map.keys() {
             if !["command", "file", "cwd"].contains(&name.as_str()) {
-                self.notes.push(format!("unknown field {key}.{name}"));
+                self.notes
+                    .push(format!("unknown field {key}.{}", one_line_of(name)));
             }
         }
         match (text("command"), text("file")) {
@@ -721,7 +730,7 @@ impl<'a> Fields<'a> {
                     }),
                     (None, Some(x)) => Some(Point {
                         t: None,
-                        x: Some(x.as_str()?.to_string()),
+                        x: Some(one_line_of(x.as_str()?)),
                         v,
                     }),
                     _ => None,

@@ -360,3 +360,61 @@ fn a_refused_declaration_says_whether_something_judges_it() {
         None
     );
 }
+
+#[test]
+fn text_a_sample_brings_to_be_shown_is_one_line_with_no_control_character() {
+    // §FS-021-monitors.8.1: a row cannot be broken, nor a terminal reached, by what it shows.
+    let sample = read_sample(&json!({
+        "id": "cov",
+        "value": "a\u{1b}[5mb",
+        "detail": "ok\u{1b}]0;TITLE\u{7} \u{1b}[31mRED\u{1b}[0m\nSECOND  LINE",
+        "title": "Self\u{1b}[2Jcleared",
+        "unit": "m\ts",
+        "levels": ["a\u{1b}[5mb", "c"],
+        "description": "two\r\nlines"
+    }))
+    .expect("read");
+    assert_eq!(
+        sample.detail.as_deref(),
+        Some("ok]0;TITLE [31mRED[0m SECOND LINE")
+    );
+    assert_eq!(sample.description.title.as_deref(), Some("Self[2Jcleared"));
+    assert_eq!(sample.description.unit.as_deref(), Some("m s"));
+    assert_eq!(sample.description.description.as_deref(), Some("two lines"));
+    assert_eq!(
+        sample.description.levels,
+        Some(vec!["a[5mb".to_string(), "c".to_string()])
+    );
+    assert_eq!(sample.value, Some(Value::Level("a[5mb".to_string())));
+}
+
+#[test]
+fn text_a_declaration_brings_to_be_shown_is_one_line_and_so_is_a_key_it_is_noted_by() {
+    let declaration = read_declaration(&json!({
+        "id": "nightly",
+        "title": "Cov\u{1b}[5mblink",
+        "kind": "level",
+        "levels": ["passed", "fa\u{7}iled"],
+        "healthy": {"at_most": "fa\u{7}iled"},
+        "warn": {"in": ["pass\ned"]},
+        "he\u{1b}]0;NOTE\u{7}x": 1
+    }))
+    .expect("read");
+    assert_eq!(declaration.title.as_deref(), Some("Cov[5mblink"));
+    assert_eq!(
+        declaration.levels,
+        Some(vec!["passed".to_string(), "failed".to_string()])
+    );
+    let Stated::Said(healthy) = &declaration.healthy else {
+        panic!("healthy is said");
+    };
+    assert_eq!(healthy.at_most.as_deref(), Some("failed"));
+    assert_eq!(
+        declaration.warn.said().and_then(|warn| warn.within.clone()),
+        Some(vec!["pass ed".to_string()])
+    );
+    assert_eq!(
+        declaration.notes,
+        vec!["unknown field he]0;NOTEx".to_string()]
+    );
+}
