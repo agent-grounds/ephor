@@ -38,9 +38,10 @@ pub struct Monitors {
 }
 
 impl Monitors {
-    /// Whether there is any row to show.
+    /// Whether there is no row to show; a project whose manifest could not
+    /// be read may still have its notes to say (§FS-021-monitors.17.3).
     pub fn is_empty(&self) -> bool {
-        self.projects.is_empty()
+        self.rows().next().is_none()
     }
 
     /// Every row, in the page's order: what `[` and `]` step through

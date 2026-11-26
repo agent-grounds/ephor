@@ -3,7 +3,9 @@
 //! columns `value every health since change condition` and the footnote on
 //! what a change covers (§FS-021-monitors.21.1, §FS-021-monitors.18.2,
 //! §FS-021-monitors.18.3). With no monitors it says how to declare one, and a
-//! project named with `--project` that has none says so. `--json` prints the
+//! project named with `--project` that has none says so; a manifest that
+//! cannot be read is said rather than taken for none
+//! (§FS-021-monitors.17.3). `--json` prints the
 //! published `monitors` view (§FS-021-monitors.21.5). `--check` exits 4 while
 //! a status is down or unknown, or its declaration is in error, and 0 once
 //! none is, and never for a KPI, unknown or in error
@@ -310,6 +312,38 @@ fn check_exits_4_on_a_status_whose_declaration_is_in_error_and_never_on_a_kpi() 
     let read = page(&world, &[]);
     assert_eq!(read["counts"]["unknown"], json!(1), "{read}");
     world.ephor().args(["monitors", "--check"]).assert().code(0);
+}
+
+#[test]
+fn a_manifest_that_cannot_be_read_is_said_rather_than_taken_for_none() {
+    let world = World::new();
+    let manifest = world.manifest(json!({ "version": 1, "monitors": [] }));
+    std::fs::write(&manifest, "{\"version\": 1, \"monitors\": [").unwrap();
+    let printed = table(&world, &["--project", PROJECT]);
+    assert!(!printed.contains(NONE), "{printed}");
+    assert!(
+        !printed.contains(&format!("{PROJECT} has no monitors")),
+        "{printed}"
+    );
+    assert!(
+        printed.contains("  note: the manifest could not be read: "),
+        "{printed}"
+    );
+    assert!(!printed.contains(FOOTNOTE), "{printed}");
+
+    let read = page(&world, &[]);
+    assert_eq!(read["projects"][0]["project"], json!(PROJECT), "{read}");
+    assert_eq!(read["projects"][0]["rows"], json!([]), "{read}");
+    assert!(read.get("without").is_none(), "{read}");
+
+    let output = world
+        .ephor()
+        .args(["monitors", "show", &format!("{PROJECT}/coverage")])
+        .output()
+        .unwrap();
+    assert!(!output.status.success());
+    let said = String::from_utf8_lossy(&output.stderr);
+    assert!(said.contains("the manifest could not be read: "), "{said}");
 }
 
 #[test]

@@ -2293,7 +2293,7 @@
       "items": { "type": "string" }
     },
     "monitors": {
-      "description": "`ephor monitors --json` (FS-021-monitors.21.1, FS-021-monitors.21.5) — the Monitors page: the header's counts, each monitor once by the rank its row shows and `overdue` a second time (FS-021-monitors.18.2), then each project the scope reaches that has a monitor, the one holding the worst row first, its monitors worst first (FS-021-monitors.18.3). It reads the store and the cache; nothing is fetched or run to print it (FS-021-monitors.21.4).",
+      "description": "`ephor monitors --json` (FS-021-monitors.21.1, FS-021-monitors.21.5) — the Monitors page: the header's counts, each monitor once by the rank its row shows and `overdue` a second time (FS-021-monitors.18.2), then each project the scope reaches that has a monitor, the one holding the worst row first, its monitors worst first (FS-021-monitors.18.3), and last any whose manifest could not be read, with no row and the note that says why (FS-021-monitors.17.3). It reads the store and the cache; nothing is fetched or run to print it (FS-021-monitors.21.4).",
       "type": "object",
       "required": ["window", "counts", "projects"],
       "properties": {
