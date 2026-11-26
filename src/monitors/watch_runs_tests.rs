@@ -277,6 +277,28 @@ fn a_store_that_cannot_be_written_takes_back_what_the_read_appended() {
     assert!(record.drop.is_some(), "{record:?}");
 }
 
+/// §FS-021-monitors.1.1, §FS-021-monitors.8.2: a sample whose id is longer
+/// than a monitor id may be is read for no monitor and noted, so no history
+/// is named after it and the slot does not fail on a name the file system
+/// refuses.
+#[test]
+fn a_sample_with_an_id_too_long_is_read_for_no_monitor() {
+    let site = site(None);
+    let long = "a".repeat(300);
+    let brought = Outcome::Answered(vec![json!({"id": long, "value": 1})]);
+    let report = refresh_bringing(&site, &[], vec![brought], When::Due, at(0));
+    assert_eq!(report.slot, Some(Ok(())), "{:?}", report.notes);
+    assert!(
+        report
+            .notes
+            .iter()
+            .any(|note| note.starts_with("a sample is not read: a sample's id")),
+        "{:?}",
+        report.notes
+    );
+    assert!(site.store.load().unwrap().monitors.is_empty());
+}
+
 /// §FS-021-monitors.5.6, §FS-021-monitors.14.4: a monitor nothing declares
 /// that no answer brought for 30 days is forgotten: its open episodes end,
 /// and what they were is kept for the finished matters to say, after its

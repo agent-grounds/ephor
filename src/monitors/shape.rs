@@ -101,13 +101,19 @@ impl Declared {
     }
 }
 
+/// The longest a monitor id may be (§FS-021-monitors.1.1): its history is
+/// a file named after it, which every file system can name.
+pub const LONGEST_ID: usize = 64;
+
 /// Whether a text is a monitor id: lowercase letters, digits and `-`,
-/// starting with a letter or a digit (§FS-021-monitors.1.1).
+/// starting with a letter or a digit, and at most [`LONGEST_ID`] of them
+/// (§FS-021-monitors.1.1).
 pub fn is_id(text: &str) -> bool {
     let mut chars = text.chars();
-    chars
-        .next()
-        .is_some_and(|first| first.is_ascii_lowercase() || first.is_ascii_digit())
+    text.len() <= LONGEST_ID
+        && chars
+            .next()
+            .is_some_and(|first| first.is_ascii_lowercase() || first.is_ascii_digit())
         && chars.all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
 }
 
@@ -188,7 +194,7 @@ pub fn read_declaration(entry: &Json) -> Result<Declaration, Refused> {
         Some(other) => {
             fields.fault(format!(
                 "id {other} is not a monitor id: lowercase letters, digits and '-', \
-                 starting with a letter or a digit"
+                 starting with a letter or a digit, at most {LONGEST_ID} of them"
             ));
             None
         }

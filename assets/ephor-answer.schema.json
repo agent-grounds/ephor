@@ -77,6 +77,7 @@
         "id": {
           "type": "string",
           "pattern": "^[a-z0-9][a-z0-9-]*$",
+          "maxLength": 64,
           "description": "The monitor this sample is for (FS-021-monitors.1.1)."
         },
         "value": {
