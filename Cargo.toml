@@ -433,6 +433,10 @@ path = "tests/e2e/cases/E2E-084-one-monitor-in-detail.rs"
 name = "e2e_085_the_monitors_page_on_a_terminal"
 path = "tests/e2e/cases/E2E-085-the-monitors-page-on-a-terminal.rs"
 
+[[test]]
+name = "e2e_086_the_monitors_guide_and_its_worked_example"
+path = "tests/e2e/cases/E2E-086-the-monitors-guide-and-its-worked-example.rs"
+
 [dependencies]
 clap = { version = "4", features = ["derive"] }
 serde = { version = "1", features = ["derive"] }
