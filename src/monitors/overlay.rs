@@ -38,6 +38,10 @@ pub struct Homes<'a> {
 /// shows, where the manifest names a command for it (§FS-021-monitors.4.5).
 pub const NOT_RUN: &str = "not run: this registry row reads descriptions only";
 
+/// The condition of a status whose declaration did not read as far as it
+/// (§FS-021-monitors.4.6): it is in error, never a KPI.
+pub const IN_ERROR: &str = "in error";
+
 /// The `healthy` the first three homes resolve to (§FS-021-monitors.3.6).
 #[derive(Debug, Clone, PartialEq)]
 pub enum Healthy {
@@ -145,7 +149,16 @@ impl Monitor {
     /// Its condition in words, as the page, the command and a matter's title
     /// say it (§FS-021-monitors.3.4).
     pub fn words(&self, sample_ok: Option<bool>, of: Option<f64>) -> String {
+        if self.condition_unread(sample_ok) {
+            return IN_ERROR.to_string();
+        }
         words::condition(&self.judge(sample_ok), self.warn.as_ref(), &self.terms(of))
+    }
+
+    /// Whether it is a status whose condition did not read, so nothing it
+    /// resolved to judges it (§FS-021-monitors.4.6).
+    pub fn condition_unread(&self, sample_ok: Option<bool>) -> bool {
+        self.judge(sample_ok).is_kpi() && self.is_status(sample_ok)
     }
 
     /// Whether it is a status rather than a KPI (§FS-021-monitors.1.2). A

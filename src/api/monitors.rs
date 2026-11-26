@@ -590,7 +590,11 @@ fn condition_view(
             Some(json!({ field: said, "from": "manifest" }))
         })
         .collect::<Vec<Json>>();
-    let from = ConditionView::judge_from(judge, healthy_home);
+    // §FS-021-monitors.4.6: a status whose condition did not read is not a KPI.
+    let from = match monitor.condition_unread(sample_ok) {
+        true => "error".to_string(),
+        false => ConditionView::judge_from(judge, healthy_home),
+    };
     let warn_from = monitor
         .warn
         .as_ref()
@@ -629,7 +633,10 @@ fn condition_parts(
     });
     let mut parts = vec![views::ConditionPart {
         part: "healthy",
-        says: words::healthy(judge, &terms),
+        says: match from {
+            "error" => crate::monitors::overlay::IN_ERROR.to_string(),
+            _ => words::healthy(judge, &terms),
+        },
         from: from.to_string(),
         over: overridden("healthy").then(|| {
             match manifest.map(|declaration| &declaration.healthy) {
