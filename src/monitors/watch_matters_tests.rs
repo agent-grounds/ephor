@@ -72,6 +72,46 @@ fn still_down_after_its_work_ended_moves_the_matter_once() {
     assert_eq!(again.items[0].updated_at, item.updated_at);
 }
 
+/// §FS-021-monitors.15, §FS-021-monitors.6.7: a monitor its owner's answer
+/// brings is read when the work on its drop ends, out of cadence, rather
+/// than at its owner's next slot.
+#[test]
+fn a_brought_monitor_is_read_when_the_work_on_its_drop_ends() {
+    let site = site(None);
+    let anchor = json!({"id": "anchor", "every": "1d", "from": {"command": "sh kpis.sh"}});
+    let answer = |cov: f64| {
+        format!(
+            r#"{{"v":1,"monitors":[{{"id":"anchor","value":5}},
+                {{"id":"cov","value":{cov},"healthy":{{"min":80}}}}]}}"#
+        )
+    };
+    script(&site.root, &answer(70.0), 0);
+    let first = refresh_at(&site, std::slice::from_ref(&anchor), When::Due, 0);
+    let key = first.items[0].id.clone();
+    assert!(key.starts_with("monitor:alpha/cov@"), "{key}");
+    let was = stated("monitor", &first.items[0].raw).unwrap().moves;
+
+    script(&site.root, &answer(71.0), 0);
+    let ended = BTreeMap::from([(key.clone(), "t1@x".to_string())]);
+    let report = refresh_after(&site, &[anchor], ended, at(1));
+    assert_eq!(runs(&site.root).len(), 2, "read when its work ended");
+    let item = &report.items[0];
+    assert_eq!(item.id, key);
+    let now = stated("monitor", &item.raw).unwrap().moves;
+    assert_eq!(now.since(&was), vec!["still down after its work ended"]);
+    let history = site.store.history("cov").unwrap();
+    assert!(
+        matches!(
+            history.last(),
+            Some(crate::monitors::history::Line::Reading {
+                out_of_cadence: true,
+                ..
+            })
+        ),
+        "{history:?}"
+    );
+}
+
 /// §FS-021-monitors.15: a passing reading after the work ended counts toward
 /// recovery and moves nothing, so the work is not stale and the matter not
 /// New again; the work is seen, so it is not read again for it.

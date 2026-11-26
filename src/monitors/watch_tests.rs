@@ -54,6 +54,38 @@ fn reading_now_reads_out_of_cadence() {
     );
 }
 
+/// §FS-021-monitors.6.7, §FS-021-monitors.6.8: a monitor its owner's answer
+/// brings is read out of cadence with it, and keeps its schedule.
+#[test]
+fn a_brought_monitor_is_read_now_out_of_cadence_with_its_owner() {
+    let site = site(None);
+    script(
+        &site.root,
+        r#"{"v":1,"monitors":[{"id":"a","value":81},{"id":"cov","value":70}]}"#,
+        0,
+    );
+    let declared = [json!({"id": "a", "every": "1d", "from": {"command": "sh kpis.sh"}})];
+    refresh_at(&site, &declared, When::Due, 0);
+    let read = site.store.load().unwrap().monitors["cov"]
+        .schedule
+        .last_read;
+    refresh_at(&site, &declared, When::Now, 1);
+    assert_eq!(runs(&site.root).len(), 2);
+    let history = site.store.history("cov").unwrap();
+    assert!(
+        matches!(
+            history.last(),
+            Some(crate::monitors::history::Line::Reading {
+                out_of_cadence: true,
+                ..
+            })
+        ),
+        "{history:?}"
+    );
+    let document = site.store.load().unwrap();
+    assert_eq!(document.monitors["cov"].schedule.last_read, read);
+}
+
 /// §FS-021-monitors.5.5, §FS-021-monitors.17.2: a command that fails, one
 /// that times out, and an answer that does not read leave every monitor it
 /// reads unreadable, and never fail the slot.
