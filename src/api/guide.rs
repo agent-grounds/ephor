@@ -4,21 +4,25 @@
 //! A reading like any other (§AR-009-surfaces): it returns a view and changes
 //! nothing. The `gate` topic is the runtime binding's text, because what a
 //! gate's brief holds is the runtime's plan language (§FS-020-guide.2); the
-//! `matter` topic is ephor's own (§FS-020-guide.3).
+//! `matter` and `monitors` topics are ephor's own (§FS-020-guide.3,
+//! §FS-020-guide.6).
 
 use crate::api::views;
 use crate::error::{EphorError, Result};
 use crate::work::recipe::WorkConfig;
 use crate::work::runtime::{gate, guide};
 
+mod monitors;
+
 /// Every topic, in the order `ephor guide` lists them, with the one line that
 /// says what each explains (§FS-020-guide.1).
-pub const TOPICS: [(&str, &str); 2] = [
+pub const TOPICS: [(&str, &str); 3] = [
     ("gate", "how a workflow prepares the question its gate asks"),
     (
         "matter",
         "what makes a matter new, and how a workflow becomes its proposal",
     ),
+    ("monitors", "how a repository makes its numbers watchable"),
 ];
 
 /// The `matter` topic, in ephor's own words, with no runtime named
@@ -84,9 +88,12 @@ pub fn guide(config: &WorkConfig, topic: Option<&str>) -> Result<views::Guide> {
     };
     match topic {
         None => {
+            // Two columns past the longest name, so a name never runs into
+            // its summary.
+            let width = TOPICS.iter().map(|(name, _)| name.len()).max().unwrap_or(0) + 2;
             let mut text = String::from("Topics:\n");
             for (name, summary) in TOPICS {
-                text.push_str(&format!("  {name:<8}{summary}\n"));
+                text.push_str(&format!("  {name:<width$}{summary}\n"));
             }
             text.push_str("\nAsk for one with `ephor guide <topic>`; add --json for the view.\n");
             view.text = text;
@@ -101,6 +108,9 @@ pub fn guide(config: &WorkConfig, topic: Option<&str>) -> Result<views::Guide> {
             }
         }
         Some("matter") => view.text = MATTER.to_string(),
+        // The protocol is ephor's: the same text on every machine, and no
+        // schemas beside it, since `ephor schema` prints both (§FS-020-guide.6).
+        Some("monitors") => view.text = monitors::text(),
         Some(other) => {
             let names: Vec<&str> = TOPICS.iter().map(|(name, _)| *name).collect();
             return Err(EphorError::Command(format!(
@@ -122,12 +132,20 @@ mod tests {
     fn the_topics_are_listed_and_an_unknown_one_is_refused_by_name() {
         let config = WorkConfig::default();
         let view = guide(&config, None).unwrap();
-        assert_eq!(view.topics.len(), 2);
+        assert_eq!(view.topics.len(), 3);
         assert!(view.text.contains("gate"), "{}", view.text);
+        assert!(
+            view.text.contains("  monitors  how a repository"),
+            "{}",
+            view.text
+        );
         assert!(view.text.contains("ephor guide <topic>"), "{}", view.text);
         assert_eq!(view.schemas, None);
         let err = guide(&config, Some("nope")).unwrap_err().to_string();
-        assert_eq!(err, "no guide topic 'nope'; the topics are gate, matter");
+        assert_eq!(
+            err,
+            "no guide topic 'nope'; the topics are gate, matter, monitors"
+        );
     }
 
     /// The matter topic covers new, held, processed and the proposal, and

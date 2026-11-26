@@ -527,6 +527,7 @@ const SWEEP: &[(&str, &[&str])] = &[
     ("guide", &["guide", "--json"]),
     ("guide", &["guide", "gate", "--json"]),
     ("guide", &["guide", "matter", "--json"]),
+    ("guide", &["guide", "monitors", "--json"]),
     ("burn", &["burn", "--json"]),
     // This world declares no monitor, so the page is its empty state
     // (§FS-021-monitors.18.2).

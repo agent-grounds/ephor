@@ -1372,7 +1372,8 @@ pub struct WaitingArgs {
 /// `ephor guide` (§FS-020-guide): the topics, or one of them.
 #[derive(Args, Debug, Default)]
 pub struct GuideArgs {
-    /// The topic to explain: `gate` or `matter`. Without one, the topics.
+    /// The topic to explain: `gate`, `matter` or `monitors`. Without one, the
+    /// topics.
     pub topic: Option<String>,
 
     /// Emit the guide view as JSON; for `gate`, with the bound runtime's own

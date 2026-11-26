@@ -1091,7 +1091,7 @@
       "type": "object",
       "required": ["topics", "text"],
       "properties": {
-        "topic": { "enum": ["gate", "matter"], "description": "The topic asked for; absent where none was." },
+        "topic": { "enum": ["gate", "matter", "monitors"], "description": "The topic asked for; absent where none was." },
         "topics": {
           "type": "array",
           "items": {
@@ -1103,7 +1103,7 @@
             }
           }
         },
-        "text": { "type": "string", "description": "What the text form prints: the list of topics, or the topic's text (FS-020-guide.2, FS-020-guide.3)." },
+        "text": { "type": "string", "description": "What the text form prints: the list of topics, or the topic's text (FS-020-guide.2, FS-020-guide.3, FS-020-guide.6)." },
         "schemas": {
           "type": "object",
           "description": "On `gate`: the schemas the bound runtime printed, carried unchanged; ephor keeps no copy (FS-020-guide.4).",
