@@ -264,6 +264,69 @@ fn each_cause_is_named_in_the_health_column() {
     assert_eq!(health("fresh"), "not read yet");
 }
 
+/// §FS-021-monitors.19, §FS-021-monitors.7.1: a monitor whose first read
+/// failed is not read yet until its first grace ends, and says why that read
+/// failed from the read on, as one whose read was stale says when its sample
+/// was measured; a late one says it once, on its freshness line.
+#[test]
+fn a_first_read_that_fails_says_why_before_the_monitor_is_late() {
+    let dir = tempfile::tempdir().unwrap();
+    let site = [
+        json!({"id": "missing", "healthy": {"min": 1}, "every": "1h"}),
+        json!({"id": "old", "healthy": {"min": 1}, "every": "1h"}),
+    ];
+    let read = now() - TimeDelta::minutes(10);
+    let first = |found| {
+        let mut record = Record::new(read);
+        record.schedule.anchor = Some(read);
+        record.schedule.last_read = Some(read);
+        record.last_attempt = Some(Attempt { at: read, found });
+        record
+    };
+    let records = vec![
+        (
+            "missing",
+            first(Found::Unreadable {
+                why: "no sample for missing".into(),
+            }),
+        ),
+        (
+            "old",
+            first(Found::Stale {
+                measured: Some(hours(30)),
+            }),
+        ),
+    ];
+    let gathered = gather(dir.path(), &site, records, Vec::new());
+    let at = |at: DateTime<Utc>| at.format("%d %H:%M").to_string();
+    let missing = built(&gathered, "missing").row;
+    assert_eq!(missing.shows.health.text(), "not read yet");
+    assert_eq!(missing.freshness.state, "not-read-yet");
+    assert_eq!(
+        missing.freshness.why.as_deref(),
+        Some("no sample for missing")
+    );
+    assert_eq!(
+        missing.cadence_says(at),
+        "every 1h · last read 25 11:50 (failed: no sample for missing) · \
+         next slot 25 12:50 · grace 1h"
+    );
+    assert_eq!(missing.freshness.says(at), None);
+    let old = built(&gathered, "old").row;
+    assert_eq!(old.freshness.measured, Some(hours(30)));
+    assert!(
+        old.cadence_says(at)
+            .contains("last read 25 11:50 (stale: measured 24 06:00)"),
+        "{}",
+        old.cadence_says(at)
+    );
+    // Late, the freshness line says why, and the cadence line no longer does.
+    let late = built(&causes(&dir.path().join("tools")), "unreadable").row;
+    assert!(late.cadence_says(at).contains("(failed) ·"), "{late:?}");
+    let said = late.freshness.says(at).unwrap();
+    assert!(said.contains("scripts/kpis.sh exited 3"), "{said}");
+}
+
 /// §FS-021-monitors.19: a boolean's chart places are named `no` and `yes`,
 /// and the cursor says a point by its name, its time and its health; a
 /// number's says its value in its unit, and a failed read says it has none.

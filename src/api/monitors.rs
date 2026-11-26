@@ -520,6 +520,13 @@ fn freshness_view(
         holds_until,
         ..FreshnessView::default()
     };
+    // Why that read failed, or when its stale sample was measured, before the
+    // monitor is late too, so a first read that fails says why at once.
+    match last.map(|attempt| &attempt.found) {
+        Some(freshness::Found::Unreadable { why }) => view.why = Some(why.clone()),
+        Some(freshness::Found::Stale { measured }) => view.measured = *measured,
+        _ => {}
+    }
     let cause = match fresh {
         Freshness::NotReadYet { .. } => {
             view.state = "not-read-yet";

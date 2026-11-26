@@ -948,7 +948,7 @@
         },
         "freshness": {
           "type": "object",
-          "description": "Where its value stands (FS-021-monitors.7): `{state, last_read, last_found, next_slot, holds_until}`, and for a late or unknown monitor its `cause`, `since` the slot that passed without a reading, `measured` for a stale value, and the unknown matter's key.",
+          "description": "Where its value stands (FS-021-monitors.7): `{state, last_read, last_found, next_slot, holds_until}`, and for a late or unknown monitor its `cause`, `since` the slot that passed without a reading, `measured` for a stale value, and the unknown matter's key. `why` a read failed and when a stale sample was `measured` are carried from the last read on, before the monitor is late too (FS-021-monitors.19).",
           "required": ["state"],
           "properties": {
             "state": { "enum": ["fresh", "late", "unknown", "not-read-yet", "not-run", "not-read"] },
@@ -957,7 +957,7 @@
             "next_slot": { "type": "string", "format": "date-time", "description": "The schedule's next slot (FS-021-monitors.6.4)." },
             "holds_until": { "type": "string", "format": "date-time" },
             "cause": { "enum": ["unreadable", "parked", "stale", "overdue"] },
-            "why": { "type": "string" },
+            "why": { "type": "string", "description": "Why the read failed: the last read's, or the unreadable cause's." },
             "since": { "type": "string", "format": "date-time" },
             "measured": { "type": "string", "format": "date-time" },
             "matter": { "type": "string" }
