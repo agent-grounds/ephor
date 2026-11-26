@@ -126,8 +126,13 @@ impl WaitingScreen {
             .as_deref()
             .map(|adopt| format!(" {adopt}  ·"))
             .unwrap_or_default();
+        // The screen's own words after the monitors' segment; `ephor waiting` prints the line without them (§FS-021-monitors.20.1).
+        let monitors = match self.view.overview.monitors {
+            Some(_) => "   M opens them",
+            None => "",
+        };
         format!(
-            "{adopt} {}   O overview  e plan  A process all  ; operations  $ burn  r refresh  q quit",
+            "{adopt} {}{monitors}   O overview  e plan  A process all  ; operations  $ burn  r refresh  q quit",
             self.view.overview_line()
         )
     }
