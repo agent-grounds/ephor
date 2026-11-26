@@ -327,6 +327,29 @@ fn a_first_read_that_fails_says_why_before_the_monitor_is_late() {
     assert!(said.contains("scripts/kpis.sh exited 3"), "{said}");
 }
 
+/// §FS-021-monitors.7.2, §FS-021-monitors.7.4: a late value still holds
+/// until its grace ends, and an unknown one held until then.
+#[test]
+fn the_freshness_says_whether_the_value_still_holds() {
+    let at = |at: DateTime<Utc>| at.format("%d %H:%M").to_string();
+    let view = |state| FreshnessView {
+        state,
+        cause: Some("overdue"),
+        holds_until: Some(hours(2)),
+        ..FreshnessView::default()
+    };
+    let late = view("late").says(at).unwrap();
+    assert!(
+        late.ends_with(&format!("holds until {}", at(hours(2)))),
+        "{late}"
+    );
+    let unknown = view("unknown").says(at).unwrap();
+    assert!(
+        unknown.ends_with(&format!("held until {}", at(hours(2)))),
+        "{unknown}"
+    );
+}
+
 /// §FS-021-monitors.19: a boolean's chart places are named `no` and `yes`,
 /// and the cursor says a point by its name, its time and its health; a
 /// number's says its value in its unit, and a failed read says it has none.

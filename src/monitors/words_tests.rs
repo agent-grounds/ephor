@@ -132,6 +132,18 @@ fn warn_is_said_as_the_values_it_marks() {
         ),
         "warn: slow"
     );
+    // A warn that marks only levels the healthy refuses already is said as
+    // what it marks, and one that marks none says so.
+    let fast = condition(serde_json::json!({"in": ["fast"]}));
+    let at_most = |level| condition(serde_json::json!({"at_most": level}));
+    assert_eq!(
+        super::warn(&at_most("slow"), Some(&fast), &terms),
+        "warn: stuck"
+    );
+    assert_eq!(
+        super::warn(&at_most("stuck"), Some(&fast), &terms),
+        "warn: no level"
+    );
 }
 
 #[test]
