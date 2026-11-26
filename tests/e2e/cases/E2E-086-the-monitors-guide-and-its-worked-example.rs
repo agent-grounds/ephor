@@ -6,7 +6,10 @@
 //! `ephor validate --manifest` accepts and a script whose answer ephor reads,
 //! three monitors of three kinds from one command (§FS-021-monitors.4.1,
 //! §FS-021-monitors.5.1); and where the script has no value for one, that
-//! monitor alone is unreadable (§FS-021-monitors.8.2).
+//! monitor alone is unreadable, and `ephor monitors show` says why at once
+//! (§FS-021-monitors.8.2, §FS-021-monitors.19). The nightly job's result
+//! carries the time it ran, so a night it does not run is a stale read, not
+//! a reading (§FS-021-monitors.7.1).
 //!
 //! The site binds a runtime, so the case can see that the text names none.
 
@@ -60,7 +63,19 @@ fn as_described(world: &World) {
     world.file("CHANGELOG.md", "# Changelog\n\n## 1.4.0\n\n- Monitors.\n");
     world.file("src/lib.rs", "// TODO: one\nfn a() {}\n// TODO: two\n");
     world.file("src/deep/mod.rs", "fn b() {}\n// TODO: three\n");
-    world.file("target/nightly.status", "passed\n");
+    world.file(
+        "target/nightly.status",
+        "passed 2026-11-26T05:40:00+01:00\n",
+    );
+}
+
+/// The nightly job, run a few minutes ago: its result and when it ran, so
+/// the next read of nightly finds a measurement newer than an interval.
+fn nightly_ran(world: &World, result: &str) -> String {
+    let ran = (chrono::Utc::now() - chrono::TimeDelta::minutes(5))
+        .to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
+    world.file("target/nightly.status", &format!("{result} {ran}\n"));
+    ran
 }
 
 /// Runs the example's script once as ephor summons it, in the checkout with
@@ -88,6 +103,17 @@ fn probe(world: &World, script: &std::path::Path) -> Value {
         }
     }
     panic!("the example's script stayed busy")
+}
+
+/// `ephor monitors show` of one monitor, as text.
+fn show_text(world: &World, id: &str) -> String {
+    let out = world
+        .ephor()
+        .args(["monitors", "show", &format!("{PROJECT}/{id}")])
+        .output()
+        .unwrap();
+    assert!(out.status.success(), "{out:?}");
+    String::from_utf8_lossy(&out.stdout).into_owned()
 }
 
 fn shown(world: &World, id: &str) -> Value {
@@ -122,6 +148,7 @@ fn the_monitors_topic_names_no_runtime_and_carries_no_schemas() {
     for line in unbound.lines() {
         assert!(line.chars().count() <= 80, "wider than 80 columns: {line}");
     }
+    let flat = unbound.split_whitespace().collect::<Vec<_>>().join(" ");
     for part in [
         "EPHOR_MONITORS",
         "EPHOR_ANSWER",
@@ -129,8 +156,9 @@ fn the_monitors_topic_names_no_runtime_and_carries_no_schemas() {
         "ephor validate --manifest ephor.json",
         "ephor monitors show <project>/<id>",
         "Worked example.",
+        "Validate holds each declaration to its shape alone",
     ] {
-        assert!(unbound.contains(part), "{part} missing:\n{unbound}");
+        assert!(flat.contains(part), "{part} missing:\n{unbound}");
     }
     let (listed, _) = guide(&World::new(), &[]);
     assert_eq!(listed, unbound);
@@ -144,10 +172,7 @@ fn the_monitors_topic_names_no_runtime_and_carries_no_schemas() {
 fn the_worked_example_is_read_as_the_text_says() {
     let world = World::new();
     let (text, _) = guide(&world, &[]);
-    let script = world.script(
-        "scripts/kpis.sh",
-        &file_after(&text, "Worked example. scripts/kpis.sh"),
-    );
+    let script = world.script("scripts/kpis.sh", &file_after(&text, "Worked example."));
     world.file("ephor.json", &file_after(&text, "ephor.json, at the root"));
     as_described(&world);
     let shows = file_after(&text, "With 1.4.0 in VERSION");
@@ -165,7 +190,9 @@ fn the_worked_example_is_read_as_the_text_says() {
         .unwrap();
     assert!(out.status.success(), "{out:?}");
 
-    // Never read, so each is due at once: a plain refresh reads all three.
+    // Never read, so each is due at once: a plain refresh reads all three,
+    // the nightly result the job left minutes ago among them.
+    let ran = nightly_ran(&world, "passed");
     world.ephor().args(["refresh", PROJECT]).assert().success();
     for (id, kind, value, cadence) in [
         ("releasable", "boolean", json!(true), "default"),
@@ -184,6 +211,28 @@ fn the_worked_example_is_read_as_the_text_says() {
             "{monitor}"
         );
     }
+
+    // A night the job does not run: read again, nightly brings what it
+    // brought before, which is stale and no reading; the others are read.
+    world
+        .ephor()
+        .args(["refresh", PROJECT, "--monitors-now"])
+        .assert()
+        .success();
+    let nightly = shown(&world, "nightly");
+    assert_eq!(nightly["freshness"]["last_found"], "stale", "{nightly}");
+    let measured = nightly["freshness"]["measured"].as_str().unwrap();
+    assert_eq!(
+        chrono::DateTime::parse_from_rfc3339(measured).unwrap(),
+        chrono::DateTime::parse_from_rfc3339(&ran).unwrap(),
+        "{nightly}"
+    );
+    assert_eq!(nightly["health"], "ok", "the last health holds: {nightly}");
+    assert!(show_text(&world, "nightly").contains("(stale: measured "));
+    for id in ["releasable", "todo-markers"] {
+        let monitor = shown(&world, id);
+        assert_eq!(monitor["freshness"]["last_found"], "reading", "{monitor}");
+    }
 }
 
 /// Where the nightly job left no status, the script leaves the value out
@@ -193,10 +242,7 @@ fn the_worked_example_is_read_as_the_text_says() {
 fn a_value_the_script_cannot_give_costs_that_monitor_alone() {
     let world = World::new();
     let (text, _) = guide(&world, &[]);
-    let script = world.script(
-        "scripts/kpis.sh",
-        &file_after(&text, "Worked example. scripts/kpis.sh"),
-    );
+    let script = world.script("scripts/kpis.sh", &file_after(&text, "Worked example."));
     world.file("ephor.json", &file_after(&text, "ephor.json, at the root"));
     as_described(&world);
     std::fs::remove_file(world.forest().join("target/nightly.status")).unwrap();
@@ -214,6 +260,14 @@ fn a_value_the_script_cannot_give_costs_that_monitor_alone() {
         "{nightly}"
     );
     assert!(nightly.get("value").is_none(), "{nightly}");
+    // Not read yet, and saying why from that first read.
+    assert_eq!(nightly["freshness"]["state"], "not-read-yet", "{nightly}");
+    assert_eq!(
+        nightly["freshness"]["why"], "the sample has no value",
+        "{nightly}"
+    );
+    let said = show_text(&world, "nightly");
+    assert!(said.contains("(failed: the sample has no value)"), "{said}");
     for id in ["releasable", "todo-markers"] {
         let monitor = shown(&world, id);
         assert_eq!(monitor["freshness"]["last_found"], "reading", "{monitor}");
