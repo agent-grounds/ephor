@@ -277,6 +277,32 @@ fn a_store_that_cannot_be_written_takes_back_what_the_read_appended() {
     assert!(record.drop.is_some(), "{record:?}");
 }
 
+/// §FS-021-monitors.3.5, §FS-021-monitors.3.6: a declared `warn` whose
+/// `healthy` its samples bring is read from the first refresh, and again
+/// once the store is gone, rather than waiting on a sample it never reads.
+#[test]
+fn a_warn_its_samples_narrow_is_read_from_the_first_refresh() {
+    let site = site(None);
+    script(
+        &site.root,
+        r#"{"v":1,"monitors":[{"id":"a","value":4,"healthy":{"max":5}}]}"#,
+        0,
+    );
+    let declared = [json!({"id": "a", "kind": "number", "warn": {"max": 3},
+        "from": {"command": "sh kpis.sh"}})];
+    let report = refresh_at(&site, &declared, When::Due, 0);
+    assert_eq!(report.slot, Some(Ok(())), "{:?}", report.notes);
+    assert_eq!(
+        found(&site, "a"),
+        Some(Found::Reading),
+        "{:?}",
+        report.notes
+    );
+    std::fs::remove_dir_all(site.store.path().parent().unwrap()).unwrap();
+    refresh_at(&site, &declared, When::Due, 1);
+    assert_eq!(found(&site, "a"), Some(Found::Reading));
+}
+
 /// §FS-021-monitors.1.1, §FS-021-monitors.8.2: a sample whose id is longer
 /// than a monitor id may be is read for no monitor and noted, so no history
 /// is named after it and the slot does not fail on a name the file system

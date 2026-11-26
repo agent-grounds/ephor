@@ -181,6 +181,10 @@ declaration error too, where that can be decided: both have a numeric bound
 on the same side, and the warn bound lets through a value the healthy bound
 refuses, such as `healthy {"max": 5}` with `warn {"max": 7}`. Such a monitor
 is not read until its declaration is mended ([§FS-021-monitors.4.6](FS-021-monitors.md#46-a-declaration-ephor-cannot-use-is-shown-and-not-read)).
+Whether its samples bring a `healthy` is known only once one is read, so a
+`warn` that nothing declared narrows is read until then, and a sample that
+brings no `healthy` for it is an unreadable read of it, saying so
+([§FS-021-monitors.8.2](FS-021-monitors.md#82-one-bad-sample-is-that-monitor-unreadable-never-the-answer-refused)).
 
 ### 3.6 Ephor decides health from the declared condition
 
