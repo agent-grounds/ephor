@@ -618,3 +618,29 @@ fn the_overview_line_counts_the_statuses() {
          monitors: 1 down · 2 unknown · 1 overdue"
     );
 }
+
+/// §FS-021-monitors.20.1: on the screen the footer adds `M opens them` after
+/// the monitors' segment, and only where there is one.
+#[test]
+fn the_footer_says_m_opens_the_monitors() {
+    let mut view = reading(Vec::new(), Vec::new(), Vec::new());
+    let screen = WaitingScreen::new(view.clone(), BTreeMap::new());
+    assert!(
+        !screen.footer().contains("M opens them"),
+        "{}",
+        screen.footer()
+    );
+    view.overview.monitors = Some(crate::monitors::counts::Counts {
+        down: 1,
+        unknown: 0,
+        overdue: 0,
+    });
+    let screen = WaitingScreen::new(view, BTreeMap::new());
+    assert!(
+        screen
+            .footer()
+            .contains("monitors: 1 down · 0 unknown   M opens them   O overview"),
+        "{}",
+        screen.footer()
+    );
+}
