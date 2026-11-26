@@ -87,11 +87,22 @@ impl Session {
     }
 
     /// Whether the ledger records work about this matter — the first of the
-    /// two ways a matter is processed (§FS-019-waiting.7).
-    pub(crate) fn has_work(&self, id: &str) -> bool {
-        self.dispatcher
-            .as_ref()
-            .is_some_and(|dispatcher| dispatcher.ledger.entries.contains_key(id))
+    /// two ways a matter is processed (§FS-019-waiting.7). A monitor's matter
+    /// still down or unknown after its work ended is New again until work is
+    /// laid on it anew (§FS-019-waiting.1.2, §FS-021-monitors.13.2).
+    pub(crate) fn has_work(&self, item: &Item) -> bool {
+        let renewed = crate::monitors::matters::stated(&item.source, &item.raw)
+            .and_then(|stated| stated.renewed);
+        self.dispatcher.as_ref().is_some_and(|dispatcher| {
+            dispatcher
+                .ledger
+                .entries
+                .get(&item.id)
+                .is_some_and(|entry| match renewed {
+                    Some(renewed) => entry.dispatches.iter().any(|laid| laid.at > renewed),
+                    None => true,
+                })
+        })
     }
 
     /// Whether a person's dismissal of this matter still stands: it does
@@ -377,7 +388,7 @@ impl Session {
             );
             return row;
         }
-        if self.has_work(&item.id) {
+        if self.has_work(item) {
             row.says = format!(
                 "{} already has work: `ephor work offers --item {}` says what",
                 item.id, item.id
@@ -615,7 +626,7 @@ impl Session {
                 item.id
             ));
         }
-        if self.has_work(&item.id) {
+        if self.has_work(item) {
             return views::Outcome::refused(format!(
                 "{} already has work, so there is nothing to dismiss: \
                  `ephor work offers --item {}` says what",
