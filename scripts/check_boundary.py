@@ -178,6 +178,7 @@ CORE = (
     "monitors::freshness",
     "monitors::history",
     "monitors::machine",
+    "monitors::matters",
     "monitors::model",
     "monitors::overlay",
     "monitors::retention",

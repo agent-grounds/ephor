@@ -311,6 +311,7 @@ fn custom_status_samples_bring_their_monitors() {
         brought: vec![Outcome::Answered(vec![json!({"id": "k", "value": 5})])],
         when: When::Due,
         recent_days: 7,
+        ended: Default::default(),
     };
     assert_eq!(refresh(&site.store, &request, at(0)).slot, Some(Ok(())));
     let document = site.store.load().unwrap();

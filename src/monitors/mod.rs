@@ -31,6 +31,7 @@
 //! overdue; [`reader`] runs a command or reads a file; [`found`] judges what
 //! one read found; and [`watch`] is the monitor slot a plain refresh answers.
 
+pub mod after;
 pub mod cadence;
 pub mod condition;
 pub mod declared;
@@ -40,6 +41,7 @@ pub mod freshness;
 pub mod history;
 pub mod known;
 pub mod machine;
+pub mod matters;
 pub mod model;
 pub mod overlay;
 pub mod reader;

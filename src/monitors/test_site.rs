@@ -2,6 +2,7 @@
 //! store of its own under the test's directory, never the person's
 //! (§REQ-003-test-isolation), and the helpers each test reads it with.
 
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 use chrono::{DateTime, TimeDelta, TimeZone, Utc};
@@ -86,6 +87,26 @@ pub fn refresh_then(site: &Site, declared: &[Json], when: When, now: DateTime<Ut
     refresh_bringing(site, declared, Vec::new(), when, now)
 }
 
+/// A plain refresh after the work on the matters `ended` names ended
+/// (§FS-021-monitors.15).
+pub fn refresh_after(
+    site: &Site,
+    declared: &[Json],
+    ended: BTreeMap<String, String>,
+    now: DateTime<Utc>,
+) -> Report {
+    let request = Request {
+        project: "alpha",
+        placement: Some(&site.placement),
+        site: declared,
+        brought: Vec::new(),
+        when: When::Due,
+        recent_days: 7,
+        ended,
+    };
+    refresh(&site.store, &request, now)
+}
+
 /// A plain refresh whose custom-status answers carried `brought`.
 pub fn refresh_bringing(
     site: &Site,
@@ -101,6 +122,7 @@ pub fn refresh_bringing(
         brought,
         when,
         recent_days: 7,
+        ended: BTreeMap::new(),
     };
     refresh(&site.store, &request, now)
 }

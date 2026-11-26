@@ -559,6 +559,7 @@ pub fn refresh_project_when(
             brought: samples_brought(&results),
             when,
             recent_days: defaults.recent_days,
+            ended: crate::monitors::after::ended(project_id),
         });
         notes.extend(
             report
@@ -567,7 +568,7 @@ pub fn refresh_project_when(
                 .map(|note| format!("{SLOT}: {note}")),
         );
         if let Some(slot) = report.slot {
-            let answer = Fetched::whole(slot.map(|()| Vec::new()));
+            let answer = Fetched::whole(slot.map(|()| report.items));
             results.entry(SLOT.to_string()).or_default().push(answer);
         }
     }

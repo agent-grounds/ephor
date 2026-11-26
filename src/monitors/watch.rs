@@ -22,6 +22,8 @@ use serde_json::Value as Json;
 
 use crate::branches::Placement;
 use crate::error::Result;
+use crate::feed::model::Item;
+use crate::monitors::after;
 use crate::monitors::cadence::{self, DEFAULT_TIMEOUT_SECONDS};
 use crate::monitors::declared::{self, Declarations};
 use crate::monitors::episode::Unwatched;
@@ -29,6 +31,7 @@ use crate::monitors::found;
 use crate::monitors::history::Line;
 use crate::monitors::known::{self, Known};
 use crate::monitors::machine::{self, Effect, Event, Read};
+use crate::monitors::matters;
 use crate::monitors::model::Source;
 use crate::monitors::overlay::Monitor;
 use crate::monitors::reader::{self, Clock, Got, Job, Where};
@@ -64,6 +67,9 @@ pub struct Request<'a> {
     /// How long a forgotten monitor's finished matters are still reported
     /// (§FS-021-monitors.14.3).
     pub recent_days: u64,
+    /// The matters of the project's monitors whose work has ended, by key,
+    /// with a mark for that work (§FS-021-monitors.15).
+    pub ended: BTreeMap<String, String>,
 }
 
 /// What the refresh does with the slot, and what it notes.
@@ -73,6 +79,9 @@ pub struct Report {
     /// (§FS-021-monitors.1.4); the machinery's failure otherwise
     /// (§FS-021-monitors.17.3).
     pub slot: Option<std::result::Result<(), String>>,
+    /// The matters the slot reports where it answered: its monitors' open
+    /// episodes and the finished ones still reported (§FS-021-monitors.14.3).
+    pub items: Vec<Item>,
     pub notes: Vec<String>,
 }
 
@@ -111,14 +120,22 @@ pub fn refresh(store: &Store, request: &Request, now: DateTime<Utc>) -> Report {
         notes.push(format!(
             "no monitor of the project is read: its manifest cannot be read: {error}"
         ));
-        return Report { slot: None, notes };
+        return Report {
+            slot: None,
+            notes,
+            ..Report::default()
+        };
     }
     let brings = request
         .brought
         .iter()
         .any(|outcome| matches!(outcome, Outcome::Answered(samples) if !samples.is_empty()));
     if !declarations.any() && !kept.keeps_any() && !brings {
-        return Report { slot: None, notes };
+        return Report {
+            slot: None,
+            notes,
+            ..Report::default()
+        };
     }
 
     let plan = match store.update(|document| Ok(prepare(document, &declarations, request, now))) {
@@ -145,9 +162,13 @@ pub fn refresh(store: &Store, request: &Request, now: DateTime<Utc>) -> Report {
     {
         Ok(said) => {
             notes.extend(said);
-            Report {
-                slot: Some(Ok(())),
-                notes,
+            match store.load() {
+                Ok(document) => Report {
+                    slot: Some(Ok(())),
+                    items: items(&declarations, &document, request, now),
+                    notes,
+                },
+                Err(err) => failed(err.to_string(), notes),
             }
         }
         Err(err) => {
@@ -201,8 +222,32 @@ fn merged(brought: &[Outcome]) -> Option<Outcome> {
         .cloned()
 }
 
+/// The slot's matters, built from the store as this refresh left it
+/// (§FS-021-monitors.12), each drop proposing its monitor's own workflow
+/// (§FS-021-monitors.16.1).
+fn items(
+    declarations: &Declarations,
+    document: &Document,
+    request: &Request,
+    now: DateTime<Utc>,
+) -> Vec<Item> {
+    let monitors: BTreeMap<String, Monitor> = known::all(declarations, document)
+        .into_iter()
+        .map(|(id, known)| (id, known.monitor))
+        .collect();
+    matters::items(
+        request.project,
+        document,
+        &monitors,
+        now,
+        request.recent_days,
+        &Local,
+    )
+}
+
 fn failed(why: String, notes: Vec<String>) -> Report {
     Report {
+        items: Vec::new(),
         slot: Some(Err(why)),
         notes,
     }
@@ -300,7 +345,9 @@ fn prepare(
         if slot_came {
             in_cadence.insert(id.clone());
         }
-        if slot_came || request.when == When::Now {
+        // §FS-021-monitors.15: work laid on its matter ended, so it is read now.
+        let after_work = !after::unseen(request.project, id, record, &request.ended).is_empty();
+        if slot_came || request.when == When::Now || after_work {
             due.insert(id.clone());
         }
     }
@@ -474,14 +521,14 @@ fn commit(
                 let homes = declarations.homes(&id, Some(&snapshot));
                 let mark = from.and_then(|from| marks.get(from).copied());
                 let found = found::found(delivery, monitor, &homes, &snapshot, mark, &cadence, at);
-                let out_of_cadence = request.when == When::Now
+                let out_of_cadence = plan.due.contains(&id)
                     && matches!(routes.get(&id), Some(Route::From(_)))
                     && !plan.in_cadence.contains(&id);
                 let event = Event::Read(Read {
                     at,
                     in_cadence: !out_of_cadence,
                     found: found.finding.clone(),
-                    after_work: Vec::new(),
+                    after_work: after::unseen(request.project, &id, &snapshot, &request.ended),
                 });
                 (event, found, at)
             }
@@ -646,3 +693,7 @@ mod runs_tests;
 #[cfg(test)]
 #[path = "watch_place_tests.rs"]
 mod place_tests;
+
+#[cfg(test)]
+#[path = "watch_matters_tests.rs"]
+mod matters_tests;
