@@ -37,9 +37,10 @@ impl TimeZone for Shifting {
     }
 
     fn offset_from_local_datetime(&self, local: &NaiveDateTime) -> MappedLocalTime<FixedOffset> {
-        // Summer first: where a time happens twice, its summer reading is the
-        // earlier instant.
-        let fits: Vec<FixedOffset> = [summer(), winter()]
+        // Winter first, as the machine's own zone lists them: where a time
+        // happens twice, the pair does not come earliest first, so a reader
+        // that takes the first of them reads the later instant.
+        let fits: Vec<FixedOffset> = [winter(), summer()]
             .into_iter()
             .filter(|offset| {
                 let instant = *local - *offset;
