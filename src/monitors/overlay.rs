@@ -348,6 +348,13 @@ pub fn resolve(id: &str, homes: &Homes) -> Monitor {
             Cadence::default_every()
         }
     };
+    // §FS-021-monitors.6.8: a manifest's cadence the answer overrides still pairs (6.1).
+    if let Some(declared) = manifest.filter(|_| manifest_cadence.is_none()) {
+        let at = declared.at.said().map(String::as_str);
+        if let Err(fault) = Cadence::resolve(declared.every.as_deref(), at) {
+            faults.push(fault);
+        }
+    }
 
     if let Some(source) = &from {
         faults.extend(outside(source));

@@ -6865,7 +6865,11 @@ monitor is then read every time that source is
 defaults to `10m`, to `1d` beside an `at`, and to `1w` beside an `at` that
 names a day ([§FS-021-monitors.6.1](functional-spec/FS-021-monitors.md#61-every-and-at)). The manifest states the
 cadence and the site may change it either way, or write `"at": null` to
-unpin it.
+unpin it. A monitor with no `from` is read whenever the answer that brings it
+is, so it takes that answer's cadence: the manifest's `every` and `at` for it
+set no slot, though a pairing that does not fit is still an error, and only
+the site may state a cadence for it, which its freshness is then judged by
+([§FS-021-monitors.6.8](functional-spec/FS-021-monitors.md#68-the-cadence-of-a-monitor-read-from-the-answer-that-brings-it)).
 
 A refresh is the tick. ephor reads a monitor no more often than its cadence
 and no sooner than a refresh comes, so a slot is read up to one refresh
