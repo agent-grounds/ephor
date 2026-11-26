@@ -87,6 +87,24 @@ fn a_renewal_outlasts_a_later_move_of_another_kind() {
     assert!(drop.moved.as_ref().unwrap().at > renewed_at);
 }
 
+/// §FS-021-monitors.12.3: an unknown matter's `since` is when it turned
+/// unknown, not when the health the hold keeps beside it began, open and
+/// once it has ended.
+#[test]
+fn an_unknown_matter_says_since_it_turned_unknown() {
+    let watch = coverage(1, 2);
+    let mut run = unknown_open(&watch);
+    let held = run.record.hold.since;
+    let unknown = run.record.unknown.as_ref().unwrap();
+    assert_ne!(held, Some(unknown.named));
+    assert_eq!(unknown.shown.since, Some(unknown.named));
+    let named = unknown.named;
+    run.number(&watch, 86.0);
+    let past = run.record.past.last().unwrap();
+    assert_eq!((past.sort, past.named), (Sort::Unknown, named));
+    assert_eq!(past.shown.since, Some(named));
+}
+
 #[test]
 fn a_numbers_points_stay_those_of_the_last_sample_that_carried_any() {
     let watch = coverage(1, 2);
