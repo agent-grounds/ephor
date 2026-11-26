@@ -127,28 +127,74 @@ fn a_numbers_change_is_its_difference_coloured_by_better() {
     let judge = monitor.judge(None);
     let lines = vec![number(5, 42.0), number(1, 44.5), number(0, 40.0)];
     let span = span(&lines, Window::SixHours, now());
-    let change = change(&lines, &span, &monitor, &judge);
+    let change = change(&lines, &span, &monitor, &judge, 1);
     assert_eq!(change.says, "▾ 2 ms");
     assert_eq!(change.way, Way::Better);
 
     let rising = vec![number(5, 40.0), number(0, 42.0)];
     assert_eq!(
-        super::change(&rising, &span, &monitor, &judge),
+        super::change(&rising, &span, &monitor, &judge, 1),
         Change {
             says: "▴ 2 ms".into(),
             way: Way::Worse
         }
     );
     let flat = vec![number(5, 40.0), number(0, 40.0)];
-    assert_eq!(super::change(&flat, &span, &monitor, &judge).says, "±0");
-    assert_eq!(super::change(&[], &span, &monitor, &judge).says, "—");
+    assert_eq!(super::change(&flat, &span, &monitor, &judge, 1).says, "±0");
+    assert_eq!(super::change(&[], &span, &monitor, &judge, 1).says, "—");
 
     let percent =
         super::tests::monitor(json!({"id": "coverage", "unit": "%", "healthy": {"min": 80}}));
     let lines = vec![number(5, 81.0), number(0, 82.2)];
-    let change = super::change(&lines, &span, &percent, &percent.judge(None));
+    let change = super::change(&lines, &span, &percent, &percent.judge(None), 1);
     assert_eq!(change.says, "▴ 1.2 pt");
     assert_eq!(change.way, Way::Plain, "nothing says which way is better");
+}
+
+/// §FS-021-monitors.18.6, §FS-021-monitors.10.1, §FS-021-monitors.10.2: a
+/// drop is counted as the hold counts one, so a flap shorter than
+/// `drop_after` is none and one passing reading short of `recover_after`
+/// ends nothing; an unreadable read neither adds nor breaks a run; and a
+/// span that opens already down counts no drop for it.
+#[test]
+fn drops_are_counted_by_the_hold() {
+    let yes = |ago| reading(ago, Value::Boolean(true), None);
+    let no = |ago| reading(ago, Value::Boolean(false), None);
+    let held = monitor(json!({"id": "green", "kind": "boolean", "drop_after": 2}));
+    let judge = held.judge(None);
+    let lines = vec![
+        yes(9),
+        no(8),
+        yes(7),
+        no(6),
+        Line::marker(now() - TimeDelta::minutes(330)),
+        no(5),
+        yes(4),
+        no(3),
+        no(2),
+    ];
+    let span = span(&lines, Window::Day, now());
+    assert_eq!(change(&lines, &span, &held, &judge, 1).says, "2 drops");
+
+    let plain = monitor(json!({"id": "green", "kind": "boolean"}));
+    let judge = plain.judge(None);
+    let lines = vec![no(5), yes(4), no(3), yes(2), yes(1)];
+    assert_eq!(change(&lines, &span, &plain, &judge, 1).says, "2 drops");
+    assert_eq!(change(&lines, &span, &plain, &judge, 2).says, "1 drop");
+
+    let lines = vec![no(30), no(5), no(4), yes(3), no(2)];
+    let six = Span {
+        from: now() - TimeDelta::hours(6),
+        to: now(),
+        by_readings: false,
+    };
+    assert_eq!(
+        change(&lines, &six, &plain, &judge, 1).says,
+        "1 drop",
+        "down before the span opened, recovered inside it, then down again"
+    );
+    let lines = vec![no(30), no(5), no(4)];
+    assert_eq!(change(&lines, &six, &plain, &judge, 1).says, "no drops");
 }
 
 /// §FS-021-monitors.18.6: a boolean says how often it dropped, judged under
@@ -161,9 +207,9 @@ fn a_booleans_change_counts_its_drops() {
     let no = |ago| reading(ago, Value::Boolean(false), None);
     let lines = vec![yes(5), no(4), no(3), yes(2), no(1), yes(0)];
     let span = span(&lines, Window::SixHours, now());
-    assert_eq!(change(&lines, &span, &monitor, &judge).says, "2 drops");
+    assert_eq!(change(&lines, &span, &monitor, &judge, 1).says, "2 drops");
     let lines = vec![yes(1), yes(0)];
-    assert_eq!(change(&lines, &span, &monitor, &judge).says, "no drops");
+    assert_eq!(change(&lines, &span, &monitor, &judge, 1).says, "no drops");
     let cells = strip(&lines, &span, &monitor, &judge);
     let read = cells.iter().find(|cell| cell.mark == Mark::Read).unwrap();
     assert_eq!(read.height, Some(5));

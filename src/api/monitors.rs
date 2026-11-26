@@ -306,7 +306,13 @@ fn build(
         ),
         None => (
             strip::strip(&drawn, &span, monitor, &judge),
-            strip::change(&drawn, &span, monitor, &judge),
+            strip::change(
+                &drawn,
+                &span,
+                monitor,
+                &judge,
+                monitor.recover_after(&known.cadence),
+            ),
         ),
     };
     let of = last.and_then(|kept| kept.of).or(monitor.of);
