@@ -13,7 +13,7 @@ use serde_json::Value as Json;
 
 use crate::branches::Placement;
 use crate::manifest::{Manifest, Trust};
-use crate::monitors::model::Home;
+use crate::monitors::model::{Home, Stated};
 use crate::monitors::overlay::{self, Homes, Monitor};
 use crate::monitors::shape::{self, Declared, Refused};
 use crate::monitors::state::{Document, Record};
@@ -114,18 +114,46 @@ impl Declarations {
         monitor
     }
 
-    /// Lays a refused declaration's faults on a monitor resolved elsewhere.
+    /// Lays a refused declaration's faults and notes on a monitor resolved
+    /// elsewhere, and whether its homes say something judges it, the site's
+    /// word over the manifest's, so a status in error still counts as
+    /// unknown (§FS-021-monitors.4.6, §FS-021-monitors.21.2).
     pub fn refuse(&self, monitor: &mut Monitor) {
-        for fault in self
-            .site
-            .faults(&monitor.id)
-            .into_iter()
-            .chain(self.manifest.faults(&monitor.id))
-        {
-            if !monitor.faults.contains(&fault) {
-                monitor.faults.push(fault);
+        let id = monitor.id.clone();
+        let refused = || {
+            [&self.site, &self.manifest]
+                .into_iter()
+                .flat_map(|home| home.refused.iter())
+                .filter(|refused| refused.id.as_deref() == Some(id.as_str()))
+        };
+        if refused().next().is_none() {
+            return;
+        }
+        for fault in refused().flat_map(|refused| refused.faults.iter()) {
+            if !monitor.faults.contains(fault) {
+                monitor.faults.push(fault.clone());
             }
         }
+        for note in refused().flat_map(|refused| refused.notes.iter()) {
+            if !monitor.notes.contains(note) {
+                monitor.notes.push(note.clone());
+            }
+        }
+        monitor.declared_judged = [&self.site, &self.manifest].into_iter().find_map(|home| {
+            let said = home
+                .get(&id)
+                .and_then(|declaration| match declaration.healthy {
+                    Stated::Said(_) => Some(true),
+                    Stated::Null => Some(false),
+                    Stated::Unsaid => None,
+                });
+            said.or_else(|| {
+                home.refused
+                    .iter()
+                    .filter(|refused| refused.id.as_deref() == Some(id.as_str()))
+                    .find_map(|refused| refused.judged)
+            })
+        });
     }
 
     /// What every refresh notes about the declarations

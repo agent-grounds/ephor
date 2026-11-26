@@ -146,8 +146,7 @@ pub fn standing<Tz: TimeZone>(facts: &Facts, now: DateTime<Utc>, zone: &Tz) -> S
         .record
         .and_then(|record| record.last_sample.as_ref())
         .and_then(|sample| sample.ok);
-    let judge = monitor.judge(sample_ok);
-    let status = !judge.is_kpi();
+    let status = monitor.is_status(sample_ok);
     let unread = |state: &str, sentence: Option<String>, counts: Option<Rank>| Standing {
         rank: Rank::Unknown,
         health: Some(Health::Unknown),

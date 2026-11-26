@@ -5,7 +5,8 @@
 //! §FS-021-monitors.18.3). With no monitors it says how to declare one, and a
 //! project named with `--project` that has none says so. `--json` prints the
 //! published `monitors` view (§FS-021-monitors.21.5). `--check` exits 4 while
-//! a status is down and 0 once none is, and never for a KPI
+//! a status is down or unknown, or its declaration is in error, and 0 once
+//! none is, and never for a KPI, unknown or in error
 //! (§FS-021-monitors.21.2). Printing the page reads the store and runs no
 //! monitor, so an answer that changed shows only after a refresh reads it
 //! (§FS-021-monitors.21.4).
@@ -211,6 +212,103 @@ fn check_exits_4_while_a_status_is_down_and_never_for_a_kpi() {
     refresh_now(&world);
     let read = page(&world, &[]);
     assert_eq!(read["counts"]["down"], json!(0), "{read}");
+    world.ephor().args(["monitors", "--check"]).assert().code(0);
+}
+
+/// Every time the store keeps put months back, as if nothing had read the
+/// project since.
+fn age(value: &mut Value) {
+    match value {
+        Value::String(text) if text.len() > 10 && text.as_bytes()[10] == b'T' => {
+            *text = "2026-01-01T00:00:00Z".to_string();
+        }
+        Value::Array(values) => values.iter_mut().for_each(age),
+        Value::Object(fields) => fields.values_mut().for_each(age),
+        _ => {}
+    }
+}
+
+fn aged(world: &World) {
+    let path = world
+        .path()
+        .join("state/ephor/monitors")
+        .join(PROJECT)
+        .join("monitors.json");
+    let mut kept = read_json(&path);
+    age(&mut kept["monitors"]);
+    write_json(&path, &kept);
+}
+
+fn unreadable(world: &World) {
+    world.script("scripts/kpis.sh", "#!/bin/sh\nexit 3\n");
+}
+
+#[test]
+fn check_exits_4_while_a_status_is_unknown_and_never_for_a_kpi_unknown() {
+    let world = world();
+    answer(&world, 91.0);
+    refresh_now(&world);
+    world.ephor().args(["monitors", "--check"]).assert().code(0);
+    aged(&world);
+    unreadable(&world);
+    refresh_now(&world);
+    let read = page(&world, &[]);
+    assert_eq!(read["counts"]["down"], json!(0), "{read}");
+    assert_eq!(read["counts"]["unknown"], json!(3), "{read}");
+    world.ephor().args(["monitors", "--check"]).assert().code(4);
+
+    let kpi = World::new();
+    kpi.configure(json!({ "projects": { PROJECT: {
+        "providers": [],
+        "monitors": [
+            { "id": "lines", "title": "Lines of code", "every": "1h",
+              "from": { "command": "scripts/kpis.sh" } }
+        ]
+    } } }));
+    kpi.script(
+        "scripts/kpis.sh",
+        "#!/bin/sh\nprintf '%s' '{\"v\":1,\"monitors\":[{\"id\":\"lines\",\"value\":1200}]}' > \"$EPHOR_ANSWER\"\n",
+    );
+    refresh_now(&kpi);
+    aged(&kpi);
+    unreadable(&kpi);
+    refresh_now(&kpi);
+    let read = page(&kpi, &[]);
+    assert_eq!(read["counts"]["unknown"], json!(1), "{read}");
+    assert_eq!(
+        read["projects"][0]["rows"][0]["shows"]["status"],
+        json!(false)
+    );
+    kpi.ephor().args(["monitors", "--check"]).assert().code(0);
+}
+
+#[test]
+fn check_exits_4_on_a_status_whose_declaration_is_in_error_and_never_on_a_kpi() {
+    let world = World::new();
+    world.manifest(json!({
+        "version": 1,
+        "monitors": [
+            { "id": "cov", "unit": "%", "healthy": { "min": 80 }, "every": "90s",
+              "from": { "command": "scripts/kpis.sh" } }
+        ]
+    }));
+    let read = page(&world, &[]);
+    let row = &read["projects"][0]["rows"][0];
+    assert_eq!(row["id"], json!("cov"), "{read}");
+    assert_eq!(row["shows"]["status"], json!(true), "{read}");
+    assert_eq!(row["shows"]["health"]["state"], json!("not read"), "{read}");
+    assert_eq!(read["counts"]["unknown"], json!(1), "{read}");
+    world.ephor().args(["monitors", "--check"]).assert().code(4);
+
+    world.manifest(json!({
+        "version": 1,
+        "monitors": [
+            { "id": "lines", "kind": "number", "every": "90s",
+              "from": { "command": "scripts/kpis.sh" } }
+        ]
+    }));
+    let read = page(&world, &[]);
+    assert_eq!(read["counts"]["unknown"], json!(1), "{read}");
     world.ephor().args(["monitors", "--check"]).assert().code(0);
 }
 

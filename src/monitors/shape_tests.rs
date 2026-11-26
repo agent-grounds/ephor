@@ -329,3 +329,31 @@ fn a_refusal_says_whether_the_shape_or_a_second_declaration_refused_it() {
     );
     assert_eq!(declared.refused[0].notes, vec!["unknown field rate"]);
 }
+
+/// §FS-021-monitors.21.2: a refused declaration keeps whether it says
+/// something judges its monitor, so a status in error stays a status.
+#[test]
+fn a_refused_declaration_says_whether_something_judges_it() {
+    let judged = |entry: serde_json::Value| read_declaration(&entry).expect_err("refused").judged;
+    assert_eq!(
+        judged(json!({"id": "a", "healthy": {"min": 80}, "every": "90s"})),
+        Some(true)
+    );
+    assert_eq!(judged(json!({"id": "a", "healthy": "high"})), Some(true));
+    assert_eq!(
+        judged(json!({"id": "a", "kind": "level", "every": "90s"})),
+        Some(true)
+    );
+    assert_eq!(
+        judged(json!({"id": "a", "levels": ["ok", "bad"], "every": "9"})),
+        Some(true)
+    );
+    assert_eq!(
+        judged(json!({"id": "a", "healthy": null, "every": "90s"})),
+        Some(false)
+    );
+    assert_eq!(
+        judged(json!({"id": "a", "kind": "number", "every": "90s"})),
+        None
+    );
+}

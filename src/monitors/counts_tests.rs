@@ -168,3 +168,30 @@ fn a_status_not_run_counts_nowhere() {
         None
     );
 }
+
+/// §FS-021-monitors.21.2, §FS-021-monitors.20.1: a status whose manifest
+/// declaration the shape refuses is still a status, so Waiting's overview
+/// line counts it unknown; a KPI refused the same way counts nowhere.
+#[test]
+fn a_status_the_shape_refuses_counts_unknown_and_a_kpi_nowhere() {
+    let site = site(None);
+    std::fs::write(
+        site.root.join("ephor.json"),
+        serde_json::to_string(&json!({"monitors": [
+            {"id": "a", "healthy": {"min": 80}, "every": "90s",
+             "from": {"command": "sh kpis.sh"}},
+            {"id": "k", "kind": "number", "every": "90s", "from": {"command": "sh kpis.sh"}}
+        ]}))
+        .unwrap(),
+    )
+    .unwrap();
+    refresh_at(&site, &[], When::Due, 0);
+    assert_eq!(
+        of(&site.store, Some(&site.placement), &[], None, at(1)),
+        Some(Counts {
+            down: 0,
+            unknown: 1,
+            overdue: 0
+        })
+    );
+}

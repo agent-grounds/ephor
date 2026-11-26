@@ -54,6 +54,12 @@ pub struct Refused {
     /// Keys it does not know, noted on its row beside what is wrong
     /// (§FS-021-monitors.4.6): `unknown field heathy`.
     pub notes: Vec<String>,
+    /// Whether it says something judges the monitor: a `healthy`, even one
+    /// that cannot be read, or a kind with a default; `false` for
+    /// `"healthy": null`; none where it says neither. A status whose
+    /// declaration is in error counts as unknown, and a KPI never does
+    /// (§FS-021-monitors.21.2).
+    pub judged: Option<bool>,
 }
 
 /// What refused a declaration (§FS-021-monitors.4.2, §FS-021-monitors.4.6).
@@ -145,6 +151,7 @@ pub fn read_declarations(entries: &[Json], home: Home) -> Declared {
                     declaration.id,
                     home.phrase()
                 )],
+                judged: judged_by(&declaration),
                 notes: declaration.notes,
             });
         } else {
@@ -172,6 +179,7 @@ pub fn read_declaration(entry: &Json) -> Result<Declaration, Refused> {
                 json_type(entry)
             )],
             notes: Vec::new(),
+            judged: None,
         });
     };
     let mut fields = Fields::new(map);
@@ -231,7 +239,24 @@ pub fn read_declaration(entry: &Json) -> Result<Declaration, Refused> {
             why: Refusal::Shape,
             faults: fields.faults,
             notes,
+            judged: map
+                .get("healthy")
+                .map(|healthy| !healthy.is_null())
+                .or_else(|| judged_by(&declaration)),
         })
+    }
+}
+
+/// Whether a declaration says something judges its monitor: its `healthy`,
+/// or a kind whose default judges it, a boolean or a level
+/// (§FS-021-monitors.3.2).
+fn judged_by(declaration: &Declaration) -> Option<bool> {
+    match declaration.healthy {
+        Stated::Said(_) => Some(true),
+        Stated::Null => Some(false),
+        Stated::Unsaid => (matches!(declaration.kind, Some(Kind::Boolean | Kind::Level))
+            || declaration.levels.is_some())
+        .then_some(true),
     }
 }
 

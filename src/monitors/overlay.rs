@@ -102,6 +102,9 @@ pub struct Monitor {
     /// Every rule it breaks as its homes resolve it (§FS-021-monitors.3.5,
     /// §FS-021-monitors.4.6). A monitor with any is not read.
     pub faults: Vec<String>,
+    /// Where a home refused a declaration of it, whether its homes say
+    /// something judges it, site first; see [`Monitor::is_status`].
+    pub declared_judged: Option<bool>,
 }
 
 impl Monitor {
@@ -143,6 +146,17 @@ impl Monitor {
     /// say it (§FS-021-monitors.3.4).
     pub fn words(&self, sample_ok: Option<bool>, of: Option<f64>) -> String {
         words::condition(&self.judge(sample_ok), self.warn.as_ref(), &self.terms(of))
+    }
+
+    /// Whether it is a status rather than a KPI (§FS-021-monitors.1.2). A
+    /// monitor whose declaration a home refused is judged by what its
+    /// declarations say, a `healthy` that cannot be read included, so a
+    /// status in error still counts as unknown (§FS-021-monitors.21.2).
+    pub fn is_status(&self, sample_ok: Option<bool>) -> bool {
+        match self.declared_judged {
+            Some(judged) if !self.faults.is_empty() => judged,
+            _ => !self.judge(sample_ok).is_kpi(),
+        }
     }
 
     /// Whether it is read: a monitor whose declaration breaks a rule is shown
@@ -376,6 +390,7 @@ pub fn resolve(id: &str, homes: &Homes) -> Monitor {
         origins,
         notes,
         faults,
+        declared_judged: None,
     }
 }
 

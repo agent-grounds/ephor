@@ -260,6 +260,52 @@ fn check_reads_statuses_down_or_unknown_only() {
     assert!(!page(vec![row.clone()]).fails_check());
 }
 
+/// §FS-021-monitors.21.2: `--check` fails on a status unknown, overdue
+/// included, and on a status whose declaration is in error, even one the
+/// shape refuses; never on a KPI unknown or in error.
+#[test]
+fn check_fails_on_an_unknown_status_and_one_in_error_never_on_a_kpi() {
+    let dir = tempfile::tempdir().unwrap();
+    let gathered = six(dir.path());
+    let page = |rows: Vec<MonitorRow>| views::Monitors {
+        window: Window::Week,
+        counts: PageCounts::default(),
+        refreshed_at: None,
+        projects: vec![group("widget".into(), rows, Vec::new())],
+        without: Vec::new(),
+    };
+    let only = |id: &str| -> Vec<MonitorRow> {
+        rows(&gathered)
+            .into_iter()
+            .filter(|row| row.id == id)
+            .collect()
+    };
+    assert_eq!(only("green")[0].shows.counts, Some(Rank::Unknown));
+    assert!(page(only("green")).fails_check(), "an overdue status");
+
+    let site = [
+        json!({"id": "cov", "unit": "%", "healthy": {"min": 80}, "every": "90s"}),
+        json!({"id": "typo", "kind": "nubmer", "healthy": {"min": 80}}),
+        json!({"id": "kpi", "kind": "number", "every": "90s"}),
+        json!({"id": "lines", "healthy": null, "every": "1h"}),
+    ];
+    let other = tempfile::tempdir().unwrap();
+    let mut lines = read_at(hours(48), Value::Number(41_000.0), None, None);
+    lines.schedule.first_seen = hours(48);
+    let faulted = gather(other.path(), &site, vec![("lines", lines)], Vec::new());
+    let all = rows(&faulted);
+    let row = |id: &str| all.iter().find(|row| row.id == id).unwrap().clone();
+    for id in ["cov", "typo"] {
+        assert!(row(id).shows.status, "{id} is a status in error");
+        assert!(page(vec![row(id)]).fails_check(), "{id}");
+    }
+    assert_eq!(row("lines").shows.counts, Some(Rank::Unknown));
+    for id in ["kpi", "lines"] {
+        assert!(!row(id).shows.status, "{id} is a KPI");
+        assert!(!page(vec![row(id)]).fails_check(), "{id}");
+    }
+}
+
 /// §FS-021-monitors.18.3: the group holding the worst row goes first, then
 /// by name.
 #[test]
