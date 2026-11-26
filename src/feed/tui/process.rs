@@ -17,6 +17,7 @@ use ratatui::widgets::Paragraph;
 use crate::api::views;
 use crate::feed::model::Item;
 
+use super::monitors::MonitorsScreen;
 use super::Action;
 
 pub(crate) use crate::api::process::Choice;
@@ -55,6 +56,10 @@ pub(crate) struct ProcessScreen {
     /// `a`'s list, open over the screen, and the row under the cursor.
     choosing: Option<usize>,
     scroll: u16,
+    /// The Monitors page processing was opened from, which `esc` and a
+    /// confirmed move come back to (§FS-021-monitors.18.10). It is kept
+    /// here, so it goes wherever this screen goes.
+    pub(super) monitors: Option<Box<MonitorsScreen>>,
 }
 
 impl ProcessScreen {
@@ -77,6 +82,7 @@ impl ProcessScreen {
             },
             choosing: None,
             scroll: 0,
+            monitors: None,
         }
     }
 
@@ -85,6 +91,7 @@ impl ProcessScreen {
             over: Over::All(view),
             choosing: None,
             scroll: 0,
+            monitors: None,
         }
     }
 
@@ -135,8 +142,12 @@ impl ProcessScreen {
                     Some(_) => "  ·  n next",
                     None => "",
                 };
+                let back = match self.monitors {
+                    Some(_) => "monitors",
+                    None => "waiting",
+                };
                 format!(
-                    " {enter}  ·  a other workflow  ·  x needs no work{next}  ·  l open  ·  esc waiting"
+                    " {enter}  ·  a other workflow  ·  x needs no work{next}  ·  l open  ·  esc {back}"
                 )
             }
             Over::All(view) if view.processed.is_empty() => " esc back".to_string(),

@@ -48,6 +48,9 @@ pub(crate) struct MonitorsScreen {
     pub(super) detail_viewport: u16,
     /// The chart point the cursor stands on (§FS-021-monitors.19).
     pub(super) cursor: usize,
+    /// The operations board or the burn page the page was opened over,
+    /// which closing it comes back to (§FS-021-monitors.18.1).
+    over: Option<Box<Screen>>,
 }
 
 impl MonitorsScreen {
@@ -70,6 +73,7 @@ impl MonitorsScreen {
             detail_scroll: 0,
             detail_viewport: 0,
             cursor: 0,
+            over: None,
         }
     }
 
@@ -361,12 +365,13 @@ impl MonitorsScreen {
 /// and the scoped refresh `r` starts.
 impl super::App {
     /// Open the Monitors page over whatever is on screen, or close it back
-    /// to where the reader was (§FS-021-monitors.18.1). The page joins the
-    /// operations board and the burn page in one modal layer: opening any
-    /// of them over another replaces it and keeps the screen beneath.
+    /// to where the reader was (§FS-021-monitors.18.1). Over the operations
+    /// board or the burn page, the page keeps that page to close back to,
+    /// and leaves the slot holding what that page opened over; the board or
+    /// the burn page opened from the page replaces it.
     pub(super) fn toggle_monitors(&mut self) {
         if matches!(self.screen, Screen::Monitors(_)) {
-            self.screen = self.saved.take().unwrap_or_else(|| self.home_screen());
+            self.close_monitors();
             return;
         }
         let window = Window::default();
@@ -374,9 +379,28 @@ impl super::App {
         let items = self.monitor_items(&page);
         let screen = Screen::Monitors(MonitorsScreen::new(page, items, window, Utc::now()));
         let previous = std::mem::replace(&mut self.screen, screen);
-        if !matches!(previous, Screen::Operations(_) | Screen::Burn(_)) {
-            self.saved = Some(previous);
+        match previous {
+            Screen::Operations(_) | Screen::Burn(_) => {
+                if let Screen::Monitors(page) = &mut self.screen {
+                    page.over = Some(Box::new(previous));
+                }
+            }
+            previous => self.saved = Some(previous),
         }
+    }
+
+    /// `M` or `esc` on the page: back to where the reader was
+    /// (§FS-021-monitors.18.1), the board or the burn page it was opened
+    /// over, or the screen the slot holds.
+    pub(super) fn close_monitors(&mut self) {
+        let over = match &mut self.screen {
+            Screen::Monitors(page) => page.over.take(),
+            _ => return,
+        };
+        self.screen = match over {
+            Some(screen) => *screen,
+            None => self.saved.take().unwrap_or_else(|| self.home_screen()),
+        };
     }
 
     /// Take the page again under the window it now asks for, and the open
@@ -467,29 +491,39 @@ impl super::App {
             .collect()
     }
 
-    /// The screen processing replaced. Processing opened from the Monitors
-    /// page is processing in place, so `esc` and a confirmed move come back
-    /// to the page rather than to Waiting (§FS-021-monitors.18.10); one
-    /// opened from anywhere else forgets any page kept from before.
-    pub(super) fn processing_over(&mut self, previous: Screen) {
-        match previous {
-            Screen::Monitors(page) => self.monitors_beneath = Some(page),
-            Screen::Process(_) => {}
-            _ => self.monitors_beneath = None,
-        }
-    }
-
-    /// Back to the page processing was opened from, where it was; true
-    /// where there was one.
+    /// Back to the page the processing screen was opened from, where it
+    /// was (§FS-021-monitors.18.10); true where there was one. The page goes
+    /// with that screen, so a screen left by another road takes it along
+    /// and no later processing comes back to it.
     pub(super) fn back_to_monitors(&mut self) -> bool {
-        if !matches!(self.screen, Screen::Process(_)) {
-            return false;
-        }
-        let Some(page) = self.monitors_beneath.take() else {
+        let Screen::Process(screen) = &mut self.screen else {
             return false;
         };
-        self.screen = Screen::Monitors(page);
+        let Some(page) = screen.monitors.take() else {
+            return false;
+        };
+        self.screen = Screen::Monitors(*page);
         true
+    }
+}
+
+/// Whether processing opened over `screen` is processing in place: from the
+/// Monitors page, or from processing that was (§FS-021-monitors.18.10).
+pub(super) fn processing_in_place(screen: &Screen) -> bool {
+    match screen {
+        Screen::Monitors(_) => true,
+        Screen::Process(screen) => screen.monitors.is_some(),
+        _ => false,
+    }
+}
+
+/// The page processing opened over `previous` comes back to: the page
+/// itself, or the one the processing it replaced was kept over.
+pub(super) fn page_beneath(previous: Screen) -> Option<Box<MonitorsScreen>> {
+    match previous {
+        Screen::Monitors(page) => Some(Box::new(page)),
+        Screen::Process(screen) => screen.monitors,
+        _ => None,
     }
 }
 
