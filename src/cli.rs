@@ -102,7 +102,8 @@ pub enum Command {
     /// running: the screen the interface opens on.
     Waiting(WaitingArgs),
     /// How work gets into the shapes ephor reads: a gate's brief and its
-    /// answer, and what makes a matter new. Written for an agent to read.
+    /// answer, what makes a matter new, and how a repository declares its
+    /// monitors. Written for an agent to read.
     Guide(GuideArgs),
     /// Every operation beneath the reading, in one place.
     #[command(visible_alias = "ops")]
