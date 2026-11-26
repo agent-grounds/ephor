@@ -2990,7 +2990,7 @@ impl App {
         };
         // A footer too long for the screen goes on to another line rather
         // than off the edge, so every key it names is seen
-        // (§FS-021-monitors.20.1).
+        // (§FS-004-quick-actions.2).
         let footer = footer::lines(&footer, width);
         let [header_area, message_area, warning_area, body_area, footer_area] = Layout::vertical([
             Constraint::Length(1),
