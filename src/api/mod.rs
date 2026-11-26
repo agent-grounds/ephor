@@ -13,6 +13,8 @@ pub mod conversation;
 pub mod guide;
 pub mod human_gate;
 pub mod monitor_menu;
+pub mod monitor_views;
+pub mod monitors;
 pub mod offers;
 pub mod parity;
 pub mod process;

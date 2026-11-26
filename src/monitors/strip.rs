@@ -125,7 +125,7 @@ impl Cell {
 /// A line's value on the strip's scale: a number's (a thinned line's mean),
 /// a level's place, the worse of a thinned level's two, and a boolean's 1
 /// or 0.
-fn scaled(line: &Line, levels: Option<&[String]>) -> Option<f64> {
+pub fn scaled(line: &Line, levels: Option<&[String]>) -> Option<f64> {
     let place = |value: &Value| match value {
         Value::Number(number) => Some(*number),
         Value::Boolean(yes) => Some(f64::from(u8::from(*yes))),
