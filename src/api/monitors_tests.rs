@@ -949,3 +949,91 @@ fn titles_sort_whatever_their_case() {
 
 #[path = "monitors_fixtures.rs"]
 pub(crate) mod fixtures;
+
+/// §FS-021-monitors.19, §FS-021-monitors.18.5: a boolean's and a level's
+/// chart stand the healthy or the best value on top, as the strip draws it
+/// tallest: a level's first declared at the top, and a boolean whose
+/// `healthy` is `no` with `no` above `yes`; the cursor still names each
+/// place by its value.
+#[test]
+fn a_steps_chart_puts_the_healthy_value_on_top() {
+    let dir = tempfile::tempdir().unwrap();
+    let site = [
+        json!({"id": "docs", "levels": ["clean", "degraded", "failed"], "every": "1h"}),
+        json!({"id": "dirty", "kind": "boolean", "healthy": {"is": false}, "every": "1h"}),
+    ];
+    let level = |at: i64, level: &str| Line::Reading {
+        t: hours(at),
+        v: Value::Level(level.into()),
+        health: None,
+        out_of_cadence: false,
+    };
+    let boolean = |at: i64, yes: bool| Line::Reading {
+        t: hours(at),
+        v: Value::Boolean(yes),
+        health: None,
+        out_of_cadence: false,
+    };
+    let gathered = gather(
+        dir.path(),
+        &site,
+        vec![
+            (
+                "docs",
+                read_at(
+                    hours(1),
+                    Value::Level("failed".into()),
+                    Some(Health::Down),
+                    Some(Band::Down),
+                ),
+            ),
+            (
+                "dirty",
+                read_at(
+                    hours(1),
+                    Value::Boolean(true),
+                    Some(Health::Down),
+                    Some(Band::Down),
+                ),
+            ),
+        ],
+        vec![
+            (
+                "docs",
+                vec![level(3, "clean"), level(2, "degraded"), level(1, "failed")],
+            ),
+            ("dirty", vec![boolean(2, false), boolean(1, true)]),
+        ],
+    );
+    let detail = |id: &str| {
+        detail(
+            "widget",
+            &gathered.known[id],
+            &gathered,
+            built(&gathered, id),
+            Window::Week,
+            None,
+        )
+    };
+    let places = |detail: &views::MonitorDetail| -> Vec<Option<f64>> {
+        detail.chart.iter().map(|point| point.value).collect()
+    };
+    let docs = detail("docs");
+    assert_eq!(docs.steps, ["failed", "degraded", "clean"]);
+    assert_eq!(places(&docs), [Some(2.0), Some(1.0), Some(0.0)]);
+    let said = docs.cursor_says(&docs.chart[0], |_| "t".into());
+    assert_eq!(said, "t  clean  ok");
+    let dirty = detail("dirty");
+    assert_eq!(dirty.steps, ["yes", "no"]);
+    assert_eq!(places(&dirty), [Some(1.0), Some(0.0)]);
+    assert_eq!(
+        dirty.cursor_says(&dirty.chart[1], |_| "t".into()),
+        "t  yes  down"
+    );
+    let green = fixtures::green_detail(dir.path());
+    assert_eq!(
+        green.steps,
+        ["no", "yes"],
+        "healthy when yes stays yes on top"
+    );
+}

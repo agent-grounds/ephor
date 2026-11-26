@@ -511,9 +511,11 @@ pub struct MonitorDetail {
     /// The span's readings, oldest first, for the chart.
     pub chart: Vec<ChartPoint>,
     /// What each place on a boolean's or a level's chart is called, from
-    /// place 0 up: `no`, `yes`, or the levels as declared; empty for a
+    /// place 0 up, the healthy or the best value on top as the strip draws
+    /// it tallest: `no` then `yes`, `yes` then `no` where `no` is healthy,
+    /// and a level's from the last declared up to the first; empty for a
     /// number or a series, whose places are their values
-    /// (§FS-021-monitors.19).
+    /// (§FS-021-monitors.19, §FS-021-monitors.18.5).
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub steps: Vec<String>,
     /// Today's `healthy` and `warn` bounds, drawn as threshold lines.
@@ -649,7 +651,8 @@ pub struct ChartPoint {
     pub t: Option<DateTime<Utc>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub x: Option<String>,
-    /// On the chart's scale: a number, a level's place, a boolean's 1 or 0.
+    /// On the chart's scale: a number, or a boolean's or a level's place,
+    /// the healthy or the best value on top, as `steps` names them.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub value: Option<f64>,
     /// Judged under today's condition (§FS-021-monitors.18.9).
