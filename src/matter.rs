@@ -321,7 +321,11 @@ pub fn shown_file_name(name: &str) -> String {
     }
 }
 
-fn one_line_of(text: &str) -> String {
+/// Text a source gives, as one line a person is shown: every run of
+/// whitespace, newlines included, becomes one space and control characters
+/// are dropped, so it cannot break the line it stands on or reach a terminal
+/// as anything but text (§FS-011-command-line.4, §FS-021-monitors.8.1).
+pub fn one_line_of(text: &str) -> String {
     text.chars()
         .map(|character| {
             if character.is_whitespace() {
