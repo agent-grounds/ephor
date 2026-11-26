@@ -60,6 +60,24 @@ initial reading remains complete: concurrent standing measurements
 ([§AR-004-forest.2](AR-004-forest.md#2-probes-not-declarations)) finish before it is presented,
 serving the first glance ([§GOAL-002-glance](../goals.md#goal-002-glance-one-glance-answers-what-needs-me-now)).
 
+That load runs behind the screen rather than in front of it
+([§FS-019-waiting.5.1](../functional-spec/FS-019-waiting.md#51-the-interface-is-on-the-screen-before-it-reads-anything)). The interface enters the terminal, then opens the
+session and initializes the screen state on the main thread, where it always
+ran, while a thread of its own draws a frame naming the step under way and
+reads only the keys that quit; what the load read goes to the event loop
+whole once it lands. The load keeps its thread because a load moved off it was
+measurably slower: the allocator grows a second thread's heap a page at a
+time, and the first reading allocates enough for that to show. The session
+says its steps through a hook its opener passes in: a command opens the same
+session through the opening that hands every step to a silent hook, so
+neither its signature nor its reading changes, and the steps are said where
+the reading already happens rather than read back off it. The standing
+workers say each measurement as it finishes, counted under one lock, so the
+count reaches the screen in the order it rises. A quit cannot stop the load
+where it is, so it restores the terminal and ends the process, as an
+interrupt during the load always did; a failure or a panic there comes back
+to the caller unchanged ([§REQ-002-parity.2](../requirements/REQ-002-parity.md#2-parity-runs-both-ways)).
+
 The interactive screen also observes known feed-cache files locally, without
 reloading the session or fetching from a forge. Its freshness baseline is the
 displayed feed's reading, not a later metadata probe. A newer valid cache makes

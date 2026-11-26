@@ -185,7 +185,9 @@ So the screen never shows that answer before it has one. Reading the work
 roots takes as long as the operations board takes, and the interface draws
 its first frame before that read rather than after it: until the first
 reading lands the screen says it is reading, with no section under it, and
-neither `Nothing is waiting on you.` nor an empty section.
+neither `Nothing is waiting on you.` nor an empty section. Before the screen
+has anything to read from at all, the interface says what it is reading in
+its place ([§FS-019-waiting.5.1](FS-019-waiting.md#51-the-interface-is-on-the-screen-before-it-reads-anything)).
 
 Where the runtime cannot run anything at all, the workable rung's own sentence
 is shown in place of the empty Waiting on you and Running sections, exactly as
@@ -258,6 +260,42 @@ configuration error, refused at load like every other unknown setting.
 
 `ephor tui --overview` opens on the overview for one launch, whatever the
 setting says.
+
+### 5.1 The interface is on the screen before it reads anything
+
+`ephor tui` enters the terminal and draws its first frame before it opens the
+session its screens read: the registry, every cached feed, where each
+checked-out branch stands, and the work handed over. On a site that watches
+many projects that reading takes seconds, and much longer when the disk has
+not read those files lately, and a terminal left blank for that long cannot be
+told from a program that hung — the failure [§FS-001-forge-interface.7](FS-001-forge-interface.md#7-a-fetch-runs-beneath-the-reading-never-in-front-of-it) names
+for a fetch, arriving before there is a screen to keep live. So until the
+session has loaded, the screen shows one line under its header naming what it
+is reading now, in ephor's words and with a count wherever it has one:
+
+- `Reading the registry…`
+- `Reading the cached feeds of 15 projects…`
+- `Reading the branches of 29 checkouts — 12 done…`, the count rising as each
+  checkout is measured
+- `Reading the work handed over…`, `Reading the jobs ephor started…` and
+  `Reading the work roots…`
+
+and then the Waiting screen's own `Reading what waits on you…`
+([§FS-019-waiting.2](FS-019-waiting.md#2-an-empty-section-is-one-line)). A step too quick to be drawn is not waited for. Nothing a
+reading brings is drawn before that reading has landed: no section, no count
+of matters, and no `No cached data` message.
+
+`q` and `ctrl-c` quit while it reads, and leave the terminal as they found
+it. No other key does anything yet, because nothing is on the screen to act
+on.
+
+Saying what it reads changes nothing about the reading: the same files and the
+same measurements, in the same order, that a command opening the same session
+reads ([§REQ-002-parity.2](../requirements/REQ-002-parity.md#2-parity-runs-both-ways)). The configuration is read first, before the terminal
+is entered, so a setting it refuses is said on the plain terminal like every
+other command's. A load that fails leaves the terminal as it found it, then
+says why in the sentence and with the exit code a command opening the same
+session would.
 
 ## 6. `ephor waiting` is the same reading
 
