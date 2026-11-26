@@ -17,6 +17,9 @@ use crate::monitors::page::{Column, Rank};
 use crate::monitors::strip::{Cell, Change, Span};
 use crate::monitors::window::Window;
 
+mod said;
+pub use said::{clip, clipped, when, FOOTNOTE, TITLE};
+
 /// What the page says with no monitor to show (§FS-021-monitors.18.2).
 pub const NO_MONITORS: &str = "no monitors — ephor guide monitors says how to declare one";
 
@@ -502,6 +505,12 @@ pub struct MonitorDetail {
     pub hold: Option<HoldView>,
     /// The span's readings, oldest first, for the chart.
     pub chart: Vec<ChartPoint>,
+    /// What each place on a boolean's or a level's chart is called, from
+    /// place 0 up: `no`, `yes`, or the levels as declared; empty for a
+    /// number or a series, whose places are their values
+    /// (§FS-021-monitors.19).
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub steps: Vec<String>,
     /// Today's `healthy` and `warn` bounds, drawn as threshold lines.
     pub thresholds: Vec<Threshold>,
     /// The points the repository supplied: a series', or the history a

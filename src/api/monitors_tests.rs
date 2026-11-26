@@ -935,3 +935,6 @@ fn titles_sort_whatever_their_case() {
     let titles: Vec<&str> = group.rows.iter().map(|row| row.title.as_str()).collect();
     assert_eq!(titles, ["Advisories", "grund check", "Line coverage"]);
 }
+
+#[path = "monitors_fixtures.rs"]
+pub(crate) mod fixtures;

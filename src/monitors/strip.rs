@@ -120,6 +120,29 @@ impl Cell {
             (Mark::Before, _) => ' ',
         }
     }
+
+    /// The cell as the detail view's strip of health draws it
+    /// (§FS-021-monitors.19): by its health, as a boolean's strip is, so it
+    /// reads without colour; the middle block for a KPI's, which nothing
+    /// judges, `·` for a gap and a space before the history begins.
+    pub fn health_glyph(&self) -> char {
+        match self.mark {
+            Mark::Read => BLOCKS[usize::from(health_height(self.health).unwrap_or(3))],
+            Mark::Gap => '·',
+            Mark::Before => ' ',
+        }
+    }
+}
+
+/// How tall a health is drawn: tall while ok and low while down
+/// (§FS-021-monitors.18.5).
+fn health_height(health: Option<Health>) -> Option<u8> {
+    match health? {
+        Health::Ok => Some(7),
+        Health::Warn => Some(4),
+        Health::Unknown => Some(2),
+        Health::Down => Some(0),
+    }
 }
 
 /// A line's value on the strip's scale: a number's (a thinned line's mean),
@@ -241,11 +264,8 @@ fn heighten(cells: &mut [Cell], monitor: &Monitor) {
         let height = match monitor.kind {
             // A strip of health, tall while ok and low while down, so it reads
             // without colour; a KPI's by its value (§FS-021-monitors.18.5).
-            Some(Kind::Boolean) => match cell.health {
-                Some(Health::Ok) => 7.0,
-                Some(Health::Warn) => 4.0,
-                Some(Health::Unknown) => 2.0,
-                Some(Health::Down) => 0.0,
+            Some(Kind::Boolean) => match health_height(cell.health) {
+                Some(height) => f64::from(height),
                 None if value >= 1.0 => 7.0,
                 None => 0.0,
             },

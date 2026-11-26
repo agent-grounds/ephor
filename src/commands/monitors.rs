@@ -5,10 +5,12 @@
 
 use std::process::ExitCode;
 
-use chrono::{DateTime, Local, Utc};
+use chrono::{DateTime, Utc};
 
 use super::emit;
-use crate::api::monitor_views::{MonitorDetail, MonitorRow, Monitors, NO_MONITORS};
+use crate::api::monitor_views::{
+    clipped, when, MonitorDetail, MonitorRow, Monitors, FOOTNOTE, NO_MONITORS, TITLE,
+};
 use crate::api::Session;
 use crate::cli::{MonitorsArgs, MonitorsCommand, MonitorsShowArgs};
 use crate::error::{EphorError, Result};
@@ -18,10 +20,6 @@ use crate::feed::render::Style;
 use crate::monitors::page::Rank;
 use crate::monitors::strip::Way;
 use crate::scope::Projects;
-
-/// The footnote under the table (§FS-021-monitors.21.1).
-const FOOTNOTE: &str =
-    "change: over the window, or over the last 24 readings when those reach further back";
 
 /// The table's columns after the title (§FS-021-monitors.21.1).
 const COLUMNS: [&str; 6] = ["value", "every", "health", "since", "change", "condition"];
@@ -139,17 +137,6 @@ fn ranked(style: &Style, rank: Rank, text: &str) -> String {
     }
 }
 
-/// The widest a title is printed, `…` standing for the rest, so one long
-/// title does not push every row of the page out of line.
-const TITLE: usize = 25;
-
-fn clipped(title: &str) -> String {
-    match title.chars().count() > TITLE {
-        true => title.chars().take(TITLE - 1).chain(['…']).collect(),
-        false => title.to_string(),
-    }
-}
-
 /// One line of the table: the title padded, then each column padded but
 /// the last, each cell painted by `paint` after it is measured.
 fn line(
@@ -219,12 +206,6 @@ fn monitor(args: &MonitorsShowArgs) -> Result<ExitCode> {
     Ok(ExitCode::SUCCESS)
 }
 
-fn when(at: DateTime<Utc>) -> String {
-    at.with_timezone(&Local)
-        .format("%Y-%m-%d %H:%M")
-        .to_string()
-}
-
 fn print_detail(detail: &MonitorDetail, now: DateTime<Utc>) {
     let row = &detail.row;
     let shows = &row.shows;
@@ -236,39 +217,8 @@ fn print_detail(detail: &MonitorDetail, now: DateTime<Utc>) {
     );
     println!();
     println!("{}", detail.health_says(when));
-    if let Some(sentence) = &shows.health.sentence {
-        println!("{sentence}");
-    }
-    println!("value: {}", shows.value);
-    println!("condition: {}", row.condition.parts_say());
-    if let Some(said) = &row.detail {
-        println!("detail: {said}");
-    }
-    for note in row.notes_say(when) {
-        println!("note: {note}");
-    }
-    if let Some(description) = &detail.description {
-        println!("about: {description}");
-    }
-    if let Some(from) = &detail.from {
-        let source = match &from.source {
-            crate::monitors::model::Source::Command { command, .. } => format!("command {command}"),
-            crate::monitors::model::Source::File { file, .. } => format!("file {file}"),
-        };
-        let runs = from
-            .runs_in
-            .as_ref()
-            .map(|dir| format!(" · in {}", dir.display()))
-            .unwrap_or_default();
-        println!("from: {source}{runs}");
-    }
-    println!("declared: {}", detail.declared.says());
-    println!("cadence: {}", row.cadence_says(when));
-    if let Some(freshness) = row.freshness.says(when) {
-        println!("freshness: {freshness}");
-    }
-    if let Some(hold) = &detail.hold {
-        println!("hold: {}", hold.says());
+    for fact in detail.facts_say(when) {
+        println!("{fact}");
     }
     let strip: String = shows.strip.iter().map(|cell| cell.glyph()).collect();
     println!("strip: {strip}  change {}", shows.change.says);
@@ -276,45 +226,18 @@ fn print_detail(detail: &MonitorDetail, now: DateTime<Utc>) {
         println!();
         println!("points ({})", detail.points.len());
         for point in &detail.points {
-            let at = match (&point.t, &point.x) {
-                (Some(t), _) => when(t.with_timezone(&Utc)),
-                (None, Some(x)) => x.clone(),
-                (None, None) => "—".to_string(),
-            };
-            println!("  {at:<16}  {}", row.say(point.v));
+            println!("  {}", detail.point_says(point, when));
         }
     }
     println!();
     println!("episodes ({})", detail.episodes.len());
     for episode in &detail.episodes {
-        let end = episode.end.map_or_else(|| "open".to_string(), when);
-        println!(
-            "  {:<7} {} → {}  {}",
-            match episode.sort {
-                crate::monitors::episode::Sort::Drop => "drop",
-                crate::monitors::episode::Sort::Unknown => "unknown",
-            },
-            when(episode.start),
-            end,
-            episode.matter
-        );
+        println!("  {}", episode.says(when));
     }
     println!();
     println!("readings ({})", detail.readings.len());
     for reading in &detail.readings {
-        let health = reading.health.map_or("—", |health| health.name());
-        let note = reading
-            .note
-            .as_ref()
-            .map(|note| format!("  {note}"))
-            .unwrap_or_default();
-        let said = format!(
-            "  {}  {:<12} {:<8}{note}",
-            when(reading.t),
-            reading.value,
-            health
-        );
-        println!("{}", said.trim_end());
+        println!("  {}", reading.says(when));
     }
     println!();
     println!("matter: {}", detail.matter_says());
