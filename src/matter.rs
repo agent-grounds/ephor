@@ -446,6 +446,12 @@ pub struct Fingerprint {
     pub discussions: BTreeMap<String, String>,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub events: String,
+    /// A monitor's matter's movement, and nothing else it reads
+    /// (§FS-021-monitors.13.1): a value moving inside its band is not in it.
+    /// Absent on every other matter and on prints taken before it existed,
+    /// which read as before (§FS-005-dispatch.5).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub health: Option<crate::monitors::matters::Moves>,
 }
 
 /// Which part of a matter moved. The row says this rather than only that
@@ -456,6 +462,8 @@ pub enum Moved {
     State,
     Discussions,
     Events,
+    /// A monitor's matter moved on its health (§FS-021-monitors.13.1).
+    Health,
 }
 
 impl Moved {
@@ -465,6 +473,7 @@ impl Moved {
             Moved::State => "the state moved",
             Moved::Discussions => "the conversation moved",
             Moved::Events => "the gate moved",
+            Moved::Health => "its health moved",
         }
     }
 }
@@ -479,14 +488,16 @@ impl Fingerprint {
         if moved.is_empty() {
             return None;
         }
-        Some(format!(
-            "⟳ {}",
-            moved
-                .iter()
-                .map(|part| part.name())
-                .collect::<Vec<_>>()
-                .join(", ")
-        ))
+        // A monitor's matter names why in its own sentences
+        // (§FS-021-monitors.13.2), not that its health moved.
+        let said: Vec<String> = moved
+            .iter()
+            .flat_map(|part| match (part, &self.health, &previous.health) {
+                (Moved::Health, Some(now), Some(was)) => now.since(was),
+                _ => vec![part.name().to_string()],
+            })
+            .collect();
+        Some(format!("⟳ {}", said.join(", ")))
     }
 
     /// What differs from an earlier print, in the order a reader cares:
@@ -501,6 +512,11 @@ impl Fingerprint {
         }
         if self.events != previous.events {
             moved.push(Moved::Events);
+        }
+        if let (Some(now), Some(was)) = (&self.health, &previous.health) {
+            if !now.since(was).is_empty() {
+                moved.push(Moved::Health);
+            }
         }
         moved
     }
@@ -770,6 +786,8 @@ impl Matter {
                         .join("|"),
                 )
             },
+            health: crate::monitors::matters::stated(&self.source, &self.raw)
+                .map(|stated| stated.moves),
         }
     }
 
@@ -1308,6 +1326,10 @@ fn digest(text: &str) -> String {
 #[cfg(test)]
 #[path = "matter_attachments_tests.rs"]
 mod attachments_tests;
+
+#[cfg(test)]
+#[path = "matter_health_tests.rs"]
+mod health_tests;
 
 #[cfg(test)]
 mod tests {

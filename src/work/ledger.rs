@@ -454,6 +454,12 @@ pub struct Snapshot {
     /// How much conversation there was.
     #[serde(default)]
     pub messages: usize,
+    /// A monitor's matter's movement, and nothing else it reads: the worst
+    /// level, the condition in words, a mark per ended work
+    /// (§FS-005-dispatch.5, §FS-021-monitors.13.1). Absent on every other
+    /// matter and in ledgers written before it, which read as before.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub health: Option<crate::monitors::matters::Moves>,
 }
 
 impl Snapshot {
@@ -468,6 +474,8 @@ impl Snapshot {
             blocked: gate.blocked,
             blockers: item.open_blockers(),
             messages: message_count(item),
+            health: crate::monitors::matters::stated(&item.source, &item.raw)
+                .map(|stated| stated.moves),
         }
     }
 
@@ -544,6 +552,11 @@ impl Snapshot {
                 }
             }
             _ => {}
+        }
+        // A monitor's matter says why it moved in its own sentences
+        // (§FS-021-monitors.13.2).
+        if let (Some(was), Some(health)) = (&self.health, &now.health) {
+            changes.extend(health.since(was));
         }
         if now.running != self.running && self.running > 0 && now.running == 0 {
             changes.push("the gate finished running".to_string());

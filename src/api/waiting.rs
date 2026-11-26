@@ -55,7 +55,7 @@ impl Session {
         };
         // Processed: a rhei is assigned, or a person said none is needed and
         // the matter has not moved since (§FS-019-waiting.7).
-        let processed = |item: &Item| self.has_work(&item.id) || self.dismissed(item);
+        let processed = |item: &Item| self.has_work(item) || self.dismissed(item);
         let holds = self.holding_labels();
         let review_id = |item: Option<&str>, plan_id: &str, ticket: &str| {
             item.filter(|id| self.item(id).is_some())
