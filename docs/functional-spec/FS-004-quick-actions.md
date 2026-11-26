@@ -41,6 +41,11 @@ the reader a key that does nothing on most of what they select, and the answer
 they get for pressing it — a refusal in one line at the bottom of a full
 screen — is the one place they were not looking.
 
+A key the footer advertises is seen, however narrow the screen. A footer too
+long for its screen goes on to the next line rather than off the edge,
+breaking between keys and never between a key and what it does, and takes at
+most three lines from the screen it describes.
+
 ## 3. Quick actions come first, and configuration adds to them
 
 They are listed above the configured actions, so that the obvious thing is

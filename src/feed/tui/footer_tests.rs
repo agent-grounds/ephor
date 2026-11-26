@@ -1,4 +1,4 @@
-//! The footer broken between its segments (§FS-021-monitors.20.1).
+//! The footer broken between its segments (§FS-004-quick-actions.2).
 
 use super::*;
 

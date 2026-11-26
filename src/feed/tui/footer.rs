@@ -1,6 +1,6 @@
 //! The footer's lines: what a screen names as its keys, said in full on a
-//! screen too narrow for one line (§FS-021-monitors.20.1,
-//! §FS-019-waiting.3).
+//! screen too narrow for one line (§FS-004-quick-actions.2), as Waiting's
+//! `M opens them` needs at 80 columns (§FS-021-monitors.20.1).
 //!
 //! A footer is segments set apart by runs of spaces, `j/k move  enter open`,
 //! so it breaks between them and never inside one, which keeps a key beside
