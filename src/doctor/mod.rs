@@ -601,9 +601,10 @@ fn site(args: &DoctorArgs, style: &Style, say: &Narrator) -> Result<(Health, Opt
         let Some(project_config) = config.projects.get(project) else {
             continue;
         };
+        let slot = monitors::has_slot(&registry_doc, &project_config.monitors, project);
         say.starting(&format!(
             "{project} ({} source(s))",
-            project_config.providers.len()
+            project_config.providers.len() + usize::from(slot)
         ));
         // A refresh that could not run at all is the registry being wrong,
         // which the ladder reports per project rather than ending the run.
