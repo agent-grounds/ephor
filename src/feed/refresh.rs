@@ -559,7 +559,7 @@ pub fn refresh_project_when(
             brought: samples_brought(&results),
             when,
             recent_days: defaults.recent_days,
-            ended: crate::monitors::after::ended(project_id),
+            ended: &crate::monitors::after::ended,
         });
         notes.extend(
             report
