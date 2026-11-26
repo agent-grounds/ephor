@@ -1657,7 +1657,12 @@ the feed is, `refreshed 2m ago`, so a quiet screen read from an old cache says
 so. Reading the work roots takes as long as the operations board does, so the
 first frame says `Reading what waits on you…` until it lands. The footer always
 opens with `overview: 143 matters · 12 changed since you looked`, so a quiet
-screen is never mistaken for a quiet feed.
+screen is never mistaken for a quiet feed. Where a watched project has
+monitors with a status, the line adds `monitors: 1 down · 2 unknown · 1
+overdue` and the footer `M opens them`
+([§FS-021-monitors.20.1](functional-spec/FS-021-monitors.md#201-waitings-overview-line-names-the-monitors)):
+the watch's own failure shows even on a quiet screen, and `M` is the page
+that says which (§14.7).
 
 **Processing a new matter** happens on the row
 ([§FS-019-waiting.7](functional-spec/FS-019-waiting.md#7-a-new-matter-is-processed-where-it-is-shown)). Every new row says what it would be assigned —
@@ -1825,7 +1830,7 @@ does not report one simply never shows it.
 | `Enter` `l` | on a gate, its form where the runtime prepares one, and otherwise its review — the screen `H` opens (§8.7.2); on a poll, the matter's thread or the plan; on a new matter, its thread; on a running row, attach (§8.16) |
 | `e` | read the plan behind a gate, poll or running row |
 | `O` | the overview — and from the overview, back here |
-| `;` `$` | the operations board and the burn page, as from any screen |
+| `;` `$` `M` | the operations board, the burn page and the Monitors page, as from any screen |
 | `r` | refresh underneath the screen |
 | `Esc` | nothing: this is the floor |
 | `q`, `^C` | quit |
@@ -1854,6 +1859,7 @@ A gate whose plan no matter on the feed is about cannot be reviewed by matter;
 | `u` | unread-only ↔ everything |
 | `;` | the operations board (§8.13) — from any screen |
 | `$` | the burn page (§9) — from any screen |
+| `M` | the Monitors page (§14.7) — from any screen |
 | `O` | the Waiting screen — and from any other screen, the overview |
 | `[` `]` | previous / next project (Detail) |
 | `Esc` `h` | back |
@@ -6512,6 +6518,11 @@ usable by the runtime it hands work to.
 | `$` — what this machine is spending | `ephor burn` |
 | `w` / `B` on the burn page — window, grouping | `ephor burn --window 6h` / `--by model` |
 | `R` on the burn page — read the transcripts again | `ephor burn --rescan` |
+| `M` — what each project's monitors say | `ephor monitors` |
+| `w` on the Monitors page — the window | `ephor monitors --window 30d` |
+| `enter` on the Monitors page — one monitor in detail | `ephor monitors show PROJECT/ID` |
+| `r` on the Monitors page — read every monitor of the row's project now | `ephor refresh PROJECT --monitors-now` |
+| `p` on the Monitors page — process the row's open matter | `ephor work process --item KEY` |
 | `L` — what a job wrote | `ephor job log <id>` (`--follow` keeps up; with `--json` it waits and then answers) |
 | `m` / `d` / space — mark read | `ephor mark-read --id ID` |
 | `u` — only what is unread | `ephor feed --unread` |
@@ -6965,3 +6976,72 @@ The store lives under `~/.local/state/ephor/monitors/<project>/`, and
 `ephor doctor` reports its size and each monitor that was overdue before its
 own refresh read it. Deleting it is allowed and costs the history, as §1.3
 says.
+
+### 14.7 The page and its keys
+
+`M` opens the Monitors page over whatever screen you are on, and `M` or `Esc`
+closes it back to that screen
+([§FS-021-monitors.18.1](functional-spec/FS-021-monitors.md#181-m-opens-it-from-any-screen)).
+It is one modal layer with the operations board and the burn page: `;` or `$`
+from the page replaces it, and closing that comes back to where the layer
+opened. The header is the one `ephor monitors` prints; on a screen too narrow
+for it, the window and the feed's age are said again above the first project.
+
+Each row is the glyph, the title, the value, the cadence, the condition with
+the sample's `detail`, the strip of the last 24 cells, the change, the health
+and the matter
+([§FS-021-monitors.18.4](functional-spec/FS-021-monitors.md#184-the-columns)).
+The glyph and the health take their rank's colour, each cell of the strip its
+own health's, and the change its `better`'s; a boolean's strip is its health,
+tall while ok and low while down, so the page reads without colour. A narrow
+screen gives up the condition first, then shortens the titles, then the strip;
+the detail view still says all of it.
+
+| Key | Does |
+|---|---|
+| `M` | open the page from any screen; again to close |
+| `j` `k`, arrows | move |
+| `g` `G` | first / last |
+| `f` `b`, PageDown/PageUp | page |
+| `Enter` | the row's detail view |
+| `w` | cycle the window — `6h` → `1d` → `7d` → `30d` → `90d` → `1y` |
+| `r` | refresh the row's project and read every monitor of it now, beneath the screen |
+| `o` | open the row's `url` in the browser |
+| `p` | process the row's open matter, as `Enter` does on Waiting |
+| `Esc` `h` `q` | back to where you were |
+
+`r` is `ephor refresh PROJECT --monitors-now`, run the way the inbox's `r`
+runs a refresh: the header says `Refreshing widget --monitors-now (1/1)…`,
+every key still answers, and the page is read again when the run lands. `p`
+processes in place
+([§FS-021-monitors.18.10](functional-spec/FS-021-monitors.md#1810-keys)): it
+opens the processing screen Waiting's `Enter` opens, over the matter the
+matter column names, and `Esc` there, or a move confirmed, comes back to the
+Monitors page rather than to Waiting. On a row with nothing to process it says
+why: a KPI has no matter, an overdue monitor's refresh is `r`, a running
+matter is shown on Waiting, and a matter not yet in the feed arrives with the
+next refresh.
+
+**The detail view** (`Enter`) is the one `ephor monitors show` prints, titled
+`ephor — monitors › widget › Line coverage` with its window and the feed's
+age
+([§FS-021-monitors.19](functional-spec/FS-021-monitors.md#19-the-detail-view)).
+Its health, facts and matter line come first, then the chart: the span with
+labelled axes, today's `healthy` bound drawn across it in red and `warn` in
+amber, each stretch of line in the worse health of the two readings it joins,
+and a gap where a read failed. A boolean and a level are drawn as steps,
+holding each reading until the next, because a line drawn straight from `no`
+to `yes` would show values nobody read; the y axis names their states. Under
+the chart are the reading the cursor is on, the strip of health stretched to
+the width, the bounds the threshold lines stand for, and then the episodes,
+the readings and the points the repository supplied.
+
+| Key | Does |
+|---|---|
+| `←` `→` | move the chart's cursor to the previous / next reading |
+| `[` `]` | the previous / next monitor in the page's order |
+| `w` `r` `o` | as on the page; a series drawn by `x` labels has no window to cycle |
+| `p` | process the matter in place, as on the page |
+| `j` `k`, `↑` `↓`, `f` `b`, `g` | scroll |
+| `Esc` `h` `q` | back to the page |
+| `M` | close the page |
