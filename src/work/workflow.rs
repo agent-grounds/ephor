@@ -25,7 +25,7 @@ use crate::work::runtime::workflow::{Input, Kind, Workflow};
 
 /// The icon an entry written beside a workflow gets when it named none — it
 /// still has to look like the entries beside it.
-const WORKFLOW_ICON: &str = "⛬";
+pub const WORKFLOW_ICON: &str = "⛬";
 
 /// An entry written beside a workflow, in the workflow's own directory
 /// (§FS-005-dispatch.19). Which workflow is not written down: it is the one
