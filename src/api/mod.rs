@@ -12,6 +12,7 @@ pub mod burn;
 pub mod conversation;
 pub mod guide;
 pub mod human_gate;
+pub mod monitor_menu;
 pub mod offers;
 pub mod parity;
 pub mod process;

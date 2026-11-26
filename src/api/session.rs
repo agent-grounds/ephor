@@ -247,6 +247,7 @@ impl Session {
                 .map(offers::agent_entry)
                 .collect(),
         );
+        crate::api::monitor_menu::lead(&mut menu, item);
         // What work is offered on, for every entry that asks for it whoever
         // wrote it: never about an item that is finished
         // (§FS-005-dispatch.6), and — where the work edits the change — only
