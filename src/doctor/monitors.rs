@@ -41,6 +41,16 @@ pub fn overdue(registry_doc: &Value, config: &StatusConfig, projects: &[String])
     said
 }
 
+/// Whether a project has the monitor slot, which the doctor's progress line
+/// counts among the sources it asks, as its report counts it
+/// (§FS-021-monitors.17.5): either home declares a monitor, or the store
+/// keeps one (§FS-021-monitors.1.4).
+pub fn has_slot(registry_doc: &Value, site: &[Value], project: &str) -> bool {
+    let placement = crate::branches::Placement::load(registry_doc, project);
+    crate::monitors::declared::read(placement.as_ref(), site).any()
+        || Store::of(project).load().is_ok_and(|kept| kept.keeps_any())
+}
+
 /// The store's size, its files and where it is, once there is a store.
 pub fn store_note() -> Option<String> {
     let root = store::dir();

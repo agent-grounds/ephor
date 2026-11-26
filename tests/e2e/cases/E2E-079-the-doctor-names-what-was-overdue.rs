@@ -59,6 +59,17 @@ fn the_doctor_notes_the_store_and_what_was_overdue() {
     );
     assert_eq!(project["health"], "degraded", "{report}");
     assert_eq!(first, Some(4), "{report}");
+    // The line that announces the project counts the slot among its sources too.
+    let shown = world
+        .ephor()
+        .args(["doctor", "--skip-self"])
+        .output()
+        .unwrap();
+    let progress = String::from_utf8_lossy(&shown.stderr);
+    assert!(
+        progress.contains(&format!("{PROJECT} (1 source(s))")),
+        "{progress}"
+    );
 
     let path = world
         .path()
