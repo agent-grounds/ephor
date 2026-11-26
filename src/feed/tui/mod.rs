@@ -22,6 +22,7 @@ mod brief;
 mod brief_draw;
 mod burn;
 mod cache_freshness;
+mod footer;
 mod gate;
 mod human_gate;
 mod monitors;
@@ -2896,23 +2897,15 @@ impl App {
         // away the title or refresh progress (§FS-016-browser-opening.2).
         let browser_success =
             self.message == crate::seams::browser::Outcome::ExitedSuccessfully.message();
+        let width = usize::from(frame.area().width);
         // Give the warning its own wrapped space so messages/progress cannot
         // hide it, and multiple affected projects remain named
         // (§FS-001-forge-interface.7.1).
         let warning = self
             .cache_freshness
             .warning(&self.ctx.feeds)
-            .map(|warning| thread::wrap_line(&warning, usize::from(frame.area().width.max(1))))
+            .map(|warning| thread::wrap_line(&warning, width.max(1)))
             .unwrap_or_default();
-        let [header_area, message_area, warning_area, body_area, footer_area] = Layout::vertical([
-            Constraint::Length(1),
-            Constraint::Length(u16::from(browser_success)),
-            Constraint::Length(warning.len().min(usize::from(u16::MAX)) as u16),
-            Constraint::Min(1),
-            Constraint::Length(1),
-        ])
-        .areas(frame.area());
-
         let title = match &self.answers {
             // What is being answered is what the reader is doing, so it is
             // what the header says while the answers are up.
@@ -2927,7 +2920,7 @@ impl App {
                 Screen::Brief(brief) => brief.title(),
                 Screen::Operations(board) => board.title(),
                 Screen::Burn(page) => page.title(),
-                Screen::Monitors(page) => page.title(),
+                Screen::Monitors(page) => page.title(width),
                 Screen::Process(screen) => screen.title(),
             },
         };
@@ -2945,15 +2938,72 @@ impl App {
         } else {
             self.message.as_str()
         };
+        let status = format!("{progress}{message}");
+        // Where the title leaves no room for it, the run's progress and the
+        // message take a line of their own rather than being cut off the
+        // edge (§FS-001-forge-interface.7).
+        let apart = !browser_success
+            && !status.is_empty()
+            && title.chars().count() + 3 + status.trim_end().chars().count() > width;
+        let footer = if self.prompt.is_some() {
+            match self.prompt.as_ref().map(|prompt| &prompt.asking) {
+                Some(Asking::Transition { .. }) => " type a reason  ·  enter confirms  ·  esc keeps the state  ·  ^w word back  ·  ^u clear".to_string(),
+                _ => " type  ·  enter sends  ·  esc cancels  ·  ^w word back  ·  ^u clear".to_string(),
+            }
+        // Built from what is open, not fixed for the screen: what Enter does
+        // on a row of answers depends on the row (§FS-004-quick-actions.2).
+        } else if let Some(answers) = &self.answers {
+            answers.footer()
+        } else if let Some(picker) = &self.refresh_picker {
+            picker.footer()
+        } else if let Some(menu) = &self.menu {
+            menu.footer()
+        } else {
+            match &self.screen {
+                Screen::Waiting => self.waiting.footer(),
+                Screen::Navigator => self.navigator.footer(),
+                // Built from what is selected, not fixed per screen
+                // (§FS-004-quick-actions.2).
+                Screen::Thread(thread) => thread.footer(),
+                Screen::Gate(gate) => gate.footer().to_string(),
+                Screen::Work(work) => work.footer(),
+                Screen::HumanGate(review) => review.footer(),
+                Screen::Brief(brief) => brief.footer(),
+                Screen::Operations(board) => board.footer().to_string(),
+                Screen::Burn(page) => page.footer().to_string(),
+                Screen::Monitors(page) => page.footer().to_string(),
+                Screen::Process(screen) => screen.footer(),
+            }
+        };
+        // A footer too long for the screen goes on to another line rather
+        // than off the edge, so every key it names is seen
+        // (§FS-021-monitors.20.1).
+        let footer = footer::lines(&footer, width);
+        let [header_area, message_area, warning_area, body_area, footer_area] = Layout::vertical([
+            Constraint::Length(1),
+            Constraint::Length(u16::from(browser_success || apart)),
+            Constraint::Length(warning.len().min(usize::from(u16::MAX)) as u16),
+            Constraint::Min(1),
+            Constraint::Length(footer.len().min(footer::MOST) as u16),
+        ])
+        .areas(frame.area());
+
+        let header = match apart {
+            true => title,
+            false => format!("{title}   {status}"),
+        };
         frame.render_widget(
-            Paragraph::new(format!("{title}   {progress}{message}"))
-                .style(Style::default().add_modifier(Modifier::BOLD)),
+            Paragraph::new(header).style(Style::default().add_modifier(Modifier::BOLD)),
             header_area,
         );
-        if browser_success {
+        let below = match (browser_success, apart) {
+            (true, _) => Some(self.message.clone()),
+            (false, true) => Some(format!(" {}", status.trim_end())),
+            (false, false) => None,
+        };
+        if let Some(below) = below {
             frame.render_widget(
-                Paragraph::new(self.message.as_str())
-                    .style(Style::default().add_modifier(Modifier::BOLD)),
+                Paragraph::new(below).style(Style::default().add_modifier(Modifier::BOLD)),
                 message_area,
             );
         }
@@ -3003,38 +3053,8 @@ impl App {
             prompt.draw(frame, body_area);
         }
 
-        let footer = if self.prompt.is_some() {
-            match self.prompt.as_ref().map(|prompt| &prompt.asking) {
-                Some(Asking::Transition { .. }) => " type a reason  ·  enter confirms  ·  esc keeps the state  ·  ^w word back  ·  ^u clear".to_string(),
-                _ => " type  ·  enter sends  ·  esc cancels  ·  ^w word back  ·  ^u clear".to_string(),
-            }
-        // Built from what is open, not fixed for the screen: what Enter does
-        // on a row of answers depends on the row (§FS-004-quick-actions.2).
-        } else if let Some(answers) = &self.answers {
-            answers.footer()
-        } else if let Some(picker) = &self.refresh_picker {
-            picker.footer()
-        } else if let Some(menu) = &self.menu {
-            menu.footer()
-        } else {
-            match &self.screen {
-                Screen::Waiting => self.waiting.footer(),
-                Screen::Navigator => self.navigator.footer(),
-                // Built from what is selected, not fixed per screen
-                // (§FS-004-quick-actions.2).
-                Screen::Thread(thread) => thread.footer(),
-                Screen::Gate(gate) => gate.footer().to_string(),
-                Screen::Work(work) => work.footer(),
-                Screen::HumanGate(review) => review.footer(),
-                Screen::Brief(brief) => brief.footer(),
-                Screen::Operations(board) => board.footer().to_string(),
-                Screen::Burn(page) => page.footer().to_string(),
-                Screen::Monitors(page) => page.footer().to_string(),
-                Screen::Process(screen) => screen.footer(),
-            }
-        };
         frame.render_widget(
-            Paragraph::new(footer).style(Style::default().fg(Color::DarkGray)),
+            Paragraph::new(footer.join("\n")).style(Style::default().fg(Color::DarkGray)),
             footer_area,
         );
     }

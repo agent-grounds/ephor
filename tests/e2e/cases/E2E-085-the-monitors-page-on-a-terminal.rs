@@ -107,8 +107,11 @@ fn m_opens_the_monitors_page_and_enter_its_detail_on_an_80_by_24_terminal() {
     assert_eq!(status, Some(0));
 
     let page = screen(&screens, "page");
+    // §FS-021-monitors.18.2: too wide for 80 columns, the header's counts
+    // are said under the title rather than cut off the edge.
+    assert!(page.starts_with(" ephor — monitors"), "{page}");
     assert!(
-        page.contains("ephor — monitors   1 down · 0 unknown · 0 failing · 0 warn · 1 ok"),
+        page.contains("1 down · 0 unknown · 0 failing · 0 warn · 1 ok · 1 KPIs"),
         "{page}"
     );
     let rows: Vec<&str> = page

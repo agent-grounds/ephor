@@ -64,6 +64,16 @@ fn dim() -> Style {
     Style::default().fg(Color::DarkGray)
 }
 
+/// `text` wrapped to `width` at its words, each line `indent` spaces in, so
+/// a line too long for the screen is said in full rather than cut off.
+pub(super) fn wrapped(text: &str, indent: usize, width: usize) -> Vec<String> {
+    let room = width.saturating_sub(indent).max(1);
+    super::thread::wrap_line(text, room)
+        .into_iter()
+        .map(|line| format!("{}{line}", " ".repeat(indent)))
+        .collect()
+}
+
 fn pad(text: &str, width: usize) -> String {
     let text = clip(text, width);
     let short = width.saturating_sub(text.chars().count());
@@ -184,17 +194,11 @@ impl MonitorsScreen {
         let mut lines = Vec::new();
         // The title bar carries the header; where it cannot fit, what `w`
         // changes is said again here so the window is never cut off.
-        let header = page.header(self.now());
-        if header.chars().count() + 1 > width {
-            lines.push(Line::styled(
-                format!(
-                    " window {} · {}",
-                    page.window.label(),
-                    views::refreshed(page.refreshed_at, self.now())
-                ),
-                dim(),
-            ));
-        }
+        lines.extend(
+            self.header_lines(width)
+                .into_iter()
+                .map(|line| Line::styled(line, dim())),
+        );
         if page.projects.is_empty() {
             lines.push(Line::raw(""));
             lines.push(Line::raw(format!(" {NO_MONITORS}")));
@@ -324,7 +328,7 @@ impl MonitorsScreen {
         let width = usize::from(area.width);
         let height = usize::from(area.height);
         self.detail_viewport = area.height;
-        let top = head_lines(&detail);
+        let top = self.head_lines(&detail, width);
         let chart = chart_rows(height);
         let bottom = self.tail_lines(&detail, width);
         let total = top.len() + chart + bottom.len();
@@ -407,19 +411,35 @@ impl MonitorsScreen {
     }
 }
 
-/// What heads the detail view: the health as the health column says it,
-/// coloured by its rank, then the monitor's facts and its matter line
-/// (§FS-021-monitors.19). The matter line comes here, beside what `p` acts
-/// on, rather than under every reading of the window.
-fn head_lines(detail: &views::MonitorDetail) -> Vec<Line<'static>> {
-    let mut lines = vec![Line::styled(
-        detail.health_says(when),
-        rank_style(detail.row.shows.rank).add_modifier(Modifier::BOLD),
-    )];
-    lines.extend(detail.facts_say(when).into_iter().map(Line::raw));
-    lines.push(Line::raw(format!("matter: {}", detail.matter_says())));
-    lines.push(Line::raw(""));
-    lines
+impl MonitorsScreen {
+    /// What heads the detail view: what the title bar could not hold, the
+    /// health as the health column says it, coloured by its rank, then the
+    /// monitor's facts and its matter line (§FS-021-monitors.19), each
+    /// wrapped to `width` so nothing is cut off the edge. The matter line
+    /// comes here, beside what `p` acts on, rather than under every reading
+    /// of the window.
+    fn head_lines(&self, detail: &views::MonitorDetail, width: usize) -> Vec<Line<'static>> {
+        let mut lines: Vec<Line<'static>> = self
+            .header_lines(width)
+            .into_iter()
+            .map(|line| Line::styled(line, dim()))
+            .collect();
+        let health = rank_style(detail.row.shows.rank).add_modifier(Modifier::BOLD);
+        lines.extend(
+            wrapped(&detail.health_says(when), 0, width)
+                .into_iter()
+                .map(|line| Line::styled(line, health)),
+        );
+        let facts = detail
+            .facts_say(when)
+            .into_iter()
+            .chain([format!("matter: {}", detail.matter_says())]);
+        for fact in facts {
+            lines.extend(wrapped(&fact, 0, width).into_iter().map(Line::raw));
+        }
+        lines.push(Line::raw(""));
+        lines
+    }
 }
 
 /// The chart's height: about a third of the view, never under 6 rows or

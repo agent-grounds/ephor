@@ -290,3 +290,91 @@ fn r_refreshes_the_rows_project_beneath_the_screen() {
     assert!(matches!(app.screen, Screen::Monitors(_)));
     assert!(app.message.contains("--monitors-now"), "{}", app.message);
 }
+
+/// The screen as an `width` by `height` terminal shows it, one line a row.
+fn drawn_at(app: &mut App, width: u16, height: u16) -> Vec<String> {
+    let mut terminal =
+        ratatui::Terminal::new(ratatui::backend::TestBackend::new(width, height)).unwrap();
+    terminal.draw(|frame| app.draw(frame)).unwrap();
+    let buffer = terminal.backend().buffer().clone();
+    (0..height)
+        .map(|y| (0..width).map(|x| buffer[(x, y)].symbol()).collect())
+        .collect()
+}
+
+/// §FS-021-monitors.18.2, §FS-001-forge-interface.7: where the header does
+/// not fit beside a refresh's progress, the progress keeps a line of its
+/// own and the header's counts and window are said above the first
+/// project, overdue included; where it fits, both share the title bar.
+#[test]
+fn a_refresh_in_flight_is_said_beside_a_header_too_wide_for_both() {
+    if isolated(
+        "feed::tui::monitors_app_tests::a_refresh_in_flight_is_said_beside_a_header_too_wide_for_both",
+    ) {
+        return;
+    }
+    let (config, _) = demo();
+    let mut app = App::load(&config, &crate::scope::Projects::every()).unwrap();
+    app.go_home_to(Home::Waiting);
+    key(&mut app, KeyCode::Char('M'));
+    app.refresh_monitors(&config, "demo");
+    let progress = "Refreshing demo --monitors-now (1/1)…";
+
+    let lines = drawn_at(&mut app, 80, 24);
+    let shown = lines.join("\n");
+    assert!(lines[0].starts_with(" ephor — monitors   "), "{shown}");
+    assert!(!lines[0].contains("1 down"), "{shown}");
+    assert!(
+        lines[..2].iter().any(|line| line.contains(progress)),
+        "{shown}"
+    );
+    let counts = lines
+        .iter()
+        .position(|line| line.contains("1 down · 0 unknown"));
+    let window = lines
+        .iter()
+        .position(|line| line.contains("window 7d · refreshed"));
+    let project = lines
+        .iter()
+        .position(|line| line.trim_start().starts_with("demo"));
+    assert!(counts.is_some() && window.is_some(), "{shown}");
+    assert!(counts < project && window < project, "{shown}");
+
+    let lines = drawn_at(&mut app, 200, 24);
+    assert!(
+        lines[0].contains("ephor — monitors   1 down") && lines[0].contains(progress),
+        "{}",
+        lines.join("\n")
+    );
+
+    let began = std::time::Instant::now();
+    while app.refresh.is_some() && began.elapsed() < Duration::from_secs(60) {
+        app.collect_refresh().unwrap();
+        std::thread::sleep(Duration::from_millis(20));
+    }
+}
+
+/// §FS-021-monitors.20.1, §FS-021-monitors.18.10: on an 80-column terminal
+/// a footer too long for one line goes on to the next rather than off the
+/// edge, so Waiting's `M opens them` and every key the page names are seen.
+#[test]
+fn a_footer_too_long_for_the_screen_goes_on_to_another_line() {
+    if isolated(
+        "feed::tui::monitors_app_tests::a_footer_too_long_for_the_screen_goes_on_to_another_line",
+    ) {
+        return;
+    }
+    let (config, _) = demo();
+    let mut app = App::load(&config, &crate::scope::Projects::every()).unwrap();
+    app.go_home_to(Home::Waiting);
+    app.freshen_waiting();
+    let shown = drawn_at(&mut app, 80, 24).join("\n");
+    assert!(shown.contains("M opens them"), "{shown}");
+    assert!(shown.contains("q quit"), "{shown}");
+    key(&mut app, KeyCode::Char('M'));
+    let shown = drawn_at(&mut app, 80, 24).join("\n");
+    assert!(shown.contains("esc/M back"), "{shown}");
+    key(&mut app, KeyCode::Enter);
+    let shown = drawn_at(&mut app, 80, 24).join("\n");
+    assert!(shown.contains("M close"), "{shown}");
+}

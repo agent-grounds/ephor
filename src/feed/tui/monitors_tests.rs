@@ -86,15 +86,15 @@ fn the_page_groups_its_projects_worst_first_with_every_health_and_cause() {
     let mut screen = screen(page_of_projects(dir.path()));
     assert!(
         screen
-            .title()
+            .title(200)
             .starts_with(" ephor — monitors   1 down · 4 unknown"),
         "{}",
-        screen.title()
+        screen.title(200)
     );
     assert!(
-        screen.title().ends_with("window 7d · refreshed 4m ago"),
+        screen.title(200).ends_with("window 7d · refreshed 4m ago"),
         "{}",
-        screen.title()
+        screen.title(200)
     );
     let (text, buffer) = render(&mut screen, 200, 40);
     let widget = text.find("  widget").expect("widget is a group");
@@ -168,7 +168,7 @@ fn an_empty_page_says_how_to_declare_a_monitor() {
         without: Vec::new(),
     });
     assert_eq!(
-        screen.title(),
+        screen.title(200),
         " ephor — monitors   0 down · 0 unknown · 0 failing · 0 warn · 0 ok · 0 KPIs   \
          window 7d · never refreshed"
     );
@@ -216,7 +216,7 @@ fn enter_opens_the_detail_and_brackets_step_through_the_page() {
     assert_eq!(screen.wanted(), Some(("widget".into(), "green".into())));
     screen.show(green_detail(&dir.path().join("green")));
     assert!(screen
-        .title()
+        .title(200)
         .starts_with(" ephor — monitors › widget › Build green   window 7d"));
     assert!(
         screen.footer().contains("[/] previous/next"),
