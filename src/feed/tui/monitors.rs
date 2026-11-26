@@ -19,6 +19,7 @@ use crate::api::monitors::NEW;
 use crate::feed::model::Item;
 use crate::monitors::window::Window;
 
+use super::monitors_draw::Drawn;
 use super::{Action, Screen};
 
 /// What `o` says on a row whose last answer named no address.
@@ -48,6 +49,8 @@ pub(crate) struct MonitorsScreen {
     pub(super) detail_viewport: u16,
     /// The chart point the cursor stands on (§FS-021-monitors.19).
     pub(super) cursor: usize,
+    /// How the open monitor is laid out, kept from one frame to the next.
+    pub(super) drawn: Option<Drawn>,
     /// The operations board or the burn page the page was opened over,
     /// which closing it comes back to (§FS-021-monitors.18.1).
     over: Option<Box<Screen>>,
@@ -73,6 +76,7 @@ impl MonitorsScreen {
             detail_scroll: 0,
             detail_viewport: 0,
             cursor: 0,
+            drawn: None,
             over: None,
         }
     }
@@ -144,6 +148,7 @@ impl MonitorsScreen {
                 last
             }
         };
+        self.drawn = Some(Drawn::of(&detail));
         self.detail = Some(detail);
         self.open = true;
     }
@@ -151,6 +156,7 @@ impl MonitorsScreen {
     pub fn close_detail(&mut self) {
         self.open = false;
         self.detail = None;
+        self.drawn = None;
     }
 
     /// The header's parts (§FS-021-monitors.18.2, §FS-021-monitors.19):

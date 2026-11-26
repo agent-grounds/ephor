@@ -18,6 +18,10 @@ use crate::monitors::window::Window;
 pub const FOOTNOTE: &str =
     "change: over the window, or over the last 24 readings when those reach further back";
 
+/// What the detail view's strip of health is headed by
+/// (§FS-021-monitors.19).
+pub const HEALTH: &str = "health:";
+
 /// The widest a title is shown, `…` standing for the rest, so one long title
 /// does not push every row of the page out of line (§FS-021-monitors.21.1).
 pub const TITLE: usize = 25;
@@ -203,7 +207,7 @@ impl MonitorDetail {
             .iter()
             .map(|cell| cell.health_glyph())
             .collect();
-        format!("health: {cells}")
+        format!("{HEALTH} {cells}")
     }
 
     /// `change ▾ 2 ms` (§FS-021-monitors.18.6).

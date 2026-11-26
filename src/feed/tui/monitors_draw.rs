@@ -7,19 +7,20 @@
 
 use ratatui::layout::Rect;
 use ratatui::style::{Color, Modifier, Style};
-use ratatui::symbols::Marker;
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Axis, Chart, Dataset, GraphType, Paragraph};
+use ratatui::widgets::Paragraph;
 
-use crate::api::monitor_views::{self as views, clip, when};
+use crate::api::monitor_views::{self as views, clip, when, HEALTH};
 use crate::monitors::model::Health;
 use crate::monitors::page::Rank;
-use crate::monitors::strip::{Cell, Way};
+use crate::monitors::strip::Way;
 
 use super::monitors::MonitorsScreen;
+use super::monitors_chart::{threshold_style, Plot};
 
-/// The strip's width on the page: its 24 cells (§FS-021-monitors.18.5).
-const STRIP: usize = crate::monitors::strip::CELLS;
+/// What the cursor's line and the threshold lines' legend are headed by.
+const CURSOR: &str = "cursor: ";
+const BOUNDS: &str = "bounds:";
 
 /// The colour a rank is drawn in: down red, failing and warn amber, ok
 /// green, and unknown and a KPI dim (§FS-021-monitors.3.7).
@@ -95,99 +96,190 @@ fn band(start: usize, len: usize, scroll: usize, height: usize) -> Option<(u16, 
     Some((to(first - scroll), to(end - first), to(first - start)))
 }
 
+/// What the detail view lays out once per reading of the monitor rather
+/// than once per frame: the chart's geometry, and the episodes, readings
+/// and points as last wrapped, with the width they were wrapped to.
+pub(super) struct Drawn {
+    pub plot: Plot,
+    pub(super) sections: Option<(usize, Vec<Line<'static>>)>,
+}
+
+impl Drawn {
+    pub(super) fn of(detail: &views::MonitorDetail) -> Drawn {
+        Drawn {
+            plot: Plot::of(detail),
+            sections: None,
+        }
+    }
+}
+
 impl MonitorsScreen {
     /// The detail view (§FS-021-monitors.19): what the monitor is and where
-    /// it is read, the chart with the cursor's point and the strip of health
-    /// beneath it, then the episodes, the readings and the points. The whole
-    /// scrolls as one; the chart keeps its height while it is in view.
+    /// it is read, the chart with the strip of health beneath it and the
+    /// cursor's point, then the episodes, the readings and the points. The
+    /// whole scrolls as one; the chart keeps its height while it is in
+    /// view. Only the rows on screen are drawn.
     fn draw_detail(&mut self, frame: &mut ratatui::Frame, area: Rect) {
-        let Some(detail) = self.detail().cloned() else {
-            return;
-        };
         let width = usize::from(area.width);
         let height = usize::from(area.height);
         self.detail_viewport = area.height;
-        let top = self.head_lines(&detail, width);
+        if self.drawn.is_none() {
+            self.drawn = self.detail().map(Drawn::of);
+        }
+        let laid = self
+            .drawn
+            .as_ref()
+            .and_then(|drawn| drawn.sections.as_ref())
+            .is_some_and(|(at, _)| *at == width);
+        if !laid {
+            let lines = self.detail().map(|detail| sections(detail, width));
+            if let (Some(drawn), Some(lines)) = (self.drawn.as_mut(), lines) {
+                drawn.sections = Some((width, lines));
+            }
+        }
         let chart = chart_rows(height);
-        let bottom = self.tail_lines(&detail, width);
-        let total = top.len() + chart + bottom.len();
+        let (Some(detail), Some(drawn)) = (self.detail(), self.drawn.as_ref()) else {
+            return;
+        };
+        let top = self.head_lines(detail, width);
+        let graph = drawn
+            .plot
+            .graph(Rect::new(0, 0, area.width, to_rows(chart)));
+        let tail = self.tail_lines(detail, &drawn.plot, graph, width);
+        let sections = drawn.sections.as_ref().map_or(0, |(_, lines)| lines.len());
+        let bottom = tail.len() + sections;
+        let total = top.len() + chart + bottom;
         let scroll = usize::from(self.detail_scroll).min(total.saturating_sub(height));
         self.detail_scroll = u16::try_from(scroll).unwrap_or(u16::MAX);
+        let (Some(detail), Some(drawn)) = (self.detail(), self.drawn.as_ref()) else {
+            return;
+        };
         let at = |y: u16, rows: u16| Rect {
             x: area.x,
             y: area.y + y,
             width: area.width,
             height: rows,
         };
-        if let Some((y, rows, skip)) = band(0, top.len(), scroll, height) {
+        let start = top.len();
+        if let Some((y, rows, skip)) = band(0, start, scroll, height) {
             frame.render_widget(Paragraph::new(top).scroll((skip, 0)), at(y, rows));
         }
-        let start = total - bottom.len() - chart;
         if let Some((y, rows, _)) = band(start, chart, scroll, height) {
             if rows >= 3 {
-                self.draw_chart(frame, at(y, rows), &detail);
+                drawn.plot.draw(frame, at(y, rows), detail, self.cursor);
             }
         }
-        if let Some((y, rows, skip)) = band(start + chart, bottom.len(), scroll, height) {
-            frame.render_widget(Paragraph::new(bottom).scroll((skip, 0)), at(y, rows));
+        if let Some((y, rows, skip)) = band(start + chart, bottom, scroll, height) {
+            let laid = drawn.sections.as_ref().map_or(&[][..], |(_, lines)| lines);
+            let shown: Vec<Line<'static>> = tail
+                .iter()
+                .chain(laid)
+                .skip(usize::from(skip))
+                .take(usize::from(rows))
+                .cloned()
+                .collect();
+            frame.render_widget(Paragraph::new(shown), at(y, rows));
         }
     }
 
-    /// Under the chart: the point the cursor stands on, the strip of health,
-    /// the threshold lines' legend, then the episodes, the readings and the
-    /// points the repository supplied (§FS-021-monitors.19).
-    fn tail_lines(&self, detail: &views::MonitorDetail, width: usize) -> Vec<Line<'static>> {
-        let mut lines = Vec::new();
+    /// Under the chart: the strip of health, its columns under the plot's,
+    /// the change, the point the cursor stands on, and the threshold lines'
+    /// legend (§FS-021-monitors.19, §FS-021-monitors.18.6).
+    fn tail_lines(
+        &self,
+        detail: &views::MonitorDetail,
+        plot: &Plot,
+        graph: Rect,
+        width: usize,
+    ) -> Vec<Line<'static>> {
+        let gutter = usize::from(graph.x);
+        let mut strip = vec![Span::styled(pad(HEALTH, gutter), dim())];
+        strip.extend(plot.strip(detail, usize::from(graph.width)));
+        let mut lines = vec![Line::from(strip)];
+        lines.extend(
+            wrapped(&detail.change_says(), gutter, width)
+                .into_iter()
+                .map(|line| Line::styled(line, way_style(detail.row.shows.change.way))),
+        );
         if let Some(point) = detail.chart.get(self.cursor) {
-            lines.push(Line::from(vec![
-                Span::styled("cursor: ", dim()),
-                Span::styled(
-                    detail.cursor_says(point, when),
-                    health_style(point.health).add_modifier(Modifier::BOLD),
+            let says = detail.cursor_says(point, when);
+            let style = health_style(point.health).add_modifier(Modifier::BOLD);
+            match CURSOR.len() + says.chars().count() <= width {
+                true => lines.push(Line::from(vec![
+                    Span::styled(CURSOR, dim()),
+                    Span::styled(says, style),
+                ])),
+                false => lines.extend(
+                    wrapped(&format!("{CURSOR}{says}"), 0, width)
+                        .into_iter()
+                        .map(|line| Line::styled(line, style)),
                 ),
-            ]));
+            }
         }
-        lines.push(health_strip(detail, width));
         if !detail.thresholds.is_empty() && detail.steps.is_empty() {
-            let mut spans = vec![Span::styled("bounds:", dim())];
+            let legend = |line: &views::Threshold| format!("  ── {}", line.says);
+            let wide: usize = BOUNDS.len()
+                + detail
+                    .thresholds
+                    .iter()
+                    .map(|line| legend(line).chars().count())
+                    .sum::<usize>();
+            let mut spans = vec![Span::styled(BOUNDS, dim())];
             for line in &detail.thresholds {
-                spans.push(Span::styled(
-                    format!("  ── {}", line.says),
-                    threshold_style(line.of),
-                ));
+                let span = Span::styled(legend(line), threshold_style(line.of));
+                match wide <= width {
+                    true => spans.push(span),
+                    false => {
+                        lines.push(Line::from(std::mem::take(&mut spans)));
+                        spans.push(span);
+                    }
+                }
             }
             lines.push(Line::from(spans));
         }
-        let section = |lines: &mut Vec<Line<'static>>, name: &str, said: Vec<String>| {
-            lines.push(Line::raw(""));
-            lines.push(Line::styled(
-                format!("{name} ({})", said.len()),
-                Style::default().add_modifier(Modifier::BOLD),
-            ));
-            lines.extend(said.into_iter().map(|said| Line::raw(format!("  {said}"))));
-        };
-        let episodes = detail
-            .episodes
-            .iter()
-            .map(|episode| episode.says(when))
-            .collect();
-        section(&mut lines, "episodes", episodes);
-        let readings = detail
-            .readings
-            .iter()
-            .map(|reading| reading.says(when))
-            .collect();
-        section(&mut lines, "readings", readings);
-        if !detail.points.is_empty() {
-            let points = detail
-                .points
-                .iter()
-                .map(|point| detail.point_says(point, when))
-                .collect();
-            section(&mut lines, "points", points);
-        }
         lines
     }
+}
+
+/// The episodes, the readings and the points the repository supplied, each
+/// said in full, wrapped to `width` (§FS-021-monitors.19).
+fn sections(detail: &views::MonitorDetail, width: usize) -> Vec<Line<'static>> {
+    let mut lines = Vec::new();
+    let mut section = |name: &str, said: Vec<String>| {
+        lines.push(Line::raw(""));
+        lines.push(Line::styled(
+            format!("{name} ({})", said.len()),
+            Style::default().add_modifier(Modifier::BOLD),
+        ));
+        for said in said {
+            lines.extend(wrapped(&said, 2, width).into_iter().map(Line::raw));
+        }
+    };
+    let episodes = detail
+        .episodes
+        .iter()
+        .map(|episode| episode.says(when))
+        .collect();
+    section("episodes", episodes);
+    let readings = detail
+        .readings
+        .iter()
+        .map(|reading| reading.says(when))
+        .collect();
+    section("readings", readings);
+    if !detail.points.is_empty() {
+        let points = detail
+            .points
+            .iter()
+            .map(|point| detail.point_says(point, when))
+            .collect();
+        section("points", points);
+    }
+    lines
+}
+
+fn to_rows(rows: usize) -> u16 {
+    u16::try_from(rows).unwrap_or(u16::MAX)
 }
 
 impl MonitorsScreen {
@@ -225,268 +317,4 @@ impl MonitorsScreen {
 /// over 12.
 fn chart_rows(height: usize) -> usize {
     (height / 3).clamp(6, 12)
-}
-
-/// `health:` and the row's 24 cells drawn by health, each stretched to share
-/// the width, then the change (§FS-021-monitors.19, §FS-021-monitors.18.6).
-fn health_strip(detail: &views::MonitorDetail, width: usize) -> Line<'static> {
-    let shows = &detail.row.shows;
-    let change = format!("  change {}", shows.change.says);
-    let label = "health: ";
-    let room = width.saturating_sub(label.len() + change.chars().count());
-    let each = (room / STRIP.max(1)).max(1);
-    let mut spans = vec![Span::styled(label, dim())];
-    spans.extend(shows.strip.iter().map(|cell: &Cell| {
-        Span::styled(
-            cell.health_glyph().to_string().repeat(each),
-            health_style(cell.health),
-        )
-    }));
-    spans.push(Span::styled(change, way_style(shows.change.way)));
-    Line::from(spans)
-}
-
-/// A threshold line's colour: today's `healthy` bound red, where crossing
-/// it is a drop, and `warn` amber (§FS-021-monitors.3.7).
-fn threshold_style(of: &str) -> Style {
-    match of {
-        "healthy" => Style::default().fg(Color::Red),
-        _ => Style::default().fg(Color::Yellow),
-    }
-}
-
-/// A stretch of the chart's line: the points it passes through, and the
-/// health it is drawn in.
-pub(super) type Trace = (Vec<(f64, f64)>, Option<Health>);
-
-/// The worse of two healths, for the stretch of line between two readings.
-fn worse(a: Option<Health>, b: Option<Health>) -> Option<Health> {
-    let rank = |health: Option<Health>| match health {
-        Some(Health::Down) => 0,
-        Some(Health::Unknown) => 1,
-        Some(Health::Warn) => 2,
-        Some(Health::Ok) => 3,
-        None => 4,
-    };
-    if rank(a) <= rank(b) {
-        a
-    } else {
-        b
-    }
-}
-
-/// The chart's geometry, from the detail's points: where each lies on x
-/// and y, and what the axes say. Presentation only: the values are the
-/// model's, and a boolean's or a level's places are its steps.
-pub(super) struct Plot {
-    /// Each chart point's (x, y), none where it holds no value.
-    pub points: Vec<Option<(f64, f64)>>,
-    pub x: [f64; 2],
-    pub y: [f64; 2],
-    pub x_labels: Vec<String>,
-    pub y_labels: Vec<String>,
-    /// A boolean or a level: drawn as steps, its y labels its places.
-    pub stepped: bool,
-}
-
-impl Plot {
-    pub(super) fn of(detail: &views::MonitorDetail) -> Plot {
-        let span = &detail.row.shows.span;
-        let timed = detail.windowed && detail.chart.iter().all(|point| point.t.is_some());
-        let place = |at: usize, point: &views::ChartPoint| match (timed, point.t) {
-            (true, Some(t)) => (t - span.from).num_seconds() as f64,
-            _ => at as f64,
-        };
-        let points: Vec<Option<(f64, f64)>> = detail
-            .chart
-            .iter()
-            .enumerate()
-            .map(|(at, point)| point.value.map(|value| (place(at, point), value)))
-            .collect();
-        let x = match timed {
-            true => {
-                let mut x = [0.0, (span.to - span.from).num_seconds() as f64];
-                for (at, point) in detail.chart.iter().enumerate() {
-                    let here = place(at, point);
-                    x = [x[0].min(here), x[1].max(here)];
-                }
-                x
-            }
-            false => [0.0, detail.chart.len().saturating_sub(1).max(1) as f64],
-        };
-        let x_labels = match timed {
-            true => {
-                let at = |offset: f64| when(span.from + chrono::TimeDelta::seconds(offset as i64));
-                vec![at(x[0]), at((x[0] + x[1]) / 2.0), at(x[1])]
-            }
-            false => {
-                let label = |at: usize| {
-                    detail
-                        .chart
-                        .get(at)
-                        .and_then(|point| point.x.clone())
-                        .unwrap_or_else(|| at.to_string())
-                };
-                let last = detail.chart.len().saturating_sub(1);
-                vec![label(0), label(last / 2), label(last)]
-            }
-        };
-        let stepped = detail.steps.len() >= 2;
-        let (y, y_labels) = match stepped {
-            true => ([0.0, (detail.steps.len() - 1) as f64], detail.steps.clone()),
-            false => {
-                let values = points
-                    .iter()
-                    .flatten()
-                    .map(|(_, y)| *y)
-                    .chain(detail.thresholds.iter().map(|line| line.at));
-                let (lo, hi) = values.fold((f64::INFINITY, f64::NEG_INFINITY), |(lo, hi), v| {
-                    (lo.min(v), hi.max(v))
-                });
-                let (lo, hi) = match lo.is_finite() {
-                    true => (lo, hi),
-                    false => (0.0, 1.0),
-                };
-                let pad = match hi - lo {
-                    spread if spread > 0.0 => spread * 0.1,
-                    _ => lo.abs().max(1.0) * 0.1,
-                };
-                let (lo, hi) = (lo - pad, hi + pad);
-                let say = |v: f64| detail.row.say(v);
-                ([lo, hi], vec![say(lo), say((lo + hi) / 2.0), say(hi)])
-            }
-        };
-        Plot {
-            points,
-            x,
-            y,
-            x_labels,
-            y_labels,
-            stepped,
-        }
-    }
-
-    /// The line between each two readings in turn, as the points it passes
-    /// through and the health it is drawn in; a boolean or a level holds its
-    /// value until the next reading, then steps (§FS-021-monitors.19).
-    pub(super) fn segments(&self, detail: &views::MonitorDetail) -> Vec<Trace> {
-        let mut segments = Vec::new();
-        for (at, pair) in self.points.windows(2).enumerate() {
-            let (Some(from), Some(to)) = (pair[0], pair[1]) else {
-                continue;
-            };
-            let health = worse(detail.chart[at].health, detail.chart[at + 1].health);
-            let through = match self.stepped {
-                true => vec![from, (to.0, from.1), to],
-                false => vec![from, to],
-            };
-            segments.push((through, health));
-        }
-        segments
-    }
-
-    /// The points with no reading beside them, which no line reaches.
-    pub(super) fn alone(&self) -> Vec<(usize, (f64, f64))> {
-        let has = |at: Option<usize>| {
-            at.and_then(|at| self.points.get(at))
-                .is_some_and(Option::is_some)
-        };
-        self.points
-            .iter()
-            .enumerate()
-            .filter_map(|(at, point)| point.map(|point| (at, point)))
-            .filter(|(at, _)| !has(at.checked_sub(1)) && !has(Some(at + 1)))
-            .collect()
-    }
-}
-
-impl MonitorsScreen {
-    /// The chart (§FS-021-monitors.19): labelled axes, today's `healthy`
-    /// and `warn` as threshold lines, the readings coloured by their
-    /// health, and the cursor as a dim rule through the point it is on.
-    ///
-    /// A boolean or a level is drawn stepped, holding each reading until the
-    /// next: a line drawn straight between `no` and `yes` would show values
-    /// nobody read, while a step shows when it flipped and how long it held,
-    /// and its y labels name the states, so it reads without colour.
-    fn draw_chart(&self, frame: &mut ratatui::Frame, area: Rect, detail: &views::MonitorDetail) {
-        let plot = Plot::of(detail);
-        let segments = plot.segments(detail);
-        let alone: Vec<Trace> = plot
-            .alone()
-            .into_iter()
-            .map(|(at, point)| (vec![point], detail.chart[at].health))
-            .collect();
-        let thresholds: Vec<(Vec<(f64, f64)>, &str)> = match plot.stepped {
-            true => Vec::new(),
-            false => detail
-                .thresholds
-                .iter()
-                .map(|line| (vec![(plot.x[0], line.at), (plot.x[1], line.at)], line.of))
-                .collect(),
-        };
-        let cursor = plot.points.get(self.cursor).copied().flatten();
-        let rule: Vec<(f64, f64)> = cursor
-            .map(|(x, _)| vec![(x, plot.y[0]), (x, plot.y[1])])
-            .unwrap_or_default();
-        let mark: Vec<(f64, f64)> = cursor.into_iter().collect();
-        let mut datasets = vec![Dataset::default()
-            .marker(Marker::Braille)
-            .graph_type(GraphType::Line)
-            .style(dim())
-            .data(&rule)];
-        for (data, of) in &thresholds {
-            datasets.push(
-                Dataset::default()
-                    .marker(Marker::Braille)
-                    .graph_type(GraphType::Line)
-                    .style(threshold_style(of))
-                    .data(data),
-            );
-        }
-        for (data, health) in &segments {
-            datasets.push(
-                Dataset::default()
-                    .marker(Marker::Braille)
-                    .graph_type(GraphType::Line)
-                    .style(health_style(*health))
-                    .data(data),
-            );
-        }
-        for (data, health) in &alone {
-            datasets.push(
-                Dataset::default()
-                    .marker(Marker::Dot)
-                    .graph_type(GraphType::Scatter)
-                    .style(health_style(*health))
-                    .data(data),
-            );
-        }
-        datasets.push(
-            Dataset::default()
-                .marker(Marker::Block)
-                .graph_type(GraphType::Scatter)
-                .style(
-                    Style::default()
-                        .fg(Color::White)
-                        .add_modifier(Modifier::BOLD),
-                )
-                .data(&mark),
-        );
-        let chart = Chart::new(datasets)
-            .legend_position(None)
-            .x_axis(
-                Axis::default()
-                    .style(dim())
-                    .bounds(plot.x)
-                    .labels(plot.x_labels.iter().map(|label| Span::raw(label.clone()))),
-            )
-            .y_axis(
-                Axis::default()
-                    .style(dim())
-                    .bounds(plot.y)
-                    .labels(plot.y_labels.iter().map(|label| Span::raw(label.clone()))),
-            );
-        frame.render_widget(chart, area);
-    }
 }
