@@ -437,6 +437,10 @@ path = "tests/e2e/cases/E2E-085-the-monitors-page-on-a-terminal.rs"
 name = "e2e_086_the_monitors_guide_and_its_worked_example"
 path = "tests/e2e/cases/E2E-086-the-monitors-guide-and-its-worked-example.rs"
 
+[[test]]
+name = "e2e_087_what_a_monitors_matter_is_proposed"
+path = "tests/e2e/cases/E2E-087-what-a-monitors-matter-is-proposed.rs"
+
 [dependencies]
 clap = { version = "4", features = ["derive"] }
 serde = { version = "1", features = ["derive"] }
