@@ -239,6 +239,10 @@ fn take<Tz: TimeZone>(
     zone: &Tz,
     effects: &mut Vec<Effect>,
 ) {
+    // §FS-021-monitors.18.7: a health read again after its value was unknown has held since then.
+    let was_unknown = record
+        .freshness(&watch.cadence, read.at, zone, None)
+        .is_unknown();
     let parked = read.found == Finding::Parked;
     if read.in_cadence {
         record.schedule.read(&watch.cadence, read.at, parked, zone);
@@ -297,6 +301,9 @@ fn take<Tz: TimeZone>(
                     record.last_ok = Some(kept);
                 }
                 hold(record, watch, band, reading, read.at, effects);
+                if was_unknown && record.hold.health != Some(Health::Down) {
+                    record.hold.since = Some(read.at);
+                }
             }
         }
         Finding::Unreadable { .. } => effects.push(Effect::Record(Line::marker(read.at))),
