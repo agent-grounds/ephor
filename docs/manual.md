@@ -6818,7 +6818,10 @@ catches that first. The rest, a condition that does not fit its kind, a
 monitor as every home declares it, so they show at the first refresh, in a
 `note:` line and on the monitor's row
 ([§FS-021-monitors.4.6](functional-spec/FS-021-monitors.md#46-a-declaration-ephor-cannot-use-is-shown-and-not-read),
-[§FS-021-monitors.3.5](functional-spec/FS-021-monitors.md#35-a-condition-that-cannot-hold-together-is-a-declaration-error)).
+[§FS-021-monitors.3.5](functional-spec/FS-021-monitors.md#35-a-condition-that-cannot-hold-together-is-a-declaration-error)). A `warn` with no `healthy`
+declared and no kind's default to narrow waits for its samples: it is read,
+and a sample that brings no `healthy` either is an unreadable read that says
+so ([§FS-021-monitors.3.5](functional-spec/FS-021-monitors.md#35-a-condition-that-cannot-hold-together-is-a-declaration-error)).
 
 ### 14.2 Where a value comes from — `from`
 

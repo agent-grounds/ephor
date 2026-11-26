@@ -233,18 +233,25 @@ fn workflow_and_action_are_one_choice_across_homes() {
     assert_eq!(set_aside.origins["workflow"], Home::Site);
 }
 
+/// §FS-021-monitors.3.5: a warn needs a healthy to narrow, declared,
+/// brought or its kind's default; whether its samples bring one is known
+/// once one has been read, so until then it is read to find out.
 #[test]
 fn a_warn_with_no_healthy_to_narrow_is_a_fault() {
-    let monitor = resolve_with(
-        None,
-        Some(json!({"id": "m", "kind": "number", "warn": {"max": 3}})),
-        None,
-    );
+    let warned = || Some(json!({"id": "m", "kind": "number", "warn": {"max": 3}}));
+    let monitor = resolve_with(None, warned(), Some(json!({"id": "m"})));
     assert_eq!(
         monitor.faults,
         vec!["warn has no healthy to narrow: declare a healthy, or drop the warn"]
     );
     assert!(!monitor.is_readable());
+    assert!(resolve_with(None, warned(), None).is_readable());
+    let brought = resolve_with(
+        None,
+        warned(),
+        Some(json!({"id": "m", "healthy": {"max": 5}})),
+    );
+    assert!(brought.is_readable());
     let boolean = resolve_with(
         None,
         Some(json!({"id": "m", "kind": "boolean", "warn": {"is": true}})),

@@ -354,9 +354,11 @@ pub fn resolve(id: &str, homes: &Homes) -> Monitor {
             _ => condition::kind_default(kind, levels.as_deref()),
         };
         let has_default = matches!(kind, Some(Kind::Boolean | Kind::Level));
+        // §FS-021-monitors.3.5: a healthy its samples bring narrows it too, so
+        // none applies only once a sample has said it brings none.
         match narrowed {
             Some(healthy) => faults.extend(condition::laxer(&healthy, warn)),
-            None if !has_default => faults.push(
+            None if !has_default && sample.is_some() => faults.push(
                 "warn has no healthy to narrow: declare a healthy, or drop the warn".to_string(),
             ),
             None => {}

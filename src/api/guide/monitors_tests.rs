@@ -522,7 +522,8 @@ fn the_script_copied_with_its_indent_writes_the_same_answer() {
 /// What the closing paragraph says validation leaves to the refresh: each
 /// mistake it names fits the declaration's shape, so `ephor validate
 /// --manifest` passes it, and the monitor as its homes resolve it is not
-/// read; a key ephor does not know, a `timeout` inside `from` among them, is
+/// read; a `warn` with no `healthy` is read until a sample that brings none;
+/// a key ephor does not know, a `timeout` inside `from` among them, is
 /// noted and set aside, and `timeout` beside `from` is a whole number of
 /// seconds (§FS-021-monitors.4.6, §FS-021-monitors.3.5, §FS-021-monitors.5.5).
 #[test]
@@ -543,9 +544,12 @@ fn validation_holds_the_shape_alone_and_the_resolved_monitor_the_rules() {
         });
         (manifest.refused_monitors(), monitor)
     };
+    let (refused, warned) =
+        read(json!({"id": "m", "kind": "number", "warn": {"max": 10}, "from": from}));
+    assert_eq!(refused, Vec::<String>::new());
+    assert!(warned.unwrap().is_readable());
     for broken in [
         json!({"id": "m", "kind": "number", "healthy": {"is": true}, "from": from}),
-        json!({"id": "m", "kind": "number", "warn": {"max": 10}, "from": from}),
         json!({"id": "m", "kind": "number", "healthy": {"max": 5}, "warn": {"max": 7}, "from": from}),
         json!({"id": "m", "kind": "number", "every": "5h", "at": "06:00", "from": from}),
     ] {

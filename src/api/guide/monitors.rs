@@ -157,12 +157,14 @@ const CHECK: &str = r#"Check it, in the checkout (the shapes are `ephor schema m
   ephor refresh <project>               reads what is due; --monitors-now, all
   ephor monitors show <project>/<id>    its value and health, why a read failed
 Validate holds each declaration to its shape alone. A rule a shape cannot see,
-a condition that does not fit its kind, a `warn` with no `healthy` or laxer
-than it, an `at` its `every` does not fit, is judged on the monitor as every
-home declares it, and a monitor that breaks one is not read: each refresh
-says so in a `note:` line, and `ephor monitors` shows it as not read, with
-why. A key ephor does not know, a misspelt `heathy` or a `timeout` inside
-`from`, is noted the same way and set aside, never refused.
+a condition that does not fit its kind, a `warn` laxer than its `healthy`, an
+`at` its `every` does not fit, is judged on the monitor as every home declares
+it, and a monitor that breaks one is not read: each refresh says so in a
+`note:` line, and `ephor monitors` shows it as not read, with why. A `warn`
+with no `healthy` declared or its kind's waits for its first sample to bring
+one, and a read whose sample brings none is unreadable, saying so. A key ephor
+does not know, a misspelt `heathy` or a `timeout` inside `from`, is noted the
+same way and set aside, never refused.
 "#;
 
 /// The `monitors` topic (§FS-020-guide.6): the contract, then one complete
