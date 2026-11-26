@@ -5837,12 +5837,14 @@ selector accepts the matter, first in menu order
 `monitors` is ephor's own too, for the reader asked to add a number to a
 repository's watch: the four kinds, conditions and `warn` and who decides
 health, the command and file bindings with their exit codes and environment,
-the answer and one sample's fields, `every` and `at`, that a monitor command
-never runs `ephor refresh`, and the commands that check the result. It ends
-with one complete worked example, a `scripts/kpis.sh` answering three
-monitors and the `ephor.json` that declares them, which ephor's own tests
-copy out of the text, validate and run. It carries no schemas: they are
-`ephor schema manifest` and `ephor schema answer`
+the answer and one sample's fields, when a read is stale, `every` and `at`,
+and that a monitor command never runs `ephor refresh`. It ends with one
+complete worked example, a `scripts/kpis.sh` answering three monitors and
+the `ephor.json` that declares them, which ephor's own tests copy out of the
+text, validate and run, and then the commands that check the result and what
+each one checks: `ephor validate --manifest` the shape alone, a refresh the
+rest. It carries no schemas: they are `ephor schema manifest` and
+`ephor schema answer`
 ([§FS-020-guide.6](functional-spec/FS-020-guide.md#6-monitors-how-a-repository-makes-its-numbers-watchable), §14).
 
 Under `--json`, `gate` carries the request and answer schemas the bound
@@ -6809,9 +6811,14 @@ A declaration ephor cannot use (a misspelt kind, a condition that does not
 fit its kind, a `warn` that cannot hold with its `healthy`, an `at` that does
 not fit its `every`, an id declared twice in one home) is shown with what is
 wrong, reads as `unknown`, opens no matter, and costs that one monitor and
-nothing else. `ephor validate --manifest` refuses it, so a repository's own
-check catches it first
-([§FS-021-monitors.4.6](functional-spec/FS-021-monitors.md#46-a-declaration-ephor-cannot-use-is-shown-and-not-read)).
+nothing else. `ephor validate --manifest` refuses one that does not fit the
+declaration's shape, such as a misspelt kind, so a repository's own check
+catches that first. The rest, a condition that does not fit its kind, a
+`warn` with its `healthy`, an `at` with its `every`, are judged on the
+monitor as every home declares it, so they show at the first refresh, in a
+`note:` line and on the monitor's row
+([§FS-021-monitors.4.6](functional-spec/FS-021-monitors.md#46-a-declaration-ephor-cannot-use-is-shown-and-not-read),
+[§FS-021-monitors.3.5](functional-spec/FS-021-monitors.md#35-a-condition-that-cannot-hold-together-is-a-declaration-error)).
 
 ### 14.2 Where a value comes from — `from`
 
@@ -6891,7 +6898,10 @@ one, unless the cause is `overdue`. That one means ephor did not look, which
 is no fault of the project, so it is never laid on the project: the page's
 header, Waiting's overview line and `ephor doctor` say it instead
 ([§FS-021-monitors.7.5](functional-spec/FS-021-monitors.md#75-overdue-is-the-watchs-own-failure)). A monitor with no reading yet
-is `not read yet` until its first interval and grace have passed.
+is `not read yet` until its first interval and grace have passed, and
+`ephor monitors show` says what its last read found from that read on:
+`last read … (failed: no sample for coverage)`, or `(stale: measured …)`
+([§FS-021-monitors.19](functional-spec/FS-021-monitors.md#19-the-detail-view)).
 
 ### 14.5 Drops, matters and recovery
 
