@@ -406,9 +406,16 @@ fn outside(source: &Source) -> Vec<String> {
     let mut faults = Vec::new();
     if let Some(file) = file {
         let path = std::path::Path::new(file);
-        let climbs = path
-            .components()
-            .any(|part| matches!(part, std::path::Component::ParentDir));
+        // A `..` climbs out only where it rises above the place itself.
+        let mut depth = 0i32;
+        let climbs = path.components().any(|part| {
+            match part {
+                std::path::Component::ParentDir => depth -= 1,
+                std::path::Component::Normal(_) => depth += 1,
+                _ => {}
+            }
+            depth < 0
+        });
         if path.is_absolute() || climbs {
             faults.push(format!(
                 "from.file {file} is not a path inside the place it is read in"
