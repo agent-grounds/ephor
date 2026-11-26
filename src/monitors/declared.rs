@@ -84,7 +84,8 @@ impl Declarations {
     }
 
     /// Every id either home declares, a refused declaration's included: a
-    /// declared monitor is shown even where it is not read
+    /// declared monitor is shown even where it is not read, and one refused
+    /// with no id to name it by its place, `monitors[0]`
     /// (§FS-021-monitors.4.6).
     pub fn ids(&self) -> BTreeSet<String> {
         [&self.site, &self.manifest]
@@ -93,7 +94,7 @@ impl Declarations {
                 home.declarations
                     .iter()
                     .map(|declaration| declaration.id.clone())
-                    .chain(home.refused.iter().filter_map(|refused| refused.id.clone()))
+                    .chain(home.refused.iter().map(name))
             })
             .collect()
     }
@@ -144,7 +145,7 @@ impl Declarations {
             [&self.site, &self.manifest]
                 .into_iter()
                 .flat_map(|home| home.refused.iter())
-                .filter(|refused| refused.id.as_deref() == Some(id.as_str()))
+                .filter(|refused| name(refused) == id)
         };
         if refused().next().is_none() {
             return;
@@ -170,7 +171,7 @@ impl Declarations {
             said.or_else(|| {
                 home.refused
                     .iter()
-                    .filter(|refused| refused.id.as_deref() == Some(id.as_str()))
+                    .filter(|refused| name(refused) == id)
                     .find_map(|refused| refused.judged)
             })
         });
