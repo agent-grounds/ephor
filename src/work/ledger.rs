@@ -455,8 +455,8 @@ pub struct Snapshot {
     #[serde(default)]
     pub messages: usize,
     /// A monitor's matter's movement, and nothing else it reads: the worst
-    /// level, the condition in words, a mark per ended work
-    /// (§FS-005-dispatch.5, §FS-021-monitors.13.1). Absent on every other
+    /// level, the condition in words, when it was last still down after its
+    /// work ended (§FS-005-dispatch.5, §FS-021-monitors.13.1). Absent on every other
     /// matter and in ledgers written before it, which read as before.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub health: Option<crate::monitors::matters::Moves>,

@@ -37,10 +37,6 @@ pub struct Stated {
     pub terminal: bool,
     #[serde(default)]
     pub moves: Moves,
-    /// When it last turned New again: still down, or still unknown, after
-    /// the work laid on it ended (§FS-021-monitors.13.2).
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub renewed: Option<DateTime<Utc>>,
     /// The monitor's own `workflow` or `action`, on an open drop
     /// (§FS-021-monitors.16.1).
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -49,16 +45,22 @@ pub struct Stated {
 
 /// The whole of what moves a monitor's matter (§FS-021-monitors.13.1), and
 /// nothing else: the worst level its drop reached, the condition judging it
-/// in words, and a mark for each work laid on it that ended. A value moving
-/// inside its band is none of these.
+/// in words as it last changed, and when it was last still down, or still
+/// unknown, after the work laid on it ended. A value moving inside its band
+/// is none of these, nor is the work ending on a passing reading, nor a
+/// fraction's `of` or the unit its condition is said in
+/// (§FS-021-monitors.12.2, §FS-021-monitors.15).
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Moves {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub worst: Option<String>,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub condition: String,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub ended: Vec<String>,
+    /// When it last turned New again, still down or still unknown after its
+    /// work ended (§FS-021-monitors.13.2, §FS-019-waiting.1.2): kept apart
+    /// from its latest move, which a later move of another kind takes over.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub renewed: Option<DateTime<Utc>>,
     /// What still being down or unknown after its work ended says, in the
     /// episode's own words (§FS-021-monitors.15).
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -85,7 +87,7 @@ impl Moves {
             let (from, to) = (previous.condition.clone(), self.condition.clone());
             said.push(Movement::ConditionChanged { from, to }.say());
         }
-        if self.ended.iter().any(|work| !previous.ended.contains(work)) {
+        if self.renewed.is_some() && self.renewed != previous.renewed {
             said.push(
                 self.still
                     .clone()
@@ -105,7 +107,7 @@ pub fn still_processed(
     raw: &Json,
     laid: impl IntoIterator<Item = DateTime<Utc>>,
 ) -> bool {
-    match stated(source, raw).and_then(|stated| stated.renewed) {
+    match stated(source, raw).and_then(|stated| stated.moves.renewed) {
         Some(renewed) => laid.into_iter().any(|at| at > renewed),
         None => true,
     }
@@ -178,10 +180,9 @@ fn open_drop(project: &str, id: &str, drop: &OpenDrop, proposes: Option<Proposal
         moves: Moves {
             worst: drop.worst.clone(),
             condition: drop.judged_words.clone(),
-            ended: drop.works_ended.clone(),
+            renewed: drop.renewed,
             still: still(drop.moved.as_ref()),
         },
-        renewed: drop.renewed,
         proposes,
     };
     item(
@@ -203,11 +204,10 @@ where
     let stated = Stated {
         terminal: false,
         moves: Moves {
-            ended: unknown.works_ended.clone(),
+            renewed: unknown.renewed,
             still: still(unknown.moved.as_ref()),
             ..Moves::default()
         },
-        renewed: unknown.renewed,
         proposes: None,
     };
     item(

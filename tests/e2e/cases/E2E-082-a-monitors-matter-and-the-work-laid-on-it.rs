@@ -4,7 +4,8 @@
 //! monitor out of cadence (§FS-021-monitors.15). Still down, the matter
 //! resurfaces once with `still down after its work ended`, makes its work
 //! stale, and is New again though the ledger records that work
-//! (§FS-021-monitors.13.2, §FS-019-waiting.1.2, §FS-005-dispatch.5).
+//! (§FS-021-monitors.13.2, §FS-019-waiting.1.2, §FS-005-dispatch.5). A
+//! passing reading there counts toward recovery and moves nothing.
 //!
 //! Work laid on a drop is made stale by what moves the matter and by nothing
 //! else: a value wobbling in its band does not, a worse level and a changed
@@ -23,6 +24,7 @@ mod support;
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use predicates::prelude::*;
 use serde_json::{json, Value};
 
 use support::*;
@@ -121,7 +123,7 @@ fn dispatch(world: &World, opened: usize) {
         .args(["work", "dispatch", "--project", PROJECT])
         .assert()
         .success()
-        .stdout(predicates::str::contains(format!(
+        .stdout(predicate::str::contains(format!(
             "{opened} ticket(s) opened"
         )));
 }
@@ -202,14 +204,12 @@ fn still_down_after_its_work_ended_is_new_again() {
     assert_eq!(matter["key"], key, "the same episode");
     assert_eq!(matter["state"], json!("down"));
     assert!(
-        matter["raw"]["_ephor_monitor"]["renewed"].is_string(),
+        matter["raw"]["_ephor_monitor"]["moves"]["renewed"].is_string(),
         "{matter:#}"
     );
     assert_eq!(
-        matter["fingerprint"]["health"]["ended"]
-            .as_array()
-            .map(Vec::len),
-        Some(1),
+        matter["fingerprint"]["health"]["renewed"],
+        matter["raw"]["_ephor_monitor"]["moves"]["renewed"],
         "{matter:#}"
     );
 
@@ -247,6 +247,42 @@ fn still_down_after_its_work_ended_is_new_again() {
         matter_of(&world, "coverage")["updated_at"],
         matter["updated_at"]
     );
+}
+
+/// The fix landed: the read after the work ended passes, which counts toward
+/// recovery and moves nothing, so the work is not stale, nothing would be
+/// reopened, and the matter is not New again (§FS-021-monitors.15,
+/// §FS-021-monitors.13.1).
+#[test]
+fn a_passing_reading_after_its_work_ended_moves_nothing() {
+    let world = world("79.2", "ok");
+    refresh(&world, false);
+    let key = matter_of(&world, "coverage")["key"].clone();
+    dispatch(&world, 1);
+    for plan in plans(&world) {
+        finish(&plan);
+    }
+    answer(&world, "81.0", "ok");
+    refresh(&world, false);
+    assert_eq!(runs(&world), 2, "the work ended, so it is read again");
+    let matter = matter_of(&world, "coverage");
+    assert_eq!(matter["key"], key);
+    assert_eq!(matter["state"], json!("down"), "1 of 2 recovery reads");
+    assert_eq!(matter["fingerprint"]["health"].get("renewed"), None);
+
+    let work = work_on(&world, &key);
+    assert_eq!(work["stale"], json!(false), "{work:#}");
+    assert!(!is_new(&waiting(&world), &key));
+    world
+        .ephor()
+        .args(["work", "sync", "--dry-run"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("would reopen").not());
+
+    refresh(&world, true);
+    let matter = matter_of(&world, "coverage");
+    assert_eq!(matter["state"], json!("recovered"), "{matter:#}");
 }
 
 #[test]
