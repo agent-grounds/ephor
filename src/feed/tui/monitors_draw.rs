@@ -111,7 +111,10 @@ impl Columns {
             health: widest(&|row| row.shows.health.text().chars().count(), "health"),
         };
         let matter = widest(&|row| row.shows.matter.chars().count(), "matter");
-        let condition = widest(&|row| row.condition_says().chars().count(), "condition");
+        let condition = widest(
+            &|row| row.condition_noted_says(when).chars().count(),
+            "condition",
+        );
         // The glyph and its space, and two spaces after each column but the matter.
         let fixed = |columns: &Columns| {
             2 + columns.title
@@ -275,7 +278,7 @@ fn row_line(row: &MonitorRow, columns: &Columns) -> Line<'static> {
     ];
     if let Some(width) = columns.condition {
         spans.push(Span::styled(
-            format!("{}  ", pad(&row.condition_says(), width)),
+            format!("{}  ", pad(&row.condition_noted_says(when), width)),
             dim(),
         ));
     }

@@ -5,7 +5,7 @@
 
 use chrono::{DateTime, Local, Utc};
 
-use super::{ChartPoint, EpisodeView, FromView, MonitorDetail, ReadingView};
+use super::{ChartPoint, EpisodeView, FromView, MonitorDetail, MonitorRow, ReadingView};
 use crate::monitors::episode::Sort;
 use crate::monitors::model::{Point, Source};
 
@@ -79,6 +79,20 @@ impl ReadingView {
             .unwrap_or_default();
         let said = format!("{}  {:<12} {:<8}{note}", when(self.t), self.value, health);
         said.trim_end().to_string()
+    }
+}
+
+impl MonitorRow {
+    /// The condition column as the page and `ephor monitors` both show it:
+    /// the condition with the sample's `detail`, then the row's notes
+    /// (§FS-021-monitors.18.4, §FS-021-monitors.4.6, §FS-021-monitors.7.1),
+    /// `healthy ≤ 50 ms · unknown field heathy`, so a misspelt key is seen on
+    /// the row itself.
+    pub fn condition_noted_says(&self, when: impl Fn(DateTime<Utc>) -> String) -> String {
+        std::iter::once(self.condition_says())
+            .chain(self.notes_say(when))
+            .collect::<Vec<_>>()
+            .join(" · ")
     }
 }
 

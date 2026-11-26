@@ -476,6 +476,12 @@ fn a_row_notes_unknown_keys_and_a_skewed_sample() {
             "its sample says it was measured 2027-01-01, after it was read"
         ]
     );
+    // §FS-021-monitors.18.4: the condition column the page and the command show.
+    assert_eq!(
+        cov.condition_noted_says(|at| at.format("%Y-%m-%d").to_string()),
+        "healthy ≥ 80% · unknown field heathy · its sample says it was measured 2027-01-01, \
+         after it was read"
+    );
     assert_eq!(row("bad").notes, ["unknown field colour"]);
 
     let built = built(&gathered, "frac");
