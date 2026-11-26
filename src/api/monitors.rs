@@ -369,6 +369,8 @@ fn build(
         matter,
         detail: sample.and_then(|sample| sample.detail.clone()),
         url: sample.and_then(|sample| sample.url.clone()),
+        notes: monitor.notes.clone(),
+        skew: record.and_then(|record| record.skew),
     };
     Built {
         row,
@@ -474,7 +476,7 @@ fn detail(
         chart: chart(&drawn, &span, &series, windowed, known, &judge),
         thresholds: thresholds(&judge, known),
         episodes: episodes(project, &monitor.id, record, &span),
-        readings: readings(&lines, &span, windowed, known, &judge),
+        readings: readings(&lines, &span, windowed, known, (&judge, row.of)),
         points,
         no_matter,
         row,
@@ -744,11 +746,12 @@ fn readings(
     span: &Span,
     windowed: bool,
     known: &Known,
-    judge: &Judge,
+    (judge, of): (&Judge, Option<f64>),
 ) -> Vec<views::ReadingView> {
     let monitor = &known.monitor;
     let levels = monitor.levels.as_deref();
-    let said = |value| words::value(value, monitor.unit.as_deref(), monitor.of);
+    // The whole the last reading is a fraction of, as the row says its value.
+    let said = |value| words::value(value, monitor.unit.as_deref(), of);
     lines
         .iter()
         .rev()

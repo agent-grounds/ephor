@@ -408,6 +408,70 @@ fn the_cadence_says_the_last_read_and_the_next_slot_of_the_schedule() {
     );
 }
 
+/// §FS-021-monitors.4.6, §FS-021-monitors.7.1: a row notes each key its
+/// declarations do not know, a refused declaration's included, and a sample
+/// measured after its read; the readings say a fraction against the whole
+/// the sample gave, not only the declared one.
+#[test]
+fn a_row_notes_unknown_keys_and_a_skewed_sample() {
+    let dir = tempfile::tempdir().unwrap();
+    let site = [
+        json!({"id": "cov", "unit": "%", "healthy": {"min": 80}, "heathy": 1, "every": "1h"}),
+        json!({"id": "bad", "healthy": {"min": 80}, "colour": "red", "every": "90s"}),
+        json!({"id": "frac", "healthy": {"min": 10}, "every": "1h"}),
+    ];
+    let mut cov = read_at(
+        hours(1),
+        Value::Number(81.0),
+        Some(Health::Ok),
+        Some(Band::Ok),
+    );
+    cov.skew = Some(DateTime::parse_from_rfc3339("2027-01-01T00:00:00Z").unwrap());
+    let mut frac = read_at(
+        hours(1),
+        Value::Number(12.0),
+        Some(Health::Ok),
+        Some(Band::Ok),
+    );
+    frac.last_reading.as_mut().unwrap().of = Some(15.0);
+    let lines = vec![Line::Reading {
+        t: hours(1),
+        v: Value::Number(12.0),
+        health: Some(Health::Ok),
+        out_of_cadence: false,
+    }];
+    let gathered = gather(
+        dir.path(),
+        &site,
+        vec![("cov", cov), ("frac", frac)],
+        vec![("frac", lines)],
+    );
+    let row = |id: &str| built(&gathered, id).row;
+    let cov = row("cov");
+    assert_eq!(cov.notes, ["unknown field heathy"]);
+    let said = cov.notes_say(|at| at.format("%Y-%m-%d").to_string());
+    assert_eq!(
+        said,
+        [
+            "unknown field heathy",
+            "its sample says it was measured 2027-01-01, after it was read"
+        ]
+    );
+    assert_eq!(row("bad").notes, ["unknown field colour"]);
+
+    let built = built(&gathered, "frac");
+    assert_eq!(built.row.shows.value, "12/15");
+    let detail = detail(
+        "widget",
+        &gathered.known["frac"],
+        &gathered,
+        built,
+        Window::Week,
+        None,
+    );
+    assert_eq!(detail.readings[0].value, "12/15");
+}
+
 /// §FS-021-monitors.18.3: the matter column takes the open drop's before
 /// the open unknown one's, a finished one while it is still reported, and
 /// none after.

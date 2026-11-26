@@ -12,7 +12,7 @@ use chrono::{DateTime, TimeDelta, TimeZone, Utc};
 use serde::Serialize;
 
 use crate::monitors::cadence::Cadence;
-use crate::monitors::condition;
+use crate::monitors::condition::{self, Judge};
 use crate::monitors::episode::{Ending, Sort};
 use crate::monitors::freshness::{self, Cause, Freshness};
 use crate::monitors::model::{Health, Value};
@@ -271,7 +271,13 @@ fn labelled(monitor: &Monitor, record: &Record, health: Health) -> Option<String
     if points.is_empty() || points.iter().any(|point| point.t.is_some()) {
         return None;
     }
-    let judge = monitor.judge(None);
+    let sample_ok = record.last_sample.as_ref().and_then(|sample| sample.ok);
+    let judge = monitor.judge(sample_ok);
+    // A sample's own `ok` judges the sample, not each point, so the health
+    // is counted in time where it judges.
+    if !matches!(judge, Judge::Condition(_)) {
+        return None;
+    }
     let levels = monitor.levels.as_deref();
     let held = points
         .iter()
