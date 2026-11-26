@@ -27,10 +27,15 @@ fn a_refused_declaration_is_declared_and_noted() {
             .any(|note| note == "site monitor a: unknown field heathy"),
         "{notes:?}"
     );
-    assert!(
-        notes
-            .iter()
-            .any(|note| note.starts_with("site monitor b: ") && note.ends_with("is not read")),
+    // Said as a rule the homes break together is, and once for the two
+    // declarations that say it.
+    let twice: Vec<&String> = notes
+        .iter()
+        .filter(|note| note.starts_with("site monitor b "))
+        .collect();
+    assert_eq!(
+        twice,
+        ["site monitor b is not read: b is declared more than once in the site configuration"],
         "{notes:?}"
     );
     // The id declared twice is not read until one of its declarations goes.
