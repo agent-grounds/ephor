@@ -327,16 +327,53 @@ fn p_r_and_o_act_on_the_selected_row() {
         Action::SetMessage(said) => assert_eq!(said, "o: the last answer carried no url"),
         _ => panic!("o says there is no url"),
     }
+    // §FS-021-monitors.19: every other row says why in the words its detail
+    // view's matter line uses, which the model says once.
+    let said = |screen: &mut MonitorsScreen| match screen.handle_key(KeyCode::Char('p')) {
+        Action::SetMessage(said) => said,
+        _ => panic!("p says why there is nothing to process"),
+    };
+    screen.handle_key(KeyCode::Char('j'));
+    assert!(
+        said(&mut screen).contains(".unknown@20261125T090000Z is not in the feed yet"),
+        "the overdue build's unknown matter is New"
+    );
+    screen.handle_key(KeyCode::Char('j'));
+    assert_eq!(said(&mut screen), "p: none yet: it drops after its hold");
     screen.handle_key(KeyCode::Char('G'));
-    match screen.handle_key(KeyCode::Char('p')) {
-        Action::SetMessage(said) => assert_eq!(said, "p: a KPI has no matter"),
-        _ => panic!("a KPI has no matter"),
-    }
+    assert_eq!(said(&mut screen), "p: none: a KPI is never a matter");
     screen.handle_key(KeyCode::Char('k'));
-    match screen.handle_key(KeyCode::Char('p')) {
-        Action::SetMessage(said) => assert_eq!(said, "p: no matter is open for this monitor"),
-        _ => panic!("an ok monitor has no matter"),
-    }
+    assert_eq!(said(&mut screen), "p: none: nothing is open");
+}
+
+/// §FS-021-monitors.18.10, §FS-021-monitors.13.2: `p` processes only a New
+/// matter, and says what a running, dismissed or finished one leaves to do:
+/// a dismissed one comes back when its monitor moves, and only a finished
+/// one waits for the next drop.
+#[test]
+fn p_says_what_a_matter_past_new_leaves_to_do() {
+    let dir = tempfile::tempdir().unwrap();
+    let page = page_of_six(dir.path());
+    let said = |state: &'static str| {
+        let mut page = page.clone();
+        page.projects[0].rows[0].matter.as_mut().unwrap().state = state;
+        match screen(page).handle_key(KeyCode::Char('p')) {
+            Action::SetMessage(said) => said,
+            _ => panic!("p says why there is nothing to process"),
+        }
+    };
+    assert_eq!(
+        said("running"),
+        "p: work is already running on this matter; Waiting shows the run"
+    );
+    assert_eq!(
+        said("dismissed"),
+        "p: the matter is dismissed; it comes back if the monitor moves"
+    );
+    assert_eq!(
+        said("Recent"),
+        "p: the matter is Recent; the next drop opens a new one"
+    );
 }
 
 /// §FS-021-monitors.18.10: `o` opens the url the last sample carried.

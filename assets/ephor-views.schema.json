@@ -885,6 +885,7 @@
         "since": { "type": "string", "format": "date-time", "description": "When that health began." },
         "notes": { "type": "array", "items": { "type": "string" }, "description": "Keys its declarations do not know, noted beside the condition: `unknown field heathy` (FS-021-monitors.4.6)." },
         "skew": { "type": "string", "format": "date-time", "description": "The last reading's own `at`, where it lay after its read, which counts as measured when it was read (FS-021-monitors.7.1)." },
+        "no_matter": { "type": "string", "description": "Why there is no matter, where there is none: what the detail view's matter line and `p` on the row both say (FS-021-monitors.19, FS-021-monitors.18.10)." },
         "shows": {
           "type": "object",
           "description": "What the row shows: its rank and glyph, its columns in words, the header count it falls under, its strip and its change (FS-021-monitors.18.2, FS-021-monitors.18.4).",
@@ -2459,8 +2460,7 @@
               "note": { "type": "string", "description": "`read out of cadence`, `the read failed`, or how many readings a thinned line stands for." }
             }
           }
-        },
-        "no_matter": { "type": "string", "description": "Why there is no matter, where there is none (FS-021-monitors.19)." }
+        }
       }
     }
   }

@@ -221,7 +221,7 @@ impl MonitorsScreen {
             }
             KeyCode::Char('r') => self.refresh(),
             KeyCode::Char('o') => self.open_url(),
-            KeyCode::Char('p') => self.process(None),
+            KeyCode::Char('p') => self.process(),
             _ => Action::None,
         }
     }
@@ -286,13 +286,7 @@ impl MonitorsScreen {
             }
             KeyCode::Char('r') => self.refresh(),
             KeyCode::Char('o') => self.open_url(),
-            KeyCode::Char('p') => {
-                let no_matter = self
-                    .detail
-                    .as_ref()
-                    .and_then(|detail| detail.no_matter.clone());
-                self.process(no_matter)
-            }
+            KeyCode::Char('p') => self.process(),
             _ => Action::None,
         }
     }
@@ -341,39 +335,27 @@ impl MonitorsScreen {
     /// `p`: an open matter nothing has been done about is processed in
     /// place, through the move `Enter` makes on Waiting
     /// (§FS-021-monitors.18.10, §FS-019-waiting.7.2). Anything else says
-    /// why there is nothing to process: `no_matter` is the detail view's own
-    /// sentence where it has one (§FS-021-monitors.19).
-    fn process(&self, no_matter: Option<String>) -> Action {
+    /// why there is nothing to process, in the model's words, the same on
+    /// the page and in the detail view (§FS-021-monitors.19).
+    fn process(&self) -> Action {
         let Some(row) = self.acted_on() else {
             return Action::None;
         };
+        if let Some(why) = row.unprocessed_says() {
+            return Action::SetMessage(format!("p: {why}"));
+        }
         let Some(matter) = &row.matter else {
-            return Action::SetMessage(match no_matter {
-                Some(why) => format!("p: {why}"),
-                None if !row.shows.status => "p: a KPI has no matter".to_string(),
-                None if row.shows.overdue => {
-                    format!("p: overdue opens no matter; r refreshes {}", row.project)
-                }
-                None => "p: no matter is open for this monitor".to_string(),
-            });
+            return Action::None;
         };
-        match matter.state {
-            NEW => match self.items.get(&matter.key) {
-                Some(item) => Action::ProcessMatter {
-                    item: item.clone(),
-                    entry: None,
-                    choosing: false,
-                },
-                None => Action::SetMessage(format!(
-                    "p: {} is not in the feed yet; r refreshes {}",
-                    matter.key, row.project
-                )),
+        match self.items.get(&matter.key) {
+            Some(item) => Action::ProcessMatter {
+                item: item.clone(),
+                entry: None,
+                choosing: false,
             },
-            "running" => Action::SetMessage(
-                "p: work is already running on this matter; Waiting shows the run".to_string(),
-            ),
-            state => Action::SetMessage(format!(
-                "p: the matter is {state}; the next drop opens a new one"
+            None => Action::SetMessage(format!(
+                "p: {} is not in the feed yet; r refreshes {}",
+                matter.key, row.project
             )),
         }
     }

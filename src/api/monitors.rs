@@ -370,11 +370,14 @@ fn build(
             of,
             sample.and_then(|s| s.ok),
         ),
-        matter,
         detail: sample.and_then(|sample| sample.detail.clone()),
         url: sample.and_then(|sample| sample.url.clone()),
         notes: monitor.notes.clone(),
         skew: record.and_then(|record| record.skew),
+        no_matter: matter
+            .is_none()
+            .then(|| detail_view::no_matter(known, &standing)),
+        matter,
     };
     Built {
         row,
