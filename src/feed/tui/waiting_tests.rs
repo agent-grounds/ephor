@@ -103,6 +103,7 @@ fn running(run: Option<&str>) -> views::RunningRoot {
         run: run.map(str::to_string),
         started_at: None,
         attach: None,
+        paused: None,
     }
 }
 
@@ -643,4 +644,50 @@ fn the_footer_says_m_opens_the_monitors() {
         "{}",
         screen.footer()
     );
+}
+
+/// A paused run keeps its row in Running, marked as waiting and saying what it
+/// waits on and when it next looks where a run between turns says so, and the
+/// header and the section count the paused apart (§FS-019-waiting.1.3.1,
+/// §FS-019-waiting.3).
+#[test]
+fn a_paused_run_says_what_it_waits_on_and_the_header_counts_it_apart() {
+    let mut paused = running(Some("d3bd48"));
+    paused.tickets.clear();
+    paused.root = PathBuf::from("/w/widget-4/panta");
+    paused.paused = Some(views::Paused {
+        says: "stale words the screen does not draw".to_string(),
+        waits: vec![views::PausedWait {
+            ticket: "widget-4.ticket.ship".to_string(),
+            task: "ship".to_string(),
+            state: "holding".to_string(),
+            kind: "poll",
+            waiting_on: Some("a release tag".to_string()),
+            next_attempt_at: None,
+        }],
+        next_look_at: Some(Utc::now() + chrono::Duration::seconds(26 * 60 + 30)),
+    });
+    let screen = WaitingScreen::new(
+        reading(Vec::new(), Vec::new(), vec![running(None), paused]),
+        BTreeMap::new(),
+    );
+    assert_eq!(
+        screen.title(),
+        " ephor — waiting   0 on you · 0 new · 1 running · 1 paused · never refreshed"
+    );
+    let text = screen.text();
+    assert!(text.contains("RUNNING · 1 · 1 paused"), "{text}");
+    let row = text
+        .lines()
+        .find(|line| line.contains("paused ·"))
+        .unwrap_or_else(|| panic!("no paused row in:\n{text}"));
+    assert!(row.contains("‖ "), "{row}");
+    assert!(
+        row.ends_with(
+            "implement  fix/issue-3   paused · waiting on a release tag (ship) · next look in 26m"
+        ),
+        "{row}"
+    );
+    assert!(!text.contains("stale words"), "{text}");
+    assert!(!text.contains("between turns"), "{text}");
 }

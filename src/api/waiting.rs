@@ -12,12 +12,12 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, TimeZone, Utc};
 
 use crate::feed::cache;
 use crate::feed::model::{Item, ItemRole};
 use crate::monitors::counts::{self, Counts};
-use crate::work::runtime::watch::{Doing, RootPlans};
+use crate::work::runtime::watch::{Doing, ParkedKind, Paused, RootPlans};
 
 use super::read::BoardReading;
 use super::views;
@@ -191,15 +191,38 @@ impl Session {
 /// The sentences both surfaces say about the reading, so the screen and the
 /// command cannot word one fact two ways (§FS-019-waiting.3).
 impl views::Waiting {
-    /// `ephor — waiting   3 on you · 5 new · 4 running · refreshed 2m ago`.
+    /// `ephor — waiting   3 on you · 5 new · 3 running · 3 paused · refreshed
+    /// 2m ago`: the live runs taking turns and the paused ones counted apart,
+    /// and no `· 0 paused` (§FS-019-waiting.3).
     pub fn header(&self) -> String {
+        let paused = match self.paused() {
+            0 => String::new(),
+            paused => format!(" · {paused} paused"),
+        };
         format!(
-            "ephor — waiting   {} on you · {} new · {} running · {}",
+            "ephor — waiting   {} on you · {} new · {} running{paused} · {}",
             self.on_you.len(),
             self.new.len(),
-            self.running.len(),
+            self.running.len() - self.paused(),
             self.refreshed(Utc::now())
         )
+    }
+
+    /// How many of the live runs are paused (§FS-019-waiting.1.3.1).
+    pub fn paused(&self) -> usize {
+        self.running
+            .iter()
+            .filter(|row| row.paused.is_some())
+            .count()
+    }
+
+    /// The Running section's count: `6`, or `3 · 3 paused` where some of the
+    /// live runs are paused (§FS-019-waiting.1.3.1).
+    pub fn running_tally(&self) -> String {
+        match self.paused() {
+            0 => self.running.len().to_string(),
+            paused => format!("{} · {paused} paused", self.running.len() - paused),
+        }
     }
 
     /// `overview: 143 matters · 12 changed since you looked`, then the
@@ -292,6 +315,97 @@ impl views::Waiting {
             self.queued.len(),
             ids.join(", ")
         ))
+    }
+}
+
+impl views::Paused {
+    /// The reading of one paused run as of `now`, with its sentence said
+    /// once for a program (§FS-019-waiting.1.3.1).
+    pub fn read(paused: &Paused, now: DateTime<Utc>) -> views::Paused {
+        let waits = paused
+            .waits
+            .iter()
+            .map(|wait| views::PausedWait {
+                ticket: format!("{}.{}", wait.plan_id, wait.ticket),
+                // The ticket's own name: the last part of its id.
+                task: wait
+                    .ticket
+                    .rsplit('.')
+                    .next()
+                    .unwrap_or(&wait.ticket)
+                    .to_string(),
+                state: wait.state.clone(),
+                kind: match wait.kind {
+                    ParkedKind::Gate => "gate",
+                    ParkedKind::Poll => "poll",
+                },
+                waiting_on: wait.waiting_on.clone(),
+                next_attempt_at: wait.next_attempt,
+            })
+            .collect();
+        let mut view = views::Paused {
+            says: String::new(),
+            waits,
+            next_look_at: paused.next_look(),
+        };
+        view.says = view.says_at(now);
+        view
+    }
+
+    /// `paused · waiting on a release tag (ship) · next look 23:13`: the row
+    /// of a paused run on the Waiting screen and under `ephor waiting`
+    /// (§FS-019-waiting.1.3.1).
+    pub fn says_at(&self, now: DateTime<Utc>) -> String {
+        format!("paused · {}", self.waits_at(now))
+    }
+
+    /// What the run waits on and when it next looks, without the word the
+    /// board already says as the row's state (§FS-005-dispatch.15).
+    pub fn waits_at(&self, now: DateTime<Utc>) -> String {
+        let mut said: Vec<String> = self.waits.iter().map(views::PausedWait::says).collect();
+        if let Some(at) = self.next_look_at {
+            said.push(format!("next look {}", next_look(now, at, &chrono::Local)));
+        }
+        said.join(" · ")
+    }
+}
+
+impl views::PausedWait {
+    /// `waiting on you (specify)` on a gate, `waiting on <who> (<task>)` on a
+    /// poll that declares whose answer it awaits, and `polling in <state>
+    /// (<task>)` on one that declares nobody (§FS-019-waiting.1.3.1).
+    pub fn says(&self) -> String {
+        match (self.kind, &self.waiting_on) {
+            ("gate", _) => format!("waiting on you ({})", self.task),
+            (_, Some(who)) => format!("waiting on {who} ({})", self.task),
+            (_, None) => format!("polling in {} ({})", self.state, self.task),
+        }
+    }
+}
+
+/// When a paused run next looks, as a clock on the wall reads it in `zone`:
+/// `in 4m` under an hour, `23:13` later the same day, and `Nov 28 09:13` on
+/// another (§FS-019-waiting.1.3.1). `now` where the time has come since the
+/// reading was taken.
+pub(crate) fn next_look<Zone: TimeZone>(
+    now: DateTime<Utc>,
+    at: DateTime<Utc>,
+    zone: &Zone,
+) -> String
+where
+    Zone::Offset: std::fmt::Display,
+{
+    let ahead = (at - now).num_seconds();
+    if ahead <= 0 {
+        return "now".to_string();
+    }
+    if ahead < 60 * 60 {
+        return format!("in {}", crate::feed::render::span(ahead));
+    }
+    let (today, then) = (now.with_timezone(zone), at.with_timezone(zone));
+    match today.date_naive() == then.date_naive() {
+        true => then.format("%H:%M").to_string(),
+        false => then.format("%b %-d %H:%M").to_string(),
     }
 }
 
@@ -508,7 +622,8 @@ pub(crate) fn reading(
             .then_with(|| seen(&a.root).cmp(&seen(&b.root)))
     });
 
-    let running = running
+    let now = Utc::now();
+    let mut running: Vec<views::RunningRoot> = running
         .iter()
         .filter(|row| row.op.live)
         .map(|row| views::RunningRoot {
@@ -544,8 +659,16 @@ pub(crate) fn reading(
                 .op
                 .run_id()
                 .map(|id| crate::work::runtime::attach_command(config, id)),
+            paused: row
+                .op
+                .paused
+                .as_ref()
+                .map(|paused| views::Paused::read(paused, now)),
         })
         .collect();
+    // The runs taking turns first, the paused after them, each in the walk's
+    // order (§FS-019-waiting.1.3.1).
+    running.sort_by_key(|row| row.paused.is_some());
 
     views::Waiting {
         refusal,

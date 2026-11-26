@@ -368,7 +368,7 @@ impl WaitingScreen {
                 Style::default()
             }
         };
-        let section = |lines: &mut Vec<Line<'static>>, name: &str, count: usize, keys: &str| {
+        let section = |lines: &mut Vec<Line<'static>>, name: &str, count: String, keys: &str| {
             lines.push(Line::from(vec![
                 Span::styled(format!("  {name} · {count}"), heading),
                 Span::styled(format!("   {keys}"), dim),
@@ -398,7 +398,7 @@ impl WaitingScreen {
         section(
             &mut lines,
             "WAITING ON YOU",
-            view.on_you.len(),
+            view.on_you.len().to_string(),
             "enter open",
         );
         match refused {
@@ -443,7 +443,7 @@ impl WaitingScreen {
         section(
             &mut lines,
             "NEW",
-            view.new.len(),
+            view.new.len().to_string(),
             "enter process  l open  a another  x needs none  A all",
         );
         if view.new.is_empty() {
@@ -487,7 +487,8 @@ impl WaitingScreen {
         }
         lines.push(Line::from(""));
 
-        section(&mut lines, "RUNNING", view.running.len(), "enter attach");
+        // The paused runs counted apart (§FS-019-waiting.1.3.1).
+        section(&mut lines, "RUNNING", view.running_tally(), "enter attach");
         match refused {
             Some(refusal) => lines.push(Line::from(Span::styled(format!("    {refusal}"), dim))),
             None if view.running.is_empty() => {
@@ -521,10 +522,17 @@ impl WaitingScreen {
                 .map(|at| crate::feed::render::age(now, at))
                 .unwrap_or_default();
             // A run between two turns holds nothing, and says so rather than
-            // reading as a run doing nothing (§FS-019-waiting.1.3).
-            let holding = match holding.is_empty() {
-                true => "between turns".to_string(),
-                false => holding.join(", "),
+            // reading as a run doing nothing (§FS-019-waiting.1.3) — unless it
+            // is paused, when it says what it waits on and when it next looks,
+            // as of this frame (§FS-019-waiting.1.3.1).
+            let holding = match (&row.paused, holding.is_empty()) {
+                (Some(paused), _) => paused.says_at(now),
+                (None, true) => "between turns".to_string(),
+                (None, false) => holding.join(", "),
+            };
+            let (marker, marked) = match row.paused {
+                Some(_) => ("‖ ", Style::default().fg(Color::Yellow)),
+                None => ("▶ ", Style::default().fg(Color::Green)),
             };
             let work: Vec<&str> = [&row.entry, &row.branch]
                 .into_iter()
@@ -538,7 +546,7 @@ impl WaitingScreen {
             lines.push(fitted(
                 vec![
                     Span::styled(format!("  {} ", cursor(at)), dim),
-                    Span::styled("▶ ".to_string(), Style::default().fg(Color::Green)),
+                    Span::styled(marker.to_string(), marked),
                     Span::styled(format!("{age:<5} "), dim),
                     Span::styled(format!("{:<10} ", row.project), dim),
                     Span::styled(about, strong(at)),

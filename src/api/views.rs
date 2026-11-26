@@ -297,6 +297,12 @@ pub struct Operation {
     /// asks something of the reader first (§FS-005-dispatch.15).
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub tickets: Vec<OperationTicket>,
+    /// What a paused live run waits on, and when it next looks; absent on a
+    /// run taking turns and on every row that is no live run
+    /// (§FS-019-waiting.1.3.1). `state` is `paused` beside it, and `live`
+    /// stays true.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub paused: Option<Paused>,
 }
 
 /// One ticket under an execution root (§FS-005-dispatch.15).
@@ -1104,6 +1110,45 @@ pub struct RunningRoot {
     /// The runner's own command for watching it.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub attach: Option<String>,
+    /// What the run waits on and when it next looks, where it is paused; absent
+    /// on a run taking turns (§FS-019-waiting.1.3.1).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub paused: Option<Paused>,
+}
+
+/// A live run with nothing it can do until a person or the world answers
+/// (§FS-019-waiting.1.3.1): the one reading the Waiting row, the board's row
+/// and both commands say it from.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct Paused {
+    /// The row's sentence as it read when the view was taken:
+    /// `paused · waiting on a release tag (ship) · next look 23:13`.
+    pub says: String,
+    /// Each parked ticket, the gates first.
+    pub waits: Vec<PausedWait>,
+    /// The earliest next attempt among the polls; absent where the run waits
+    /// on gates alone.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub next_look_at: Option<DateTime<Utc>>,
+}
+
+/// One ticket a paused run waits on (§FS-019-waiting.1.3.1).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct PausedWait {
+    /// `<plan>.<ticket>`.
+    pub ticket: String,
+    /// The ticket's own name, the last part of its id.
+    pub task: String,
+    pub state: String,
+    /// `gate` or `poll`.
+    pub kind: &'static str,
+    /// On a poll: whose answer it declares it awaits, in the machine's own
+    /// words. Absent on a gate, and on a poll that declares nobody.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub waiting_on: Option<String>,
+    /// On a poll: when the runtime will try it again.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub next_attempt_at: Option<DateTime<Utc>>,
 }
 
 #[derive(Debug, Clone, Serialize)]

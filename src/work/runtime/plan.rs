@@ -1192,11 +1192,15 @@ pub struct TaskMeta {
 /// key until this list has it.
 const RUNTIME_BOOKKEEPING: [&str; 5] = [
     "stateVisits",
-    "pollNextAttemptAt",
+    POLL_NEXT_ATTEMPT,
     "providerLimits",
     "supervision",
     "budgetTicketId",
 ];
+
+/// Where the runtime records, per poll state, when it will try a task's poll
+/// again: epoch seconds under the state's name (§FS-019-waiting.1.3.1).
+const POLL_NEXT_ATTEMPT: &str = "pollNextAttemptAt";
 
 /// Whether the runtime keeps its own bookkeeping under this name in a task's
 /// block (§FS-005-dispatch.8.1). By the exact name and never by the shape of
@@ -1671,6 +1675,31 @@ impl Plan {
         }
         meta.dropped.extend(folded(&meta.values));
         meta
+    }
+
+    /// When the runtime will next try one task's poll in one state, as it
+    /// recorded it in the task's own block: `pollNextAttemptAt.<state>`, in
+    /// epoch seconds, written as a number or as a string of digits
+    /// (§FS-019-waiting.1.3.1). The task is found under its own id first and
+    /// under `<plan id>.<task id>` second, as [`Plan::task_meta`] finds it.
+    ///
+    /// None where nothing is recorded, or where it is written any other way:
+    /// a poll whose next attempt cannot be read is not known to be waiting,
+    /// and the reading that asked says less rather than guess a clock.
+    pub fn poll_next_attempt(&self, plan_id: &str, task_id: &str, state: &str) -> Option<i64> {
+        let doc = serde_yaml::from_str::<serde_yaml::Value>(self.frontmatter_yaml()?).ok()?;
+        let tasks = doc.get("metadata")?.get("tasks")?;
+        let said =
+            entry(tasks, task_id).or_else(|| entry(tasks, &format!("{plan_id}.{task_id}")))?;
+        match entry(said.get(POLL_NEXT_ATTEMPT)?, state)? {
+            serde_yaml::Value::Number(number) => number.as_i64(),
+            serde_yaml::Value::String(text)
+                if !text.is_empty() && text.bytes().all(|byte| byte.is_ascii_digit()) =>
+            {
+                text.parse().ok()
+            }
+            _ => None,
+        }
     }
 
     /// The frontmatter body as YAML, between its fences. Accepted wherever the

@@ -419,30 +419,16 @@ impl OperationsScreen {
                 Row::Op(row) => row,
             };
             let op = &row.op;
-            let mut badges: Vec<String> = Vec::new();
             // What the row is, read off what its tickets say rather than off
-            // liveness alone: a root is an operation while work waits on the
-            // reader, and the run that parked it has usually exited
-            // (§FS-005-dispatch.15). Calling that "claimed" would name a
-            // person who never claimed it — and calling a dead run's leavings
-            // either would hide that a run wants starting again.
-            badges.push(if op.live {
-                "running".to_string()
-            } else if op
-                .tickets
-                .iter()
-                .any(|ticket| matches!(ticket.doing, Doing::Waiting))
-            {
-                "waiting on you".to_string()
-            } else if op
-                .tickets
-                .iter()
-                .any(|ticket| matches!(ticket.doing, Doing::Dropped))
-            {
-                "a run died here".to_string()
-            } else {
-                "claimed, not scheduled".to_string()
-            });
+            // liveness alone, in the words `ephor operations` uses for it
+            // (§FS-005-dispatch.15).
+            let mut badges: Vec<String> = vec![op.state().to_string()];
+            // A paused run says what it waits on and when it next looks, as of
+            // this frame, right after the word (§FS-019-waiting.1.3.1).
+            if let Some(paused) = &op.paused {
+                let now = chrono::Utc::now();
+                badges.push(crate::api::views::Paused::read(paused, now).waits_at(now));
+            }
             // The machine could not be read: queued and finished are
             // withheld in the data, and the row says so rather than letting
             // the zero read as nothing done (§FS-005-dispatch.15).
@@ -460,7 +446,11 @@ impl OperationsScreen {
             if op.dashboard.is_some() {
                 badges.push("dashboard (o)".to_string());
             }
-            let marker = if op.live { "▶" } else { "✋" };
+            let marker = match (op.live, op.paused.is_some()) {
+                (true, true) => "‖",
+                (true, false) => "▶",
+                (false, _) => "✋",
+            };
             let root = super::display_root(&op.root.to_string_lossy());
             lines.push(Line::from(vec![
                 Span::styled(format!("  {} ", if selected { "▸" } else { " " }), dim),
@@ -648,6 +638,7 @@ mod tests {
                 identity: None,
                 stop: None,
                 plans: vec![plan()],
+                paused: None,
             },
             item: Some(item()),
             plan: Some(plan()),
@@ -724,6 +715,7 @@ mod tests {
                 identity: None,
                 stop: None,
                 plans: vec![plan()],
+                paused: None,
             },
             item: None,
             plan: Some(plan()),
@@ -778,6 +770,49 @@ mod tests {
             "{text}"
         );
         assert!(text.contains("✓ 2 finished · ⊘ 1 cancelled"), "{text}");
+    }
+
+    /// A paused run reads `paused` where a run at work reads `running`, says
+    /// what it waits on and when it next looks right after, and is still the
+    /// live run it was: its id, its way in, its tickets (§FS-005-dispatch.15,
+    /// §FS-019-waiting.1.3.1).
+    #[test]
+    fn a_paused_run_says_what_it_waits_on_where_a_running_one_says_running() {
+        use crate::work::runtime::watch::{Parked, ParkedKind, Paused};
+        let mut row = identified_row();
+        row.op.quiet = None;
+        row.op.tickets = vec![ticket("ship", Doing::Queued)];
+        row.op.paused = Some(Paused {
+            waits: vec![
+                Parked {
+                    plan_id: "forge-demo-17".to_string(),
+                    ticket: "ticket.specify".to_string(),
+                    state: "human-gate".to_string(),
+                    kind: ParkedKind::Gate,
+                    waiting_on: None,
+                    next_attempt: None,
+                },
+                Parked {
+                    plan_id: "forge-demo-17".to_string(),
+                    ticket: "ticket.ship".to_string(),
+                    state: "holding".to_string(),
+                    kind: ParkedKind::Poll,
+                    waiting_on: Some("a release tag".to_string()),
+                    next_attempt: Some(chrono::Utc::now() + chrono::Duration::seconds(4 * 60 + 30)),
+                },
+            ],
+        });
+        let text = text(&OperationsScreen::new(rows(vec![row]), None), None);
+        assert!(
+            text.contains(
+                "‖ demo · /w/demo/panta   paused · waiting on you (specify) · \
+                 waiting on a release tag (ship) · next look in 4m · run 3f9a2c (a) · dashboard (o)"
+            ),
+            "{text}"
+        );
+        assert!(!text.contains("running ·"), "{text}");
+        assert!(text.contains("stop it: the-runner stop 3f9a2c"), "{text}");
+        assert!(text.contains("forge-demo-17.ship"), "{text}");
     }
 
     /// A dead run's leavings are their own flavour on the screen, never

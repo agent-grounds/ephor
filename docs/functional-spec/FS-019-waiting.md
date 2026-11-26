@@ -155,7 +155,10 @@ says the work was handed over with and the branch it is about
 ([§FS-005-dispatch.4](FS-005-dispatch.md#4-the-ledger-is-ephors-record-and-never-the-truth-about-the-work)), the tickets the run is holding with the state each is in,
 and how long the run has been going. A run between two turns holds no ticket,
 and its row says `between turns` rather than showing an empty list that reads
-as a run doing nothing.
+as a run doing nothing. A run that holds no ticket because nothing is left that
+it can do until a person or the world answers is not between turns: it is
+**paused**, and its row says what it waits on and when it next looks
+([§FS-019-waiting.1.3.1](FS-019-waiting.md#131-a-run-with-nothing-it-can-do-says-it-is-paused-what-it-waits-on-and-when-it-next-looks)).
 The age is counted from the start the run published beside its lock
 ([§FS-005-dispatch.20](FS-005-dispatch.md#20-a-run-of-the-runtime-starts-beneath-the-screen-and-is-watched-by-attaching)), so a run that published no start shows no age. The
 hand a run works with is carried only where the runtime reports it, by the
@@ -164,6 +167,72 @@ same rule as a gate's wait ([§FS-019-waiting.1.1](FS-019-waiting.md#11-waiting-
 Under the live runs, one line names the work processing laid and asked to
 start that has not started yet, and why
 ([§FS-019-waiting.7.6](FS-019-waiting.md#76-running-names-what-waits-for-a-slot)).
+
+#### 1.3.1 A run with nothing it can do says it is paused, what it waits on and when it next looks
+
+A run whose remaining work is all parked keeps its lock and its process for as
+long as the wait lasts: a gate on the reader, a poll on a release tag asked
+again every half hour. Read as running, or as between turns, it tells the
+reader that work is going on without them, when it is waiting on them or on the
+world ([§GOAL-002-glance](../goals.md#goal-002-glance-one-glance-answers-what-needs-me-now)). So such a run is called **paused**. The word
+is taken from the runtime's facts alone, once, below the screen, the board and
+`ephor waiting`, so that all three say it of the same runs
+([§REQ-002-parity.2](../requirements/REQ-002-parity.md#2-parity-runs-both-ways)). A live run is paused when all four hold:
+
+1. its lock is held: it is live, exactly as the board reads it
+   ([§FS-005-dispatch.15](FS-005-dispatch.md#15-every-operation-is-visible-in-one-place));
+2. it holds no ticket, as its own stream or journal says
+   ([§FS-005-dispatch.15.2](FS-005-dispatch.md#152-what-a-run-is-doing-is-read-from-the-runs-own-stream));
+3. no task of its root is ready: no open ticket is on a poll whose recorded
+   next attempt has come, and the bound runner's own ready set for the root
+   is empty. That set is the runtime's rule, with prerequisites, required
+   inputs, poll deadlines and supervision in it, and it is asked of the runner
+   rather than worked out again here, so that a ticket held back by the ticket
+   before it is read as held back and not as parked;
+4. at least one open ticket of the root is **parked**: in a state its machine
+   calls gating, or in a poll state whose next attempt the runtime recorded
+   and which is still ahead.
+
+No state name is guessed, and no length of silence counts: the quiet badge
+stays a badge ([§FS-005-dispatch.15](FS-005-dispatch.md#15-every-operation-is-visible-in-one-place)). Where any of the four fails, the row
+reads as it did. A ready task, or a poll whose next attempt has come, is a run
+about to take a turn, and it says `between turns`. A runner that cannot be
+asked for its ready set, or gives an answer that does not read, is not a
+runner that said nothing is ready, and those rows say `between turns` too,
+because paused is a positive finding, never the absence of one. A poll with no
+recorded next attempt is not known to be waiting, so it is not parked, and
+whether it is about to run is the ready set's to say.
+
+The row says `paused`, then each parked ticket, the gates first. A gate is
+`waiting on you (<task>)`. A poll that declares whose answer it awaits is
+`waiting on <who> (<task>)`, in the machine's own words, and a poll that
+declares nobody is `polling in <state> (<task>)`. `<task>` is the ticket's own
+name, the last part of its id. Then comes `next look` and the earliest next
+attempt among the polls: `in 4m` under an hour, the local clock time `23:13`
+later the same day, and the date with it, `Nov 28 09:13`, on another day. A run
+parked only on gates has no next look, because nothing but a person moves it.
+
+```text
+‖ 2h    grund      Read Markdown without v1_* definitions   paused · waiting on a release tag (ship) · next look 23:13
+‖ 6h    grund      Spell the lock in one place   paused · waiting on prerequisite tickets (dependencies) · next look in 4m
+‖ 3d    rhei       Count visits per state   paused · waiting on you (specify)
+```
+
+`ephor waiting` prints the same sentence under the row, where a run between
+turns prints `between turns`.
+
+Paused rows stay in Running, after the runs that are taking turns, and the
+section's heading counts them apart: `RUNNING · 3 · 3 paused` on the screen,
+`Running (3 · 3 paused)` from the command. A paused run is still a live run.
+It holds its root's lock and its process, `Enter` attaches to it, and `e`
+reads its plan, exactly as on any other running row ([§FS-019-waiting.4](FS-019-waiting.md#4-keys)).
+A section of its own would split one list of live runs in two and add a fourth
+place to the screen's order, which is ordered by what costs the reader most to
+leave ([§FS-019-waiting.1](FS-019-waiting.md#1-three-sections-in-this-order)). A paused run costs the reader nothing
+of its own: what it asks of them, a gate or a poll on them, is already a row
+in Waiting on you, and what else it waits on is the world's to answer. So the
+row changes what it says, and nothing about where it stands or what its keys
+do.
 
 ## 2. An empty section is one line
 
@@ -197,7 +266,11 @@ the board shows it ([§FS-005-dispatch.15](FS-005-dispatch.md#15-every-operation
 
 The header names the screen, counts the three sections, and says how old the
 reading's feed is:
-`ephor — waiting   3 on you · 5 new · 4 running · refreshed 2m ago`. The age is
+`ephor — waiting   3 on you · 5 new · 3 running · 3 paused · refreshed 2m ago`.
+`running` counts the live runs taking turns and `paused` the live runs that are
+paused ([§FS-019-waiting.1.3.1](FS-019-waiting.md#131-a-run-with-nothing-it-can-do-says-it-is-paused-what-it-waits-on-and-when-it-next-looks)), so the header never calls a run that waits
+on a release tag a run at work. With no paused run the header says no
+`· 0 paused`. The age is
 the newest fetch the feed's cache records ([§FS-001-forge-interface.7](FS-001-forge-interface.md#7-a-fetch-runs-beneath-the-reading-never-in-front-of-it)), so
 a quiet screen over a feed nobody has refreshed says so. Under a minute it
 says `refreshed just now`, and a feed never fetched says `never refreshed`.
@@ -315,7 +388,12 @@ line, in the screen's order. `ephor waiting --json` prints the published
 - `new`: the rows of [§FS-019-waiting.1.2](FS-019-waiting.md#12-new-every-matter-nothing-has-been-done-about), each with its `proposal`
   ([§FS-019-waiting.7.1](FS-019-waiting.md#71-every-new-row-carries-a-proposal));
 - `held`: each held matter with the label that holds it;
-- `running`: the rows of [§FS-019-waiting.1.3](FS-019-waiting.md#13-running-every-live-run);
+- `running`: the rows of [§FS-019-waiting.1.3](FS-019-waiting.md#13-running-every-live-run), every live run, paused or not.
+  A paused row carries `paused` ([§FS-019-waiting.1.3.1](FS-019-waiting.md#131-a-run-with-nothing-it-can-do-says-it-is-paused-what-it-waits-on-and-when-it-next-looks)): the row's sentence
+  `says`, its `waits`, and `next_look_at`, the earliest next attempt, where a
+  poll is among them. Each wait has its `ticket`, `task`, `state` and `kind`
+  (`gate` or `poll`), and on a poll the `waiting_on` it declares and its
+  `next_attempt_at`. A run taking turns carries no `paused`;
 - `queued`: the work processing laid that waits for a slot
   ([§FS-019-waiting.7.6](FS-019-waiting.md#76-running-names-what-waits-for-a-slot));
 - `adopt`: the sentence naming the recipe a repeated confirmation would make

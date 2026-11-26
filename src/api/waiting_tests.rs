@@ -7,11 +7,13 @@ use std::path::PathBuf;
 use chrono::{TimeZone, Utc};
 use serde_json::json;
 
-use super::{listed, names_reader, reading, unprocessed};
+use super::{listed, names_reader, next_look, reading, unprocessed};
 use crate::api::read::{Asked, BoardReading, Running};
 use crate::feed::model::{Item, ItemKind, ItemRole};
 use crate::work::recipe::WorkConfig;
-use crate::work::runtime::watch::{BoardTicket, Doing, Operation, PersonWait, RunIdentity};
+use crate::work::runtime::watch::{
+    BoardTicket, Doing, Operation, Parked, ParkedKind, Paused, PersonWait, RunIdentity,
+};
 
 fn matter(id: &str, title: &str, minute: u32) -> Item {
     Item {
@@ -56,6 +58,7 @@ fn operation(project: &str, root: &str, live: bool, tickets: Vec<BoardTicket>) -
         cancelled: 0,
         machine_unread: None,
         plans: Vec::new(),
+        paused: None,
     }
 }
 
@@ -480,4 +483,160 @@ fn without_a_listing_the_rows_stay_as_the_enumeration_gave_them() {
     listed(&mut waiting.on_you, &|_| None);
     assert_eq!(serde_json::to_value(&waiting.on_you).unwrap(), before);
     assert_eq!(waiting.on_you[0].says(), "needs-human");
+}
+
+fn parked(ticket: &str, state: &str, kind: ParkedKind, waiting_on: Option<&str>) -> Parked {
+    Parked {
+        plan_id: "widget-9".to_string(),
+        ticket: ticket.to_string(),
+        state: state.to_string(),
+        kind,
+        waiting_on: waiting_on.map(str::to_string),
+        next_attempt: None,
+    }
+}
+
+fn polled(mut wait: Parked, at: chrono::DateTime<Utc>) -> Parked {
+    wait.next_attempt = Some(at);
+    wait
+}
+
+fn live(op: Operation) -> Running {
+    Running {
+        op,
+        item: None,
+        plan: None,
+    }
+}
+
+/// A paused row says what it waits on and when it next looks, gates first, in
+/// the words both surfaces use; the paused rows come after the runs taking
+/// turns, and the header and the section count them apart
+/// (§FS-019-waiting.1.3.1, §FS-019-waiting.3).
+#[test]
+fn a_paused_run_says_what_it_waits_on_and_is_counted_apart() {
+    let now = Utc::now();
+    let soon = now + chrono::Duration::seconds(4 * 60 + 30);
+    let later = now + chrono::Duration::seconds(20 * 60 + 30);
+    let mut shipping = operation("beta", "/w/beta-1/panta", true, Vec::new());
+    shipping.paused = Some(Paused {
+        waits: vec![polled(
+            parked(
+                "ticket.ship",
+                "holding",
+                ParkedKind::Poll,
+                Some("a release tag"),
+            ),
+            soon,
+        )],
+    });
+    let taking = operation("alpha", "/w/alpha-1/panta", true, Vec::new());
+    let mut gated = operation("gamma", "/w/gamma-1/panta", true, Vec::new());
+    gated.paused = Some(Paused {
+        waits: vec![
+            parked("ticket.specify", "specify-gate", ParkedKind::Gate, None),
+            polled(parked("collect", "checks", ParkedKind::Poll, None), later),
+        ],
+    });
+    let mut asked = operation("delta", "/w/delta-1/panta", true, Vec::new());
+    asked.paused = Some(Paused {
+        waits: vec![parked("triage-1", "needs-human", ParkedKind::Gate, None)],
+    });
+    let waiting = read(BoardReading {
+        running: vec![live(shipping), live(taking), live(gated), live(asked)],
+        asks: Vec::new(),
+        refusal: None,
+        matters: BTreeMap::new(),
+    });
+
+    let order: Vec<&str> = waiting
+        .running
+        .iter()
+        .map(|row| row.project.as_str())
+        .collect();
+    assert_eq!(order, ["alpha", "beta", "gamma", "delta"]);
+    assert_eq!(waiting.running[0].paused, None);
+    let says = |at: usize| waiting.running[at].paused.as_ref().unwrap().says.clone();
+    assert_eq!(
+        says(1),
+        "paused · waiting on a release tag (ship) · next look in 4m"
+    );
+    assert_eq!(
+        says(2),
+        "paused · waiting on you (specify) · polling in checks (collect) · next look in 20m"
+    );
+    assert_eq!(says(3), "paused · waiting on you (triage-1)");
+
+    assert_eq!(waiting.paused(), 3);
+    assert_eq!(waiting.running_tally(), "1 · 3 paused");
+    assert!(
+        waiting
+            .header()
+            .starts_with("ephor — waiting   0 on you · 0 new · 1 running · 3 paused · "),
+        "{}",
+        waiting.header()
+    );
+
+    // The machine form carries each wait whole, and leaves out what a wait
+    // does not have (§FS-019-waiting.6).
+    let json = serde_json::to_value(&waiting.running[2]).unwrap();
+    let paused = &json["paused"];
+    assert_eq!(paused["waits"][0]["ticket"], "widget-9.ticket.specify");
+    assert_eq!(paused["waits"][0]["task"], "specify");
+    assert_eq!(paused["waits"][0]["kind"], "gate");
+    assert!(paused["waits"][0].get("waiting_on").is_none());
+    assert!(paused["waits"][0].get("next_attempt_at").is_none());
+    assert_eq!(paused["waits"][1]["kind"], "poll");
+    assert_eq!(paused["waits"][1]["state"], "checks");
+    assert!(paused["waits"][1].get("waiting_on").is_none());
+    assert_eq!(
+        paused["next_look_at"],
+        serde_json::to_value(later).unwrap(),
+        "{paused}"
+    );
+    let gate_only = serde_json::to_value(&waiting.running[3]).unwrap();
+    assert!(gate_only["paused"].get("next_look_at").is_none());
+    let taking = serde_json::to_value(&waiting.running[0]).unwrap();
+    assert!(taking.get("paused").is_none());
+}
+
+/// With no run paused the header says nothing about pausing at all
+/// (§FS-019-waiting.3).
+#[test]
+fn no_paused_run_is_no_zero_paused() {
+    let waiting = read(BoardReading {
+        running: vec![live(operation(
+            "alpha",
+            "/w/alpha-1/panta",
+            true,
+            Vec::new(),
+        ))],
+        asks: Vec::new(),
+        refusal: None,
+        matters: BTreeMap::new(),
+    });
+    assert_eq!(waiting.running_tally(), "1");
+    assert!(waiting.header().contains("· 1 running · "));
+    assert!(!waiting.header().contains("paused"), "{}", waiting.header());
+}
+
+/// The next look reads as a wall clock does: in minutes under the hour, the
+/// time later the same day, the date with it on another (§FS-019-waiting.1.3.1).
+#[test]
+fn the_next_look_reads_as_a_clock_does() {
+    let now = Utc.with_ymd_and_hms(2026, 11, 26, 22, 0, 0).unwrap();
+    let ahead = |seconds: i64| now + chrono::Duration::seconds(seconds);
+    assert_eq!(next_look(now, ahead(45), &Utc), "in 45s");
+    assert_eq!(next_look(now, ahead(4 * 60), &Utc), "in 4m");
+    assert_eq!(next_look(now, ahead(59 * 60 + 59), &Utc), "in 59m");
+    let same_day = Utc.with_ymd_and_hms(2026, 11, 26, 23, 13, 0).unwrap();
+    assert_eq!(next_look(now, same_day, &Utc), "23:13");
+    let next_day = Utc.with_ymd_and_hms(2026, 11, 28, 9, 13, 0).unwrap();
+    assert_eq!(next_look(now, next_day, &Utc), "Nov 28 09:13");
+    // Past midnight in the zone is another day, however close.
+    let late = Utc.with_ymd_and_hms(2026, 11, 26, 23, 30, 0).unwrap();
+    let after_midnight = Utc.with_ymd_and_hms(2026, 11, 27, 0, 40, 0).unwrap();
+    assert_eq!(next_look(late, after_midnight, &Utc), "Nov 27 00:40");
+    // A reading drawn after its next look came says so rather than a negative.
+    assert_eq!(next_look(now, ahead(-5), &Utc), "now");
 }
