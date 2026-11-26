@@ -256,6 +256,28 @@ pub const ABILITIES: &[Ability] = &[
         keys: &["R"],
         command: "burn --rescan",
     },
+    // The Monitors page, its window, its detail view, and its `r`, which
+    // reads every monitor now (§FS-021-monitors.18, §FS-021-monitors.21).
+    Ability {
+        what: "what each project's monitors say now, and how they moved",
+        keys: &["M"],
+        command: "monitors",
+    },
+    Ability {
+        what: "how far back the monitors' strips and changes reach",
+        keys: &["w"],
+        command: "monitors --window",
+    },
+    Ability {
+        what: "one monitor in detail: its chart, its condition, its episodes and its matter",
+        keys: &["enter"],
+        command: "monitors show",
+    },
+    Ability {
+        what: "read every monitor now, out of cadence",
+        keys: &["r"],
+        command: "refresh --monitors-now",
+    },
     Ability {
         what: "what a job wrote",
         keys: &["L"],

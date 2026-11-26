@@ -113,6 +113,9 @@ pub enum Command {
     /// session was working in, so the scope selectors narrow nothing here
     /// (§FS-011-command-line.9).
     Burn(BurnArgs),
+    /// What each project's monitors say now, and how they moved over a
+    /// window: the Monitors page as a table, or one monitor in detail.
+    Monitors(MonitorsArgs),
     /// A matter's recorded conversation, and the reply a run drafted.
     Thread(ThreadArgs),
     /// Post a reaction on one message of a matter.
@@ -1413,6 +1416,54 @@ pub struct BurnArgs {
     pub rescan: bool,
 
     /// Emit raw JSON instead of a reading.
+    #[arg(long)]
+    pub json: bool,
+}
+
+/// `ephor monitors` (§FS-021-monitors.21.1): the Monitors page as a table.
+/// The window and the project are the page's keys, spelled as arguments
+/// (§REQ-002-parity.2).
+#[derive(Args, Debug, Default)]
+pub struct MonitorsArgs {
+    #[command(subcommand)]
+    pub command: Option<MonitorsCommand>,
+
+    /// Only this project's monitors. May be passed multiple times.
+    #[arg(long, value_name = "PROJECT")]
+    pub project: Vec<String>,
+
+    /// What the strip and the change cover.
+    #[arg(long, value_enum, default_value_t = crate::monitors::window::Window::Week)]
+    pub window: crate::monitors::window::Window,
+
+    /// Exit 4 when any status printed is down or unknown, overdue included
+    /// (§FS-021-monitors.21.2).
+    #[arg(long)]
+    pub check: bool,
+
+    /// Emit the published `monitors` view instead of a table.
+    #[arg(long)]
+    pub json: bool,
+}
+
+#[derive(Subcommand, Debug)]
+pub enum MonitorsCommand {
+    /// One monitor in detail: its chart, its condition and where each part
+    /// came from, its cadence, its episodes and its matter
+    /// (§FS-021-monitors.21.3).
+    Show(MonitorsShowArgs),
+}
+
+#[derive(Args, Debug)]
+pub struct MonitorsShowArgs {
+    /// The monitor, as `<project>/<id>`.
+    pub monitor: String,
+
+    /// What the chart and the change cover.
+    #[arg(long, value_enum, default_value_t = crate::monitors::window::Window::Week)]
+    pub window: crate::monitors::window::Window,
+
+    /// Emit the published `monitor` view instead of the detail.
     #[arg(long)]
     pub json: bool,
 }

@@ -18,6 +18,10 @@ use crate::feed::config::load_config;
 use crate::feed::model::Item;
 use crate::feed::render::Style;
 
+mod monitors;
+
+pub use monitors::monitors;
+
 /// The one place a reading becomes standard output. Under `--json` the
 /// reading is alone on it; notes and progress belong on the error stream,
 /// where they narrate the run without becoming part of it

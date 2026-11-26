@@ -421,6 +421,14 @@ path = "tests/e2e/cases/E2E-081-unknown-and-overdue-monitors-in-waiting.rs"
 name = "e2e_082_a_monitors_matter_and_the_work_laid_on_it"
 path = "tests/e2e/cases/E2E-082-a-monitors-matter-and-the-work-laid-on-it.rs"
 
+[[test]]
+name = "e2e_083_the_monitors_page_as_a_table"
+path = "tests/e2e/cases/E2E-083-the-monitors-page-as-a-table.rs"
+
+[[test]]
+name = "e2e_084_one_monitor_in_detail"
+path = "tests/e2e/cases/E2E-084-one-monitor-in-detail.rs"
+
 [dependencies]
 clap = { version = "4", features = ["derive"] }
 serde = { version = "1", features = ["derive"] }

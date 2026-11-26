@@ -216,6 +216,7 @@ fn run(cli: Cli) -> Result<ExitCode> {
         Command::Waiting(args) => return ephor::commands::waiting(args),
         Command::Guide(args) => return ephor::commands::guide(args),
         Command::Burn(args) => return ephor::commands::burn(args),
+        Command::Monitors(args) => return ephor::commands::monitors(args, &projects),
         Command::Thread(args) => return ephor::commands::thread(args),
         Command::React(args) => return ephor::commands::react(args),
         Command::Tick(args) => return ephor::commands::tick(args),
@@ -384,6 +385,7 @@ fn run(cli: Cli) -> Result<ExitCode> {
         | Command::Waiting(_)
         | Command::Guide(_)
         | Command::Burn(_)
+        | Command::Monitors(_)
         | Command::Thread(_)
         | Command::React(_)
         | Command::Tick(_)

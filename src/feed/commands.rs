@@ -79,7 +79,7 @@ pub(crate) fn load_registry_doc() -> Result<Value> {
     Ok(document)
 }
 
-fn known_project<'a>(
+pub(crate) fn known_project<'a>(
     config: &'a StatusConfig,
     project: &str,
 ) -> Result<&'a crate::feed::config::ProjectFeedConfig> {

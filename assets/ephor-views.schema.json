@@ -817,6 +817,163 @@
           }
         }
       }
+    },
+    "monitor_window": {
+      "description": "What a monitor's strip, change and chart cover (FS-021-monitors.18.8).",
+      "enum": ["6h", "1d", "7d", "30d", "90d", "1y"]
+    },
+    "monitor_health": {
+      "description": "A status's health, one of four (FS-021-monitors.1.3). A KPI has none.",
+      "enum": ["ok", "warn", "down", "unknown"]
+    },
+    "monitor_rank": {
+      "description": "What a row shows, which orders the page worst first (FS-021-monitors.18.3).",
+      "enum": ["down", "unknown", "failing", "warn", "ok", "kpi"]
+    },
+    "monitor_value": {
+      "description": "A value as its sample gave it: a boolean, a number, or a level's name (FS-021-monitors.2).",
+      "type": ["boolean", "number", "string"]
+    },
+    "monitor_condition": {
+      "description": "A condition in the condition language (FS-021-monitors.3.1): a value meets it when it meets every key it holds.",
+      "type": "object",
+      "properties": {
+        "is": { "type": "boolean" },
+        "min": { "type": "number" },
+        "max": { "type": "number" },
+        "in": { "type": "array", "items": { "type": "string" } },
+        "at_most": { "type": "string" }
+      }
+    },
+    "monitor_cell": {
+      "description": "One of a strip's 24 cells (FS-021-monitors.18.5): before the history began, a gap where nothing was read, or what was read, judged under today's condition (FS-021-monitors.18.9).",
+      "type": "object",
+      "required": ["mark"],
+      "properties": {
+        "mark": { "enum": ["before", "gap", "read"] },
+        "value": { "type": "number", "description": "A number's mean, a level's worst as its place among the levels, a boolean as 1 or 0, a series point's value." },
+        "health": { "$ref": "#/$defs/monitor_health" },
+        "height": { "type": "integer", "minimum": 0, "maximum": 7, "description": "The block a read cell is drawn as." }
+      }
+    },
+    "monitor_matter": {
+      "description": "A monitor's matter (FS-021-monitors.18.3): the open drop's before the open unknown one's, or the finished one still reported. Its key is its feed id (FS-021-monitors.11.3).",
+      "type": "object",
+      "required": ["key", "sort", "state"],
+      "properties": {
+        "key": { "type": "string" },
+        "sort": { "enum": ["drop", "unknown"] },
+        "state": { "enum": ["New", "running", "dismissed", "Recent"] },
+        "proposal": { "$ref": "#/$defs/waiting_proposal", "description": "The work a New matter would be handed (FS-021-monitors.16); `ephor monitors show` only." },
+        "passed_over": { "type": "string", "description": "Why the monitor's own `action` is not that proposal (FS-021-monitors.16.1)." }
+      }
+    },
+    "monitor_row": {
+      "description": "One monitor as the page shows it (FS-021-monitors.18.4, FS-021-monitors.21.5). `health` is absent for a KPI whose value holds; `value`, `since` and the freshness times are absent before the first reading.",
+      "type": "object",
+      "required": ["project", "id", "title", "shows", "cadence", "freshness", "condition"],
+      "properties": {
+        "project": { "type": "string" },
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "kind": { "enum": ["boolean", "number", "level", "series"] },
+        "value": { "$ref": "#/$defs/monitor_value" },
+        "of": { "type": "number", "description": "The whole the value is a fraction of (FS-021-monitors.2.2)." },
+        "unit": { "type": "string" },
+        "better": { "enum": ["higher", "lower"] },
+        "health": { "$ref": "#/$defs/monitor_health" },
+        "since": { "type": "string", "format": "date-time", "description": "When that health began." },
+        "shows": {
+          "type": "object",
+          "description": "What the row shows: its rank and glyph, its columns in words, the header count it falls under, its strip and its change (FS-021-monitors.18.2, FS-021-monitors.18.4).",
+          "required": ["rank", "glyph", "value", "every", "condition", "health", "overdue", "status", "span", "strip", "change", "matter"],
+          "properties": {
+            "rank": { "$ref": "#/$defs/monitor_rank" },
+            "glyph": { "type": "string" },
+            "value": { "type": "string", "description": "The value in words, `—` where none is read." },
+            "every": { "type": "string", "description": "The cadence column: `10m`, `1h`, `daily`, `weekly`, or the duration." },
+            "condition": { "type": "string", "description": "The condition in words (FS-021-monitors.3.4)." },
+            "health": {
+              "type": "object",
+              "description": "The health column (FS-021-monitors.18.7): what it says, for how long, and the sentence a monitor ephor does not read carries. `ephor monitors` prints `state` and `lasted` as its health and since columns.",
+              "required": ["state"],
+              "properties": {
+                "state": { "type": "string" },
+                "lasted": { "type": "string" },
+                "sentence": { "type": "string" }
+              }
+            },
+            "counts": { "$ref": "#/$defs/monitor_rank", "description": "The header count the row falls under; absent for a monitor not run and one with no reading yet in its first grace (FS-021-monitors.18.2)." },
+            "overdue": { "type": "boolean", "description": "Unknown because nothing tried since its slot, which the header counts a second time." },
+            "status": { "type": "boolean", "description": "Something judges it, so `--check` reads it (FS-021-monitors.21.2)." },
+            "span": {
+              "type": "object",
+              "description": "What the strip and the change cover: the window, or the last 24 readings where those reach further back (FS-021-monitors.18.5).",
+              "required": ["from", "to", "by_readings"],
+              "properties": {
+                "from": { "type": "string", "format": "date-time" },
+                "to": { "type": "string", "format": "date-time" },
+                "by_readings": { "type": "boolean" }
+              }
+            },
+            "strip": { "type": "array", "minItems": 24, "maxItems": 24, "items": { "$ref": "#/$defs/monitor_cell" } },
+            "change": {
+              "type": "object",
+              "description": "The change over the span (FS-021-monitors.18.6), and which way it went by `better`.",
+              "required": ["says", "way"],
+              "properties": {
+                "says": { "type": "string" },
+                "way": { "enum": ["better", "worse", "plain"] }
+              }
+            },
+            "matter": { "enum": ["New", "running", "Recent", "dismissed", "—"] }
+          }
+        },
+        "cadence": {
+          "type": "object",
+          "description": "The cadence and the home that stated it, `default` where none does (FS-021-monitors.6).",
+          "required": ["every", "from", "says", "grace"],
+          "properties": {
+            "every": { "type": "string" },
+            "at": { "type": "string" },
+            "from": { "enum": ["site", "manifest", "sample", "default"] },
+            "says": { "type": "string" },
+            "grace": { "type": "string", "description": "How long past a slot its value still holds (FS-021-monitors.7.1)." }
+          }
+        },
+        "freshness": {
+          "type": "object",
+          "description": "Where its value stands (FS-021-monitors.7): `{state, last_read, next_slot, holds_until}`, and for a late or unknown monitor its `cause`, `since` the slot that passed without a reading, `measured` for a stale value, and the unknown matter's key.",
+          "required": ["state"],
+          "properties": {
+            "state": { "enum": ["fresh", "late", "unknown", "not-read-yet", "not-run", "not-read"] },
+            "last_read": { "type": "string", "format": "date-time" },
+            "next_slot": { "type": "string", "format": "date-time" },
+            "holds_until": { "type": "string", "format": "date-time" },
+            "cause": { "enum": ["unreadable", "parked", "stale", "overdue"] },
+            "why": { "type": "string" },
+            "since": { "type": "string", "format": "date-time" },
+            "measured": { "type": "string", "format": "date-time" },
+            "matter": { "type": "string" }
+          }
+        },
+        "condition": {
+          "type": "object",
+          "description": "The condition, what judges it (a home's `healthy`, the sample's `ok`, the kind's default, or nothing for a KPI), and the manifest's `healthy` and `warn` the site's override (FS-021-monitors.3.6).",
+          "required": ["from", "says"],
+          "properties": {
+            "healthy": { "$ref": "#/$defs/monitor_condition" },
+            "warn": { "$ref": "#/$defs/monitor_condition" },
+            "from": { "enum": ["site", "manifest", "sample", "ok", "default", "kpi"] },
+            "warn_from": { "enum": ["site", "manifest", "sample"] },
+            "says": { "type": "string" },
+            "overrides": { "type": "array", "items": { "type": "object", "required": ["from"] } }
+          }
+        },
+        "matter": { "$ref": "#/$defs/monitor_matter" },
+        "detail": { "type": "string", "description": "The last sample's `detail` (FS-021-monitors.8.1)." },
+        "url": { "type": "string", "description": "The last sample's `url`." }
+      }
     }
   },
   "properties": {
@@ -2133,6 +2290,153 @@
       "description": "`ephor check --list-features --json` (FS-006-project-interface.5) — the features this project's smoke enumerates, as the array a workflow matrix reads. Ids and nothing else: what each one does is the project's to say, not ephor's.",
       "type": "array",
       "items": { "type": "string" }
+    },
+    "monitors": {
+      "description": "`ephor monitors --json` (FS-021-monitors.21.1, FS-021-monitors.21.5) — the Monitors page: the header's counts, each monitor once by the rank its row shows and `overdue` a second time (FS-021-monitors.18.2), then each project the scope reaches that has a monitor, the one holding the worst row first, its monitors worst first (FS-021-monitors.18.3). It reads the store and the cache; nothing is fetched or run to print it (FS-021-monitors.21.4).",
+      "type": "object",
+      "required": ["window", "counts", "projects"],
+      "properties": {
+        "window": { "$ref": "#/$defs/monitor_window" },
+        "counts": {
+          "type": "object",
+          "required": ["down", "unknown", "failing", "warn", "ok", "kpis", "overdue"],
+          "properties": {
+            "down": { "type": "integer", "minimum": 0 },
+            "unknown": { "type": "integer", "minimum": 0 },
+            "failing": { "type": "integer", "minimum": 0 },
+            "warn": { "type": "integer", "minimum": 0 },
+            "ok": { "type": "integer", "minimum": 0 },
+            "kpis": { "type": "integer", "minimum": 0 },
+            "overdue": { "type": "integer", "minimum": 0 }
+          }
+        },
+        "refreshed_at": { "type": "string", "format": "date-time", "description": "The newest fetch among the projects read, as Waiting's header says it (FS-019-waiting.3)." },
+        "projects": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["project", "rows"],
+            "properties": {
+              "project": { "type": "string" },
+              "rows": { "type": "array", "items": { "$ref": "#/$defs/monitor_row" } },
+              "notes": { "type": "array", "items": { "type": "string" }, "description": "What the manifest or the store could not be read for." }
+            }
+          }
+        },
+        "without": { "type": "array", "items": { "type": "string" }, "description": "The projects named with `--project` that have no monitor." }
+      }
+    },
+    "monitor": {
+      "description": "`ephor monitors show <project>/<id> --json` (FS-021-monitors.19, FS-021-monitors.21.3) — one monitor's row, and what the detail view adds: where it is read from and declared, its hold, the chart of the span under today's condition with today's bounds as threshold lines, a series' points, the episodes inside the window, the last readings newest first, and why there is no matter where there is none. `windowed` is false for a series drawn by `x` labels, which has no time to set a window on.",
+      "allOf": [{ "$ref": "#/$defs/monitor_row" }],
+      "type": "object",
+      "required": ["window", "windowed", "declared", "chart", "thresholds", "episodes", "readings"],
+      "properties": {
+        "window": { "$ref": "#/$defs/monitor_window" },
+        "windowed": { "type": "boolean" },
+        "refreshed_at": { "type": "string", "format": "date-time" },
+        "description": { "type": "string" },
+        "from": {
+          "type": "object",
+          "description": "Where it is read from, the home that said so, and the directory its command runs or its file is read in (FS-021-monitors.5.3). Absent for a monitor read from the answer that brings it.",
+          "required": ["source"],
+          "properties": {
+            "source": {
+              "type": "object",
+              "properties": {
+                "command": { "type": "string" },
+                "file": { "type": "string" },
+                "cwd": { "type": "string" }
+              }
+            },
+            "runs_in": { "type": "string" },
+            "home": { "enum": ["site", "manifest", "sample"] }
+          }
+        },
+        "declared": {
+          "type": "object",
+          "description": "Every home that says something of it, and each field the site names where the manifest also does (FS-021-monitors.4.4).",
+          "required": ["homes", "site_overrides"],
+          "properties": {
+            "homes": { "type": "array", "items": { "enum": ["site", "manifest", "sample"] } },
+            "site_overrides": { "type": "array", "items": { "type": "string" } }
+          }
+        },
+        "hold": {
+          "type": "object",
+          "description": "How many failing readings drop it and how many passing ones recover it (FS-021-monitors.10.1). Absent for a KPI.",
+          "required": ["drop_after", "recover_after"],
+          "properties": {
+            "drop_after": { "type": "integer", "minimum": 1 },
+            "recover_after": { "type": "integer", "minimum": 1 }
+          }
+        },
+        "chart": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "t": { "type": "string", "format": "date-time" },
+              "x": { "type": "string" },
+              "value": { "type": "number", "description": "On the chart's scale: a number, a level's place, a boolean's 1 or 0." },
+              "health": { "$ref": "#/$defs/monitor_health", "description": "Judged under today's condition (FS-021-monitors.18.9)." }
+            }
+          }
+        },
+        "thresholds": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["at", "of", "bound"],
+            "properties": {
+              "at": { "type": "number" },
+              "of": { "enum": ["healthy", "warn"] },
+              "bound": { "enum": ["min", "max"] }
+            }
+          }
+        },
+        "points": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["v"],
+            "properties": {
+              "t": { "type": "string", "format": "date-time" },
+              "x": { "type": "string" },
+              "v": { "type": "number" }
+            }
+          }
+        },
+        "episodes": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "description": "One episode inside the window (FS-021-monitors.11): `end` and `ended` are absent while it is open.",
+            "required": ["sort", "start", "matter"],
+            "properties": {
+              "sort": { "enum": ["drop", "unknown"] },
+              "start": { "type": "string", "format": "date-time" },
+              "end": { "type": "string", "format": "date-time" },
+              "matter": { "type": "string" },
+              "ended": { "type": "string" }
+            }
+          }
+        },
+        "readings": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["t", "value"],
+            "properties": {
+              "t": { "type": "string", "format": "date-time" },
+              "value": { "type": "string" },
+              "health": { "$ref": "#/$defs/monitor_health" },
+              "note": { "type": "string", "description": "`read out of cadence`, `the read failed`, or how many readings a thinned line stands for." }
+            }
+          }
+        },
+        "no_matter": { "type": "string", "description": "Why there is no matter, where there is none (FS-021-monitors.19)." }
+      }
     }
   }
 }
