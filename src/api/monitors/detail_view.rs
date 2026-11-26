@@ -79,6 +79,7 @@ pub(super) fn detail(
             recover_after: monitor.recover_after(&known.cadence),
         }),
         chart: chart(&drawn, &span, &series, windowed, known, &judge),
+        steps: steps(row.kind, monitor.levels.as_deref()),
         thresholds: thresholds(&judge, known),
         episodes: episodes(project, &monitor.id, record, &span),
         readings: readings(&lines, &span, windowed, known, (&judge, row.of)),
@@ -176,6 +177,19 @@ fn chart(
             health: crate::monitors::history::rejudged(line, judge, monitor.warn.as_ref(), levels),
         })
         .collect()
+}
+
+/// What the places of a boolean's or a level's chart are called, from place
+/// 0 up, as [`strip::scaled`] places them: `no` and `yes`, or the levels in
+/// the order declared.
+fn steps(kind: Option<Kind>, levels: Option<&[String]>) -> Vec<String> {
+    match kind {
+        Some(Kind::Boolean) => [false, true]
+            .map(|yes| words::value(&Value::Boolean(yes), None, None))
+            .to_vec(),
+        Some(Kind::Level) => levels.map(<[String]>::to_vec).unwrap_or_default(),
+        _ => Vec::new(),
+    }
 }
 
 /// Today's `healthy` and `warn` bounds, as threshold lines.

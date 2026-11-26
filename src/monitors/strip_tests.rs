@@ -95,6 +95,40 @@ fn a_strip_has_24_cells_judged_under_todays_condition() {
     assert!(drawn.ends_with('█'), "{drawn}");
 }
 
+/// §FS-021-monitors.19: the detail view's strip of health draws a number's
+/// cells by their health rather than their value, tall while ok and low while
+/// down, so it reads without colour; a gap stays a gap.
+#[test]
+fn a_strip_of_health_is_drawn_by_the_health_of_each_cell() {
+    let monitor = latency();
+    let lines = vec![
+        number(3, 40.0),
+        Line::marker(now() - TimeDelta::hours(2)),
+        number(0, 60.0),
+    ];
+    let span = span(&lines, Window::SixHours, now());
+    let cells = strip(&lines, &span, &monitor, &monitor.judge(None));
+    let drawn: String = cells
+        .iter()
+        .filter(|cell| cell.mark != Mark::Before)
+        .map(Cell::health_glyph)
+        .collect();
+    assert!(drawn.starts_with('█'), "40 ms is ok: {drawn}");
+    assert!(drawn.contains('·'), "the failed read is a gap: {drawn}");
+    assert!(drawn.ends_with('▁'), "60 ms is down: {drawn}");
+    let kpi = monitor_kpi();
+    let kpi_cells = strip(&lines, &span, &kpi, &kpi.judge(None));
+    let read = kpi_cells
+        .iter()
+        .find(|cell| cell.mark == Mark::Read)
+        .unwrap();
+    assert_eq!(read.health_glyph(), '▄', "nothing judges a KPI");
+}
+
+fn monitor_kpi() -> Monitor {
+    monitor(json!({"id": "lines", "healthy": null}))
+}
+
 /// §FS-021-monitors.18.9: a thinned line takes the worse of its least and
 /// greatest value.
 #[test]
