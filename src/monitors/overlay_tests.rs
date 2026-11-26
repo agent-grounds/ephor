@@ -421,7 +421,7 @@ fn a_row_that_trusts_only_descriptions_runs_no_command_of_the_manifest() {
 
 /// §FS-021-monitors.5.3: a file's path resolves against the place it is
 /// read in, so one that leaves it, and a `repo:` that names no repository,
-/// break a rule and are not read.
+/// break a rule and are not read; a `..` that stays inside the place is read.
 #[test]
 fn a_from_that_leaves_the_checkout_is_a_declaration_error() {
     for from in [
@@ -437,6 +437,15 @@ fn a_from_that_leaves_the_checkout_is_a_declaration_error() {
             None,
         );
         assert!(!monitor.is_readable(), "{from} is read: {monitor:?}");
+    }
+    // A `..` that stays inside the place leaves nothing.
+    for file in ["target/../kpi.json", "a/b/../../kpi.json", "./kpi.json"] {
+        let monitor = resolve_with(
+            Some(json!({"id": "m", "kind": "number", "from": {"file": file}})),
+            None,
+            None,
+        );
+        assert!(monitor.is_readable(), "{file} is not read: {monitor:?}");
     }
     for from in [
         json!({"file": "out/kpi.json"}),
