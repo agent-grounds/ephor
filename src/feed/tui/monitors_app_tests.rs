@@ -11,6 +11,11 @@ use serde_json::json;
 /// A project `demo` with one site-declared monitor, `coverage`, whose drop
 /// is open in the store and whose matter is in the feed.
 fn demo() -> (StatusConfig, Item) {
+    demo_at(Utc::now() - chrono::TimeDelta::minutes(30))
+}
+
+/// `demo`, its drop opened and its feed refreshed at `at`.
+fn demo_at(at: DateTime<Utc>) -> (StatusConfig, Item) {
     let config: StatusConfig = serde_json::from_value(json!({
         "projects": {"demo": {
             "providers": [],
@@ -19,7 +24,6 @@ fn demo() -> (StatusConfig, Item) {
         }}
     }))
     .unwrap();
-    let at = Utc::now() - chrono::TimeDelta::minutes(30);
     let item = drop_in_store("demo", "coverage", at);
     let feed = ProjectFeed {
         project: "demo".into(),
@@ -377,4 +381,38 @@ fn a_footer_too_long_for_the_screen_goes_on_to_another_line() {
     key(&mut app, KeyCode::Enter);
     let shown = drawn_at(&mut app, 80, 24).join("\n");
     assert!(shown.contains("M close"), "{shown}");
+}
+
+/// §FS-021-monitors.18.2: the open page takes its reading again from the
+/// tick once a minute, so its ages move as Waiting's do, and not oftener.
+#[test]
+fn the_open_page_takes_its_reading_again_on_the_tick() {
+    if isolated("feed::tui::monitors_app_tests::the_open_page_takes_its_reading_again_on_the_tick")
+    {
+        return;
+    }
+    let (config, _) = demo();
+    let mut app = App::load(&config, &crate::scope::Projects::every()).unwrap();
+    app.go_home_to(Home::Waiting);
+    key(&mut app, KeyCode::Char('M'));
+    let (text, _) = drawn(&mut app);
+    assert!(text.contains("down 2d"), "{text}");
+
+    // The store moves under the open page: the drop is older now, past its
+    // next slot and grace.
+    demo_at(Utc::now() - chrono::TimeDelta::hours(3));
+    let back = |by: Duration| std::time::Instant::now().checked_sub(by).unwrap();
+    app.ticked_at = back(WORK_TICK);
+    app.tick();
+    let (text, _) = drawn(&mut app);
+    assert!(
+        text.contains("down 2d") && !text.contains("overdue"),
+        "not before a minute has passed:\n{text}"
+    );
+
+    app.ticked_at = back(WORK_TICK);
+    app.monitors_ticked_at = back(MONITORS_TICK);
+    assert!(app.tick(), "the page asks for a frame");
+    let (text, _) = drawn(&mut app);
+    assert!(text.contains("overdue 2h"), "{text}");
 }

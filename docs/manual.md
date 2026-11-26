@@ -6986,7 +6986,12 @@ the operations board and the burn page included, which then close back to
 where they opened. `;` or `$` from the page replaces it instead, and closing
 that comes back to where the page opened.
 
-The header is the one `ephor monitors` prints. On a screen too narrow for it,
+The header is the one `ephor monitors` prints. While the page is open it
+takes its reading again from the store and the cache once a minute, so the
+feed's age and each health's duration move as Waiting's do; it reads no
+monitor, a file monitor included, which only a refresh reads
+([§FS-021-monitors.22](functional-spec/FS-021-monitors.md#22-what-this-version-leaves-out)).
+On a screen too narrow for it,
 the title bar keeps the title and a refresh in flight, and the counts, the
 window and the feed's age are said above the first project. A footer too long
 for the screen goes on to the next line rather than off the edge.

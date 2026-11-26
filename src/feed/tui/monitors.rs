@@ -412,6 +412,7 @@ impl super::App {
         let page = self.ctx.monitors(window, &[]);
         let items = self.monitor_items(&page);
         let screen = Screen::Monitors(MonitorsScreen::new(page, items, window, Utc::now()));
+        self.monitors_ticked_at = std::time::Instant::now();
         let previous = std::mem::replace(&mut self.screen, screen);
         match previous {
             Screen::Operations(_) | Screen::Burn(_) => {
@@ -438,8 +439,9 @@ impl super::App {
     }
 
     /// Take the page again under the window it now asks for, and the open
-    /// monitor with it. A closed page costs nothing; nothing re-reads it on
-    /// a tick (§FS-021-monitors.22).
+    /// monitor with it, from the store and the cache: no monitor is read,
+    /// a file monitor's included (§FS-021-monitors.22). A closed page costs
+    /// nothing.
     pub(super) fn reload_monitors(&mut self) -> bool {
         let Screen::Monitors(screen) = &self.screen else {
             return false;
@@ -452,6 +454,21 @@ impl super::App {
         }
         self.read_monitor();
         true
+    }
+
+    /// Take the open page's reading again from the tick, once a
+    /// [`super::MONITORS_TICK`], so its ages move while it is open
+    /// (§FS-021-monitors.18.2). Never on the draw path, and with the page
+    /// closed nothing is read at all.
+    pub(super) fn tick_monitors(&mut self) -> bool {
+        if !matches!(self.screen, Screen::Monitors(_)) {
+            return false;
+        }
+        if self.monitors_ticked_at.elapsed() < super::MONITORS_TICK {
+            return false;
+        }
+        self.monitors_ticked_at = std::time::Instant::now();
+        self.reload_monitors()
     }
 
     /// Read the monitor the detail view asks for, as `ephor monitors show`
