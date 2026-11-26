@@ -35,6 +35,7 @@ fn drop(moved: Option<Moved>) -> OpenDrop {
         judged_under: Judge::SampleOk,
         judged_words: "healthy ≥ 80%".into(),
         works_ended: Vec::new(),
+        renewed: None,
         shown: coverage(),
     }
 }
@@ -91,6 +92,7 @@ fn a_moved_drop_is_timed_at_its_move_and_states_why() {
         why: Movement::StillDown,
     }));
     open.works_ended.push("w1".into());
+    open.renewed = Some(utc("2026-11-25T09:00:00Z"));
     record.drop = Some(open);
     let item = one(&document(record), utc("2026-11-25T10:00:00Z"));
     assert_eq!(item.updated_at, utc("2026-11-25T09:00:00Z"));
@@ -105,6 +107,28 @@ fn a_moved_drop_is_timed_at_its_move_and_states_why() {
     );
 }
 
+/// A matter New again stays New through a later move of another kind: a
+/// worse level after it was renewed is still a matter nobody has laid work
+/// on since its work ended (§FS-021-monitors.13.2, §FS-019-waiting.1.2).
+#[test]
+fn a_renewed_drop_stays_renewed_through_a_later_move() {
+    let mut record = Record::new(utc("2026-11-20T06:00:00Z"));
+    let mut open = drop(Some(Moved {
+        at: utc("2026-11-25T10:00:00Z"),
+        why: Movement::LevelWorse {
+            from: "degraded".into(),
+            to: "failed".into(),
+        },
+    }));
+    open.works_ended.push("w1".into());
+    open.renewed = Some(utc("2026-11-25T09:00:00Z"));
+    record.drop = Some(open);
+    let item = one(&document(record), utc("2026-11-25T11:00:00Z"));
+    assert_eq!(item.updated_at, utc("2026-11-25T10:00:00Z"));
+    let laid = [utc("2026-11-25T08:00:00Z")];
+    assert!(!still_processed(&item.source, &item.raw, laid));
+}
+
 /// An unknown matter's title names its cause, and its meta the cause's
 /// word (§FS-021-monitors.12.1, §FS-021-monitors.12.3).
 #[test]
@@ -117,6 +141,7 @@ fn an_open_unknown_names_its_cause() {
             why: "target/kpi/coverage.json is missing".into(),
         },
         works_ended: Vec::new(),
+        renewed: None,
         shown: coverage(),
     });
     let item = one(&document(record), utc("2026-11-25T07:00:00Z"));
@@ -274,10 +299,12 @@ fn moves_say_what_moved() {
 #[test]
 fn a_renewed_matter_is_processed_only_by_work_laid_since() {
     let mut record = Record::new(utc("2026-11-20T06:00:00Z"));
-    record.drop = Some(drop(Some(Moved {
+    let mut open = drop(Some(Moved {
         at: utc("2026-11-25T09:00:00Z"),
         why: Movement::StillDown,
-    })));
+    }));
+    open.renewed = Some(utc("2026-11-25T09:00:00Z"));
+    record.drop = Some(open);
     let item = one(&document(record), utc("2026-11-25T10:00:00Z"));
     let before = utc("2026-11-25T07:00:00Z");
     let after = utc("2026-11-25T09:30:00Z");

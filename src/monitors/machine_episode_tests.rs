@@ -60,6 +60,33 @@ fn still_parked_after_its_work_ended_names_parked() {
     assert_eq!(moved(&next), vec!["still parked after its work ended"]);
 }
 
+/// Still down after its work ended renews the matter, and a worse level
+/// after that moves it without taking the renewal back: nobody has laid
+/// work on it since (§FS-021-monitors.13.2, §FS-019-waiting.1.2).
+#[test]
+fn a_renewal_outlasts_a_later_move_of_another_kind() {
+    let levels: Vec<String> = ["clean", "degraded", "failed"].map(String::from).to_vec();
+    let watch = Watch {
+        levels: Some(&levels),
+        kind: Some(Kind::Level),
+        ..watch(healthy(json!({"in": ["clean"]})), 1, 1)
+    };
+    let mut run = Run::new();
+    let level = |name: &str| Value::Level(name.into());
+    run.value(&watch, level("degraded"));
+    let renewed_at = run.clock;
+    let still = Finding::Reading(reading(&watch, level("degraded"), run.clock));
+    let effects = run.found(&watch, still, false, work(Sort::Drop, "w1"));
+    assert_eq!(moved(&effects), vec!["still down after its work ended"]);
+    assert_eq!(
+        moved(&run.value(&watch, level("failed"))),
+        vec!["level worse: degraded → failed"]
+    );
+    let drop = run.record.drop.as_ref().unwrap();
+    assert_eq!(drop.renewed, Some(renewed_at));
+    assert!(drop.moved.as_ref().unwrap().at > renewed_at);
+}
+
 #[test]
 fn a_numbers_points_stay_those_of_the_last_sample_that_carried_any() {
     let watch = coverage(1, 2);

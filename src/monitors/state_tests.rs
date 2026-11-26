@@ -38,6 +38,7 @@ fn a_record_keeps_every_field_through_the_store() {
         judged_under: Judge::SampleOk,
         judged_words: "healthy as its sample says".into(),
         works_ended: vec!["w1".into()],
+        renewed: Some(utc("2026-11-25T06:40:00Z")),
         shown: Shown {
             title: "Release".into(),
             value: Some(Value::Level("failed".into())),
@@ -53,6 +54,7 @@ fn a_record_keeps_every_field_through_the_store() {
             since: utc("2026-11-25T06:20:00Z"),
         },
         works_ended: Vec::new(),
+        renewed: None,
         shown: Shown::default(),
     });
     record.past.push(Past {

@@ -361,6 +361,12 @@ pub struct OpenDrop {
     /// The work laid on it it has seen end (§FS-021-monitors.15).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub works_ended: Vec<String>,
+    /// When its matter last turned New again, still down after its work
+    /// ended: kept apart from `moved`, which a later move of another kind
+    /// takes over, while the matter stays New until work is laid on it anew
+    /// (§FS-021-monitors.13.2, §FS-019-waiting.1.2).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub renewed: Option<DateTime<Utc>>,
     #[serde(default)]
     pub shown: Shown,
 }
@@ -375,6 +381,10 @@ pub struct OpenUnknown {
     pub cause: Cause,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub works_ended: Vec<String>,
+    /// When its matter last turned New again, still unknown after its work
+    /// ended (§FS-021-monitors.15).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub renewed: Option<DateTime<Utc>>,
     #[serde(default)]
     pub shown: Shown,
 }
