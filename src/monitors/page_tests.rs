@@ -205,6 +205,36 @@ fn what_ephor_does_not_read_is_shown_and_counted_by_its_rule() {
     assert!(!standing.status);
 }
 
+/// §FS-021-monitors.21.2, §FS-021-monitors.4.6: a declaration the shape
+/// refuses keeps what it says judges its monitor, so a status whose
+/// declaration is in error stays a status, counted unknown, whether its
+/// `every` is in seconds or its kind misspelt; and a KPI in error, one whose
+/// `healthy` is null or which states none and has no default, is no status.
+#[test]
+fn a_status_whose_declaration_the_shape_refuses_is_still_a_status() {
+    for declaration in [
+        json!({"id": "cov", "unit": "%", "healthy": {"min": 80}, "every": "90s"}),
+        json!({"id": "cov", "kind": "nubmer", "healthy": {"min": 80}}),
+        json!({"id": "cov", "healthy": {}}),
+        json!({"id": "cov", "kind": "boolean", "every": "30s"}),
+        json!({"id": "cov", "healthy": {"min": 80}, "timeout": "30s"}),
+    ] {
+        let faulted = monitor(declaration.clone());
+        assert!(!faulted.faults.is_empty(), "{declaration}");
+        let standing = at(&faulted, None, minutes(10));
+        assert!(standing.status, "{declaration} is a status");
+        assert_eq!(standing.counts, Some(Rank::Unknown), "{declaration}");
+        assert_eq!(standing.column.state, "not read");
+    }
+    for declaration in [
+        json!({"id": "cov", "healthy": null, "every": "90s"}),
+        json!({"id": "cov", "kind": "number", "every": "90s"}),
+    ] {
+        let faulted = monitor(declaration.clone());
+        assert!(!at(&faulted, None, minutes(10)).status, "{declaration}");
+    }
+}
+
 /// §FS-021-monitors.18.7: a series drawn by `x` labels counts its health in
 /// points.
 #[test]
