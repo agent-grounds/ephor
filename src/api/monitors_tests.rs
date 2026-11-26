@@ -198,6 +198,22 @@ fn six(dir: &Path) -> Gathered {
     gather(dir, &site, records, Vec::new())
 }
 
+/// The six monitors as one project's page, for the command to draw.
+pub(crate) fn page_of_six(dir: &Path) -> views::Monitors {
+    let group = group("widget".into(), rows(&six(dir)), Vec::new());
+    let mut counts = PageCounts::default();
+    for row in &group.rows {
+        counts.add(&row.shows);
+    }
+    views::Monitors {
+        window: Window::Week,
+        counts,
+        refreshed_at: None,
+        projects: vec![group],
+        without: Vec::new(),
+    }
+}
+
 /// §FS-021-monitors.18.3, §FS-021-monitors.18.2: rows worst first, down
 /// ahead of unknown, failing, warn and ok, KPIs last, and the header counts
 /// each once, overdue a second time.
@@ -841,4 +857,81 @@ fn the_detail_says_why_there_is_no_matter() {
     assert!(no_matter(&known, &standing).starts_with("none: "));
     let freshness = freshness_view("widget", "latency", &known, None, &standing, now());
     assert_eq!(freshness.state, "not-run");
+}
+
+/// §FS-021-monitors.21.1, §FS-021-monitors.21.5: the command's health
+/// column says the health as a word, with the page's health column beside it
+/// where that says more, and its since column how long that health has held.
+#[test]
+fn the_health_column_says_the_health_and_since_how_long_it_held() {
+    let dir = tempfile::tempdir().unwrap();
+    let gathered = six(dir.path());
+    let says = |id: &str| {
+        let row = built(&gathered, id).row;
+        (row.shows.word.clone(), row.health_says(), row.shows.held)
+    };
+    let held = |text: &str| Some(text.to_string());
+    assert_eq!(says("coverage"), ("down".into(), "down".into(), held("2d")));
+    assert_eq!(
+        says("green"),
+        ("unknown".into(), "unknown (overdue 4h)".into(), held("3h")),
+        "late from its slot, unknown since its value stopped holding"
+    );
+    assert_eq!(
+        says("flaky"),
+        ("failing".into(), "failing 1 of 2".into(), held("2d"))
+    );
+    assert_eq!(says("docs"), ("warn".into(), "warn".into(), held("2d")));
+    assert_eq!(says("latency"), ("ok".into(), "ok".into(), held("2d")));
+    assert_eq!(says("lines"), ("KPI".into(), "KPI".into(), None));
+
+    let site = [json!({"id": "fresh", "every": "1h", "healthy": {"min": 1}})];
+    let empty = tempfile::tempdir().unwrap();
+    let unread = gather(empty.path(), &site, Vec::new(), Vec::new());
+    let row = &rows(&unread)[0];
+    assert_eq!(row.shows.word, "not read yet");
+    assert_eq!(row.health_says(), "not read yet");
+    assert_eq!(row.shows.held, None);
+}
+
+/// §FS-021-monitors.7.4, §FS-021-monitors.4.6: a value that no longer
+/// holds, or that ephor no longer reads, is shown as `—`, while the row
+/// still carries the last one read.
+#[test]
+fn a_value_that_no_longer_holds_is_not_shown() {
+    let dir = tempfile::tempdir().unwrap();
+    let gathered = six(dir.path());
+    let green = built(&gathered, "green").row;
+    assert_eq!(green.freshness.state, "unknown");
+    assert_eq!(green.shows.value, "—");
+    assert_eq!(green.value, Some(Value::Boolean(true)));
+    assert_eq!(built(&gathered, "docs").row.shows.value, "yes");
+
+    let site = [json!({"id": "cov", "unit": "%", "healthy": {"min": 80}, "every": "90s"})];
+    let other = tempfile::tempdir().unwrap();
+    let record = read_at(hours(0), Value::Number(70.0), Some(Health::Down), None);
+    let faulted = gather(other.path(), &site, vec![("cov", record)], Vec::new());
+    let cov = built(&faulted, "cov").row;
+    assert_eq!(cov.shows.word, "not read");
+    assert_eq!(cov.shows.value, "—", "a monitor ephor does not read");
+    assert_eq!(cov.value, Some(Value::Number(70.0)));
+}
+
+/// §FS-021-monitors.18.3: titles of one rank go by their letters, whatever
+/// their case.
+#[test]
+fn titles_sort_whatever_their_case() {
+    let dir = tempfile::tempdir().unwrap();
+    let site = [
+        json!({"id": "a", "title": "Line coverage", "healthy": null, "every": "1h"}),
+        json!({"id": "b", "title": "grund check", "healthy": null, "every": "1h"}),
+        json!({"id": "c", "title": "Advisories", "healthy": null, "every": "1h"}),
+    ];
+    let records = ["a", "b", "c"]
+        .map(|id| (id, read_at(hours(0), Value::Number(1.0), None, None)))
+        .to_vec();
+    let gathered = gather(dir.path(), &site, records, Vec::new());
+    let group = group("widget".into(), rows(&gathered), Vec::new());
+    let titles: Vec<&str> = group.rows.iter().map(|row| row.title.as_str()).collect();
+    assert_eq!(titles, ["Advisories", "grund check", "Line coverage"]);
 }

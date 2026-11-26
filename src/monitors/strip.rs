@@ -93,7 +93,7 @@ pub struct Cell {
     /// KPI's (§FS-021-monitors.18.9).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub health: Option<Health>,
-    /// 0 to 7, the block a read cell is drawn as: a boolean's a constant, a
+    /// 0 to 7, the block a read cell is drawn as: a boolean's its health, a
     /// level's its level, a number's its place between the strip's least
     /// and greatest value.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -225,7 +225,7 @@ pub fn series(points: &[Point], monitor: &Monitor, judge: &Judge) -> Vec<Cell> {
     cells
 }
 
-/// Gives each read cell its height: a boolean's is constant, a level's its
+/// Gives each read cell its height: a boolean's by its health, a level's its
 /// place among the levels, the first the tallest, and a number's its place
 /// between the strip's least and greatest value, the middle where they are
 /// the same.
@@ -239,7 +239,16 @@ fn heighten(cells: &mut [Cell], monitor: &Monitor) {
             continue;
         };
         let height = match monitor.kind {
-            Some(Kind::Boolean) => 5.0,
+            // A strip of health, tall while ok and low while down, so it reads
+            // without colour; a KPI's by its value (§FS-021-monitors.18.5).
+            Some(Kind::Boolean) => match cell.health {
+                Some(Health::Ok) => 7.0,
+                Some(Health::Warn) => 4.0,
+                Some(Health::Unknown) => 2.0,
+                Some(Health::Down) => 0.0,
+                None if value >= 1.0 => 7.0,
+                None => 0.0,
+            },
             Some(Kind::Level) if levels > 1 => {
                 let last = (levels - 1) as f64;
                 ((last - value) / last * 6.0).round() + 1.0

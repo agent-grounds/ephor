@@ -1,8 +1,9 @@
 //! E2E-083-the-monitors-page-as-a-table: `ephor monitors` prints the
 //! Monitors page as a table, worst first under the header's counts, with the
-//! columns `value every health since change condition` and the footnote on
-//! what a change covers (§FS-021-monitors.21.1, §FS-021-monitors.18.2,
-//! §FS-021-monitors.18.3). With no monitors it says how to declare one, and a
+//! columns `value every health since change condition`, the health said as
+//! its word and since as how long it has held, and the footnote on what a
+//! change covers (§FS-021-monitors.21.1, §FS-021-monitors.18.2,
+//! §FS-021-monitors.18.3); colour only on a terminal. With no monitors it says how to declare one, and a
 //! project named with `--project` that has none says so; a manifest that
 //! cannot be read is said rather than taken for none
 //! (§FS-021-monitors.17.3). `--json` prints the
@@ -187,9 +188,23 @@ fn the_page_puts_the_worst_first_and_counts_each_monitor_once() {
         .iter()
         .find(|line| line.starts_with("✖ Line coverage"))
         .unwrap_or_else(|| panic!("no coverage row:\n{printed}"));
-    for said in ["79.2%", "1h", "down", "healthy ≥ 80%"] {
-        assert!(row.contains(said), "{said} is not on the row: {row}");
-    }
+    let cells: Vec<&str> = row
+        .split("  ")
+        .map(str::trim)
+        .filter(|cell| !cell.is_empty())
+        .collect();
+    assert_eq!(
+        cells[..5],
+        ["✖ Line coverage", "79.2%", "1h", "down", "0m"],
+        "the health, then how long it has held: {row}"
+    );
+    assert!(row.ends_with("healthy ≥ 80%"), "{row}");
+    assert_eq!(coverage["shows"]["word"], json!("down"));
+    assert_eq!(coverage["shows"]["held"], json!("0m"));
+    assert!(
+        !printed.contains('\x1b'),
+        "a page not on a terminal has no colour"
+    );
     let kpi = lines
         .iter()
         .find(|line| line.starts_with("◆ Lines of code"))

@@ -27,8 +27,21 @@ impl Style {
         }
     }
 
+    /// A style that paints, or one that never does, whatever stdout is.
+    pub fn colored(color: bool) -> Self {
+        Style { color }
+    }
+
     pub fn red(&self, text: &str) -> String {
         self.paint("31", text)
+    }
+
+    pub fn green(&self, text: &str) -> String {
+        self.paint("32", text)
+    }
+
+    pub fn amber(&self, text: &str) -> String {
+        self.paint("33", text)
     }
 
     pub fn bold(&self, text: &str) -> String {
