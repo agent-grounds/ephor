@@ -355,9 +355,10 @@ pub struct FreshnessView {
 }
 
 impl FreshnessView {
-    /// A late or unknown monitor's freshness in words: `unknown · stale ·
-    /// measured … · holds until …`; none for one whose value holds
-    /// (§FS-021-monitors.7.2).
+    /// A late or unknown monitor's freshness in words: `late · stale ·
+    /// measured … · holds until …`, and `held until …` once the value no
+    /// longer holds; none for one whose value holds (§FS-021-monitors.7.2,
+    /// §FS-021-monitors.7.4).
     pub fn says(&self, when: impl Fn(DateTime<Utc>) -> String) -> Option<String> {
         let cause = self.cause?;
         let mut said = vec![self.state.to_string(), cause.to_string()];
@@ -371,7 +372,11 @@ impl FreshnessView {
             said.push(format!("measured {}", when(at)));
         }
         if let Some(at) = self.holds_until {
-            said.push(format!("held until {}", when(at)));
+            let holds = match self.state {
+                "unknown" => "held until",
+                _ => "holds until",
+            };
+            said.push(format!("{holds} {}", when(at)));
         }
         if let Some(matter) = &self.matter {
             said.push(matter.clone());

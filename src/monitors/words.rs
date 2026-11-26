@@ -190,28 +190,37 @@ pub fn healthy(judge: &Judge, terms: &Terms) -> String {
 /// `warn` as the values it marks, the negation of what it is written as
 /// (§FS-021-monitors.3.4): `warn above 0` for `{"max": 0}`, `warn below 90%`
 /// for `{"min": 90}`, and for a level the levels it marks that `healthy`
-/// still accepts, `warn: slow`.
+/// still accepts, `warn: slow`. Where `healthy` accepts none of them, it is
+/// said as every level it marks, and as `warn: no level` where it marks none,
+/// so the words never end on an empty list.
 pub fn warn(warn: &Condition, healthy: Option<&Condition>, terms: &Terms) -> String {
     if let Some(is) = warn.is {
         return format!("warn when {}", if is { "no" } else { "yes" });
     }
     if warn.within.is_some() || warn.at_most.is_some() {
-        let marked: Vec<String> = match terms.levels {
-            Some(levels) => levels
+        let Some(levels) = terms.levels else {
+            let kept = either(&warn.within.clone().unwrap_or_default());
+            return format!("warn: other than {kept}");
+        };
+        let marks = |accepted: &dyn Fn(&Value) -> bool| -> Vec<String> {
+            levels
                 .iter()
                 .filter(|level| {
                     let value = Value::Level((*level).clone());
-                    !meets(warn, &value, Some(levels))
-                        && healthy.is_none_or(|healthy| meets(healthy, &value, Some(levels)))
+                    !meets(warn, &value, Some(levels)) && accepted(&value)
                 })
                 .cloned()
-                .collect(),
-            None => {
-                let kept = either(&warn.within.clone().unwrap_or_default());
-                return format!("warn: other than {kept}");
-            }
+                .collect()
         };
-        return format!("warn: {}", either(&marked));
+        let mut marked =
+            marks(&|value| healthy.is_none_or(|healthy| meets(healthy, value, Some(levels))));
+        if marked.is_empty() {
+            marked = marks(&|_| true);
+        }
+        return match marked.is_empty() {
+            true => "warn: no level".to_string(),
+            false => format!("warn: {}", either(&marked)),
+        };
     }
     let below = warn
         .min
