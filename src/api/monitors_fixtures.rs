@@ -193,6 +193,43 @@ pub(crate) fn green_detail(dir: &Path) -> views::MonitorDetail {
     )
 }
 
+/// A drop open on `project`'s monitor `id` since `at`, written to ephor's own
+/// store, which a test runs only in an isolated home
+/// (§REQ-003-test-isolation), and the feed item its matter is
+/// (§FS-021-monitors.11.3): what a refresh's monitor slot would carry.
+pub(crate) fn drop_in_store(
+    project: &str,
+    id: &str,
+    at: DateTime<Utc>,
+) -> crate::feed::model::Item {
+    let mut record = read_at(
+        at,
+        Value::Number(79.2),
+        Some(Health::Down),
+        Some(Band::Down),
+    );
+    record.drop = Some(open_drop(at));
+    record.drop.as_mut().unwrap().shown.title = "Line coverage".into();
+    let mut document = None;
+    Store::of(project)
+        .update(|stored| {
+            stored.monitors.insert(id.to_string(), record);
+            document = Some(stored.clone());
+            Ok(())
+        })
+        .unwrap();
+    let document = document.unwrap();
+    let items = crate::monitors::matters::items(
+        project,
+        &document,
+        &std::collections::BTreeMap::new(),
+        at,
+        7,
+        &Utc,
+    );
+    items.into_iter().next().unwrap()
+}
+
 /// §FS-021-monitors.18.7: the second project's health column names each
 /// cause and how long it has run, and the first not yet read.
 #[test]

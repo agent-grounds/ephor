@@ -272,7 +272,7 @@ impl super::App {
         let reading = self.ctx.burn(window, by);
         let page = Screen::Burn(BurnScreen::new(reading, window, by));
         let previous = std::mem::replace(&mut self.screen, page);
-        if !matches!(previous, Screen::Operations(_)) {
+        if !matches!(previous, Screen::Operations(_) | Screen::Monitors(_)) {
             self.saved = Some(previous);
         }
         self.burn_ticked_at = std::time::Instant::now();

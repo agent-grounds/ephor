@@ -195,10 +195,12 @@ pub const ABILITIES: &[Ability] = &[
     // Processing a new matter where Waiting shows it (§FS-019-waiting.7):
     // `Enter` confirms the proposal on its processing screen, `a` picks
     // another entry, `x` records that the matter needs none, and `A` takes
-    // every unambiguous row after one preview.
+    // every unambiguous row after one preview. `p` on the Monitors page and
+    // its detail view opens the same processing in place, over a monitor's
+    // open matter (§FS-021-monitors.18.10).
     Ability {
         what: "process a new matter: lay its proposal, record it, and ask for its start",
-        keys: &["enter"],
+        keys: &["enter", "p"],
         command: "work process",
     },
     Ability {
@@ -257,7 +259,10 @@ pub const ABILITIES: &[Ability] = &[
         command: "burn --rescan",
     },
     // The Monitors page, its window, its detail view, and its `r`, which
-    // reads every monitor now (§FS-021-monitors.18, §FS-021-monitors.21).
+    // reads every monitor of the row's project now (§FS-021-monitors.18,
+    // §FS-021-monitors.21): `ephor refresh <project> --monitors-now`. `[` and
+    // `]` step the detail view through the page's order, and `←` and `→` walk
+    // its chart; both are motion (§FS-021-monitors.19).
     Ability {
         what: "what each project's monitors say now, and how they moved",
         keys: &["M"],
@@ -343,16 +348,25 @@ pub const PRESENTATION: &[(&str, &str)] = &[
         "e",
         "open it in the editor or pager — the path is on the reading",
     ),
-    ("[", "the previous project"),
-    ("]", "the next project"),
+    (
+        "[",
+        "the previous project, or the previous monitor in its detail view",
+    ),
+    (
+        "]",
+        "the next project, or the next monitor in its detail view",
+    ),
     // The keys a terminal sends as their own codes rather than as characters.
     // They do what the letters beside them do, and they are written down for
     // the same reason those are: an absence here reads exactly like an
     // oversight, and until the check could see them it *was* one.
     ("up", "move up"),
     ("down", "move down"),
-    ("left", "back"),
-    ("right", "in"),
+    (
+        "left",
+        "back, or the chart's cursor to the previous reading",
+    ),
+    ("right", "in, or the chart's cursor to the next reading"),
     ("home", "to the top"),
     ("end", "to the end"),
     ("pageup", "a page up"),
