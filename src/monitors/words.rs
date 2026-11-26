@@ -31,21 +31,29 @@ impl Terms<'_> {
         self.of
     }
 
-    /// A bound said in the measure's terms: `80%`, `5`, `4/4`, `40 ms`.
+    /// A bound said in the measure's terms: `80%`, `5`, `4/4`, `40 ms`,
+    /// `19.1 MiB`.
     fn bound(&self, number: f64) -> String {
         if let Some(of) = self.of {
             return format!("{}/{}", self::number(number), self::number(of));
         }
-        with_unit(&self::number(number), self.unit)
+        match self.unit {
+            Some("bytes") => bytes(number),
+            unit => with_unit(&self::number(number), unit),
+        }
     }
 
-    /// Two bounds as a range, the unit said once: `40–60 ms`, `40–60%`.
+    /// Two bounds as a range, the unit said once: `40–60 ms`, `40–60%`; bytes
+    /// each in their own binary unit, `512 bytes–2.0 MiB`.
     fn range(&self, low: f64, high: f64) -> String {
         if let Some(of) = self.of {
             let of = number(of);
             return format!("{}/{of}–{}/{of}", number(low), number(high));
         }
-        with_unit(&format!("{}–{}", number(low), number(high)), self.unit)
+        match self.unit {
+            Some("bytes") => format!("{}–{}", bytes(low), bytes(high)),
+            unit => with_unit(&format!("{}–{}", number(low), number(high)), unit),
+        }
     }
 }
 
@@ -68,9 +76,40 @@ pub fn with_unit(said: &str, unit: Option<&str>) -> String {
     }
 }
 
+/// A size in binary units to one decimal, `17.4 MiB`, and in bytes below
+/// one KiB, `512 bytes`, so a size reads at a glance and keeps its column
+/// narrow (§FS-021-monitors.2.2).
+pub fn bytes(size: f64) -> String {
+    const UNITS: [&str; 5] = ["KiB", "MiB", "GiB", "TiB", "PiB"];
+    if size.abs() < 1024.0 {
+        return format!("{} bytes", number(size.round()));
+    }
+    let mut scaled = size / 1024.0;
+    let mut unit = UNITS[0];
+    for next in &UNITS[1..] {
+        if scaled.abs() < 1024.0 {
+            break;
+        }
+        scaled /= 1024.0;
+        unit = next;
+    }
+    format!("{scaled:.1} {unit}")
+}
+
+/// A measure as a value or a change says it: a size in binary units, money
+/// to the cent, `$41.20`, and any other with its unit, `38.1 ms`.
+pub fn measure(size: f64, unit: Option<&str>) -> String {
+    match unit {
+        Some("bytes") => bytes(size),
+        Some("$") => format!("${size:.2}"),
+        unit => with_unit(&number(size), unit),
+    }
+}
+
 /// A value as the page and a matter's title say it (§FS-021-monitors.2,
 /// §FS-021-monitors.12.1): `yes` or `no`, a level's name, a fraction as
-/// `12/15`, and a percentage to one decimal, `79.2%`.
+/// `12/15`, a percentage to one decimal, `79.2%`, and a size and money as
+/// [`measure`] says them.
 pub fn value(value: &Value, unit: Option<&str>, of: Option<f64>) -> String {
     match value {
         Value::Boolean(true) => "yes".to_string(),
@@ -79,7 +118,7 @@ pub fn value(value: &Value, unit: Option<&str>, of: Option<f64>) -> String {
         Value::Number(measured) => match (of, unit) {
             (Some(of), _) => format!("{}/{}", number(*measured), number(of)),
             (None, Some("%")) => format!("{measured:.1}%"),
-            (None, unit) => with_unit(&number(*measured), unit),
+            (None, unit) => measure(*measured, unit),
         },
     }
 }

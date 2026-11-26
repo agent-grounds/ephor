@@ -172,3 +172,27 @@ fn a_value_is_said_in_its_terms() {
     assert_eq!(number(-0.0), "0");
     assert_eq!(number(82.4), "82.4");
 }
+
+/// §FS-021-monitors.2.2: a size is said in binary units to one decimal, and
+/// money to the cent, in a value and in a bound alike.
+#[test]
+fn a_size_and_money_are_said_as_people_read_them() {
+    let shown = |v: f64, unit| value(&Value::Number(v), Some(unit), None);
+    assert_eq!(shown(18_213_798.0, "bytes"), "17.4 MiB");
+    assert_eq!(shown(512.0, "bytes"), "512 bytes");
+    assert_eq!(shown(2048.0, "bytes"), "2.0 KiB");
+    assert_eq!(shown(5.0 * 1024.0 * 1024.0 * 1024.0, "bytes"), "5.0 GiB");
+    assert_eq!(shown(42.5, "$"), "$42.50");
+    assert_eq!(shown(41.2, "$"), "$41.20");
+    assert_eq!(
+        said(serde_json::json!({"max": 20_971_520}), unit("bytes")),
+        "healthy ≤ 20.0 MiB"
+    );
+    assert_eq!(
+        said(
+            serde_json::json!({"min": 512, "max": 2_097_152}),
+            unit("bytes")
+        ),
+        "healthy 512 bytes–2.0 MiB"
+    );
+}
