@@ -184,6 +184,11 @@ pub struct MonitorRow {
     /// counts as measured when it was read (§FS-021-monitors.7.1).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub skew: Option<DateTime<FixedOffset>>,
+    /// Why there is no matter, where there is none: what the detail view's
+    /// matter line and `p` on the row both say (§FS-021-monitors.19,
+    /// §FS-021-monitors.18.10).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub no_matter: Option<String>,
 }
 
 impl MonitorRow {
@@ -521,9 +526,6 @@ pub struct MonitorDetail {
     pub episodes: Vec<EpisodeView>,
     /// Every reading in the window, newest first.
     pub readings: Vec<ReadingView>,
-    /// Why there is no open matter, where there is none.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub no_matter: Option<String>,
 }
 
 impl MonitorDetail {
@@ -539,7 +541,11 @@ impl MonitorDetail {
     /// and its proposal, or why there is none.
     pub fn matter_says(&self) -> String {
         let Some(matter) = &self.row.matter else {
-            return self.no_matter.clone().unwrap_or_else(|| "none".to_string());
+            return self
+                .row
+                .no_matter
+                .clone()
+                .unwrap_or_else(|| "none".to_string());
         };
         let mut said = format!("{} · {}", matter.key, matter.state);
         if let Some(proposal) = &matter.proposal {

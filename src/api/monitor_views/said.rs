@@ -6,6 +6,7 @@
 use chrono::{DateTime, Local, Utc};
 
 use super::{ChartPoint, EpisodeView, FromView, MonitorDetail, MonitorRow, ReadingView};
+use crate::api::monitors::NEW;
 use crate::monitors::episode::Sort;
 use crate::monitors::model::{Point, Source};
 
@@ -93,6 +94,30 @@ impl MonitorRow {
             .chain(self.notes_say(when))
             .collect::<Vec<_>>()
             .join(" · ")
+    }
+
+    /// Why `p` has nothing to process on this row, where it has not
+    /// (§FS-021-monitors.18.10): why there is no matter, as the detail view's
+    /// matter line says it (§FS-021-monitors.19), or what a matter past New
+    /// leaves to do. A dismissed matter comes back when its monitor moves
+    /// (§FS-021-monitors.13.2); only a finished one waits for the next drop
+    /// (§FS-021-monitors.11.1). None for a New matter, which `p` processes.
+    pub fn unprocessed_says(&self) -> Option<String> {
+        let Some(matter) = &self.matter else {
+            return Some(self.no_matter.clone().unwrap_or_else(|| "none".to_string()));
+        };
+        match matter.state {
+            NEW => None,
+            "running" => {
+                Some("work is already running on this matter; Waiting shows the run".to_string())
+            }
+            "dismissed" => {
+                Some("the matter is dismissed; it comes back if the monitor moves".to_string())
+            }
+            state => Some(format!(
+                "the matter is {state}; the next drop opens a new one"
+            )),
+        }
     }
 }
 

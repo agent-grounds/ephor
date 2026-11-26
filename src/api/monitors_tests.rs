@@ -614,7 +614,7 @@ fn the_detail_draws_the_window_under_todays_condition() {
         detail.episodes[1].end.is_none(),
         "the open drop ends nothing yet"
     );
-    assert!(detail.no_matter.is_none());
+    assert!(detail.row.no_matter.is_none());
     let hold = detail.hold.as_ref().unwrap();
     assert!(hold
         .says()
@@ -833,7 +833,10 @@ fn a_site_override_names_what_the_manifest_said() {
     );
     assert_eq!(detail.declared.homes, [Home::Site, Home::Manifest]);
     assert_eq!(detail.declared.site_overrides, ["healthy"]);
-    assert_eq!(detail.no_matter.as_deref(), Some("none: nothing is open"));
+    assert_eq!(
+        detail.row.no_matter.as_deref(),
+        Some("none: nothing is open")
+    );
 }
 
 /// §FS-021-monitors.19: why a monitor has no matter, for one not run, a
@@ -852,6 +855,7 @@ fn the_detail_says_why_there_is_no_matter() {
             Window::Week,
             None,
         )
+        .row
         .no_matter
         .unwrap()
     };

@@ -52,7 +52,6 @@ pub(super) fn detail(
         (Some(Kind::Number), Some(supplied)) => supplied.to_vec(),
         _ => series.clone(),
     };
-    let no_matter = row.matter.is_none().then(|| no_matter(known, &standing));
     let from = monitor.from.clone().map(|source| {
         let cwd = match &source {
             Source::Command { cwd, .. } | Source::File { cwd, .. } => cwd.as_deref(),
@@ -84,7 +83,6 @@ pub(super) fn detail(
         episodes: episodes(project, &monitor.id, record, &span),
         readings: readings(&lines, &span, windowed, known, (&judge, row.of)),
         points,
-        no_matter,
         row,
     }
 }

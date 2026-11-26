@@ -7018,9 +7018,11 @@ processes in place
 opens the processing screen Waiting's `Enter` opens, over the matter the
 matter column names, and `Esc` there, or a move confirmed, comes back to the
 Monitors page rather than to Waiting. On a row with nothing to process it says
-why: a KPI has no matter, an overdue monitor's refresh is `r`, a running
-matter is shown on Waiting, and a matter not yet in the feed arrives with the
-next refresh.
+why, in the words of the detail view's matter line: a KPI is never a matter, a
+failing monitor drops only after its hold, and overdue is the watch's own
+failure. A running matter is shown on Waiting, a dismissed one comes back if
+its monitor moves, a finished one waits for the next drop, and a matter not
+yet in the feed arrives with the next refresh.
 
 **The detail view** (`Enter`) is the one `ephor monitors show` prints, titled
 `ephor — monitors › widget › Line coverage` with its window and the feed's
