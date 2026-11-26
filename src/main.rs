@@ -134,8 +134,9 @@ fn validate_manifest(path: &str, json: bool) -> Result<ExitCode> {
     let text = std::fs::read_to_string(&file)
         .map_err(|err| EphorError::Command(format!("Cannot read {}: {err}", file.display())))?;
     let manifest = ephor::manifest::parse(&text, &file.display().to_string())?;
-    // A declaration that breaks a rule is shown and not read, and refused
-    // here by name (§FS-021-monitors.4.6).
+    // A declaration that does not fit its shape is refused here by name; the
+    // rules a shape cannot see are judged on the resolved monitor, which a
+    // refresh notes (§FS-021-monitors.4.6).
     let refused = manifest.refused_monitors();
     if !refused.is_empty() {
         return Err(EphorError::Registry(format!(
