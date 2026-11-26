@@ -303,6 +303,29 @@ fn an_unreadable_status_opens_an_unknown_episode_once_its_value_stops_holding() 
     assert_eq!(run.record.unknown, None);
 }
 
+/// §FS-021-monitors.18.7: a health read again after the value was unknown
+/// has held since the reading that brought it back, not since before the
+/// stretch nobody knew it; one down all along stays down since it dropped.
+#[test]
+fn a_health_read_again_after_unknown_has_held_since_that_read() {
+    let watch = coverage(1, 2);
+    let mut run = Run::new();
+    run.number(&watch, 85.0);
+    run.number(&watch, 86.0);
+    assert_eq!(run.record.hold.since, Some(utc("2026-11-25T12:00:00Z")));
+    run.look(&watch, utc("2026-11-25T15:00:00Z"));
+    run.number(&watch, 90.0);
+    assert_eq!(run.record.hold.since, Some(utc("2026-11-25T15:00:00Z")));
+    run.number(&watch, 91.0);
+    assert_eq!(run.record.hold.since, Some(utc("2026-11-25T15:00:00Z")));
+
+    let mut down = Run::new();
+    down.number(&watch, 75.0);
+    down.look(&watch, utc("2026-11-25T15:00:00Z"));
+    down.number(&watch, 74.0);
+    assert_eq!(down.record.hold.since, Some(utc("2026-11-25T12:00:00Z")));
+}
+
 #[test]
 fn an_overdue_status_opens_nothing() {
     let watch = coverage(1, 2);
