@@ -59,7 +59,7 @@ pub fn number(number: f64) -> String {
 
 /// A measure with its unit: `%` and `$` stay with the number, `count` is not
 /// said, and any other unit follows after a space (§FS-021-monitors.2.2).
-fn with_unit(said: &str, unit: Option<&str>) -> String {
+pub fn with_unit(said: &str, unit: Option<&str>) -> String {
     match unit {
         None | Some("count") | Some("") => said.to_string(),
         Some("%") => format!("{said}%"),
