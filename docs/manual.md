@@ -6984,8 +6984,12 @@ closes it back to that screen
 ([§FS-021-monitors.18.1](functional-spec/FS-021-monitors.md#181-m-opens-it-from-any-screen)),
 the operations board and the burn page included, which then close back to
 where they opened. `;` or `$` from the page replaces it instead, and closing
-that comes back to where the page opened. The header is the one `ephor monitors` prints; on a screen too narrow
-for it, the window and the feed's age are said again above the first project.
+that comes back to where the page opened.
+
+The header is the one `ephor monitors` prints. On a screen too narrow for it,
+the title bar keeps the title and a refresh in flight, and the counts, the
+window and the feed's age are said above the first project. A footer too long
+for the screen goes on to the next line rather than off the edge.
 
 Each row is the glyph, the title, the value, the cadence, the condition with
 the sample's `detail`, the strip of the last 24 cells, the change, the health

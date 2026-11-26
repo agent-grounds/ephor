@@ -81,10 +81,6 @@ impl MonitorsScreen {
         &self.page
     }
 
-    pub(super) fn now(&self) -> DateTime<Utc> {
-        self.now
-    }
-
     pub(super) fn selected(&self) -> usize {
         self.selected
     }
@@ -157,11 +153,43 @@ impl MonitorsScreen {
         self.detail = None;
     }
 
-    pub fn title(&self) -> String {
+    /// The header's parts (§FS-021-monitors.18.2, §FS-021-monitors.19):
+    /// the page's title, counts and window, or the detail's title and
+    /// window.
+    fn header_parts(&self) -> Vec<String> {
         match self.detail() {
-            Some(detail) => format!(" {}", detail.header(self.now)),
-            None => format!(" {}", self.page.header(self.now)),
+            Some(detail) => detail.header_says(self.now).to_vec(),
+            None => self.page.header_says(self.now).to_vec(),
         }
+    }
+
+    /// The title bar, `width` wide: the whole header where it fits, and
+    /// otherwise its title alone, clipped, the rest said at the top of the
+    /// body ([`MonitorsScreen::header_lines`]) so that no part of it is cut
+    /// off the edge.
+    pub fn title(&self, width: usize) -> String {
+        let parts = self.header_parts();
+        let whole = format!(" {}", parts.join("   "));
+        if whole.chars().count() <= width {
+            return whole;
+        }
+        format!(" {}", views::clip(&parts[0], width.saturating_sub(1)))
+    }
+
+    /// What the title bar could not hold, one part a line, wrapped to
+    /// `width`; none where the whole header fits.
+    pub(super) fn header_lines(&self, width: usize) -> Vec<String> {
+        let parts = self.header_parts();
+        if format!(" {}", parts.join("   ")).chars().count() <= width {
+            return Vec::new();
+        }
+        let title_cut = parts[0].chars().count() + 1 > width;
+        parts
+            .iter()
+            .enumerate()
+            .filter(|(at, _)| *at > 0 || title_cut)
+            .flat_map(|(_, part)| super::monitors_draw::wrapped(part, 1, width))
+            .collect()
     }
 
     /// The keys, said on the page (§FS-021-monitors.18.10,
