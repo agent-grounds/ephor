@@ -157,15 +157,17 @@ impl Declarations {
     }
 
     /// What every refresh notes about the declarations
-    /// (§FS-021-monitors.4.6): each one refused, with why, and each unknown
-    /// field one carries.
+    /// (§FS-021-monitors.4.6): each one refused, with why, in the words a
+    /// rule the homes break together is noted in, and each unknown field one
+    /// carries, each note once however many declarations say it.
     pub fn notes(&self) -> Vec<String> {
         let mut notes = Vec::new();
         for (home, declared) in [("site", &self.site), ("manifest", &self.manifest)] {
             for refused in &declared.refused {
                 notes.push(format!(
-                    "{home} monitor {} is not read",
-                    say_refused(refused)
+                    "{home} monitor {} is not read: {}",
+                    name(refused),
+                    refused.faults.join("; ")
                 ));
                 notes.extend(
                     refused
@@ -183,6 +185,8 @@ impl Declarations {
                 );
             }
         }
+        let mut said = BTreeSet::new();
+        notes.retain(|note| said.insert(note.clone()));
         notes
     }
 
