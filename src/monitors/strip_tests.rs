@@ -149,6 +149,15 @@ fn a_numbers_change_is_its_difference_coloured_by_better() {
     let change = super::change(&lines, &span, &percent, &percent.judge(None), 1);
     assert_eq!(change.says, "▴ 1.2 pt");
     assert_eq!(change.way, Way::Plain, "nothing says which way is better");
+
+    let size = super::tests::monitor(json!({"id": "size", "unit": "bytes", "healthy": null}));
+    let lines = vec![number(5, 20_000_000.0), number(0, 18_213_798.0)];
+    let change = super::change(&lines, &span, &size, &size.judge(None), 1);
+    assert_eq!(change.says, "▾ 1.7 MiB", "a size moves in binary units");
+    let cost = super::tests::monitor(json!({"id": "cost", "unit": "$", "healthy": null}));
+    let lines = vec![number(5, 36.0), number(0, 42.5)];
+    let change = super::change(&lines, &span, &cost, &cost.judge(None), 1);
+    assert_eq!(change.says, "▴ $6.50", "money moves to the cent");
 }
 
 /// §FS-021-monitors.18.6, §FS-021-monitors.10.1, §FS-021-monitors.10.2: a

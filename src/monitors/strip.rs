@@ -370,6 +370,7 @@ fn difference(first: Option<&f64>, last: Option<&f64>, monitor: &Monitor) -> Cha
     let said = match monitor.unit.as_deref() {
         // A percentage moves in points (§FS-021-monitors.18.6).
         Some("%") if monitor.of.is_none() => format!("{size:.1} pt"),
+        unit @ (Some("bytes") | Some("$")) => words::measure(size, unit),
         unit => words::with_unit(&words::number((size * 100.0).round() / 100.0), unit),
     };
     let way = match monitor.better {
