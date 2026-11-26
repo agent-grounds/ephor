@@ -876,12 +876,30 @@ impl BackgroundRefresh {
         over: &[String],
         narrowed: Option<Narrowed>,
     ) -> Result<Self> {
+        Self::start_when(config, over, narrowed, When::Due)
+    }
+
+    /// [`BackgroundRefresh::start`], reading the projects' monitors as `when`
+    /// says: the due ones, or every one now, as `ephor refresh
+    /// --monitors-now` does and as the Monitors page's `r` asks
+    /// (§FS-021-monitors.18.10, §FS-021-monitors.21.4). A narrowed run reads
+    /// no monitor (§FS-021-monitors.17.4), so it is only ever plain.
+    pub fn start_when(
+        config: &StatusConfig,
+        over: &[String],
+        narrowed: Option<Narrowed>,
+        when: When,
+    ) -> Result<Self> {
         let registry_doc = crate::feed::commands::load_registry_doc()?;
         let config = config.clone();
         let site_sources = site_source_names(&config);
         let jobs = jobs_over(&config, over);
         let queue: Vec<String> = jobs.iter().map(|(project, _)| project.clone()).collect();
-        let asking = narrowed.as_ref().map(Narrowed::flags);
+        let asking = match (&narrowed, when) {
+            (Some(narrowed), _) => Some(narrowed.flags()),
+            (None, When::Now) => Some("--monitors-now".to_string()),
+            (None, When::Due) => None,
+        };
 
         let (sender, landed) = mpsc::channel();
         let worker = std::thread::Builder::new()
@@ -962,13 +980,13 @@ impl BackgroundRefresh {
                             }
                         },
                     };
-                    let outcome = refresh_project(
+                    let outcome = refresh_project_when(
                         &registry_doc,
-                        project,
-                        project_config,
+                        (project, project_config),
                         &site_sources,
                         &config.defaults,
                         &ask,
+                        when,
                     );
                     asked.push(project.clone());
                     // A reader who left took the receiver with them. There is

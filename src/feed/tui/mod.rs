@@ -24,6 +24,8 @@ mod burn;
 mod cache_freshness;
 mod gate;
 mod human_gate;
+mod monitors;
+mod monitors_draw;
 mod navigator;
 mod operations;
 mod process;
@@ -64,6 +66,7 @@ use burn::BurnScreen;
 use cache_freshness::CacheFreshness;
 use gate::GateScreen;
 use human_gate::{HumanGateScreen, Return};
+use monitors::MonitorsScreen;
 use navigator::NavigatorState;
 use operations::OperationsScreen;
 use process::ProcessScreen;
@@ -269,6 +272,16 @@ pub(crate) enum Action {
     /// (§FS-013-burn.8). Off the draw path, in the shell, like every other
     /// move.
     RescanBurn,
+    /// Take the Monitors page again under the window it now asks for, and
+    /// the open monitor with it (§FS-021-monitors.18.8). The reading is the
+    /// API's, taken here and never while drawing.
+    ReadMonitors,
+    /// Read the monitor the detail view asks for (§FS-021-monitors.19).
+    ReadMonitor,
+    /// Refresh one project, reading every monitor of it now, beneath the
+    /// screen: `ephor refresh <project> --monitors-now`
+    /// (§FS-021-monitors.18.10).
+    RefreshMonitors(String),
     SetMessage(String),
 }
 
@@ -299,6 +312,8 @@ enum Screen {
     Operations(OperationsScreen),
     /// The burn page, watch-only (§FS-013-burn.8).
     Burn(BurnScreen),
+    /// The Monitors page and one monitor's detail (§FS-021-monitors.18).
+    Monitors(MonitorsScreen),
     /// A new matter being processed, or every unambiguous one previewed
     /// (§FS-019-waiting.7).
     Process(ProcessScreen),
@@ -377,6 +392,9 @@ struct App {
     /// starting one — a job another ephor started is in here too. Refreshed
     /// when rows are built and probed on the tick, exactly as a run is.
     jobs: Vec<crate::seams::jobs::Job>,
+    /// The Monitors page a matter's processing was opened from, where `esc`
+    /// and a confirmed move come back to (§FS-021-monitors.18.10).
+    monitors_beneath: Option<MonitorsScreen>,
     message: String,
 }
 
@@ -441,6 +459,7 @@ impl App {
             work_seen: None,
             burn_ticked_at: std::time::Instant::now(),
             jobs: Vec::new(),
+            monitors_beneath: None,
             message: String::new(),
         };
         // Whatever is still going from an earlier session is the reader's
@@ -678,6 +697,7 @@ impl App {
                 Screen::Brief(brief) => brief.handle_key(key.code, key.modifiers),
                 Screen::Operations(board) => board.handle_key(key.code),
                 Screen::Burn(page) => page.handle_key(key.code),
+                Screen::Monitors(page) => page.handle_key(key.code),
                 Screen::Process(screen) => screen.handle_key(key.code),
             };
             // A finished job's line stays under its subject until the reader
@@ -738,6 +758,11 @@ impl App {
                 self.reload_burn();
                 self.message = "Read the transcripts again".to_string();
             }
+            Action::ReadMonitors => {
+                self.reload_monitors();
+            }
+            Action::ReadMonitor => self.read_monitor(),
+            Action::RefreshMonitors(project) => self.refresh_monitors(config, &project),
             Action::MarkDone { marks, pop } => {
                 self.mark_done(marks)?;
                 if pop {
@@ -1285,10 +1310,14 @@ impl App {
         let choices = self.ctx.process_choices(&item);
         let place = self.waiting.place_of(&item.id);
         let screen = ProcessScreen::one(item, place, proposal, account, wants, choices);
-        self.screen = Screen::Process(match choosing {
-            true => screen.choosing(),
-            false => screen,
-        });
+        let previous = std::mem::replace(
+            &mut self.screen,
+            Screen::Process(match choosing {
+                true => screen.choosing(),
+                false => screen,
+            }),
+        );
+        self.processing_over(previous);
     }
 
     /// `Enter` on the processing screen: the move `ephor work process` makes,
@@ -1335,6 +1364,10 @@ impl App {
     fn processed(&mut self) {
         self.reload_work_groups();
         self.rebuild_view();
+        if self.back_to_monitors() {
+            self.reload_monitors();
+            return;
+        }
         self.go_home_to(Home::Waiting);
     }
 
@@ -2406,6 +2439,8 @@ impl App {
             // sent, and asking them per arrival would put the cost the run
             // avoided back on the screen a project at a time.
             self.reload_feeds()?;
+            // What the run read is on the Monitors page once it lands (§FS-021-monitors.18.10).
+            self.reload_monitors();
         }
         Ok(true)
     }
@@ -2472,7 +2507,7 @@ impl App {
         // the other replaces it and keeps the screen the pair opened over,
         // rather than burying it under a slot that only holds one
         // (§FS-005-dispatch.15).
-        if !matches!(previous, Screen::Burn(_)) {
+        if !matches!(previous, Screen::Burn(_) | Screen::Monitors(_)) {
             self.saved = Some(previous);
         }
     }
@@ -2489,6 +2524,8 @@ impl App {
             // The overview from anywhere, and Waiting from the overview
             // (§FS-019-waiting.4).
             KeyCode::Char('O') => self.toggle_overview(),
+            // The Monitors page from anywhere, closed back the same way (§FS-021-monitors.18.1).
+            KeyCode::Char('M') => self.toggle_monitors(),
             _ => return false,
         }
         true
@@ -2499,8 +2536,17 @@ impl App {
     /// to whichever floor the reader was last on (§FS-005-dispatch.15,
     /// §FS-019-waiting.4).
     fn back(&mut self) {
+        // Processing opened from the Monitors page goes back to it (§FS-021-monitors.18.10).
+        if self.back_to_monitors() {
+            return;
+        }
         self.screen = match self.saved.take() {
-            Some(previous) if matches!(self.screen, Screen::Operations(_) | Screen::Burn(_)) => {
+            Some(previous)
+                if matches!(
+                    self.screen,
+                    Screen::Operations(_) | Screen::Burn(_) | Screen::Monitors(_)
+                ) =>
+            {
                 previous
             }
             _ => self.home_screen(),
@@ -2520,6 +2566,7 @@ impl App {
     fn go_home_to(&mut self, home: Home) {
         self.home = home;
         self.saved = None;
+        self.monitors_beneath = None;
         self.screen = self.home_screen();
     }
 
@@ -2868,6 +2915,7 @@ impl App {
                 Screen::Brief(brief) => brief.title(),
                 Screen::Operations(board) => board.title(),
                 Screen::Burn(page) => page.title(),
+                Screen::Monitors(page) => page.title(),
                 Screen::Process(screen) => screen.title(),
             },
         };
@@ -2925,6 +2973,7 @@ impl App {
                 board.draw(frame, body_area, line)
             }
             Screen::Burn(page) => page.draw(frame, body_area),
+            Screen::Monitors(page) => page.draw(frame, body_area),
             Screen::Process(screen) => screen.draw(frame, body_area),
         }
         if let Some(menu) = &self.menu {
@@ -2968,6 +3017,7 @@ impl App {
                 Screen::Brief(brief) => brief.footer(),
                 Screen::Operations(board) => board.footer().to_string(),
                 Screen::Burn(page) => page.footer().to_string(),
+                Screen::Monitors(page) => page.footer().to_string(),
                 Screen::Process(screen) => screen.footer(),
             }
         };
@@ -3011,3 +3061,7 @@ mod cache_freshness_tests;
 #[cfg(test)]
 #[path = "waiting_app_tests.rs"]
 mod waiting_app_tests;
+
+#[cfg(test)]
+#[path = "monitors_app_tests.rs"]
+mod monitors_app_tests;
