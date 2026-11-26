@@ -180,7 +180,7 @@ pub fn render_item_line(
 ) -> String {
     let unread = crate::feed::cache::is_unread(seen, item);
     let marker = if unread { "*" } else { " " };
-    let mut line = format!("  {marker} {:<6}", item.kind.label());
+    let mut line = format!("  {marker} {:<6} ", item.kind.label());
     if with_project {
         line.push_str(&format!("{:<12}  ", item.project));
     }
@@ -339,5 +339,38 @@ mod tests {
         assert_eq!(span(48 * 3_600), "2d");
         // A clock that went backwards is not a negative duration.
         assert_eq!(span(-5), "0s");
+    }
+
+    /// The kind column keeps a space after its longest word, so a status
+    /// row, as every monitor's matter is (§FS-021-monitors.11.4), does not
+    /// run into the project beside it.
+    #[test]
+    fn the_kind_never_runs_into_the_next_column() {
+        let now = Utc::now();
+        let style = Style { color: false };
+        let feed = ProjectFeed::default();
+        let seen = Seen::default();
+        for (kind, label) in [(ItemKind::Status, "status"), (ItemKind::Pr, "pr")] {
+            let item = Item {
+                id: "monitor:demo/coverage@20261125T060000Z".to_string(),
+                project: "demo".to_string(),
+                source: "monitor".to_string(),
+                kind,
+                role: None,
+                title: "Line coverage dropped".to_string(),
+                url: None,
+                state: None,
+                needs_response: false,
+                updated_at: now,
+                raw: serde_json::json!({}),
+            };
+            let line = render_item_line(&item, &feed, &seen, &style, true, now);
+            assert!(
+                line.starts_with(&format!("  * {label:<6} demo ")),
+                "{line:?}"
+            );
+            let line = render_item_line(&item, &feed, &seen, &style, false, now);
+            assert!(line.starts_with(&format!("  * {label:<6} now")), "{line:?}");
+        }
     }
 }
