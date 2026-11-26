@@ -1431,7 +1431,7 @@ your open pull requests, so a red `main` never reaches the feed. With
 
 ```console
 $ ephor feed --kind ci
-  * ci    widget        3d    main is red: CI at aa44846  ✗1  ← needs response
+  * ci     widget        3d    main is red: CI at aa44846  ✗1  ← needs response
 ```
 
 Red means that a workflow's newest run with a verdict failed. Each workflow is
