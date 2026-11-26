@@ -5815,6 +5815,7 @@ will read the work, so the explanation is a command
 ephor guide                # the topics
 ephor guide gate           # how a workflow prepares the question its gate asks
 ephor guide matter         # what makes a matter new, and how a workflow becomes its proposal
+ephor guide monitors       # how a repository makes its numbers watchable
 ephor guide gate --json    # the same, with the runtime's own request and answer schemas
 ```
 
@@ -5832,6 +5833,17 @@ commands that check it: the runtime's own validation, brief and dry run, then
 workflow becomes the proposal for a kind of matter by an entry naming it whose
 selector accepts the matter, first in menu order
 ([§FS-020-guide.3](functional-spec/FS-020-guide.md#3-matter-what-makes-a-matter-new-and-how-a-workflow-becomes-its-proposal)).
+
+`monitors` is ephor's own too, for the reader asked to add a number to a
+repository's watch: the four kinds, conditions and `warn` and who decides
+health, the command and file bindings with their exit codes and environment,
+the answer and one sample's fields, `every` and `at`, that a monitor command
+never runs `ephor refresh`, and the commands that check the result. It ends
+with one complete worked example, a `scripts/kpis.sh` answering three
+monitors and the `ephor.json` that declares them, which ephor's own tests
+copy out of the text, validate and run. It carries no schemas: they are
+`ephor schema manifest` and `ephor schema answer`
+([§FS-020-guide.6](functional-spec/FS-020-guide.md#6-monitors-how-a-repository-makes-its-numbers-watchable), §14).
 
 Under `--json`, `gate` carries the request and answer schemas the bound
 runtime prints when the command runs; ephor keeps no copy. With no runtime
@@ -6725,6 +6737,9 @@ is read, kept and drawn, and never becomes a matter. What judges a monitor is
 almost always the one field `healthy`, so a KPI becomes a status by gaining a
 condition and nothing else
 ([§FS-021-monitors.1.2](functional-spec/FS-021-monitors.md#12-a-kpi-is-a-monitor-nothing-judges)).
+
+The whole protocol, with a worked example to copy, is one command away:
+`ephor guide monitors` (§8.20).
 
 ### 14.1 Declaring a monitor
 
