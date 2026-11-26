@@ -417,6 +417,10 @@ path = "tests/e2e/cases/E2E-080-a-drop-is-a-matter-in-waiting.rs"
 name = "e2e_081_unknown_and_overdue_monitors_in_waiting"
 path = "tests/e2e/cases/E2E-081-unknown-and-overdue-monitors-in-waiting.rs"
 
+[[test]]
+name = "e2e_082_a_monitors_matter_and_the_work_laid_on_it"
+path = "tests/e2e/cases/E2E-082-a-monitors-matter-and-the-work-laid-on-it.rs"
+
 [dependencies]
 clap = { version = "4", features = ["derive"] }
 serde = { version = "1", features = ["derive"] }
