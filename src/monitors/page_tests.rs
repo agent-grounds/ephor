@@ -257,6 +257,16 @@ fn a_labelled_series_counts_its_health_in_points() {
         at(&monitor, Some(&record), minutes(10)).column.text(),
         "ok 2 points"
     );
+
+    // A sample's own `ok` judges the sample, so its health is held in time.
+    let by_ok = super::tests::monitor(json!({"id": "bench", "kind": "series", "every": "1h"}));
+    if let Some(sample) = record.last_sample.as_mut() {
+        sample.ok = Some(true);
+    }
+    assert_eq!(
+        at(&by_ok, Some(&record), minutes(10)).column.text(),
+        "ok 10m"
+    );
 }
 
 /// §FS-021-monitors.18.7: how long, in the two largest units.

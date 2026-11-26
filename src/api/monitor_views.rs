@@ -6,7 +6,7 @@
 
 use std::path::PathBuf;
 
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, FixedOffset, Utc};
 use serde::Serialize;
 use serde_json::Value as Json;
 
@@ -173,9 +173,31 @@ pub struct MonitorRow {
     /// The last sample's `url`, what `o` opens (§FS-021-monitors.18.10).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub url: Option<String>,
+    /// Keys its declarations do not know, noted beside the condition
+    /// (§FS-021-monitors.4.6): `unknown field heathy`.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub notes: Vec<String>,
+    /// The last reading's own `at`, where it lay after its read, which
+    /// counts as measured when it was read (§FS-021-monitors.7.1).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub skew: Option<DateTime<FixedOffset>>,
 }
 
 impl MonitorRow {
+    /// What the row notes beside its condition: each key its declarations
+    /// do not know, and a sample measured after its read
+    /// (§FS-021-monitors.4.6, §FS-021-monitors.7.1), each time said by `when`.
+    pub fn notes_say(&self, when: impl Fn(DateTime<Utc>) -> String) -> Vec<String> {
+        let mut said = self.notes.clone();
+        if let Some(at) = self.skew {
+            said.push(format!(
+                "its sample says it was measured {}, after it was read",
+                when(at.with_timezone(&Utc))
+            ));
+        }
+        said
+    }
+
     /// The condition column: the condition in words with the sample's
     /// `detail`, or the sentence a monitor ephor does not read carries
     /// (§FS-021-monitors.18.4, §FS-021-monitors.4.6).
