@@ -77,8 +77,8 @@ pub(super) fn detail(
             drop_after: monitor.drop_after,
             recover_after: monitor.recover_after(&known.cadence),
         }),
-        chart: chart(&drawn, &span, &series, windowed, known, &judge),
-        steps: steps(row.kind, monitor.levels.as_deref()),
+        chart: chart(&drawn, &span, &series, windowed, known, &judge, row.kind),
+        steps: steps(row.kind, monitor.levels.as_deref(), &judge),
         thresholds: thresholds(&judge, known, row.of),
         episodes: episodes(project, &monitor.id, record, &span),
         readings: readings(&lines, &span, windowed, known, (&judge, row.of)),
@@ -135,7 +135,8 @@ pub(super) fn no_matter(known: &Known, standing: &Standing) -> String {
 }
 
 /// The chart's points: the span's lines judged under today's condition, or
-/// a series' points (§FS-021-monitors.19).
+/// a series' points (§FS-021-monitors.19). A boolean's and a level's stand
+/// on [`top`]'s places.
 fn chart(
     lines: &[Line],
     span: &Span,
@@ -143,6 +144,7 @@ fn chart(
     windowed: bool,
     known: &Known,
     judge: &Judge,
+    kind: Option<Kind>,
 ) -> Vec<views::ChartPoint> {
     let monitor = &known.monitor;
     let levels = monitor.levels.as_deref();
@@ -171,23 +173,50 @@ fn chart(
         .map(|line| views::ChartPoint {
             t: Some(line.t()),
             x: None,
-            value: strip::scaled(line, levels),
+            value: strip::scaled(line, levels).map(|place| match top(kind, levels, judge) {
+                Some(top) => top - place,
+                None => place,
+            }),
             health: crate::monitors::history::rejudged(line, judge, monitor.warn.as_ref(), levels),
         })
         .collect()
 }
 
-/// What the places of a boolean's or a level's chart are called, from place
-/// 0 up, as [`strip::scaled`] places them: `no` and `yes`, or the levels in
-/// the order declared.
-fn steps(kind: Option<Kind>, levels: Option<&[String]>) -> Vec<String> {
+/// Which way up a boolean's or a level's chart stands: the best value on
+/// top, as the strip draws it tallest (§FS-021-monitors.18.5,
+/// §FS-021-monitors.19). [`strip::scaled`] puts a level's first, its best
+/// (§FS-021-monitors.2.3), at place 0 and a boolean's `yes` at 1, so a
+/// level is turned over, and so is a boolean whose `healthy` is `no`: the
+/// place drawn is `top` less the scaled one. None where it already stands.
+fn top(kind: Option<Kind>, levels: Option<&[String]>, judge: &Judge) -> Option<f64> {
     match kind {
+        Some(Kind::Level) => levels
+            .and_then(|levels| u32::try_from(levels.len().checked_sub(1)?).ok())
+            .map(f64::from),
+        Some(Kind::Boolean) => judge
+            .condition()
+            .is_some_and(|condition| condition.is == Some(false))
+            .then_some(1.0),
+        _ => None,
+    }
+}
+
+/// What the places of a boolean's or a level's chart are called, from the
+/// bottom up, as [`top`] stands them: `no` then `yes`, `yes` then `no`
+/// where `no` is healthy, and a level's from the last declared up to the
+/// first.
+fn steps(kind: Option<Kind>, levels: Option<&[String]>, judge: &Judge) -> Vec<String> {
+    let mut steps = match kind {
         Some(Kind::Boolean) => [false, true]
             .map(|yes| words::value(&Value::Boolean(yes), None, None))
             .to_vec(),
         Some(Kind::Level) => levels.map(<[String]>::to_vec).unwrap_or_default(),
         _ => Vec::new(),
+    };
+    if top(kind, levels, judge).is_some() {
+        steps.reverse();
     }
+    steps
 }
 
 /// Today's `healthy` and `warn` bounds, as threshold lines, each said in the

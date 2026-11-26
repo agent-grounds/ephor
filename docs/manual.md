@@ -7033,7 +7033,8 @@ labelled axes, today's `healthy` bound drawn across it in red and `warn` in
 amber, each stretch of line in the worse health of the two readings it joins,
 and a gap where a read failed. A boolean and a level are drawn as steps,
 holding each reading until the next, because a line drawn straight from `no`
-to `yes` would show values nobody read; the y axis names their states. Under
+to `yes` would show values nobody read; the y axis names their states, the
+healthy one or a level's best on top, as the strip draws it tallest. Under
 the chart are the reading the cursor is on, the strip of health stretched to
 the width, the bounds the threshold lines stand for, and then the episodes,
 the readings and the points the repository supplied.
