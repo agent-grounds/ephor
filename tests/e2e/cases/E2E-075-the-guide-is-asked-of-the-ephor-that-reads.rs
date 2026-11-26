@@ -4,7 +4,8 @@
 //! that check it (§FS-020-guide.2); `matter` names no runtime (§FS-020-guide.3);
 //! and under `--json` the gate topic carries the runtime's own request and
 //! answer schemas, unchanged, or the sentence saying why there are none
-//! (§FS-020-guide.4).
+//! (§FS-020-guide.4). The `monitors` topic is listed with them; what it says
+//! is E2E-086's.
 //!
 //! The runtime is a stub whose `gate schema` prints two schemas with marks of
 //! its own, so the case can tell a schema the runtime printed from one ephor
@@ -71,6 +72,7 @@ fn the_guide_lists_its_topics_and_refuses_one_it_does_not_know() {
     let (text, _) = guide(&world, &[]);
     assert!(text.contains("gate "), "{text}");
     assert!(text.contains("matter "), "{text}");
+    assert!(text.contains("monitors "), "{text}");
     assert!(text.contains("ephor guide <topic>"), "{text}");
     let (_, view) = guide(&world, &["--json"]);
     let view = view.unwrap();
@@ -81,13 +83,13 @@ fn the_guide_lists_its_topics_and_refuses_one_it_does_not_know() {
         .iter()
         .map(|topic| topic["name"].as_str().unwrap())
         .collect();
-    assert_eq!(names, ["gate", "matter"]);
+    assert_eq!(names, ["gate", "matter", "monitors"]);
 
     let out = world.ephor().args(["guide", "nope"]).output().unwrap();
     assert!(!out.status.success());
     let said = String::from_utf8_lossy(&out.stderr);
     assert!(
-        said.contains("no guide topic 'nope'; the topics are gate, matter"),
+        said.contains("no guide topic 'nope'; the topics are gate, matter, monitors"),
         "{said}"
     );
 }

@@ -167,7 +167,8 @@ pub fn gate(config: &WorkConfig) -> String {
 }
 
 /// Indent a file of the example by two spaces, as the rest of the text is.
-fn indent(file: &str) -> String {
+/// The `monitors` topic indents its example the same way.
+pub(crate) fn indent(file: &str) -> String {
     file.lines()
         .map(|line| {
             if line.is_empty() {
