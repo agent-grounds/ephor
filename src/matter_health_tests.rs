@@ -30,6 +30,7 @@ fn release(level: &str, worst: &str, words: &str) -> Item {
         judged_under: Judge::SampleOk,
         judged_words: words.into(),
         works_ended: Vec::new(),
+        renewed: None,
         shown: Shown {
             title: "Release".into(),
             value: Some(Value::Level(level.into())),

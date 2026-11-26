@@ -361,6 +361,7 @@ fn hold(
                 judged_under: watch.judge.clone(),
                 judged_words: watch.healthy_words.clone(),
                 works_ended: Vec::new(),
+                renewed: None,
                 shown: Shown::default(),
             });
             settle(&mut record.hold, Health::Down, at);
@@ -398,11 +399,19 @@ fn after_work(
     };
     for sort in [Sort::Drop, Sort::Unknown] {
         let works = read.after_work.iter().filter(|ended| ended.on == sort);
-        let (seen, named, moved) = match (sort, &mut record.drop, &mut record.unknown) {
-            (Sort::Drop, Some(drop), _) => (&mut drop.works_ended, drop.named, &mut drop.moved),
-            (Sort::Unknown, _, Some(unknown)) => {
-                (&mut unknown.works_ended, unknown.named, &mut unknown.moved)
-            }
+        let (seen, named, moved, renewed) = match (sort, &mut record.drop, &mut record.unknown) {
+            (Sort::Drop, Some(drop), _) => (
+                &mut drop.works_ended,
+                drop.named,
+                &mut drop.moved,
+                &mut drop.renewed,
+            ),
+            (Sort::Unknown, _, Some(unknown)) => (
+                &mut unknown.works_ended,
+                unknown.named,
+                &mut unknown.moved,
+                &mut unknown.renewed,
+            ),
             _ => continue,
         };
         let mut new = false;
@@ -420,6 +429,7 @@ fn after_work(
             _ => None,
         };
         if let (true, Some(why)) = (new, why) {
+            *renewed = Some(now);
             *moved = Some(Moved {
                 at: now,
                 why: why.clone(),
@@ -458,6 +468,7 @@ fn judge_freshness<Tz: TimeZone>(
                 moved: None,
                 cause,
                 works_ended: Vec::new(),
+                renewed: None,
                 shown: Shown::default(),
             });
             effects.push(Effect::Opened {

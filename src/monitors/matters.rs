@@ -181,7 +181,7 @@ fn open_drop(project: &str, id: &str, drop: &OpenDrop, proposes: Option<Proposal
             ended: drop.works_ended.clone(),
             still: still(drop.moved.as_ref()),
         },
-        renewed: renewed(drop.moved.as_ref()),
+        renewed: drop.renewed,
         proposes,
     };
     item(
@@ -207,7 +207,7 @@ where
             still: still(unknown.moved.as_ref()),
             ..Moves::default()
         },
-        renewed: renewed(unknown.moved.as_ref()),
+        renewed: unknown.renewed,
         proposes: None,
     };
     item(
@@ -284,12 +284,6 @@ fn item(
 /// opened (§FS-021-monitors.12.2).
 fn last_moved(named: DateTime<Utc>, moved: Option<&Moved>) -> DateTime<Utc> {
     moved.map_or(named, |moved| moved.at.max(named))
-}
-
-fn renewed(moved: Option<&Moved>) -> Option<DateTime<Utc>> {
-    moved
-        .filter(|moved| moved.why.renews())
-        .map(|moved| moved.at)
 }
 
 fn still(moved: Option<&Moved>) -> Option<String> {
