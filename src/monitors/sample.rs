@@ -84,9 +84,7 @@ fn stated_kind(sample: &Sample, has_levels: bool) -> Result<Kind, String> {
     match (&sample.value, &sample.points) {
         (None, Some(_)) => Ok(Kind::Series),
         (None, None) => Err("the sample has no value".to_string()),
-        (Some(Value::Level(level)), _) if !has_levels => Err(format!(
-            "the value \"{level}\" is a level's name, and no levels say which levels there are"
-        )),
+        (Some(Value::Level(level)), _) if !has_levels => Err(no_levels(level)),
         (Some(value), _) => Ok(value.kind()),
     }
 }
@@ -126,15 +124,24 @@ fn value_of(sample: &Sample, kind: Kind, levels: Option<&[String]>) -> Result<Va
         );
     }
     if let Value::Level(level) = value {
-        let known = levels.is_some_and(|levels| levels.contains(level));
-        if !known {
-            return Err(format!(
-                "the value \"{level}\" is not one of its levels: {}",
-                levels.map(|levels| levels.join(", ")).unwrap_or_default()
-            ));
+        match levels {
+            None => return Err(no_levels(level)),
+            Some(levels) if !levels.contains(level) => {
+                return Err(format!(
+                    "the value \"{level}\" is not one of its levels: {}",
+                    levels.join(", ")
+                ));
+            }
+            Some(_) => {}
         }
     }
     Ok(value.clone())
+}
+
+/// A level's name where no `levels` say which levels there are
+/// (§FS-021-monitors.4.3).
+fn no_levels(level: &str) -> String {
+    format!("the value \"{level}\" is a level's name, and no levels say which levels there are")
 }
 
 fn spelled(value: &Value) -> String {

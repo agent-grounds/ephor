@@ -95,6 +95,12 @@ fn a_value_that_does_not_fit_its_kind_is_unreadable() {
         checked(level, json!({"id": "m", "value": "spotless"})).unwrap_err(),
         "the value \"spotless\" is not one of its levels: clean, dirty"
     );
+    // A level declared with no levels says so, rather than an empty list.
+    let bare = Some(json!({"id": "m", "kind": "level"}));
+    assert_eq!(
+        checked(bare, json!({"id": "m", "value": "green"})).unwrap_err(),
+        "the value \"green\" is a level's name, and no levels say which levels there are"
+    );
     let series = Some(json!({"id": "m", "kind": "series"}));
     assert_eq!(
         checked(series, json!({"id": "m", "value": 3})).unwrap_err(),
