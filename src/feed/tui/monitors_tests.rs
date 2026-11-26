@@ -17,7 +17,7 @@ use crate::api::monitor_views::{self as views, NO_MONITORS, TITLE};
 use crate::api::monitors::tests::fixtures::{green_detail, latency_detail, page_of_projects};
 use crate::api::monitors::tests::page_of_six;
 use crate::feed::model::{Item, ItemKind};
-use crate::feed::tui::monitors_draw::Plot;
+use crate::feed::tui::monitors_chart::Plot;
 use crate::feed::tui::monitors_page::{Columns, Shape};
 use crate::feed::tui::Action;
 use crate::monitors::model::Health;
@@ -455,10 +455,169 @@ fn a_boolean_is_drawn_stepped_with_its_states_on_the_axis() {
     assert_eq!(plot.y_labels, ["no", "yes"]);
     assert_eq!(plot.y, [0.0, 1.0]);
     let segments = plot.segments(&detail);
-    let (step, _) = &segments[0];
-    assert_eq!(step.len(), 3, "it holds, then steps");
-    assert_eq!(step[1].1, step[0].1, "held until the next reading");
-    assert_eq!(step[1].0, step[2].0, "then it steps");
+    let ((hold, _), (step, _)) = (&segments[0], &segments[1]);
+    assert_eq!(hold[1].1, hold[0].1, "held until the next reading");
+    assert_eq!(hold[1], step[0], "then it steps");
+    assert_eq!(step[1].0, step[0].0, "straight up or down");
+}
+
+/// A boolean read four times by `x` label, ok, ok, down, ok, on the chart's
+/// scale: `yes` on top.
+fn flips(dir: &std::path::Path, labels: &[&str]) -> views::MonitorDetail {
+    let mut detail = green_detail(dir);
+    detail.windowed = false;
+    let healths = [Health::Ok, Health::Ok, Health::Down, Health::Ok, Health::Ok];
+    detail.chart = labels
+        .iter()
+        .zip(healths)
+        .map(|(x, health)| views::ChartPoint {
+            t: None,
+            x: Some((*x).to_string()),
+            value: Some(if health == Health::Ok { 1.0 } else { 0.0 }),
+            health: Some(health),
+        })
+        .collect();
+    detail
+}
+
+fn opened(detail: views::MonitorDetail) -> (MonitorsScreen, tempfile::TempDir) {
+    let dir = tempfile::tempdir().unwrap();
+    let mut screen = screen(page_of_six(dir.path()));
+    screen.handle_key(KeyCode::Enter);
+    screen.show(detail);
+    (screen, dir)
+}
+
+/// §FS-021-monitors.19: a step holds the value it read in that reading's
+/// health, and only the step itself is drawn in the worse of the two, so an
+/// ok plateau before a drop is green, as the cursor line on it says.
+#[test]
+fn a_step_holds_in_its_readings_health_and_steps_in_the_worse() {
+    let dir = tempfile::tempdir().unwrap();
+    let detail = flips(dir.path(), &["a", "b", "c", "d"]);
+    let plot = Plot::of(&detail);
+    let healths: Vec<Option<Health>> = plot.segments(&detail).iter().map(|(_, h)| *h).collect();
+    let (ok, down) = (Some(Health::Ok), Some(Health::Down));
+    assert_eq!(healths, [ok, ok, ok, down, down, down]);
+
+    let (mut screen, _dir) = opened(detail);
+    let (text, buffer) = render(&mut screen, 100, 40);
+    let row = text
+        .lines()
+        .position(|line| line.starts_with("yes"))
+        .unwrap();
+    let colours: Vec<Color> = (0..buffer.area.width)
+        .map(|x| &buffer[(x, u16::try_from(row).unwrap())])
+        .filter(|cell| {
+            cell.symbol()
+                .chars()
+                .all(|c| ('\u{2801}'..='\u{28FF}').contains(&c))
+        })
+        .map(|cell| cell.fg)
+        .collect();
+    let green = colours.iter().filter(|fg| **fg == Color::Green).count();
+    let red = colours.iter().filter(|fg| **fg == Color::Red).count();
+    assert!(
+        green > 2 * red + 20,
+        "the plateaus before the drop are green:\n{text}"
+    );
+}
+
+/// §FS-021-monitors.19: the strip of health lies under the chart's plot,
+/// one cell per column over the same span, so a flip on the chart sits over
+/// the cell that turns; the change has a line of its own.
+#[test]
+fn the_strip_of_health_lines_up_under_the_chart() {
+    let dir = tempfile::tempdir().unwrap();
+    let (mut screen, _dir) = opened(flips(dir.path(), &["a", "b", "c", "d"]));
+    let (text, _) = render(&mut screen, 100, 40);
+    let lines: Vec<&str> = text.lines().collect();
+    let corner = lines
+        .iter()
+        .find_map(|line| line.chars().position(|c| c == '└'))
+        .unwrap();
+    let at = lines
+        .iter()
+        .position(|line| line.starts_with("health:"))
+        .unwrap();
+    let cells: Vec<char> = lines[at].chars().skip(corner + 1).collect();
+    assert_eq!(cells.len(), 100 - corner - 1, "{text}");
+    let glyph = |health| {
+        Cell {
+            mark: Mark::Read,
+            value: None,
+            health: Some(health),
+            height: None,
+        }
+        .health_glyph()
+    };
+    let wide = cells.len();
+    assert!(
+        cells[..wide * 6 / 10]
+            .iter()
+            .all(|c| *c == glyph(Health::Ok)),
+        "{text}"
+    );
+    assert!(
+        cells[wide * 7 / 10..wide * 95 / 100]
+            .iter()
+            .all(|c| *c == glyph(Health::Down)),
+        "{text}"
+    );
+    assert!(lines[at + 1].trim_start().starts_with("change "), "{text}");
+}
+
+/// §FS-021-monitors.19: the y axis is labelled in round numbers in the
+/// row's unit, never a float's every digit, and starts at zero rather than
+/// below it where nothing read is negative.
+#[test]
+fn the_y_axis_says_round_numbers() {
+    use crate::feed::tui::monitors_chart::axis;
+    assert_eq!(axis([3.9, 4.2, 4.8].into_iter()), [3.0, 4.0, 5.0]);
+    assert_eq!(axis([0.1, 0.3].into_iter()), [0.0, 0.2, 0.4]);
+    assert_eq!(axis([0.0, 10.0].into_iter()), [0.0, 10.0, 20.0]);
+    assert_eq!(axis([-4.0, 4.0].into_iter()), [-5.0, 0.0, 5.0]);
+    let dir = tempfile::tempdir().unwrap();
+    let mut detail = latency_detail(dir.path());
+    detail.thresholds.clear();
+    for (point, value) in detail.chart.iter_mut().zip([3.7, 3.9, 4.6]) {
+        point.value = Some(value);
+    }
+    assert_eq!(Plot::of(&detail).y_labels, ["3 ms", "4 ms", "5 ms"]);
+}
+
+/// §FS-021-monitors.19: a series' middle x label is drawn at the middle of
+/// the axis, so it is said only where a point stands there.
+#[test]
+fn a_series_middle_label_names_the_point_at_the_middle() {
+    let dir = tempfile::tempdir().unwrap();
+    let even = Plot::of(&flips(dir.path(), &["a", "b", "c", "d"]));
+    assert_eq!(even.x_labels, ["a", "d"]);
+    let odd = Plot::of(&flips(dir.path(), &["a", "b", "c", "d", "e"]));
+    assert_eq!(odd.x_labels, ["a", "c", "e"]);
+}
+
+/// §FS-021-monitors.19: the episodes, readings and points are laid out once
+/// per reading of the monitor and width, not once per frame.
+#[test]
+fn the_detail_is_laid_out_once_per_reading_and_width() {
+    let dir = tempfile::tempdir().unwrap();
+    let (mut screen, _dir) = opened(latency_detail(dir.path()));
+    let laid = |screen: &MonitorsScreen| {
+        screen
+            .drawn
+            .as_ref()
+            .and_then(|drawn| drawn.sections.as_ref())
+            .map(|(width, lines)| (*width, lines.as_ptr()))
+    };
+    render(&mut screen, 120, 40);
+    let first = laid(&screen).unwrap();
+    render(&mut screen, 120, 40);
+    assert_eq!(laid(&screen), Some(first), "the same lines, not laid again");
+    render(&mut screen, 90, 40);
+    assert_eq!(laid(&screen).map(|(width, _)| width), Some(90));
+    screen.show(latency_detail(&dir.path().join("again")));
+    assert!(laid(&screen).is_none(), "a new reading is laid afresh");
 }
 
 /// §FS-021-monitors.18.4: a narrow screen gives up the condition, then

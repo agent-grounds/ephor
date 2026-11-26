@@ -18,7 +18,7 @@ use crate::monitors::strip::{Cell, Change, Span};
 use crate::monitors::window::Window;
 
 mod said;
-pub use said::{clip, clipped, when, FOOTNOTE, TITLE};
+pub use said::{clip, clipped, when, FOOTNOTE, HEALTH, TITLE};
 
 /// What the page says with no monitor to show (§FS-021-monitors.18.2).
 pub const NO_MONITORS: &str = "no monitors — ephor guide monitors says how to declare one";

@@ -26,6 +26,7 @@ mod footer;
 mod gate;
 mod human_gate;
 mod monitors;
+mod monitors_chart;
 mod monitors_draw;
 mod monitors_page;
 mod navigator;

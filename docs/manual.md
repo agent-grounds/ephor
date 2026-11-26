@@ -7039,15 +7039,21 @@ yet in the feed arrives with the next refresh.
 age
 ([§FS-021-monitors.19](functional-spec/FS-021-monitors.md#19-the-detail-view)).
 Its health, facts and matter line come first, then the chart: the span with
-labelled axes, today's `healthy` bound drawn across it in red and `warn` in
-amber, each stretch of line in the worse health of the two readings it joins,
-and a gap where a read failed. A boolean and a level are drawn as steps,
-holding each reading until the next, because a line drawn straight from `no`
-to `yes` would show values nobody read; the y axis names their states, the
-healthy one or a level's best on top, as the strip draws it tallest. Under
-the chart are the reading the cursor is on, the strip of health stretched to
-the width, the bounds the threshold lines stand for, and then the episodes,
-the readings and the points the repository supplied.
+labelled axes, a number's y axis in round numbers of its unit, today's
+`healthy` bound drawn across it in red and `warn` in amber, each stretch of
+line in the worse health of the two readings it joins, and a gap where a
+read failed. A boolean and a level are drawn as steps, holding each reading
+until the next, because a line drawn straight from `no` to `yes` would show
+values nobody read; the hold keeps the health of the reading it holds and
+only the step takes the worse of the two, and the y axis names their states,
+the healthy one or a level's best on top, as the strip draws it tallest. A
+series drawn by `x` labels names its first and last points under the axis,
+and the middle one only where a point stands there. Under the chart is the
+strip of health, one cell for each column of the chart over the same span,
+so a flip on the chart sits over the cell that turns; then the change, the
+reading the cursor is on, the bounds the threshold lines stand for, and the
+episodes, the readings and the points the repository supplied, each said in
+full and wrapped on a narrow screen.
 
 | Key | Does |
 |---|---|
