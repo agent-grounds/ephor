@@ -563,12 +563,24 @@ impl Session {
         let mut rows: Vec<views::Operation> = self.live_jobs().into_iter().map(job_row).collect();
         let groups = self.work_roots();
         let (running, refusal) = self.running(&groups);
+        let now = chrono::Utc::now();
         for row in running {
+            // A paused run says what it waits on right after its state, as
+            // the board's row does (§FS-005-dispatch.15).
+            let paused = row
+                .op
+                .paused
+                .as_ref()
+                .map(|paused| views::Paused::read(paused, now));
+            let mut badges = row.op.badges();
+            if let Some(paused) = &paused {
+                badges.insert(1, paused.waits_at(now));
+            }
             rows.push(views::Operation {
                 kind: "root",
                 id: row.op.root.display().to_string(),
                 project: row.op.project.clone(),
-                says: row.op.says(),
+                says: format!("{} · {}", row.op.root.display(), badges.join(" · ")),
                 state: row.op.state().to_string(),
                 live: row.op.live,
                 item: row.op.item().map(str::to_string),
@@ -588,6 +600,7 @@ impl Session {
                     .map(|id| crate::work::runtime::attach_command(&self.work_config, id)),
                 stop: row.op.stop.clone(),
                 tickets: row.op.tickets.iter().map(ticket_row).collect(),
+                paused,
             });
         }
         views::Operations {
@@ -799,6 +812,7 @@ pub fn job_row(job: crate::seams::jobs::Job) -> views::Operation {
         attach: None,
         stop: None,
         tickets: Vec::new(),
+        paused: None,
     }
 }
 

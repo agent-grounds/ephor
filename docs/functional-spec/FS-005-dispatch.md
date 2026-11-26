@@ -2060,6 +2060,19 @@ world still agrees: an assignment no run ever released stops counting the
 moment the ticket's own state says it moved on, and is never read as
 running under a run that came later.
 
+**A live run with nothing it can do is paused, and says so.** A run whose
+every remaining ticket is parked at a gate or on a poll whose next attempt is
+still ahead, and whose runtime says nothing in the root is ready, keeps its
+lock and does no work until then. Its row says **paused** where a run at work
+says *running*, and goes on with what the run waits on and when it next looks,
+in the words the Waiting screen's row uses, decided by the same four facts
+([§FS-019-waiting.1.3.1](FS-019-waiting.md#131-a-run-with-nothing-it-can-do-says-it-is-paused-what-it-waits-on-and-when-it-next-looks)). It is still live: the lock is
+held, `a` attaches, the stop command is shown, and the tickets under it keep
+their own flavours. `ephor operations --json` carries the state `paused`, the
+same `paused` object the Waiting view carries, and `live` stays true, because
+paused is a reading of what a live run is doing and never a liveness of its
+own.
+
 **Watching only, and deliberately so.** The board starts nothing, stops
 nothing, and intervenes in nothing — and it stays that way now that something
 *can* be started beneath the screen

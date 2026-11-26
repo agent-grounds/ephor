@@ -542,7 +542,12 @@ pub fn operations(args: &OperationsArgs) -> Result<ExitCode> {
         return Ok(ExitCode::SUCCESS);
     }
     for op in &board.operations {
-        let marker = if op.live { "▶" } else { "✋" };
+        // A paused run is live, and marked as waiting (§FS-005-dispatch.15).
+        let marker = match (op.live, op.paused.is_some()) {
+            (true, true) => "‖",
+            (true, false) => "▶",
+            (false, _) => "✋",
+        };
         println!("{marker} {} · {}   {}", op.project, op.id, op.state);
         println!("    {}", op.says);
         // The way in, and the way out shown but never run
@@ -663,7 +668,8 @@ pub fn waiting(args: &crate::cli::WaitingArgs) -> Result<ExitCode> {
         }
     }
     println!();
-    println!("Running ({})", view.running.len());
+    // The paused runs counted apart (§FS-019-waiting.1.3.1).
+    println!("Running ({})", view.running_tally());
     match refused {
         Some(refusal) => println!("  {refusal}"),
         None if view.running.is_empty() => println!("  nothing"),
@@ -679,7 +685,11 @@ pub fn waiting(args: &crate::cli::WaitingArgs) -> Result<ExitCode> {
                     .map(age)
                     .map(|age| format!("   {age}"))
                     .unwrap_or_default();
-                println!("  ▶ {} · {about}{since}", row.project);
+                let marker = match row.paused {
+                    Some(_) => "‖",
+                    None => "▶",
+                };
+                println!("  {marker} {} · {about}{since}", row.project);
                 // The entry and branch the ledger records, then the root
                 // (§FS-019-waiting.1.3).
                 let work: Vec<&str> = [&row.entry, &row.branch]
@@ -691,8 +701,12 @@ pub fn waiting(args: &crate::cli::WaitingArgs) -> Result<ExitCode> {
                     true => println!("      {}", row.root.display()),
                     false => println!("      {}   {}", work.join("  "), row.root.display()),
                 }
-                if row.tickets.is_empty() {
-                    println!("      between turns");
+                // A run that holds nothing is paused, with what it waits on,
+                // or between turns (§FS-019-waiting.1.3.1).
+                match &row.paused {
+                    Some(paused) => println!("      {}", paused.says_at(now)),
+                    None if row.tickets.is_empty() => println!("      between turns"),
+                    None => {}
                 }
                 for ticket in &row.tickets {
                     let state = ticket.state.as_deref().unwrap_or("?");
