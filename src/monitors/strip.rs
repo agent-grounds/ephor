@@ -284,35 +284,64 @@ impl Change {
 
 /// The change over the span: how often a boolean or a level dropped, and a
 /// number's difference between the first and the last value it read
-/// (§FS-021-monitors.18.6).
-pub fn change(lines: &[Line], span: &Span, monitor: &Monitor, judge: &Judge) -> Change {
-    let inside: Vec<&Line> = lines
-        .iter()
-        .filter(|line| span.holds(line.t()) && !matches!(line, Line::Marker { .. }))
-        .collect();
+/// (§FS-021-monitors.18.6). A drop is counted as the hold counts one
+/// (§FS-021-monitors.10.1): `drop_after` failing readings in a row, ended by
+/// `recover_after` passing ones.
+pub fn change(
+    lines: &[Line],
+    span: &Span,
+    monitor: &Monitor,
+    judge: &Judge,
+    recover_after: u32,
+) -> Change {
     if matches!(monitor.kind, Some(Kind::Boolean | Kind::Level)) {
-        let levels = monitor.levels.as_deref();
-        let mut drops = 0;
-        let mut was_down = false;
-        for line in inside {
-            let down =
-                history::rejudged(line, judge, monitor.warn.as_ref(), levels) == Some(Health::Down);
-            if down && !was_down {
-                drops += 1;
-            }
-            was_down = down;
-        }
-        return Change::plain(match drops {
+        let hold = (monitor.drop_after, recover_after);
+        return Change::plain(match drops(lines, span, monitor, judge, hold) {
             0 => "no drops".to_string(),
             1 => "1 drop".to_string(),
             drops => format!("{drops} drops"),
         });
     }
-    let values: Vec<f64> = inside
+    let values: Vec<f64> = lines
         .iter()
+        .filter(|line| span.holds(line.t()))
         .filter_map(|line| scaled(line, None))
         .collect();
     difference(values.first(), values.last(), monitor)
+}
+
+/// How many drops turned inside the span, the hold run over the whole
+/// history under today's condition so a span that opens already down counts
+/// none for it. Only readings count: a marker neither adds to a run nor
+/// breaks it (§FS-021-monitors.10.2), and a thinned line counts as one
+/// reading of its worst health.
+fn drops(
+    lines: &[Line],
+    span: &Span,
+    monitor: &Monitor,
+    judge: &Judge,
+    (drop_after, recover_after): (u32, u32),
+) -> usize {
+    let levels = monitor.levels.as_deref();
+    let (mut down, mut run, mut drops) = (false, 0, 0);
+    for line in lines.iter().filter(|line| line.t() <= span.to) {
+        if matches!(line, Line::Marker { .. }) {
+            continue;
+        }
+        let fails =
+            history::rejudged(line, judge, monitor.warn.as_ref(), levels) == Some(Health::Down);
+        // A run counts readings that go against where it stands.
+        run = if fails != down { run + 1 } else { 0 };
+        let needed = if down { recover_after } else { drop_after };
+        if run >= needed.max(1) {
+            down = !down;
+            run = 0;
+            if down && span.holds(line.t()) {
+                drops += 1;
+            }
+        }
+    }
+    drops
 }
 
 /// A series' change: between the first and the last point its strip draws
