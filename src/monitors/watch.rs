@@ -53,8 +53,13 @@ pub enum When {
     Now,
 }
 
+/// Asks which matters of a project's monitors have work that ended, by key,
+/// with a mark for that work (§FS-021-monitors.15): [`after::ended`], or what
+/// a test says.
+pub type Ended<'a> = &'a dyn Fn(&str) -> BTreeMap<String, String>;
+
 /// One plain refresh of one project's monitors.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct Request<'a> {
     pub project: &'a str,
     pub placement: Option<&'a Placement>,
@@ -67,9 +72,11 @@ pub struct Request<'a> {
     /// How long a forgotten monitor's finished matters are still reported
     /// (§FS-021-monitors.14.3).
     pub recent_days: u64,
-    /// The matters of the project's monitors whose work has ended, by key,
-    /// with a mark for that work (§FS-021-monitors.15).
-    pub ended: BTreeMap<String, String>,
+    /// Asked only where one of the project's monitors has an episode open,
+    /// as only an open episode's ended work is read again
+    /// (§FS-021-monitors.15): a refresh of a project with none reads no
+    /// ledger.
+    pub ended: Ended<'a>,
 }
 
 /// What the refresh does with the slot, and what it notes.
@@ -95,6 +102,8 @@ struct Plan {
     /// out of cadence (§FS-021-monitors.6.7).
     in_cadence: BTreeSet<String>,
     claim: Claim,
+    /// The matters whose work has ended, as asked when this read began.
+    ended: BTreeMap<String, String>,
 }
 
 /// Reads a project's monitors on a plain refresh, in the store ephor keeps.
@@ -138,10 +147,19 @@ pub fn refresh(store: &Store, request: &Request, now: DateTime<Utc>) -> Report {
         };
     }
 
-    let plan = match store.update(|document| Ok(prepare(document, &declarations, request, now))) {
-        Ok(plan) => plan,
-        Err(err) => return failed(err.to_string(), notes),
+    let open = kept
+        .monitors
+        .values()
+        .any(|record| record.drop.is_some() || record.unknown.is_some());
+    let ended = match open {
+        true => (request.ended)(request.project),
+        false => BTreeMap::new(),
     };
+    let plan =
+        match store.update(|document| Ok(prepare(document, &declarations, request, &ended, now))) {
+            Ok(plan) => plan,
+            Err(err) => return failed(err.to_string(), notes),
+        };
     let checkout = request.placement.map(declared::checkout);
     let forest = request
         .placement
@@ -307,6 +325,7 @@ fn prepare(
     document: &mut Document,
     declarations: &Declarations,
     request: &Request,
+    ended: &BTreeMap<String, String>,
     now: DateTime<Utc>,
 ) -> Plan {
     let monitors = known::declared(declarations, document);
@@ -346,7 +365,7 @@ fn prepare(
             in_cadence.insert(id.clone());
         }
         // §FS-021-monitors.15: work laid on its matter ended, so it is read now.
-        let after_work = !after::unseen(request.project, id, record, &request.ended).is_empty();
+        let after_work = !after::unseen(request.project, id, record, ended).is_empty();
         if slot_came || request.when == When::Now || after_work {
             due.insert(id.clone());
         }
@@ -421,6 +440,7 @@ fn prepare(
         due,
         in_cadence,
         claim,
+        ended: ended.clone(),
     }
 }
 
@@ -528,7 +548,7 @@ fn commit(
                     at,
                     in_cadence: !out_of_cadence,
                     found: found.finding.clone(),
-                    after_work: after::unseen(request.project, &id, &snapshot, &request.ended),
+                    after_work: after::unseen(request.project, &id, &snapshot, &plan.ended),
                 });
                 (event, found, at)
             }

@@ -102,7 +102,7 @@ pub fn refresh_after(
         brought: Vec::new(),
         when: When::Due,
         recent_days: 7,
-        ended,
+        ended: &|_| ended.clone(),
     };
     refresh(&site.store, &request, now)
 }
@@ -122,7 +122,7 @@ pub fn refresh_bringing(
         brought,
         when,
         recent_days: 7,
-        ended: BTreeMap::new(),
+        ended: &|_| BTreeMap::new(),
     };
     refresh(&site.store, &request, now)
 }

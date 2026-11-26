@@ -143,3 +143,38 @@ fn a_fraction_whose_whole_moves_does_not_move_the_matter() {
     assert_eq!(moves(now).since(&moves(was)), Vec::<String>::new());
     assert_eq!(moves(now), moves(was));
 }
+
+/// §FS-021-monitors.15: which work ended is asked only where one of the
+/// project's monitors has an episode open, so a refresh of a project whose
+/// monitors are well reads no ledger.
+#[test]
+fn ended_work_is_asked_only_where_an_episode_is_open() {
+    let site = site(None);
+    let asked = std::cell::Cell::new(0);
+    let ended = |_: &str| {
+        asked.set(asked.get() + 1);
+        BTreeMap::new()
+    };
+    let declared = [coverage()];
+    let refresh_now = |minutes| {
+        let request = Request {
+            project: "alpha",
+            placement: Some(&site.placement),
+            site: &declared,
+            brought: Vec::new(),
+            when: When::Now,
+            recent_days: 7,
+            ended: &ended,
+        };
+        refresh(&site.store, &request, at(minutes))
+    };
+    script(&site.root, &answer(81.0), 0);
+    refresh_now(0);
+    refresh_now(10);
+    assert_eq!(asked.get(), 0, "nothing open");
+    script(&site.root, &answer(79.0), 0);
+    assert_eq!(refresh_now(20).items.len(), 1, "a drop opens");
+    assert_eq!(asked.get(), 0, "none was open when it began");
+    refresh_now(30);
+    assert_eq!(asked.get(), 1);
+}
