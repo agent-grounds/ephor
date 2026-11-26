@@ -129,6 +129,11 @@ fn m_opens_the_monitors_page_and_enter_its_detail_on_an_80_by_24_terminal() {
     );
     assert!(rows[1].starts_with("● Build green"), "{page}");
     assert!(rows[2].starts_with("◆ Lines of code"), "{page}");
+    // §FS-021-monitors.18.4: what one line cannot hold goes on a second.
+    assert!(
+        page.contains("healthy ≥ 80%"),
+        "the condition is said:\n{page}"
+    );
     assert!(
         page.lines().all(|line| line.chars().count() <= 80),
         "nothing is drawn past the terminal's edge:\n{page}"
