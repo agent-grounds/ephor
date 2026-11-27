@@ -8,14 +8,17 @@
 //! and the shell carries on with it exactly as it did when the load ran
 //! before the terminal was entered (§AR-009-surfaces.2).
 
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, TryRecvError};
+use std::sync::{Arc, Mutex, MutexGuard, OnceLock, PoisonError};
+use std::thread::ThreadId;
 use std::time::Duration;
 
 use ratatui::backend::Backend;
 use ratatui::crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use ratatui::layout::{Constraint, Layout};
 use ratatui::style::{Color, Modifier, Style};
-use ratatui::widgets::Paragraph;
+use ratatui::widgets::{Block, Padding, Paragraph, Wrap};
 use ratatui::Terminal;
 
 use crate::api::opening::{Opening, Progress};
@@ -42,7 +45,21 @@ pub(super) enum Waited<T> {
 enum Shown {
     /// The load finished, whatever it returned.
     Landed,
+    /// A thread panicked, and the load is left to carry the panic
+    /// ([`Halt`]).
+    Halted,
     Quit,
+}
+
+/// Why the frame hands the terminal back before the load has landed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum Left {
+    /// The reader quit (§FS-019-waiting.5.1).
+    Quit,
+    /// The terminal stopped answering: the frame can neither be drawn nor
+    /// read the keys. The load goes on to its end, with the terminal as it
+    /// was found, so `ctrl-c` there is an interrupt again (§AR-009-surfaces.2).
+    Broken,
 }
 
 /// The frame: the step being read now, none before the first.
@@ -67,7 +84,8 @@ impl LoadingScreen {
 
     /// The header, the line, and the one key there is (§FS-019-waiting.5.1):
     /// no section, count or message, because nothing they come from has been
-    /// read yet.
+    /// read yet. A line wider than the screen goes on to the next one, so the
+    /// count it ends with is never what is cut.
     pub fn draw(&self, frame: &mut ratatui::Frame) {
         let [header, body, footer] = Layout::vertical([
             Constraint::Length(1),
@@ -81,7 +99,10 @@ impl LoadingScreen {
             header,
         );
         frame.render_widget(
-            Paragraph::new(format!("  {}", self.line())).style(dim),
+            Paragraph::new(self.line())
+                .style(dim)
+                .block(Block::new().padding(Padding::left(2)))
+                .wrap(Wrap { trim: true }),
             body,
         );
         frame.render_widget(Paragraph::new(" q quit").style(dim), footer);
@@ -99,6 +120,10 @@ pub(super) fn sentence(step: Opening) -> String {
         Opening::Branches { checkouts, done } => format!(
             "Reading the branches of {checkouts} {} — {done} done",
             plural(checkouts, "checkout")
+        ),
+        Opening::Capabilities { projects } => format!(
+            "Reading what {projects} {} can do",
+            plural(projects, "project")
         ),
         Opening::Work => "Reading the work handed over".to_string(),
         Opening::Jobs => "Reading the jobs ephor started".to_string(),
@@ -140,29 +165,84 @@ pub(super) fn terminal_key(wait: Duration) -> Result<Option<KeyEvent>> {
     }
 }
 
-/// Draw the frame on a thread of its own while `load` runs here, until it
-/// lands or the reader quits (§FS-019-waiting.5.1). The load keeps the thread
-/// it always ran on, so its reading and what it costs are what they were. A
-/// load that fails is returned as it failed, so the shell reports it as it
-/// always has, and one that panics panics here, once the frame has stopped.
-/// A quit runs `quit` on the frame's thread, while the load is still reading.
+/// What stops the frame when a thread panics while it is up
+/// (§AR-009-surfaces.2). The hook `ratatui::init` sets gives the terminal
+/// back and prints the panic; without this the frame would go on drawing over
+/// that message, because a standing worker that panics leaves the others
+/// counting, and the count reaches the frame, until the load comes to the
+/// panic and carries it out.
+#[derive(Debug, Default)]
+pub(super) struct Halt {
+    halted: AtomicBool,
+    /// Held for each draw, so a stop waits out the one under way.
+    drawing: Mutex<()>,
+    /// The frame's own thread, which never waits on its own draw.
+    frame: OnceLock<ThreadId>,
+}
+
+impl Halt {
+    /// A halt the process's panic hook stops before anything else it does.
+    /// It wraps whatever hook there is, once, before the load; it stays, and
+    /// once the frame is gone it only sets a flag nobody reads.
+    pub fn on_panic() -> Arc<Halt> {
+        let halt = Arc::new(Halt::default());
+        let stops = Arc::clone(&halt);
+        let then = std::panic::take_hook();
+        std::panic::set_hook(Box::new(move |info| {
+            stops.stop();
+            then(info);
+        }));
+        halt
+    }
+
+    /// Once this returns no frame is being drawn and none will be.
+    pub fn stop(&self) {
+        self.halted.store(true, Ordering::SeqCst);
+        // A panic in the frame's own draw holds the lock on this thread.
+        if self.frame.get() != Some(&std::thread::current().id()) {
+            drop(self.drawing.lock().unwrap_or_else(PoisonError::into_inner));
+        }
+    }
+
+    /// Draw `screen` unless stopped, and say whether it was drawn.
+    fn draw<B: Backend>(&self, terminal: &mut Terminal<B>, screen: &LoadingScreen) -> Result<bool> {
+        let _drawing = self.drawing.lock().unwrap_or_else(PoisonError::into_inner);
+        if self.halted.load(Ordering::SeqCst) {
+            return Ok(false);
+        }
+        terminal
+            .draw(|frame| screen.draw(frame))
+            .map_err(|err| EphorError::Command(format!("draw failed: {err}")))?;
+        Ok(true)
+    }
+}
+
+/// Run `load` here while the frame is drawn on a thread of its own, until
+/// the load lands or the reader quits (§FS-019-waiting.5.1). The load keeps
+/// the thread it always ran on, so its reading and what it costs are what
+/// they were. A load that fails is returned as it failed, so the shell
+/// reports it as it always has, even where the frame failed too; one that
+/// panics panics here, once the frame has stopped. A quit, or a terminal that
+/// stops answering, runs `leave` on the frame's thread while the load is
+/// still reading, with the cursor every frame hid shown again.
 pub(super) fn wait_for<B, T, L, K, Q>(
     terminal: &mut Terminal<B>,
+    halt: &Halt,
     load: L,
     key: K,
-    quit: Q,
+    leave: Q,
 ) -> Result<Waited<T>>
 where
     B: Backend + Send,
     L: FnOnce(Progress) -> Result<T>,
     K: FnMut(Duration) -> Result<Option<KeyEvent>> + Send,
-    Q: FnOnce() + Send,
+    Q: FnOnce(Left) + Send,
 {
     let (said, hears) = mpsc::channel();
     std::thread::scope(|scope| {
         let frame = std::thread::Builder::new()
             .name("ephor-loading".to_string())
-            .spawn_scoped(scope, move || show(terminal, hears, key, quit))
+            .spawn_scoped(scope, move || show(terminal, halt, hears, key, leave))
             .map_err(|err| EphorError::Command(format!("cannot draw while reading: {err}")))?;
         let loaded = {
             // Dropped when the load returns or unwinds, which is how the frame
@@ -173,32 +253,61 @@ where
             load(&say)
         };
         match frame.join() {
-            Ok(Ok(Shown::Landed)) => loaded.map(Waited::Loaded),
+            Ok(Ok(Shown::Landed | Shown::Halted)) => loaded.map(Waited::Loaded),
             Ok(Ok(Shown::Quit)) => Ok(Waited::Quit),
-            Ok(Err(err)) => Err(err),
+            // The load's own failure is the one to say: the frame's says only
+            // that the terminal stopped answering (§AR-009-surfaces.2).
+            Ok(Err(err)) => loaded.and(Err(err)),
             Err(panic) => std::panic::resume_unwind(panic),
         }
     })
 }
 
-/// The frame's own loop: draw what was said last, take what was said since,
-/// read the keys, until the load has landed or the reader quits.
+/// The frame's thread: draw until the load lands, then hand the terminal back
+/// through `leave` if the reader quit or the terminal broke.
 fn show<B, K, Q>(
     terminal: &mut Terminal<B>,
+    halt: &Halt,
     hears: Receiver<Opening>,
     mut key: K,
-    quit: Q,
+    leave: Q,
 ) -> Result<Shown>
 where
     B: Backend,
     K: FnMut(Duration) -> Result<Option<KeyEvent>>,
-    Q: FnOnce(),
+    Q: FnOnce(Left),
+{
+    let _ = halt.frame.set(std::thread::current().id());
+    let shown = frames(terminal, halt, &hears, &mut key);
+    let left = match &shown {
+        Ok(Shown::Quit) => Left::Quit,
+        Err(_) => Left::Broken,
+        Ok(Shown::Landed | Shown::Halted) => return shown,
+    };
+    // Every frame hid the cursor; it is shown again before the terminal is
+    // handed back, as dropping the terminal shows it after any other screen.
+    let _ = terminal.show_cursor();
+    leave(left);
+    shown
+}
+
+/// Draw what was said last, take what was said since, read the keys, until
+/// the load has landed, the reader quits, or a panic halts the frame.
+fn frames<B, K>(
+    terminal: &mut Terminal<B>,
+    halt: &Halt,
+    hears: &Receiver<Opening>,
+    key: &mut K,
+) -> Result<Shown>
+where
+    B: Backend,
+    K: FnMut(Duration) -> Result<Option<KeyEvent>>,
 {
     let mut screen = LoadingScreen::default();
     loop {
-        terminal
-            .draw(|frame| screen.draw(frame))
-            .map_err(|err| EphorError::Command(format!("draw failed: {err}")))?;
+        if !halt.draw(terminal, &screen)? {
+            return Ok(Shown::Halted);
+        }
         match hears.recv_timeout(TICK) {
             Ok(step) => screen.say(step),
             Err(RecvTimeoutError::Timeout) => {}
@@ -214,20 +323,37 @@ where
         }
         while let Some(pressed) = key(Duration::ZERO)? {
             if quits(&pressed) {
-                quit();
                 return Ok(Shown::Quit);
             }
         }
     }
 }
 
-/// What quitting while the load reads does: leave the terminal as it was
-/// found and end the process with success, as `q` does on any screen
-/// (§FS-019-waiting.5.1). The load cannot be stopped where it is, so it ends
-/// with the process, as an interrupt during the load always ended it.
-pub(super) fn leave() {
+/// Held by the one write the load makes, the sweep of jobs long over
+/// (§FS-005-dispatch.17), for as long as it writes.
+static WRITING: Mutex<()> = Mutex::new(());
+
+/// Hold off a quit while the load writes: a quit that comes then waits for
+/// the write to finish (§AR-009-surfaces.2).
+pub(super) fn writing() -> MutexGuard<'static, ()> {
+    WRITING.lock().unwrap_or_else(PoisonError::into_inner)
+}
+
+/// What handing the terminal back does while the load reads: leave it as it
+/// was found, and on a quit end the process with success, as `q` does on any
+/// screen (§FS-019-waiting.5.1). The load cannot be stopped where it is, so
+/// it ends with the process, once no write of its own is under way.
+pub(super) fn leave(left: Left) {
     ratatui::restore();
-    std::process::exit(0);
+    if left == Left::Quit {
+        ending(&WRITING, || std::process::exit(0));
+    }
+}
+
+/// Run `end` once nothing holds `writes`.
+fn ending(writes: &Mutex<()>, end: impl FnOnce()) {
+    let _unbroken = writes.lock().unwrap_or_else(PoisonError::into_inner);
+    end();
 }
 
 #[cfg(test)]

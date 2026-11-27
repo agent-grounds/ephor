@@ -73,10 +73,21 @@ session through the opening that hands every step to a silent hook, so
 neither its signature nor its reading changes, and the steps are said where
 the reading already happens rather than read back off it. The standing
 workers say each measurement as it finishes, counted under one lock, so the
-count reaches the screen in the order it rises. A quit cannot stop the load
-where it is, so it restores the terminal and ends the process, as an
-interrupt during the load always did; a failure or a panic there comes back
-to the caller unchanged ([§REQ-002-parity.2](../requirements/REQ-002-parity.md#2-parity-runs-both-ways)).
+count reaches the screen in the order it rises.
+
+A quit shows the cursor and restores the terminal at once, then ends the
+process with success, as the event loop's own `ctrl-c` does; while the load
+still ran in front of the terminal, `ctrl-c` there was an interrupt, and the
+process died of it. The load cannot be stopped where it is, so the process
+ends under it, except in the one place the load writes: the sweep of jobs
+long over ([§FS-005-dispatch.17](../functional-spec/FS-005-dispatch.md#17-a-move-that-needs-nobody-runs-beneath-the-screen)) removes each one's directory, and a quit that comes
+during the sweep waits for it to finish, so no directory is left without the
+record a later sweep would find it by. A failure in the load comes back to the caller unchanged
+([§FS-019-waiting.5.1](../functional-spec/FS-019-waiting.md#51-the-interface-is-on-the-screen-before-it-reads-anything)), and wins over one the frame met, which says only that
+the terminal stopped answering; a frame that fails gives the terminal back
+straight away, so `ctrl-c` is an interrupt again for the rest of the load. A
+panic on any thread stops the frame, after the draw under way and before the
+terminal is given back to print the panic, so no frame lands on the message.
 
 The interactive screen also observes known feed-cache files locally, without
 reloading the session or fetching from a forge. Its freshness baseline is the

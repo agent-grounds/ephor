@@ -417,8 +417,15 @@ pub fn run(scope: &crate::scope::Projects, args: &crate::cli::TuiArgs) -> Result
     let config = load_config()?;
     let home = start_home(&config.defaults, args);
     let mut terminal = ratatui::init();
+    let halt = loading::Halt::on_panic();
     let load = |say: crate::api::opening::Progress| App::load_saying(&config, scope, say);
-    let waited = loading::wait_for(&mut terminal, load, loading::terminal_key, loading::leave);
+    let waited = loading::wait_for(
+        &mut terminal,
+        &halt,
+        load,
+        loading::terminal_key,
+        loading::leave,
+    );
     let result = match waited {
         Ok(Waited::Loaded(mut app)) => {
             app.go_home_to(home);
@@ -454,7 +461,7 @@ impl App {
 
     /// Everything the first frame reads, saying each step to `say` as it
     /// begins (§FS-019-waiting.5.1): what [`run`] does behind the loading
-    /// frame, on a thread of its own.
+    /// frame, on the calling thread while the frame is drawn on its own.
     fn load_saying(
         config: &StatusConfig,
         scope: &crate::scope::Projects,
@@ -501,7 +508,11 @@ impl App {
         // news on the first frame, and what is long over is swept here rather
         // than on a path a keystroke waits on (§FS-005-dispatch.17).
         say(crate::api::opening::Opening::Jobs);
-        crate::seams::jobs::sweep();
+        {
+            // A quit waits for the sweep rather than cutting it (§AR-009-surfaces.2).
+            let _writing = loading::writing();
+            crate::seams::jobs::sweep();
+        }
         app.jobs = crate::seams::jobs::all();
         // Opening the session already loaded feeds, standings and work. Only
         // the screen's groups and view remain to initialize (§AR-009-surfaces.2);

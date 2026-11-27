@@ -9,9 +9,10 @@ file `touch` names, if the step names one, type the keys, then wait until the
 current screen contains `until`. After every step it prints `=== <name>` and
 the screen as a person sees it, read back from the pyte grid rather than from
 the byte stream. Once the program has exited it prints `=== restored` and
-whether the program left the alternate screen it entered. It exits with the
-program's own status once the last step has made it exit, 2 when a step's
-screen never came, and 124 when the deadline came first. The dependency is in
+whether the program left the terminal as it found it: off the alternate
+screen it entered, with the cursor shown. It exits with the program's own
+status once the last step has made it exit, 2 when a step's screen never
+came, and 124 when the deadline came first. The dependency is in
 tests/requirements.txt and CI.
 """
 import codecs
@@ -122,11 +123,19 @@ except subprocess.TimeoutExpired:
 if code is None or code == 124:
     process.terminate()
     process.wait(timeout=2)
-# Whatever it wrote on the way out, then whether its last word on the
-# alternate screen was to leave it.
+# Whatever it wrote on the way out, then whether it left the terminal as it
+# found it: its last word on the alternate screen was to leave it, and the
+# cursor every frame hides is shown again.
 drain()
 entered, left = written.rfind(b"\x1b[?1049h"), written.rfind(b"\x1b[?1049l")
 print("=== restored")
-print("yes" if left > entered else "no" if entered >= 0 else "never entered")
+if entered < 0:
+    print("never entered")
+elif left < entered:
+    print("no: still on the alternate screen")
+elif screen.cursor.hidden:
+    print("no: the cursor is hidden")
+else:
+    print("yes")
 os.close(master)
 sys.exit(status or code)

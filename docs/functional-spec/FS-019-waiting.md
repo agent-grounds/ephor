@@ -265,37 +265,43 @@ setting says.
 
 `ephor tui` enters the terminal and draws its first frame before it opens the
 session its screens read: the registry, every cached feed, where each
-checked-out branch stands, and the work handed over. On a site that watches
-many projects that reading takes seconds, and much longer when the disk has
-not read those files lately, and a terminal left blank for that long cannot be
-told from a program that hung — the failure [§FS-001-forge-interface.7](FS-001-forge-interface.md#7-a-fetch-runs-beneath-the-reading-never-in-front-of-it) names
-for a fetch, arriving before there is a screen to keep live. So until the
-session has loaded, the screen shows one line under its header naming what it
-is reading now, in ephor's words and with a count wherever it has one:
+checked-out branch stands, what each project can do, and the work handed over.
+On a site that watches many projects that reading takes seconds, and much
+longer when the disk has not read those files lately, and a terminal left
+blank for that long cannot be told from a program that hung — the failure
+[§FS-001-forge-interface.7](FS-001-forge-interface.md#7-a-fetch-runs-beneath-the-reading-never-in-front-of-it) names for a fetch, arriving before there is a screen
+to keep live. So until the session has loaded, the screen shows one line under
+its header naming what it is reading now, in ephor's words and with a count
+wherever it has one:
 
+- `Starting…`, before the first of these has begun
 - `Reading the registry…`
 - `Reading the cached feeds of 15 projects…`
 - `Reading the branches of 29 checkouts — 12 done…`, the count rising as each
   checkout is measured
+- `Reading what 15 projects can do…`
 - `Reading the work handed over…`, `Reading the jobs ephor started…` and
   `Reading the work roots…`
 
-and then the Waiting screen's own `Reading what waits on you…`
-([§FS-019-waiting.2](FS-019-waiting.md#2-an-empty-section-is-one-line)). A step too quick to be drawn is not waited for. Nothing a
-reading brings is drawn before that reading has landed: no section, no count
-of matters, and no `No cached data` message.
+A line wider than the screen goes on to the next line rather than being cut,
+so the count, the one part that moves, is never the part lost. A step too
+quick to be drawn is not waited for. Nothing a reading brings is drawn before
+that reading has landed: no section, no count of matters, and no `No cached
+data` message. Once the session has loaded the start screen opens, and the
+Waiting screen goes on to say its own `Reading what waits on you…` while it
+walks the work roots ([§FS-019-waiting.2](FS-019-waiting.md#2-an-empty-section-is-one-line)).
 
-`q` and `ctrl-c` quit while it reads, and leave the terminal as they found
-it. No other key does anything yet, because nothing is on the screen to act
-on.
+While the session loads, `q` and `ctrl-c` quit. Either leaves the terminal as
+it found it, off the screen ephor drew on and with its cursor shown, and ends
+ephor with success, as `q` does on every screen. No other key does anything
+yet, because nothing is on the screen to act on.
 
-Saying what it reads changes nothing about the reading: the same files and the
-same measurements, in the same order, that a command opening the same session
-reads ([§REQ-002-parity.2](../requirements/REQ-002-parity.md#2-parity-runs-both-ways)). The configuration is read first, before the terminal
-is entered, so a setting it refuses is said on the plain terminal like every
+Saying what it reads changes nothing about the reading: the session it opens
+is the one `ephor waiting` opens, the same files and the same measurements in
+the same order ([§FS-019-waiting.6](FS-019-waiting.md#6-ephor-waiting-is-the-same-reading)). The configuration is read first, before the terminal is
+entered, so a setting it refuses is said on the plain terminal like every
 other command's. A load that fails leaves the terminal as it found it, then
-says why in the sentence and with the exit code a command opening the same
-session would.
+says why in the sentence and with the exit code `ephor waiting` would.
 
 ## 6. `ephor waiting` is the same reading
 
