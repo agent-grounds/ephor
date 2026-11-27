@@ -29,8 +29,11 @@ same reading, so the screen and the command cannot describe one fact two ways
 
 The order is the order of what costs the reader most to leave: a gate holds
 work nobody else will move ([§FS-005-dispatch.9](FS-005-dispatch.md#9-work-that-stops-for-a-person-says-so-where-the-person-is-looking)), a new matter is work nobody
-has started, and a run is work going on without them. Each section is headed
-by its name and its count.
+has started, and a run is work going on without them. A paused run is in the
+last place too: what it waits on from the reader is already a row of the
+first, and what else it waits on is the world's to answer
+([§FS-019-waiting.1.3.1](FS-019-waiting.md#131-a-run-with-nothing-it-can-do-says-it-is-paused-what-it-waits-on-and-when-it-next-looks)). Each section is headed by its name and its count;
+Running names its paused runs beside it, with their count.
 
 ### 1.1 Waiting on you: every gate, and every poll on the reader
 
@@ -69,8 +72,9 @@ reader:
 
 A poll that names anyone or anything else, such as an author who is somebody
 else, the forge, or a release tag, waits on the world rather than on the
-reader. It stays where it already is: on the matter's own row and on the
-board. A poll row says `waiting on <declared person>` and `not yours to move
+reader. It is not a row here. It stays where it already is: on the matter's
+own row and on the board, and, where the run it belongs to is paused, in what
+that run's row under Running says it waits on ([§FS-019-waiting.1.3.1](FS-019-waiting.md#131-a-run-with-nothing-it-can-do-says-it-is-paused-what-it-waits-on-and-when-it-next-looks)). A poll row says `waiting on <declared person>` and `not yours to move
 here`. The poll moves itself the moment its answer lands, so the row offers no
 destination and no transition.
 
@@ -170,69 +174,100 @@ start that has not started yet, and why
 
 #### 1.3.1 A run with nothing it can do says it is paused, what it waits on and when it next looks
 
-A run whose remaining work is all parked keeps its lock and its process for as
-long as the wait lasts: a gate on the reader, a poll on a release tag asked
-again every half hour. Read as running, or as between turns, it tells the
-reader that work is going on without them, when it is waiting on them or on the
-world ([§GOAL-002-glance](../goals.md#goal-002-glance-one-glance-answers-what-needs-me-now)). So such a run is called **paused**. The word
-is taken from the runtime's facts alone, once, below the screen, the board and
-`ephor waiting`, so that all three say it of the same runs
-([§REQ-002-parity.2](../requirements/REQ-002-parity.md#2-parity-runs-both-ways)). A live run is paused when all four hold:
+A run with nothing left it can do until a person or the world answers keeps
+its lock and its process for as long as the wait lasts: a gate on the reader,
+a poll on a release tag asked again every half hour. Read as running, or as
+between turns, it tells the reader that work is going on without them, when it
+is waiting on them or on the world ([§GOAL-002-glance](../goals.md#goal-002-glance-one-glance-answers-what-needs-me-now)). So such a run is
+called **paused**. The word is taken from the runtime's facts alone, once,
+below the screen, the board and `ephor waiting`, so that all three say it of
+the same runs ([§REQ-002-parity.2](../requirements/REQ-002-parity.md#2-parity-runs-both-ways)). A live run is paused when all four hold:
 
 1. its lock is held: it is live, exactly as the board reads it
    ([§FS-005-dispatch.15](FS-005-dispatch.md#15-every-operation-is-visible-in-one-place));
-2. it holds no ticket, as its own stream or journal says
-   ([§FS-005-dispatch.15.2](FS-005-dispatch.md#152-what-a-run-is-doing-is-read-from-the-runs-own-stream));
+2. it holds no agent slot: its root is free under [§FS-005-dispatch.24.4](FS-005-dispatch.md#244-a-live-root-holds-an-agent-slot-while-something-in-it-runs-or-is-about-to), the same verdict the
+   slot count takes. No open ticket is witnessed held by the run, as its own
+   stream or journal says ([§FS-005-dispatch.15.2](FS-005-dispatch.md#152-what-a-run-is-doing-is-read-from-the-runs-own-stream)); no open ticket is on a poll of one
+   minute or less, or on one whose interval cannot be read, which that rule
+   calls about to run; and every plan in the root and its machine could be
+   read;
 3. no task of its root is ready: no open ticket is on a poll whose recorded
    next attempt has come, and the bound runner's own ready set for the root
    is empty. That set is the runtime's rule, with prerequisites, required
    inputs, poll deadlines and supervision in it, and it is asked of the runner
-   rather than worked out again here, so that a ticket held back by the ticket
-   before it is read as held back and not as parked;
-4. at least one open ticket of the root is **parked**: in a state its machine
-   calls gating, or in a poll state whose next attempt the runtime recorded
+   rather than worked out again here;
+4. at least one open ticket of the root is **waiting**, in the sense the slot
+   rule opens with: at a gate, in a state its machine calls gating, or between
+   a poll's attempts, in a poll state whose next attempt the runtime recorded
    and which is still ahead.
 
-No state name is guessed, and no length of silence counts: the quiet badge
-stays a badge ([§FS-005-dispatch.15](FS-005-dispatch.md#15-every-operation-is-visible-in-one-place)). Where any of the four fails, the row
-reads as it did. A ready task, or a poll whose next attempt has come, is a run
-about to take a turn, and it says `between turns`. A runner that cannot be
-asked for its ready set, or gives an answer that does not read, is not a
-runner that said nothing is ready, and those rows say `between turns` too,
-because paused is a positive finding, never the absence of one. A poll with no
-recorded next attempt is not known to be waiting, so it is not parked, and
-whether it is about to run is the ready set's to say.
+The fourth asks for one waiting ticket, not for every open ticket to wait.
+The steps a workflow has not reached yet are held back by the step before
+them, and the ticket that supervises them sits in a state of its own; the
+ready set is what says that none of those can move, so they neither stop a
+run from being paused nor are named as what it waits on.
 
-The row says `paused`, then each parked ticket, the gates first. A gate is
+Every paused run is therefore free under [§FS-005-dispatch.24.4](FS-005-dispatch.md#244-a-live-root-holds-an-agent-slot-while-something-in-it-runs-or-is-about-to), parked or polling as that
+rule tells them apart, so the slot count and this row never disagree about
+whether a run is about to work: the one-minute line is that rule's, and it is
+not drawn a second time here. The converse does not hold. The slot rule does
+not ask the runner what is ready, so a free root whose runner names a ready
+task is a run about to take it up, and it reads between turns.
+
+No state name is guessed, and no length of silence counts: the quiet badge
+stays a badge ([§FS-005-dispatch.15](FS-005-dispatch.md#15-every-operation-is-visible-in-one-place)). Where any of the four fails, the row reads as it did. A
+ready task, or a poll whose next attempt has come, is a run about to take a
+turn, and it says `between turns`. A runner that cannot be asked for its ready
+set, or gives an answer that does not read, is not a runner that said nothing
+is ready, and those rows say `between turns` too, because paused is a positive
+finding, never the absence of one. A poll with no recorded next attempt is not
+known to be waiting, so it is not counted as waiting, and whether it is about
+to run is the ready set's to say.
+
+A reading is drawn some time after it is taken: the runner's answer takes a
+moment, a command may take a minute to read everything else, and the screen
+redraws a reading until something on disk changes. A next look that comes in
+between is a poll whose next attempt has come, so the run is measured again
+once its runner has answered, and a row drawn after its next look has come
+reads `between turns` and is counted running, as a fresh reading would read it
+until the runtime records the attempt after. No row says a next look that has
+passed.
+
+The row says `paused`, then each waiting ticket, the gates first. A gate is
 `waiting on you (<task>)`. A poll that declares whose answer it awaits is
 `waiting on <who> (<task>)`, in the machine's own words, and a poll that
 declares nobody is `polling in <state> (<task>)`. `<task>` is the ticket's own
 name, the last part of its id. Then comes `next look` and the earliest next
-attempt among the polls: `in 4m` under an hour, the local clock time `23:13`
-later the same day, and the date with it, `Nov 28 09:13`, on another day. A run
-parked only on gates has no next look, because nothing but a person moves it.
+attempt among the polls: `in 45s` under a minute, `in 4m` under an hour, the
+local clock time `23:13` later the same day, and the date with it,
+`Nov 28 09:13`, on another day. A run waiting only on gates has no next look,
+because nothing but a person moves it. The row is marked `⏸` where a running
+row is marked `▶`, and the rest of it is a running row's: the age, the
+project, the matter, the entry and the branch.
 
 ```text
-‖ 2h    grund      Read Markdown without v1_* definitions   paused · waiting on a release tag (ship) · next look 23:13
-‖ 6h    grund      Spell the lock in one place   paused · waiting on prerequisite tickets (dependencies) · next look in 4m
-‖ 3d    rhei       Count visits per state   paused · waiting on you (specify)
+⏸ 2h    grund      Read Markdown without v1_* definitions   implement  fix/issue-1384   paused · waiting on a release tag (ship) · next look 23:13
+⏸ 6h    grund      Spell the lock in one place   implement  fix/issue-1460   paused · waiting on prerequisite tickets (dependencies) · next look in 4m
+⏸ 3d    rhei       Count visits per state   implement  fix/issue-760   paused · waiting on you (specify)
 ```
 
 `ephor waiting` prints the same sentence under the row, where a run between
 turns prints `between turns`.
 
 Paused rows stay in Running, after the runs that are taking turns, and the
-section's heading counts them apart: `RUNNING · 3 · 3 paused` on the screen,
-`Running (3 · 3 paused)` from the command. A paused run is still a live run.
-It holds its root's lock and its process, `Enter` attaches to it, and `e`
-reads its plan, exactly as on any other running row ([§FS-019-waiting.4](FS-019-waiting.md#4-keys)).
-A section of its own would split one list of live runs in two and add a fourth
-place to the screen's order, which is ordered by what costs the reader most to
-leave ([§FS-019-waiting.1](FS-019-waiting.md#1-three-sections-in-this-order)). A paused run costs the reader nothing
-of its own: what it asks of them, a gate or a poll on them, is already a row
-in Waiting on you, and what else it waits on is the world's to answer. So the
-row changes what it says, and nothing about where it stands or what its keys
-do.
+section's heading names both, each with its count, the two adding up to the
+section's rows: `RUNNING · 3 · PAUSED · 3` on the screen, `Running (3) ·
+Paused (3)` from the command, and `RUNNING · 0 · PAUSED · 6` when every live
+run is paused. With no paused run the heading is `RUNNING · 6`, as before. A
+paused run is still a live run. It holds its root's lock and its process,
+`Enter` attaches to it, and `e` reads its plan, exactly as on any other running
+row ([§FS-019-waiting.4](FS-019-waiting.md#4-keys)). A section of its own would split one list of live runs
+in two and add a fourth place to the screen's order, which is ordered by what
+costs the reader most to leave ([§FS-019-waiting.1](FS-019-waiting.md#1-three-sections-in-this-order)). A paused run costs the
+reader nothing of its own: what it asks of them, a gate or a poll on them, is
+already a row in Waiting on you, and what else it waits on is the world's to
+answer. So the row changes what it says, and nothing about where it stands or
+what its keys do.
 
 ## 2. An empty section is one line
 
@@ -393,7 +428,8 @@ line, in the screen's order. `ephor waiting --json` prints the published
   `says`, its `waits`, and `next_look_at`, the earliest next attempt, where a
   poll is among them. Each wait has its `ticket`, `task`, `state` and `kind`
   (`gate` or `poll`), and on a poll the `waiting_on` it declares and its
-  `next_attempt_at`. A run taking turns carries no `paused`;
+  `next_attempt_at`. A run taking turns carries no `paused`, and neither does
+  one whose next look came before the reading was printed;
 - `queued`: the work processing laid that waits for a slot
   ([§FS-019-waiting.7.6](FS-019-waiting.md#76-running-names-what-waits-for-a-slot));
 - `adopt`: the sentence naming the recipe a repeated confirmation would make

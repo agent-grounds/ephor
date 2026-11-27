@@ -9,9 +9,10 @@
 //! with the header counting it apart (§FS-019-waiting.3), and `--json` carries
 //! the waits whole, held to the published `waiting` shape (§FS-019-waiting.6).
 //! The operations board says `paused` of the same run and keeps it live
-//! (§FS-005-dispatch.15). A gate beside the poll is listed first. A ready set
-//! that names a task, or one the runtime cannot give, is a run between turns
-//! again, because paused is a positive finding.
+//! (§FS-005-dispatch.15), in `ephor operations` as in its `--json`. A gate
+//! beside the poll is listed first. A ready set that names a task, or one the
+//! runtime cannot give, is a run between turns again, because paused is a
+//! positive finding.
 
 #[path = "../support.rs"]
 mod support;
@@ -186,7 +187,13 @@ fn a_live_run_with_nothing_it_can_do_says_it_is_paused_and_on_what() {
         text.starts_with("ephor — waiting   0 on you · 0 new · 0 running · 1 paused · "),
         "{text}"
     );
-    assert!(text.contains("Running (0 · 1 paused)"), "{text}");
+    assert!(text.contains("\nRunning (0) · Paused (1)\n"), "{text}");
+    let row = text
+        .lines()
+        .find(|line| line.starts_with("  ⏸ "))
+        .unwrap_or_else(|| panic!("no paused row in:\n{text}"));
+    assert!(row.contains(" · no matter"), "{row}");
+    assert!(!text.contains("  ▶ "), "{text}");
     assert!(
         text.contains("      paused · waiting on a release tag (ship) · next look in 30m\n"),
         "{text}"
@@ -207,6 +214,26 @@ fn a_live_run_with_nothing_it_can_do_says_it_is_paused_and_on_what() {
             .contains("· paused · waiting on a release tag (ship) · next look in 30m · run 3f9a2c"),
         "{board}"
     );
+    // And as a person reads the board: marked paused, the state on the row's
+    // first line, what it waits on on its second, and the way in still there.
+    let text = String::from_utf8_lossy(&run(&world, &["operations"]).stdout).into_owned();
+    let root = op["id"].as_str().expect("the root").to_string();
+    let first = format!(
+        "⏸ {} · {root}   paused\n",
+        op["project"].as_str().expect("a project")
+    );
+    assert!(text.contains(&first), "{text}");
+    assert!(
+        text.contains(&format!(
+            "    {root} · paused · waiting on a release tag (ship) · next look in 30m · run 3f9a2c"
+        )),
+        "{text}"
+    );
+    assert!(
+        text.contains("    watch it:  acme-runtime attach '3f9a2c'"),
+        "{text}"
+    );
+    assert!(!text.contains("▶ "), "{text}");
 
     // A gate beside the poll is a wait too, and the gates come first.
     plan(&world, next, true);
@@ -235,8 +262,21 @@ fn a_live_run_with_nothing_it_can_do_says_it_is_paused_and_on_what() {
     let text = String::from_utf8_lossy(&run(&world, &["waiting"]).stdout).into_owned();
     assert!(text.contains("· 1 running · "), "{text}");
     assert!(!text.contains("paused"), "{text}");
-    assert!(text.contains("Running (1)"), "{text}");
+    assert!(text.contains("\nRunning (1)\n"), "{text}");
+    assert!(text.contains("  ▶ "), "{text}");
+    assert!(!text.contains("⏸"), "{text}");
     assert!(text.contains("      between turns\n"), "{text}");
+    let text = String::from_utf8_lossy(&run(&world, &["operations"]).stdout).into_owned();
+    assert!(
+        text.contains(&format!(
+            "▶ {}",
+            board["operations"][0]["project"]
+                .as_str()
+                .expect("a project")
+        )),
+        "{text}"
+    );
+    assert!(text.contains(&format!("{root}   running\n")), "{text}");
 
     // And one the runtime cannot give is not one that said nothing is ready.
     ready(&world, None);

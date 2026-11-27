@@ -542,9 +542,9 @@ pub fn operations(args: &OperationsArgs) -> Result<ExitCode> {
         return Ok(ExitCode::SUCCESS);
     }
     for op in &board.operations {
-        // A paused run is live, and marked as waiting (§FS-005-dispatch.15).
+        // A paused run is live, and marked as paused (§FS-005-dispatch.15).
         let marker = match (op.live, op.paused.is_some()) {
-            (true, true) => "‖",
+            (true, true) => "⏸",
             (true, false) => "▶",
             (false, _) => "✋",
         };
@@ -604,7 +604,7 @@ pub fn waiting(args: &crate::cli::WaitingArgs) -> Result<ExitCode> {
     }
     let now = chrono::Utc::now();
     let age = |then| crate::feed::render::age(now, then);
-    println!("{}", view.header());
+    println!("{}", view.header_at(now));
     if view.quiet() {
         println!();
         println!("{}", view.quiet_answer());
@@ -668,8 +668,12 @@ pub fn waiting(args: &crate::cli::WaitingArgs) -> Result<ExitCode> {
         }
     }
     println!();
-    // The paused runs counted apart (§FS-019-waiting.1.3.1).
-    println!("Running ({})", view.running_tally());
+    // The section names the paused runs beside the running ones, each with
+    // its count (§FS-019-waiting.1.3.1).
+    match view.running_counts(now) {
+        (running, 0) => println!("Running ({running})"),
+        (running, paused) => println!("Running ({running}) · Paused ({paused})"),
+    }
     match refused {
         Some(refusal) => println!("  {refusal}"),
         None if view.running.is_empty() => println!("  nothing"),
@@ -685,8 +689,8 @@ pub fn waiting(args: &crate::cli::WaitingArgs) -> Result<ExitCode> {
                     .map(age)
                     .map(|age| format!("   {age}"))
                     .unwrap_or_default();
-                let marker = match row.paused {
-                    Some(_) => "‖",
+                let marker = match row.paused_at(now) {
+                    Some(_) => "⏸",
                     None => "▶",
                 };
                 println!("  {marker} {} · {about}{since}", row.project);
@@ -703,7 +707,7 @@ pub fn waiting(args: &crate::cli::WaitingArgs) -> Result<ExitCode> {
                 }
                 // A run that holds nothing is paused, with what it waits on,
                 // or between turns (§FS-019-waiting.1.3.1).
-                match &row.paused {
+                match row.paused_at(now) {
                     Some(paused) => println!("      {}", paused.says_at(now)),
                     None if row.tickets.is_empty() => println!("      between turns"),
                     None => {}

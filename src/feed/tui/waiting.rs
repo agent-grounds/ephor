@@ -487,8 +487,13 @@ impl WaitingScreen {
         }
         lines.push(Line::from(""));
 
-        // The paused runs counted apart (§FS-019-waiting.1.3.1).
-        section(&mut lines, "RUNNING", view.running_tally(), "enter attach");
+        // The section names the paused runs beside the running ones, each with
+        // its count, as of this frame (§FS-019-waiting.1.3.1).
+        let tally = match view.running_counts(now) {
+            (running, 0) => running.to_string(),
+            (running, paused) => format!("{running} · PAUSED · {paused}"),
+        };
+        section(&mut lines, "RUNNING", tally, "enter attach");
         match refused {
             Some(refusal) => lines.push(Line::from(Span::styled(format!("    {refusal}"), dim))),
             None if view.running.is_empty() => {
@@ -525,13 +530,14 @@ impl WaitingScreen {
             // reading as a run doing nothing (§FS-019-waiting.1.3) — unless it
             // is paused, when it says what it waits on and when it next looks,
             // as of this frame (§FS-019-waiting.1.3.1).
-            let holding = match (&row.paused, holding.is_empty()) {
+            let paused = row.paused_at(now);
+            let holding = match (paused, holding.is_empty()) {
                 (Some(paused), _) => paused.says_at(now),
                 (None, true) => "between turns".to_string(),
                 (None, false) => holding.join(", "),
             };
-            let (marker, marked) = match row.paused {
-                Some(_) => ("‖ ", Style::default().fg(Color::Yellow)),
+            let (marker, marked) = match paused {
+                Some(_) => ("⏸ ", Style::default().fg(Color::Yellow)),
                 None => ("▶ ", Style::default().fg(Color::Green)),
             };
             let work: Vec<&str> = [&row.entry, &row.branch]

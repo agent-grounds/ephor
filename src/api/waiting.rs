@@ -17,7 +17,7 @@ use chrono::{DateTime, TimeZone, Utc};
 use crate::feed::cache;
 use crate::feed::model::{Item, ItemRole};
 use crate::monitors::counts::{self, Counts};
-use crate::work::runtime::watch::{Doing, ParkedKind, Paused, RootPlans};
+use crate::work::runtime::watch::{Doing, Paused, RootPlans, WaitKind};
 
 use super::read::BoardReading;
 use super::views;
@@ -195,34 +195,34 @@ impl views::Waiting {
     /// 2m ago`: the live runs taking turns and the paused ones counted apart,
     /// and no `· 0 paused` (§FS-019-waiting.3).
     pub fn header(&self) -> String {
-        let paused = match self.paused() {
+        self.header_at(Utc::now())
+    }
+
+    /// [`views::Waiting::header`] as of `now`, the clock its rows are drawn
+    /// against.
+    pub fn header_at(&self, now: DateTime<Utc>) -> String {
+        let (running, paused) = self.running_counts(now);
+        let paused = match paused {
             0 => String::new(),
             paused => format!(" · {paused} paused"),
         };
         format!(
-            "ephor — waiting   {} on you · {} new · {} running{paused} · {}",
+            "ephor — waiting   {} on you · {} new · {running} running{paused} · {}",
             self.on_you.len(),
             self.new.len(),
-            self.running.len() - self.paused(),
-            self.refreshed(Utc::now())
+            self.refreshed(now)
         )
     }
 
-    /// How many of the live runs are paused (§FS-019-waiting.1.3.1).
-    pub fn paused(&self) -> usize {
-        self.running
+    /// The live runs taking turns and the paused ones as of `now`, which add
+    /// up to the Running section's rows (§FS-019-waiting.1.3.1).
+    pub fn running_counts(&self, now: DateTime<Utc>) -> (usize, usize) {
+        let paused = self
+            .running
             .iter()
-            .filter(|row| row.paused.is_some())
-            .count()
-    }
-
-    /// The Running section's count: `6`, or `3 · 3 paused` where some of the
-    /// live runs are paused (§FS-019-waiting.1.3.1).
-    pub fn running_tally(&self) -> String {
-        match self.paused() {
-            0 => self.running.len().to_string(),
-            paused => format!("{} · {paused} paused", self.running.len() - paused),
-        }
+            .filter(|row| row.paused_at(now).is_some())
+            .count();
+        (self.running.len() - paused, paused)
     }
 
     /// `overview: 143 matters · 12 changed since you looked`, then the
@@ -318,10 +318,22 @@ impl views::Waiting {
     }
 }
 
+impl views::RunningRoot {
+    /// What the run waits on as of `now`: none once its next look has come,
+    /// because the run is then about to take a turn (§FS-019-waiting.1.3.1).
+    pub fn paused_at(&self, now: DateTime<Utc>) -> Option<&views::Paused> {
+        self.paused.as_ref().filter(|paused| paused.holds_at(now))
+    }
+}
+
 impl views::Paused {
     /// The reading of one paused run as of `now`, with its sentence said
-    /// once for a program (§FS-019-waiting.1.3.1).
-    pub fn read(paused: &Paused, now: DateTime<Utc>) -> views::Paused {
+    /// once for a program; none where its next look has come since the run
+    /// was read (§FS-019-waiting.1.3.1).
+    pub fn read(paused: &Paused, now: DateTime<Utc>) -> Option<views::Paused> {
+        if !paused.holds_at(now) {
+            return None;
+        }
         let waits = paused
             .waits
             .iter()
@@ -336,8 +348,8 @@ impl views::Paused {
                     .to_string(),
                 state: wait.state.clone(),
                 kind: match wait.kind {
-                    ParkedKind::Gate => "gate",
-                    ParkedKind::Poll => "poll",
+                    WaitKind::Gate => "gate",
+                    WaitKind::Poll => "poll",
                 },
                 waiting_on: wait.waiting_on.clone(),
                 next_attempt_at: wait.next_attempt,
@@ -349,7 +361,13 @@ impl views::Paused {
             next_look_at: paused.next_look(),
         };
         view.says = view.says_at(now);
-        view
+        Some(view)
+    }
+
+    /// Whether the run is still paused at `now`: until its next look comes,
+    /// and for good where it waits on gates alone (§FS-019-waiting.1.3.1).
+    pub fn holds_at(&self, now: DateTime<Utc>) -> bool {
+        self.next_look_at.is_none_or(|at| at > now)
     }
 
     /// `paused · waiting on a release tag (ship) · next look 23:13`: the row
@@ -363,8 +381,11 @@ impl views::Paused {
     /// board already says as the row's state (§FS-005-dispatch.15).
     pub fn waits_at(&self, now: DateTime<Utc>) -> String {
         let mut said: Vec<String> = self.waits.iter().map(views::PausedWait::says).collect();
-        if let Some(at) = self.next_look_at {
-            said.push(format!("next look {}", next_look(now, at, &chrono::Local)));
+        if let Some(look) = self
+            .next_look_at
+            .and_then(|at| next_look(now, at, &chrono::Local))
+        {
+            said.push(format!("next look {look}"));
         }
         said.join(" · ")
     }
@@ -384,29 +405,32 @@ impl views::PausedWait {
 }
 
 /// When a paused run next looks, as a clock on the wall reads it in `zone`:
-/// `in 4m` under an hour, `23:13` later the same day, and `Nov 28 09:13` on
-/// another (§FS-019-waiting.1.3.1). `now` where the time has come since the
-/// reading was taken.
+/// `in 45s` under a minute, `in 4m` under an hour, `23:13` later the same
+/// day, and `Nov 28 09:13` on another (§FS-019-waiting.1.3.1). None where the
+/// time is not ahead: a next look that has come is no next look, and the run
+/// it belongs to is no longer paused.
 pub(crate) fn next_look<Zone: TimeZone>(
     now: DateTime<Utc>,
     at: DateTime<Utc>,
     zone: &Zone,
-) -> String
+) -> Option<String>
 where
     Zone::Offset: std::fmt::Display,
 {
-    let ahead = (at - now).num_seconds();
-    if ahead <= 0 {
-        return "now".to_string();
-    }
+    // Counted up to the whole second, so a look still ahead never reads as
+    // none: the runtime records whole seconds, and the clock does not.
+    let ahead = match (at - now).num_milliseconds() {
+        ahead if ahead <= 0 => return None,
+        ahead => (ahead + 999) / 1000,
+    };
     if ahead < 60 * 60 {
-        return format!("in {}", crate::feed::render::span(ahead));
+        return Some(format!("in {}", crate::feed::render::span(ahead)));
     }
     let (today, then) = (now.with_timezone(zone), at.with_timezone(zone));
-    match today.date_naive() == then.date_naive() {
+    Some(match today.date_naive() == then.date_naive() {
         true => then.format("%H:%M").to_string(),
         false => then.format("%b %-d %H:%M").to_string(),
-    }
+    })
 }
 
 impl views::Proposal {
@@ -663,7 +687,7 @@ pub(crate) fn reading(
                 .op
                 .paused
                 .as_ref()
-                .map(|paused| views::Paused::read(paused, now)),
+                .and_then(|paused| views::Paused::read(paused, now)),
         })
         .collect();
     // The runs taking turns first, the paused after them, each in the walk's

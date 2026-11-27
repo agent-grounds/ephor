@@ -2060,18 +2060,22 @@ world still agrees: an assignment no run ever released stops counting the
 moment the ticket's own state says it moved on, and is never read as
 running under a run that came later.
 
-**A live run with nothing it can do is paused, and says so.** A run whose
-every remaining ticket is parked at a gate or on a poll whose next attempt is
-still ahead, and whose runtime says nothing in the root is ready, keeps its
-lock and does no work until then. Its row says **paused** where a run at work
-says *running*, and goes on with what the run waits on and when it next looks,
-in the words the Waiting screen's row uses, decided by the same four facts
+**A live run with nothing it can do is paused, and says so.** A run that holds
+no slot under [§FS-005-dispatch.24.4](FS-005-dispatch.md#244-a-live-root-holds-an-agent-slot-while-something-in-it-runs-or-is-about-to), whose runtime says nothing in the root
+is ready, and with at least one ticket waiting at a gate or on a poll whose
+next attempt is still ahead, keeps its lock and does no work until a person or
+that attempt moves it. Its row says **paused** where a run at work says
+*running*, is marked `⏸` where a running row is marked `▶`, and goes on with
+what the run waits on and when it next looks, in the words the Waiting
+screen's row uses, decided by the same four facts
 ([§FS-019-waiting.1.3.1](FS-019-waiting.md#131-a-run-with-nothing-it-can-do-says-it-is-paused-what-it-waits-on-and-when-it-next-looks)). It is still live: the lock is
 held, `a` attaches, the stop command is shown, and the tickets under it keep
-their own flavours. `ephor operations --json` carries the state `paused`, the
-same `paused` object the Waiting view carries, and `live` stays true, because
-paused is a reading of what a live run is doing and never a liveness of its
-own.
+their own flavours. A ticket on a poll under it stays **queued**, as every
+open ticket of a live root that is neither held nor at a gate is: the live run
+reaches it at the next look the root's row names. `ephor operations --json`
+carries the state `paused`, the same `paused` object the Waiting view carries,
+and `live` stays true, because paused is a reading of what a live run is doing
+and never a liveness of its own.
 
 **Watching only, and deliberately so.** The board starts nothing, stops
 nothing, and intervenes in nothing — and it stays that way now that something
@@ -3742,6 +3746,13 @@ A poll whose interval cannot be read holds its slot for the same reason. And
 the ceilings gate starts, not what is under way already: free roots resuming
 together — an author answering, a build finishing — can carry active work above
 `max_active` until one finishes, capacity here being live work, not attempts.
+
+**A paused run is free.** Every run the Waiting screen and the board call
+paused is free here, because that reading takes this verdict as one of its
+facts, so the two never disagree about whether a run is about to work
+([§FS-019-waiting.1.3.1](FS-019-waiting.md#131-a-run-with-nothing-it-can-do-says-it-is-paused-what-it-waits-on-and-when-it-next-looks)). The converse does not hold: this verdict does
+not ask the runner what is ready, so a free root whose runner names a ready
+task is not paused, and reads between turns.
 
 ### 24.5 Work processed from Waiting waits for its slot
 

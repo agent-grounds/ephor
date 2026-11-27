@@ -69,7 +69,16 @@ whether a ticket sits in it. Where the binary itself is
 present, its own plan listing (`rhei list --json`) may sharpen state and
 assignee read-back — the binding's own stdout, honored by this one binding
 the way custom-status's is ([§AR-002-summons.3](AR-002-summons.md#3-the-answer)) — while the direct plan read
-of [§AR-007-runtime.3](AR-007-runtime.md#3-degrade) stays the floor and is never removed ([§FS-005-dispatch.15](../functional-spec/FS-005-dispatch.md#15-every-operation-is-visible-in-one-place)). Also
+of [§AR-007-runtime.3](AR-007-runtime.md#3-degrade) stays the floor and is never removed ([§FS-005-dispatch.15](../functional-spec/FS-005-dispatch.md#15-every-operation-is-visible-in-one-place)). The same
+listing narrowed to the runner's ready set for one root (`rhei list <root>
+--ready --json`, the verb `work.list.ready`) is asked of a live root only where
+the rest of a paused reading already holds, and read only as empty or not: a
+set that names a task, an answer that does not read and a runner that cannot be
+asked all leave the run between turns. And the runtime's record of when it next
+tries a task's poll, `pollNextAttemptAt.<state>` in epoch seconds under the
+task's own id in the plan's frontmatter, is read here and nowhere else, beside
+the other bookkeeping names the runtime keeps there; above this module it is a
+time or nothing ([§FS-019-waiting.1.3.1](../functional-spec/FS-019-waiting.md#131-a-run-with-nothing-it-can-do-says-it-is-paused-what-it-waits-on-and-when-it-next-looks)). Also
 this module's: the recognition of a plan on disk. The plan-file suffix and
 the directory-workspace shape are the binding's grammar, so a surface that
 enumerates a work root's plans ([§FS-005-dispatch.15](../functional-spec/FS-005-dispatch.md#15-every-operation-is-visible-in-one-place)) asks this module what

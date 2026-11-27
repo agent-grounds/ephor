@@ -791,9 +791,10 @@ pub struct PersonWait {
     pub plan: PathBuf,
 }
 
-/// How a parked ticket waits (§FS-019-waiting.1.3.1).
+/// How a ticket of a paused run waits: at a gate, or between a poll's
+/// attempts (§FS-019-waiting.1.3.1).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ParkedKind {
+pub enum WaitKind {
     /// In a state its machine calls gating: nothing but a person moves it.
     Gate,
     /// In a poll state whose next attempt is recorded and still ahead.
@@ -802,11 +803,11 @@ pub enum ParkedKind {
 
 /// One ticket a paused run waits on (§FS-019-waiting.1.3.1).
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Parked {
+pub struct Wait {
     pub plan_id: String,
     pub ticket: String,
     pub state: String,
-    pub kind: ParkedKind,
+    pub kind: WaitKind,
     /// Whose answer a poll declares it awaits, in the machine's own words;
     /// None on a gate and on a poll that declares nobody.
     pub waiting_on: Option<String>,
@@ -815,11 +816,11 @@ pub struct Parked {
 }
 
 /// A live run with nothing it can do until a person or the world answers
-/// (§FS-019-waiting.1.3.1): it holds no ticket, its runner's ready set for
-/// the root is empty, and these tickets are parked, the gates first.
+/// (§FS-019-waiting.1.3.1): free under §FS-005-dispatch.24.4, nothing in its
+/// root ready, and these tickets waiting, the gates first.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Paused {
-    pub waits: Vec<Parked>,
+    pub waits: Vec<Wait>,
 }
 
 impl Paused {
@@ -827,6 +828,14 @@ impl Paused {
     /// and None where it waits on gates alone.
     pub fn next_look(&self) -> Option<DateTime<Utc>> {
         self.waits.iter().filter_map(|wait| wait.next_attempt).min()
+    }
+
+    /// Whether the run is still paused at `now`: a next look that has come
+    /// since the reading was taken is a run about to take a turn, so a
+    /// reading drawn later never says a next look that has passed
+    /// (§FS-019-waiting.1.3.1).
+    pub fn holds_at(&self, now: DateTime<Utc>) -> bool {
+        self.next_look().is_none_or(|at| at > now)
     }
 }
 
@@ -873,7 +882,8 @@ pub struct Operation {
     pub plans: Vec<PathBuf>,
     /// What the live run waits on, where it is paused; None on a run taking
     /// turns, on a root no run holds, and wherever a fact paused needs is
-    /// missing (§FS-019-waiting.1.3.1).
+    /// missing (§FS-019-waiting.1.3.1). Read it through
+    /// [`Operation::paused_at`], which drops it once its next look has come.
     pub paused: Option<Paused>,
 }
 
@@ -905,7 +915,13 @@ impl Operation {
     /// Said here rather than on a screen, so the board and `ephor operations`
     /// call one situation by one name (§AR-009-surfaces.1).
     pub fn state(&self) -> &'static str {
-        if self.live && self.paused.is_some() {
+        self.state_at(Utc::now())
+    }
+
+    /// [`Operation::state`] as of `now`, for a surface that draws one reading
+    /// against one clock (§FS-019-waiting.1.3.1).
+    pub fn state_at(&self, now: DateTime<Utc>) -> &'static str {
+        if self.live && self.paused_at(now).is_some() {
             // Live all the same: paused says what the run is doing, never
             // whether it is there (§FS-005-dispatch.15).
             "paused"
@@ -932,7 +948,12 @@ impl Operation {
     /// could not read, how long it has been quiet, whether it serves a
     /// dashboard.
     pub fn badges(&self) -> Vec<String> {
-        let mut badges = vec![self.state().to_string()];
+        self.badges_at(Utc::now())
+    }
+
+    /// [`Operation::badges`] as of `now`.
+    pub fn badges_at(&self, now: DateTime<Utc>) -> Vec<String> {
+        let mut badges = vec![self.state_at(now).to_string()];
         // An id is how the reader and the runtime agree on which run they
         // mean, so the row says it (§FS-005-dispatch.20).
         if let Some(id) = self.run_id() {
@@ -951,6 +972,13 @@ impl Operation {
             badges.push("dashboard".to_string());
         }
         badges
+    }
+
+    /// What the live run waits on as of `now`: none once its next look has
+    /// come, because the run is then about to take a turn
+    /// (§FS-019-waiting.1.3.1).
+    pub fn paused_at(&self, now: DateTime<Utc>) -> Option<&Paused> {
+        self.paused.as_ref().filter(|paused| paused.holds_at(now))
     }
 
     /// What the live run on this root is called, where it named itself.
@@ -1035,7 +1063,8 @@ pub fn board(config: &WorkConfig, roots: &[RootPlans]) -> Board {
     }
     let mut operations = Vec::new();
     let mut asks = Vec::new();
-    // What "still ahead" is measured against, once per board.
+    // What "still ahead" is measured against while the plans are walked; a
+    // pause is measured again once the runner has answered for its root.
     let now = Utc::now();
     for group in roots {
         let is_live = live(config, &group.root);
@@ -1118,11 +1147,11 @@ pub fn board(config: &WorkConfig, roots: &[RootPlans]) -> Board {
         let mut cancelled = 0;
         let mut known: BTreeSet<(String, String)> = BTreeSet::new();
         // What a live run that holds nothing would be waiting on: every open
-        // ticket at a gate, or on a poll whose recorded next attempt is still
-        // ahead (§FS-019-waiting.1.3.1).
-        let mut parked: Vec<Parked> = Vec::new();
+        // ticket at a gate, or between a poll's attempts with its recorded
+        // next attempt still ahead (§FS-019-waiting.1.3.1).
+        let mut waits: Vec<Wait> = Vec::new();
         // A poll whose recorded next attempt has come is a run about to take
-        // a turn, whatever else is parked (§FS-019-waiting.1.3.1).
+        // a turn, whatever else waits (§FS-019-waiting.1.3.1).
         let mut due = false;
         for (plan_ref, title, floor_tickets, plan) in &floor {
             // Which machine answers for this plan's tasks: the one the plan's
@@ -1185,12 +1214,12 @@ pub fn board(config: &WorkConfig, roots: &[RootPlans]) -> Board {
                         plan: plan_ref.path.clone(),
                     });
                 }
-                // Parked is the machine's word on the state and the runtime's
+                // Waiting is the machine's word on the state and the runtime's
                 // own record of the poll's next attempt, never a guess from a
                 // state's name or from silence (§FS-019-waiting.1.3.1).
                 if let (true, Some(judge), Some(state)) = (is_live, judge, state.as_deref()) {
                     let wait = if judge.is_gating(state) {
-                        Some((ParkedKind::Gate, None, None))
+                        Some((WaitKind::Gate, None, None))
                     } else if judge.poll_interval(state).is_some() {
                         let recorded = plan
                             .poll_next_attempt(&plan_ref.plan_id, &ticket.id, state)
@@ -1198,13 +1227,13 @@ pub fn board(config: &WorkConfig, roots: &[RootPlans]) -> Board {
                         due |= recorded.is_some_and(|at| at <= now);
                         recorded.filter(|at| *at > now).map(|at| {
                             let who = judge.waiting_on(state).map(str::to_string);
-                            (ParkedKind::Poll, who, Some(at))
+                            (WaitKind::Poll, who, Some(at))
                         })
                     } else {
                         None
                     };
                     if let Some((kind, waiting_on, next_attempt)) = wait {
-                        parked.push(Parked {
+                        waits.push(Wait {
                             plan_id: plan_ref.plan_id.clone(),
                             ticket: ticket.id.clone(),
                             state: state.to_string(),
@@ -1313,21 +1342,28 @@ pub fn board(config: &WorkConfig, roots: &[RootPlans]) -> Board {
         // is doing (§FS-005-dispatch.9); a stable sort keeps plan order
         // inside each flavour.
         tickets.sort_by_key(|ticket| ticket.doing.rank());
-        // Paused only on all four facts, the runner's ready set last because
-        // it forks the runner: a run holding a ticket, with a poll due, or with
-        // nothing parked, is not asked (§FS-019-waiting.1.3.1).
+        // Paused only on all four facts, cheapest first: the walk's own, then
+        // the slot verdict, which reads the plans again, then the runner's
+        // ready set, which forks it. A run holding a ticket, with a poll due,
+        // or with nothing waiting is not asked either (§FS-019-waiting.1.3.1).
         let holding_one = tickets
             .iter()
             .any(|ticket| matches!(ticket.doing, Doing::Running));
-        let paused = (is_live && !holding_one && !due && !parked.is_empty())
-            .then(|| ready(config, &group.root))
-            .flatten()
+        let paused = (is_live && !holding_one && !due && !waits.is_empty())
+            // Free under the slot rule, so a paused run never holds a slot and
+            // "about to run" is decided once (§FS-005-dispatch.24.4).
+            .then(|| verdict(config, group) != Verdict::Active)
+            .filter(|free| *free)
+            .and_then(|_| ready(config, &group.root))
             .filter(Vec::is_empty)
             .map(|_| {
                 // The gates first, each kind in the walk's order.
-                parked.sort_by_key(|wait| wait.kind != ParkedKind::Gate);
-                Paused { waits: parked }
-            });
+                waits.sort_by_key(|wait| wait.kind != WaitKind::Gate);
+                Paused { waits }
+            })
+            // Measured again after the runner answered, which can take
+            // seconds: a next look that came meanwhile is due.
+            .filter(|paused| paused.holds_at(Utc::now()));
         if is_live || !tickets.is_empty() {
             // Who the run says it is, read from the descriptor beside the lock
             // and never from anything ephor remembers having started
