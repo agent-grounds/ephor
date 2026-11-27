@@ -185,6 +185,12 @@ fn q_quits_while_the_load_is_held_and_leaves_the_terminal_as_it_found_it() {
     // Let the measurements the quit abandoned go.
     fs::write(&gate, "").expect("the gate opens");
     assert_eq!(code, 0, "{screens:?}");
+    // The last frame drawn before the program left is still the loading one:
+    // the quit came while the load was held, not once the `git` let go by
+    // itself and the event loop read a `q` left waiting in the terminal.
+    let quit = screen(&screens, "quit");
+    assert!(quit.contains(HELD), "{quit}");
+    assert!(!quit.contains("overview: "), "{quit}");
     assert_eq!(screen(&screens, "restored").trim(), "yes");
 }
 

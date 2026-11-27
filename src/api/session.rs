@@ -1207,8 +1207,8 @@ impl Session {
         self.reload_feeds_saying(&super::opening::silent)
     }
 
-    /// The same reading, saying the feeds and the branch measurements as they
-    /// begin (§FS-019-waiting.5.1).
+    /// The same reading, saying the feeds, the branch measurements and what
+    /// each project can do as they begin (§FS-019-waiting.5.1).
     fn reload_feeds_saying(&mut self, say: super::opening::Progress) -> Result<()> {
         say(super::opening::Opening::Feeds {
             projects: self.projects.len(),
@@ -1231,6 +1231,9 @@ impl Session {
         }
         self.recompute_behind_saying(say);
         self.recompute_placements();
+        say(super::opening::Opening::Capabilities {
+            projects: self.projects.len(),
+        });
         self.recompute_capabilities();
         self.recompute_resurfacing();
         self.recompute_settling();

@@ -5,8 +5,10 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{mpsc, Arc, Mutex};
 
-use ratatui::backend::TestBackend;
+use ratatui::backend::{Backend, ClearType, TestBackend, WindowSize};
+use ratatui::buffer::Cell;
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
+use ratatui::layout::{Position, Size};
 use ratatui::Terminal;
 use serde_json::json;
 
@@ -23,11 +25,12 @@ fn terminal() -> Terminal<TestBackend> {
 }
 
 /// What the last frame drew, a row per line with its trailing blanks cut.
-fn rows(terminal: &Terminal<TestBackend>) -> Vec<String> {
-    let buffer = terminal.backend().buffer();
-    (0..HEIGHT)
+fn rows_of(backend: &TestBackend) -> Vec<String> {
+    let buffer = backend.buffer();
+    let area = buffer.area;
+    (0..area.height)
         .map(|y| {
-            (0..WIDTH)
+            (0..area.width)
                 .map(|x| buffer[(x, y)].symbol())
                 .collect::<String>()
                 .trim_end()
@@ -36,18 +39,106 @@ fn rows(terminal: &Terminal<TestBackend>) -> Vec<String> {
         .collect()
 }
 
-fn drawn(step: Option<Opening>) -> Vec<String> {
+fn rows(terminal: &Terminal<TestBackend>) -> Vec<String> {
+    rows_of(terminal.backend())
+}
+
+fn drawn_at(width: u16, step: Option<Opening>) -> Vec<String> {
     let mut screen = LoadingScreen::default();
     if let Some(step) = step {
         screen.say(step);
     }
-    let mut terminal = terminal();
+    let mut terminal = Terminal::new(TestBackend::new(width, HEIGHT)).unwrap();
     terminal.draw(|frame| screen.draw(frame)).unwrap();
     rows(&terminal)
 }
 
+fn drawn(step: Option<Opening>) -> Vec<String> {
+    drawn_at(WIDTH, step)
+}
+
 fn press(code: KeyCode, modifiers: KeyModifiers) -> KeyEvent {
     KeyEvent::new_with_kind(code, modifiers, KeyEventKind::Press)
+}
+
+/// What a [`Recording`] terminal was asked to do, in order.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Call {
+    Drew,
+    /// A frame drawn once the test said a panic had been printed.
+    DrewLate,
+    Hid,
+    Showed,
+    Left(Left),
+}
+
+/// A test terminal that writes down what it is asked to do, and can be made
+/// to stop answering.
+struct Recording {
+    inner: TestBackend,
+    calls: Arc<Mutex<Vec<Call>>>,
+    late: Arc<AtomicBool>,
+    broken: bool,
+}
+
+impl Recording {
+    fn new(calls: &Arc<Mutex<Vec<Call>>>) -> Self {
+        Recording {
+            inner: TestBackend::new(WIDTH, HEIGHT),
+            calls: Arc::clone(calls),
+            late: Arc::new(AtomicBool::new(false)),
+            broken: false,
+        }
+    }
+
+    fn call(&self, call: Call) {
+        self.calls.lock().unwrap().push(call);
+    }
+}
+
+impl Backend for Recording {
+    fn draw<'a, I>(&mut self, content: I) -> std::io::Result<()>
+    where
+        I: Iterator<Item = (u16, u16, &'a Cell)>,
+    {
+        if self.broken {
+            return Err(std::io::Error::other("the terminal is gone"));
+        }
+        self.call(match self.late.load(Ordering::SeqCst) {
+            true => Call::DrewLate,
+            false => Call::Drew,
+        });
+        self.inner.draw(content)
+    }
+    fn hide_cursor(&mut self) -> std::io::Result<()> {
+        self.call(Call::Hid);
+        self.inner.hide_cursor()
+    }
+    fn show_cursor(&mut self) -> std::io::Result<()> {
+        self.call(Call::Showed);
+        self.inner.show_cursor()
+    }
+    fn get_cursor_position(&mut self) -> std::io::Result<Position> {
+        self.inner.get_cursor_position()
+    }
+    fn set_cursor_position<P: Into<Position>>(&mut self, position: P) -> std::io::Result<()> {
+        self.inner.set_cursor_position(position)
+    }
+    fn clear(&mut self) -> std::io::Result<()> {
+        self.inner.clear()
+    }
+    fn clear_region(&mut self, clear_type: ClearType) -> std::io::Result<()> {
+        self.inner.clear_region(clear_type)
+    }
+    fn size(&self) -> std::io::Result<Size> {
+        self.inner.size()
+    }
+    fn window_size(&mut self) -> std::io::Result<WindowSize> {
+        self.inner.window_size()
+    }
+    fn flush(&mut self) -> std::io::Result<()> {
+        self.inner.flush()
+    }
 }
 
 /// Every step is one line in ephor's words, with the count it has, under the
@@ -80,6 +171,14 @@ fn each_step_is_one_line_in_ephors_words() {
             }),
             "Reading the branches of 1 checkout — 0 done…",
         ),
+        (
+            Some(Opening::Capabilities { projects: 15 }),
+            "Reading what 15 projects can do…",
+        ),
+        (
+            Some(Opening::Capabilities { projects: 1 }),
+            "Reading what 1 project can do…",
+        ),
         (Some(Opening::Work), "Reading the work handed over…"),
         (Some(Opening::Jobs), "Reading the jobs ephor started…"),
         (Some(Opening::Roots), "Reading the work roots…"),
@@ -96,12 +195,36 @@ fn each_step_is_one_line_in_ephors_words() {
     }
 }
 
-/// What a quit does under test, where it must not end the process: nothing.
-fn stays() {}
+/// A line wider than the screen goes on to the next line, indented as the
+/// first, so the count it ends with is still on the screen
+/// (§FS-019-waiting.5.1).
+#[test]
+fn a_line_wider_than_the_screen_goes_on_to_the_next() {
+    let rows = drawn_at(
+        40,
+        Some(Opening::Branches {
+            checkouts: 749,
+            done: 12,
+        }),
+    );
+    assert_eq!(
+        rows[1], "  Reading the branches of 749 checkouts",
+        "{rows:#?}"
+    );
+    assert_eq!(rows[2], "  — 12 done…", "{rows:#?}");
+    assert_eq!(rows[rows.len() - 1], " q quit", "{rows:#?}");
+}
 
-/// A quit where none may come.
-fn never() {
-    panic!("nothing quit");
+/// What leaving does under test, where it must not end the process: it is
+/// written down.
+fn leaves(calls: &Arc<Mutex<Vec<Call>>>) -> impl FnOnce(Left) + Send {
+    let calls = Arc::clone(calls);
+    move |left| calls.lock().unwrap().push(Call::Left(left))
+}
+
+/// What leaving does where the frame should not leave at all.
+fn never(left: Left) {
+    panic!("the frame left: {left:?}");
 }
 
 /// A load that lands is handed back whole, and a key other than a quit
@@ -123,6 +246,7 @@ fn a_load_that_lands_is_handed_back_and_other_keys_wait_for_it() {
     let mut terminal = terminal();
     let waited = wait_for(
         &mut terminal,
+        &Halt::default(),
         move |say| {
             say(Opening::Registry);
             gate.recv().unwrap();
@@ -149,6 +273,7 @@ fn the_load_runs_on_the_thread_that_waits_for_it() {
     let mut terminal = terminal();
     let waited = wait_for(
         &mut terminal,
+        &Halt::default(),
         |_| Ok(std::thread::current().id()),
         |_| Ok(None),
         never,
@@ -168,9 +293,10 @@ impl Drop for Loaded {
 }
 
 /// `q` quits while the load is still reading, on the frame that says what it
-/// reads, and what quitting does runs then rather than once the load lands.
-/// Under test quitting returns, so the load goes on to land, and what it
-/// returns is dropped (§FS-019-waiting.5.1).
+/// reads, and what quitting does runs then rather than once the load lands,
+/// with the cursor every frame hid shown first. Under test quitting returns,
+/// so the load goes on to land, and what it returns is dropped
+/// (§FS-019-waiting.5.1).
 #[test]
 fn q_quits_while_the_load_reads_and_its_result_is_dropped() {
     let (release, gate) = mpsc::channel::<()>();
@@ -181,10 +307,13 @@ fn q_quits_while_the_load_reads_and_its_result_is_dropped() {
     let read = Arc::clone(&reading);
     let quit_reading = Arc::new(AtomicBool::new(false));
     let quit = Arc::clone(&quit_reading);
-    let mut terminal = terminal();
+    let calls = Arc::new(Mutex::new(Vec::new()));
+    let left = leaves(&calls);
+    let mut terminal = Terminal::new(Recording::new(&calls)).unwrap();
     let mut after = None;
     let waited = wait_for(
         &mut terminal,
+        &Halt::default(),
         move |say| {
             say(Opening::Registry);
             say(Opening::Branches {
@@ -214,8 +343,9 @@ fn q_quits_while_the_load_reads_and_its_result_is_dropped() {
                 None => Ok(None),
             }
         },
-        move || {
+        move |how| {
             quit.store(reading.load(Ordering::SeqCst), Ordering::SeqCst);
+            left(how);
             release.send(()).unwrap();
         },
     )
@@ -226,8 +356,14 @@ fn q_quits_while_the_load_reads_and_its_result_is_dropped() {
         "the quit came while the load was reading"
     );
     assert_eq!(
-        rows(&terminal)[1],
+        rows_of(&terminal.backend().inner)[1],
         "  Reading the branches of 3 checkouts — 1 done…"
+    );
+    let calls = calls.lock().unwrap().clone();
+    assert_eq!(
+        calls[calls.len() - 2..],
+        [Call::Showed, Call::Left(Left::Quit)],
+        "the cursor is shown before the terminal is handed back: {calls:?}"
     );
     assert!(
         dropped.load(Ordering::SeqCst),
@@ -242,34 +378,54 @@ fn ctrl_c_quits_while_the_load_reads() {
     let mut terminal = terminal();
     let waited = wait_for(
         &mut terminal,
+        &Halt::default(),
         move |_| {
             gate.recv().unwrap();
             Ok(())
         },
         |_| Ok(Some(press(KeyCode::Char('c'), KeyModifiers::CONTROL))),
-        move || release.send(()).unwrap(),
+        move |left| {
+            assert_eq!(left, Left::Quit);
+            release.send(()).unwrap();
+        },
     )
     .unwrap();
     assert!(matches!(waited, Waited::Quit));
 }
 
+/// A quit that comes while the load writes waits for the write to finish
+/// before the process ends (§AR-009-surfaces.2).
+#[test]
+fn a_quit_waits_for_a_write_under_way() {
+    let writes = Mutex::new(());
+    let ended = AtomicBool::new(false);
+    std::thread::scope(|scope| {
+        let held = writes.lock().unwrap();
+        let quitting = scope.spawn(|| ending(&writes, || ended.store(true, Ordering::SeqCst)));
+        std::thread::sleep(Duration::from_millis(100));
+        assert!(!ended.load(Ordering::SeqCst), "the quit cut the write");
+        drop(held);
+        quitting.join().unwrap();
+    });
+    assert!(ended.load(Ordering::SeqCst), "the quit never came");
+}
+
 /// A load that fails is returned exactly as it failed, so the shell reports
 /// it as it did when the load ran before the terminal was entered: the same
-/// sentence, and the kind of error that picks the exit code
-/// (§FS-019-waiting.5.1).
+/// sentence, and the same kind of error, which is what picks the exit code
+/// (§FS-019-waiting.5.1). The exit code itself is E2E-088's to prove.
 #[test]
 fn a_load_that_fails_is_reported_as_it_failed() {
-    for (failed, code) in [
-        (
-            EphorError::Registry("the registry cannot be read".into()),
-            2,
-        ),
-        (EphorError::Command("Corrupt seen file".into()), 1),
-    ] {
-        let expected = failed.to_string();
+    for registry in [true, false] {
+        let said = "the registry cannot be read";
+        let failed = match registry {
+            true => EphorError::Registry(said.into()),
+            false => EphorError::Command(said.into()),
+        };
         let mut terminal = terminal();
         let waited = wait_for(
             &mut terminal,
+            &Halt::default(),
             move |say| -> Result<()> {
                 say(Opening::Registry);
                 Err(failed)
@@ -277,16 +433,75 @@ fn a_load_that_fails_is_reported_as_it_failed() {
             |_| Ok(None),
             never,
         );
-        let err = match waited {
-            Err(err) => err,
+        match waited {
+            Err(EphorError::Registry(got)) if registry => assert_eq!(got, said),
+            Err(EphorError::Command(got)) if !registry => assert_eq!(got, said),
+            Err(other) => panic!("the kind of the failure changed: {other:?}"),
             Ok(_) => panic!("the failure was lost"),
-        };
-        assert_eq!(err.to_string(), expected);
-        let exit = match err {
-            EphorError::Registry(_) => 2,
-            EphorError::Command(_) => 1,
-        };
-        assert_eq!(exit, code, "the kind that picks the exit code is kept");
+        }
+    }
+}
+
+/// A terminal that stops answering hands itself back at once, cursor shown,
+/// while the load reads on; and where the load then fails too, its failure is
+/// the one reported, not the frame's (§AR-009-surfaces.2).
+#[test]
+fn a_load_that_fails_wins_over_a_frame_that_failed() {
+    let (broke, frame_broke) = mpsc::channel::<()>();
+    let calls = Arc::new(Mutex::new(Vec::new()));
+    let left = leaves(&calls);
+    let mut terminal = Terminal::new(Recording::new(&calls)).unwrap();
+    let waited = wait_for(
+        &mut terminal,
+        &Halt::default(),
+        move |_| -> Result<()> {
+            frame_broke.recv().unwrap();
+            Err(EphorError::Registry("the registry cannot be read".into()))
+        },
+        |_| Err(EphorError::Command("event poll failed: gone".into())),
+        move |how| {
+            left(how);
+            broke.send(()).unwrap();
+        },
+    );
+    match waited {
+        Err(EphorError::Registry(said)) => assert_eq!(said, "the registry cannot be read"),
+        Err(other) => panic!("the frame's failure won: {other:?}"),
+        Ok(_) => panic!("the failure was lost"),
+    }
+    let calls = calls.lock().unwrap().clone();
+    assert_eq!(
+        calls[calls.len() - 2..],
+        [Call::Showed, Call::Left(Left::Broken)],
+        "{calls:?}"
+    );
+}
+
+/// The frame's own failure is reported where the load landed.
+#[test]
+fn a_frame_that_failed_is_reported_where_the_load_landed() {
+    let calls = Arc::new(Mutex::new(Vec::new()));
+    let mut backend = Recording::new(&calls);
+    backend.broken = true;
+    let mut terminal = Terminal::new(backend).unwrap();
+    let (release, gate) = mpsc::channel::<()>();
+    let waited = wait_for(
+        &mut terminal,
+        &Halt::default(),
+        move |_| {
+            gate.recv().unwrap();
+            Ok(7)
+        },
+        |_| Ok(None),
+        move |left| {
+            assert_eq!(left, Left::Broken);
+            release.send(()).unwrap();
+        },
+    );
+    match waited {
+        Err(EphorError::Command(said)) => assert!(said.starts_with("draw failed"), "{said}"),
+        Err(other) => panic!("{other:?}"),
+        Ok(_) => panic!("the frame's failure was lost"),
     }
 }
 
@@ -298,13 +513,57 @@ fn a_load_that_panics_panics_in_the_caller() {
     let caught = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         let _ = wait_for(
             &mut terminal,
+            &Halt::default(),
             |_| -> Result<()> { panic!("the load broke") },
             |_| Ok(None),
-            stays,
+            never,
         );
     }));
     let payload = caught.expect_err("the panic reached the caller");
     assert_eq!(payload.downcast_ref::<&str>(), Some(&"the load broke"));
+}
+
+/// A worker that panics while the others go on counting stops the frame
+/// through the process's panic hook, before that hook goes on to print the
+/// panic: nothing is drawn after it, however many steps are still said
+/// (§AR-009-surfaces.2). The hook is the process's, so this installs it and
+/// puts the default back.
+#[test]
+fn a_panic_on_any_thread_stops_the_frame_before_it_is_printed() {
+    let calls = Arc::new(Mutex::new(Vec::new()));
+    let backend = Recording::new(&calls);
+    let late = Arc::clone(&backend.late);
+    let mut terminal = Terminal::new(backend).unwrap();
+    let halt = Halt::on_panic();
+    let waited = wait_for(
+        &mut terminal,
+        &halt,
+        |say| {
+            say(Opening::Branches {
+                checkouts: 9,
+                done: 0,
+            });
+            std::thread::sleep(TICK * 2);
+            let worker = std::thread::scope(|scope| {
+                scope.spawn(|| panic!("a standing worker panicked")).join()
+            });
+            assert!(worker.is_err());
+            // The hook ran on the worker before it ended: whatever is drawn
+            // from here is drawn over the message.
+            late.store(true, Ordering::SeqCst);
+            for done in 1..9 {
+                say(Opening::Branches { checkouts: 9, done });
+                std::thread::sleep(TICK / 2);
+            }
+            Ok(())
+        },
+        |_| Ok(None),
+        never,
+    );
+    drop(std::panic::take_hook());
+    assert!(matches!(waited, Ok(Waited::Loaded(()))));
+    let calls = calls.lock().unwrap().clone();
+    assert!(!calls.contains(&Call::DrewLate), "{calls:?}");
 }
 
 fn git(dir: &std::path::Path, args: &[&str]) {
@@ -386,6 +645,7 @@ fn the_load_says_its_steps_in_order_with_the_checkouts_it_measures() {
             branches(1),
             branches(2),
             branches(3),
+            Opening::Capabilities { projects: 1 },
             Opening::Work,
             Opening::Jobs,
             Opening::Roots,
