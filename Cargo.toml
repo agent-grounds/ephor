@@ -446,8 +446,8 @@ name = "e2e_088_the_screen_says_what_it_reads"
 path = "tests/e2e/cases/E2E-088-the-screen-says-what-it-reads.rs"
 
 [[test]]
-name = "e2e_088_a_paused_run_says_what_it_waits_on"
-path = "tests/e2e/cases/E2E-088-a-paused-run-says-what-it-waits-on.rs"
+name = "e2e_089_a_paused_run_says_what_it_waits_on"
+path = "tests/e2e/cases/E2E-089-a-paused-run-says-what-it-waits-on.rs"
 
 [dependencies]
 clap = { version = "4", features = ["derive"] }

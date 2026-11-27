@@ -1,4 +1,4 @@
-//! E2E-088-a-paused-run-says-what-it-waits-on: a live run with nothing it can
+//! E2E-089-a-paused-run-says-what-it-waits-on: a live run with nothing it can
 //! do until a person or the world answers reads as paused, says what it waits
 //! on and when it next looks, and is counted apart from the runs at work.
 //!
