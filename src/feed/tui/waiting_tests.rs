@@ -646,7 +646,7 @@ fn the_footer_says_m_opens_the_monitors() {
     );
 }
 
-/// A paused run keeps its row in Running, marked as waiting and saying what it
+/// A paused run keeps its row in Running, marked as paused and saying what it
 /// waits on and when it next looks where a run between turns says so, and the
 /// header and the section count the paused apart (§FS-019-waiting.1.3.1,
 /// §FS-019-waiting.3).
@@ -676,12 +676,15 @@ fn a_paused_run_says_what_it_waits_on_and_the_header_counts_it_apart() {
         " ephor — waiting   0 on you · 0 new · 1 running · 1 paused · never refreshed"
     );
     let text = screen.text();
-    assert!(text.contains("RUNNING · 1 · 1 paused"), "{text}");
+    assert!(
+        text.contains("RUNNING · 1 · PAUSED · 1   enter attach"),
+        "{text}"
+    );
     let row = text
         .lines()
         .find(|line| line.contains("paused ·"))
         .unwrap_or_else(|| panic!("no paused row in:\n{text}"));
-    assert!(row.contains("‖ "), "{row}");
+    assert!(row.contains("⏸ "), "{row}");
     assert!(
         row.ends_with(
             "implement  fix/issue-3   paused · waiting on a release tag (ship) · next look in 26m"
@@ -690,4 +693,38 @@ fn a_paused_run_says_what_it_waits_on_and_the_header_counts_it_apart() {
     );
     assert!(!text.contains("stale words"), "{text}");
     assert!(!text.contains("between turns"), "{text}");
+}
+
+/// A paused row drawn after its next look has come reads as the run about to
+/// take a turn that it is, and the header and the section count it running
+/// again: no frame says a next look that has passed (§FS-019-waiting.1.3.1).
+#[test]
+fn a_paused_run_whose_next_look_has_come_is_between_turns_again() {
+    let mut paused = running(Some("d3bd48"));
+    paused.tickets.clear();
+    paused.paused = Some(views::Paused {
+        says: "paused · waiting on a release tag (ship) · next look in 1s".to_string(),
+        waits: vec![views::PausedWait {
+            ticket: "widget-4.ticket.ship".to_string(),
+            task: "ship".to_string(),
+            state: "holding".to_string(),
+            kind: "poll",
+            waiting_on: Some("a release tag".to_string()),
+            next_attempt_at: None,
+        }],
+        next_look_at: Some(Utc::now() - chrono::Duration::seconds(5)),
+    });
+    let screen = WaitingScreen::new(
+        reading(Vec::new(), Vec::new(), vec![paused]),
+        BTreeMap::new(),
+    );
+    assert_eq!(
+        screen.title(),
+        " ephor — waiting   0 on you · 0 new · 1 running · never refreshed"
+    );
+    let text = screen.text();
+    assert!(text.contains("RUNNING · 1   enter attach"), "{text}");
+    assert!(text.contains("between turns"), "{text}");
+    assert!(!text.contains("paused"), "{text}");
+    assert!(!text.contains("next look"), "{text}");
 }

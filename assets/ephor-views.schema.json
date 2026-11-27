@@ -215,16 +215,16 @@
     },
     "paused": {
       "type": "object",
-      "description": "A live run with nothing it can do until a person or the world answers (FS-019-waiting.1.3.1): it holds no ticket, its runner's ready set for the root is empty, and these tickets are parked. Absent on a run taking turns, and wherever a fact paused needs is missing.",
+      "description": "A live run with nothing it can do until a person or the world answers (FS-019-waiting.1.3.1): it holds no slot (FS-005-dispatch.24.4), its runner's ready set for the root is empty, and these tickets wait at a gate or between a poll's attempts. Absent on a run taking turns, on one whose next look came before the view was taken, and wherever a fact paused needs is missing.",
       "required": ["says", "waits"],
       "properties": {
-        "says": { "type": "string", "description": "The row's sentence when the view was taken: `paused · waiting on a release tag (ship) · next look 23:13`." },
+        "says": { "type": "string", "description": "The row's sentence when the view was taken: `paused · waiting on a release tag (ship) · next look 23:13`. It never names a next look that had passed then." },
         "waits": {
           "type": "array",
-          "description": "Each parked ticket, the gates first.",
+          "description": "Each waiting ticket, the gates first.",
           "items": { "$ref": "#/$defs/paused_wait" }
         },
-        "next_look_at": { "type": "string", "format": "date-time", "description": "The earliest next attempt among the polls. Absent where the run waits on gates alone." }
+        "next_look_at": { "type": "string", "format": "date-time", "description": "The earliest next attempt among the polls, always later than the view. Absent where the run waits on gates alone." }
       }
     },
     "paused_wait": {

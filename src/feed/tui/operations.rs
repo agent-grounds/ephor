@@ -422,12 +422,16 @@ impl OperationsScreen {
             // What the row is, read off what its tickets say rather than off
             // liveness alone, in the words `ephor operations` uses for it
             // (§FS-005-dispatch.15).
-            let mut badges: Vec<String> = vec![op.state().to_string()];
+            let now = chrono::Utc::now();
+            let mut badges: Vec<String> = vec![op.state_at(now).to_string()];
             // A paused run says what it waits on and when it next looks, as of
             // this frame, right after the word (§FS-019-waiting.1.3.1).
-            if let Some(paused) = &op.paused {
-                let now = chrono::Utc::now();
-                badges.push(crate::api::views::Paused::read(paused, now).waits_at(now));
+            let paused = op
+                .paused
+                .as_ref()
+                .and_then(|paused| crate::api::views::Paused::read(paused, now));
+            if let Some(paused) = &paused {
+                badges.push(paused.waits_at(now));
             }
             // The machine could not be read: queued and finished are
             // withheld in the data, and the row says so rather than letting
@@ -446,8 +450,8 @@ impl OperationsScreen {
             if op.dashboard.is_some() {
                 badges.push("dashboard (o)".to_string());
             }
-            let marker = match (op.live, op.paused.is_some()) {
-                (true, true) => "‖",
+            let marker = match (op.live, paused.is_some()) {
+                (true, true) => "⏸",
                 (true, false) => "▶",
                 (false, _) => "✋",
             };
@@ -778,25 +782,25 @@ mod tests {
     /// §FS-019-waiting.1.3.1).
     #[test]
     fn a_paused_run_says_what_it_waits_on_where_a_running_one_says_running() {
-        use crate::work::runtime::watch::{Parked, ParkedKind, Paused};
+        use crate::work::runtime::watch::{Paused, Wait, WaitKind};
         let mut row = identified_row();
         row.op.quiet = None;
         row.op.tickets = vec![ticket("ship", Doing::Queued)];
         row.op.paused = Some(Paused {
             waits: vec![
-                Parked {
+                Wait {
                     plan_id: "forge-demo-17".to_string(),
                     ticket: "ticket.specify".to_string(),
                     state: "human-gate".to_string(),
-                    kind: ParkedKind::Gate,
+                    kind: WaitKind::Gate,
                     waiting_on: None,
                     next_attempt: None,
                 },
-                Parked {
+                Wait {
                     plan_id: "forge-demo-17".to_string(),
                     ticket: "ticket.ship".to_string(),
                     state: "holding".to_string(),
-                    kind: ParkedKind::Poll,
+                    kind: WaitKind::Poll,
                     waiting_on: Some("a release tag".to_string()),
                     next_attempt: Some(chrono::Utc::now() + chrono::Duration::seconds(4 * 60 + 30)),
                 },
@@ -805,14 +809,17 @@ mod tests {
         let text = text(&OperationsScreen::new(rows(vec![row]), None), None);
         assert!(
             text.contains(
-                "‖ demo · /w/demo/panta   paused · waiting on you (specify) · \
+                "⏸ demo · /w/demo/panta   paused · waiting on you (specify) · \
                  waiting on a release tag (ship) · next look in 4m · run 3f9a2c (a) · dashboard (o)"
             ),
             "{text}"
         );
         assert!(!text.contains("running ·"), "{text}");
         assert!(text.contains("stop it: the-runner stop 3f9a2c"), "{text}");
-        assert!(text.contains("forge-demo-17.ship"), "{text}");
+        // The poll under it is still queued for the live run, which reaches it
+        // at the next look the root says; the root's mark is not the queue's.
+        assert!(text.contains("‖ forge-demo-17.ship"), "{text}");
+        assert!(!text.contains("‖ demo"), "{text}");
     }
 
     /// A dead run's leavings are their own flavour on the screen, never

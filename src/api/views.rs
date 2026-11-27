@@ -1124,7 +1124,7 @@ pub struct Paused {
     /// The row's sentence as it read when the view was taken:
     /// `paused · waiting on a release tag (ship) · next look 23:13`.
     pub says: String,
-    /// Each parked ticket, the gates first.
+    /// Each waiting ticket, the gates first.
     pub waits: Vec<PausedWait>,
     /// The earliest next attempt among the polls; absent where the run waits
     /// on gates alone.

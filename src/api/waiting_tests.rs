@@ -12,7 +12,7 @@ use crate::api::read::{Asked, BoardReading, Running};
 use crate::feed::model::{Item, ItemKind, ItemRole};
 use crate::work::recipe::WorkConfig;
 use crate::work::runtime::watch::{
-    BoardTicket, Doing, Operation, Parked, ParkedKind, Paused, PersonWait, RunIdentity,
+    BoardTicket, Doing, Operation, Paused, PersonWait, RunIdentity, Wait, WaitKind,
 };
 
 fn matter(id: &str, title: &str, minute: u32) -> Item {
@@ -485,8 +485,8 @@ fn without_a_listing_the_rows_stay_as_the_enumeration_gave_them() {
     assert_eq!(waiting.on_you[0].says(), "needs-human");
 }
 
-fn parked(ticket: &str, state: &str, kind: ParkedKind, waiting_on: Option<&str>) -> Parked {
-    Parked {
+fn a_wait(ticket: &str, state: &str, kind: WaitKind, waiting_on: Option<&str>) -> Wait {
+    Wait {
         plan_id: "widget-9".to_string(),
         ticket: ticket.to_string(),
         state: state.to_string(),
@@ -496,7 +496,7 @@ fn parked(ticket: &str, state: &str, kind: ParkedKind, waiting_on: Option<&str>)
     }
 }
 
-fn polled(mut wait: Parked, at: chrono::DateTime<Utc>) -> Parked {
+fn polled(mut wait: Wait, at: chrono::DateTime<Utc>) -> Wait {
     wait.next_attempt = Some(at);
     wait
 }
@@ -521,10 +521,10 @@ fn a_paused_run_says_what_it_waits_on_and_is_counted_apart() {
     let mut shipping = operation("beta", "/w/beta-1/panta", true, Vec::new());
     shipping.paused = Some(Paused {
         waits: vec![polled(
-            parked(
+            a_wait(
                 "ticket.ship",
                 "holding",
-                ParkedKind::Poll,
+                WaitKind::Poll,
                 Some("a release tag"),
             ),
             soon,
@@ -534,13 +534,13 @@ fn a_paused_run_says_what_it_waits_on_and_is_counted_apart() {
     let mut gated = operation("gamma", "/w/gamma-1/panta", true, Vec::new());
     gated.paused = Some(Paused {
         waits: vec![
-            parked("ticket.specify", "specify-gate", ParkedKind::Gate, None),
-            polled(parked("collect", "checks", ParkedKind::Poll, None), later),
+            a_wait("ticket.specify", "specify-gate", WaitKind::Gate, None),
+            polled(a_wait("collect", "checks", WaitKind::Poll, None), later),
         ],
     });
     let mut asked = operation("delta", "/w/delta-1/panta", true, Vec::new());
     asked.paused = Some(Paused {
-        waits: vec![parked("triage-1", "needs-human", ParkedKind::Gate, None)],
+        waits: vec![a_wait("triage-1", "needs-human", WaitKind::Gate, None)],
     });
     let waiting = read(BoardReading {
         running: vec![live(shipping), live(taking), live(gated), live(asked)],
@@ -567,8 +567,7 @@ fn a_paused_run_says_what_it_waits_on_and_is_counted_apart() {
     );
     assert_eq!(says(3), "paused · waiting on you (triage-1)");
 
-    assert_eq!(waiting.paused(), 3);
-    assert_eq!(waiting.running_tally(), "1 · 3 paused");
+    assert_eq!(waiting.running_counts(now), (1, 3));
     assert!(
         waiting
             .header()
@@ -615,7 +614,7 @@ fn no_paused_run_is_no_zero_paused() {
         refusal: None,
         matters: BTreeMap::new(),
     });
-    assert_eq!(waiting.running_tally(), "1");
+    assert_eq!(waiting.running_counts(Utc::now()), (1, 0));
     assert!(waiting.header().contains("· 1 running · "));
     assert!(!waiting.header().contains("paused"), "{}", waiting.header());
 }
@@ -626,17 +625,75 @@ fn no_paused_run_is_no_zero_paused() {
 fn the_next_look_reads_as_a_clock_does() {
     let now = Utc.with_ymd_and_hms(2026, 11, 26, 22, 0, 0).unwrap();
     let ahead = |seconds: i64| now + chrono::Duration::seconds(seconds);
-    assert_eq!(next_look(now, ahead(45), &Utc), "in 45s");
-    assert_eq!(next_look(now, ahead(4 * 60), &Utc), "in 4m");
-    assert_eq!(next_look(now, ahead(59 * 60 + 59), &Utc), "in 59m");
+    let look = |at| next_look(now, at, &Utc);
+    assert_eq!(look(ahead(45)).as_deref(), Some("in 45s"));
+    assert_eq!(look(ahead(4 * 60)).as_deref(), Some("in 4m"));
+    assert_eq!(look(ahead(59 * 60 + 59)).as_deref(), Some("in 59m"));
+    // Up to the whole second: a look still ahead never reads as none.
+    let half = now + chrono::Duration::milliseconds(500);
+    assert_eq!(look(half).as_deref(), Some("in 1s"));
     let same_day = Utc.with_ymd_and_hms(2026, 11, 26, 23, 13, 0).unwrap();
-    assert_eq!(next_look(now, same_day, &Utc), "23:13");
+    assert_eq!(look(same_day).as_deref(), Some("23:13"));
     let next_day = Utc.with_ymd_and_hms(2026, 11, 28, 9, 13, 0).unwrap();
-    assert_eq!(next_look(now, next_day, &Utc), "Nov 28 09:13");
+    assert_eq!(look(next_day).as_deref(), Some("Nov 28 09:13"));
     // Past midnight in the zone is another day, however close.
     let late = Utc.with_ymd_and_hms(2026, 11, 26, 23, 30, 0).unwrap();
     let after_midnight = Utc.with_ymd_and_hms(2026, 11, 27, 0, 40, 0).unwrap();
-    assert_eq!(next_look(late, after_midnight, &Utc), "Nov 27 00:40");
-    // A reading drawn after its next look came says so rather than a negative.
-    assert_eq!(next_look(now, ahead(-5), &Utc), "now");
+    assert_eq!(
+        next_look(late, after_midnight, &Utc).as_deref(),
+        Some("Nov 27 00:40")
+    );
+    // A next look that has come is no next look at all.
+    assert_eq!(look(now), None);
+    assert_eq!(look(ahead(-5)), None);
+}
+
+/// A run read as paused whose next look comes before the reading is drawn is
+/// no longer paused when it is: the view carries no `paused`, the row sorts
+/// with the runs taking turns, and the header counts it running
+/// (§FS-019-waiting.1.3.1).
+#[test]
+fn a_next_look_that_came_before_the_reading_was_drawn_is_no_pause() {
+    let mut lapsed = operation("beta", "/w/beta-1/panta", true, Vec::new());
+    lapsed.paused = Some(Paused {
+        waits: vec![polled(
+            a_wait(
+                "ticket.ship",
+                "holding",
+                WaitKind::Poll,
+                Some("a release tag"),
+            ),
+            Utc::now() - chrono::Duration::seconds(5),
+        )],
+    });
+    // A gate alone has no next look, and stays paused however late it is
+    // drawn.
+    let mut gated = operation("gamma", "/w/gamma-1/panta", true, Vec::new());
+    gated.paused = Some(Paused {
+        waits: vec![a_wait("triage-1", "needs-human", WaitKind::Gate, None)],
+    });
+    assert_eq!(lapsed.state(), "running");
+    assert!(lapsed.badges()[0] == "running");
+    assert_eq!(gated.state(), "paused");
+    let waiting = read(BoardReading {
+        running: vec![live(gated), live(lapsed)],
+        asks: Vec::new(),
+        refusal: None,
+        matters: BTreeMap::new(),
+    });
+    let order: Vec<&str> = waiting
+        .running
+        .iter()
+        .map(|row| row.project.as_str())
+        .collect();
+    assert_eq!(order, ["beta", "gamma"]);
+    assert_eq!(waiting.running[0].paused, None);
+    assert_eq!(waiting.running_counts(Utc::now()), (1, 1));
+    // A view drawn later than it was read drops a pause whose look has come.
+    let mut view = waiting.running[1].clone();
+    view.paused.as_mut().unwrap().next_look_at = Some(Utc::now() + chrono::Duration::seconds(60));
+    assert!(view.paused_at(Utc::now()).is_some());
+    assert!(view
+        .paused_at(Utc::now() + chrono::Duration::seconds(61))
+        .is_none());
 }

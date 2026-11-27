@@ -1644,12 +1644,14 @@ needs me now — in three sections, in this order:
   answer is **paused**, and says what it waits on and when it next looks:
   `paused · waiting on a release tag (ship) · next look 23:13`, or
   `paused · waiting on you (specify)` for a gate. Paused means the run holds
-  no ticket, its runtime says nothing in the root is ready, and a ticket is
-  parked at a gate or on a poll whose next attempt is still ahead; a ready task
-  or a poll that is due keeps `between turns`
+  no slot ([§FS-005-dispatch.24.4](functional-spec/FS-005-dispatch.md#244-a-live-root-holds-an-agent-slot-while-something-in-it-runs-or-is-about-to)), its runtime says nothing in the
+  root is ready, and at least one ticket waits at a gate or on a poll whose
+  next attempt is still ahead; a ready task, or a poll that is due or comes due
+  before the row is drawn, keeps `between turns`
   ([§FS-019-waiting.1.3.1](functional-spec/FS-019-waiting.md#131-a-run-with-nothing-it-can-do-says-it-is-paused-what-it-waits-on-and-when-it-next-looks)).
-  Paused rows come after the running ones, and the header and the section
-  count them apart: `3 running · 3 paused`.
+  Paused rows come after the running ones, marked `⏸`, and the header and the
+  section count them apart: `3 running · 3 paused` in the header,
+  `RUNNING · 3 · PAUSED · 3` over the section.
 
 How long a gate has waited and what it holds back are shown only where the
 runtime reports them; no file timestamp stands in. A runtime that prepares gate
@@ -4906,10 +4908,12 @@ call is legitimately silent: that is the `quiet` badge, never a death notice.
 Because the lock is per root and ephor's work root is per branch workspace,
 two items in one workspace are one operation, and a ticket in a root a run
 already holds reads as **queued**.
-A live run whose every remaining ticket is parked, and whose runtime says
-nothing in the root is ready, reads `paused` in place of `running`, with what
-it waits on and when it next looks, exactly as on the Waiting screen
-([§FS-005-dispatch.15](functional-spec/FS-005-dispatch.md#15-every-operation-is-visible-in-one-place)).
+A live run that holds no slot, whose runtime says nothing in the root is
+ready, and with a ticket waiting at a gate or on a poll whose next attempt is
+still ahead, reads `paused` in place of `running`, marked `⏸` in place of `▶`,
+with what it waits on and when it next looks, exactly as on the Waiting screen
+([§FS-005-dispatch.15](functional-spec/FS-005-dispatch.md#15-every-operation-is-visible-in-one-place)). A poll ticket under it stays `queued`: the
+live run reaches it at that next look.
 
 **Claimed is not running.** An `**Assignee:**` on a ticket means somebody took
 it and the runtime skips it. With no run live on its root, the board shows it

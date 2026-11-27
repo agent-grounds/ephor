@@ -571,8 +571,8 @@ impl Session {
                 .op
                 .paused
                 .as_ref()
-                .map(|paused| views::Paused::read(paused, now));
-            let mut badges = row.op.badges();
+                .and_then(|paused| views::Paused::read(paused, now));
+            let mut badges = row.op.badges_at(now);
             if let Some(paused) = &paused {
                 badges.insert(1, paused.waits_at(now));
             }
@@ -581,7 +581,7 @@ impl Session {
                 id: row.op.root.display().to_string(),
                 project: row.op.project.clone(),
                 says: format!("{} · {}", row.op.root.display(), badges.join(" · ")),
-                state: row.op.state().to_string(),
+                state: row.op.state_at(now).to_string(),
                 live: row.op.live,
                 item: row.op.item().map(str::to_string),
                 title: row.item.as_ref().map(|item| item.title.clone()),

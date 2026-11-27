@@ -1,6 +1,6 @@
 //! A live run with nothing it can do is paused, read from the runtime's facts
 //! alone (§FS-019-waiting.1.3.1): the lock, the run's witness, the runner's own
-//! ready set, and each parked ticket's state and recorded next attempt.
+//! ready set, and each waiting ticket's state and recorded next attempt.
 
 use std::os::unix::fs::PermissionsExt;
 
@@ -41,6 +41,10 @@ const MACHINE: &str = concat!(
     "    poll:\n      interval: 30m\n      waiting_on: a release tag\n",
     "  checks:\n    program: [\"bash\", \"collect.sh\"]\n",
     "    poll:\n      interval: 30m\n",
+    "  quick:\n    program: [\"bash\", \"collect.sh\"]\n",
+    "    poll:\n      interval: 30s\n",
+    "  vague:\n    program: [\"bash\", \"collect.sh\"]\n",
+    "    poll:\n      interval: soon\n",
     "  done:\n    final: true\n",
 );
 
@@ -147,11 +151,11 @@ fn a_poll_with_its_next_attempt_ahead_pauses_the_run() {
     let paused = op.paused.clone().expect("the run is paused");
     assert_eq!(
         paused.waits,
-        vec![Parked {
+        vec![Wait {
             plan_id: "widget-42".to_string(),
             ticket: "ship".to_string(),
             state: "holding".to_string(),
-            kind: ParkedKind::Poll,
+            kind: WaitKind::Poll,
             waiting_on: Some("a release tag".to_string()),
             next_attempt: at(AHEAD),
         }]
@@ -169,7 +173,7 @@ fn a_gate_pauses_the_run_with_no_next_look() {
     let root = Root::new(&[("specify", "needs-human")], &[]).ready("[]");
     let paused = root.live().paused.expect("the run is paused");
     assert_eq!(paused.waits.len(), 1);
-    assert_eq!(paused.waits[0].kind, ParkedKind::Gate);
+    assert_eq!(paused.waits[0].kind, WaitKind::Gate);
     assert_eq!(paused.waits[0].ticket, "specify");
     assert_eq!(paused.waits[0].waiting_on, None);
     assert_eq!(paused.next_look(), None);
@@ -198,7 +202,7 @@ fn a_mix_lists_the_gates_first_and_looks_next_at_the_earliest_poll() {
     )
     .ready("[]");
     let paused = root.live().paused.expect("the run is paused");
-    let waits: Vec<(&str, ParkedKind, Option<&str>)> = paused
+    let waits: Vec<(&str, WaitKind, Option<&str>)> = paused
         .waits
         .iter()
         .map(|wait| (wait.ticket.as_str(), wait.kind, wait.waiting_on.as_deref()))
@@ -206,15 +210,15 @@ fn a_mix_lists_the_gates_first_and_looks_next_at_the_earliest_poll() {
     assert_eq!(
         waits,
         vec![
-            ("specify", ParkedKind::Gate, None),
-            ("collect", ParkedKind::Poll, None),
-            ("ship", ParkedKind::Poll, Some("a release tag")),
+            ("specify", WaitKind::Gate, None),
+            ("collect", WaitKind::Poll, None),
+            ("ship", WaitKind::Poll, Some("a release tag")),
         ]
     );
     assert_eq!(paused.next_look(), at(AHEAD));
 }
 
-/// Ready work is a run about to take a turn, however much else is parked.
+/// Ready work is a run about to take a turn, however much else waits.
 #[test]
 fn ready_work_keeps_the_run_running() {
     let root = Root::new(
@@ -229,7 +233,7 @@ fn ready_work_keeps_the_run_running() {
 }
 
 /// A poll whose next attempt has come is a run about to take a turn, and with
-/// nothing else parked the runner is not even asked.
+/// nothing else waiting the runner is not even asked.
 #[test]
 fn a_poll_that_is_due_keeps_the_run_running() {
     let root = Root::new(
@@ -254,7 +258,7 @@ fn a_poll_that_is_due_beside_a_gate_keeps_the_run_running() {
     assert!(!root.asked_ready());
 }
 
-/// A poll with no next attempt recorded is not parked, and it is no reason
+/// A poll with no next attempt recorded is not waiting, and it is no reason
 /// against pausing either: whether it is about to run is the ready set's to
 /// say. Beside a gate, with nothing ready, the run waits on the gate alone.
 #[test]
@@ -293,7 +297,7 @@ fn a_ready_set_nobody_answered_keeps_the_run_running() {
     assert_eq!(garbled.live().paused, None);
 }
 
-/// A run holding a ticket is at work, whatever else is parked, and the runner
+/// A run holding a ticket is at work, whatever else waits, and the runner
 /// is not asked.
 #[test]
 fn a_run_holding_a_ticket_is_not_paused() {
@@ -348,4 +352,159 @@ fn the_next_attempt_is_read_under_either_spelling_of_the_task() {
         plan.poll_next_attempt("widget-42", "other", "holding"),
         None
     );
+}
+
+/// A poll that looks again within the minute, or whose interval cannot be
+/// read, is about to run (§FS-005-dispatch.24.4): it holds its root's slot,
+/// and a run that holds a slot is never paused, whatever its next attempt.
+#[test]
+fn a_poll_about_to_run_again_holds_its_slot_and_is_not_paused() {
+    for state in ["quick", "vague"] {
+        let root = Root::new(
+            &[("specify", "needs-human"), ("collect", state)],
+            &[("collect", state, &AHEAD.to_string())],
+        )
+        .ready("[]");
+        let op = root.live();
+        assert_eq!(op.paused, None, "{state}");
+        assert_eq!(op.state(), "running", "{state}");
+        assert_eq!(
+            verdict(&root.config, &root.group),
+            Verdict::Active,
+            "{state}"
+        );
+        // The slot rule answered first, so the runner was never asked.
+        assert!(!root.asked_ready(), "{state}");
+    }
+}
+
+/// A gate the run is witnessed holding is work the run has in hand
+/// (§FS-005-dispatch.24.4): it holds a slot, so the run is not paused.
+#[test]
+fn a_gate_the_run_is_witnessed_holding_is_not_paused() {
+    let root = Root::new(&[("specify", "needs-human")], &[]).ready("[]");
+    fs::create_dir_all(root.root.join("runtime")).unwrap();
+    fs::write(
+        root.root.join(JOURNAL),
+        "2026-10-21T10:00:00Z  specify  start@needs-human  runtime/logs/task-specify-needs-human.log\n",
+    )
+    .unwrap();
+    assert_eq!(root.live().paused, None);
+}
+
+/// The layout every grounded run on a machine has: a directory workspace in
+/// the work root, with its own machine beside an index whose frontmatter keeps
+/// the runtime's records under the step's dotted id, and the steps in a task
+/// file beside it. The root ticket supervises in a state its machine does not
+/// name, and the steps before the poll are done or cancelled.
+#[test]
+fn a_directory_workspace_is_read_as_the_runtime_lays_it_out() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path().join("panta");
+    let plan_id = "forge-widget-43-implement-1a2b3c4d";
+    let workspace = root.join(plan_id);
+    fs::create_dir_all(root.join(".rhei")).unwrap();
+    fs::create_dir_all(workspace.join("tasks")).unwrap();
+    fs::write(
+        workspace.join("states.yaml"),
+        concat!(
+            "name: grounded\n",
+            "states:\n",
+            "  supervising:\n    agent: x\n",
+            "  holding:\n    program: [\"bash\", \"ship-pr.sh\", \"hold\"]\n",
+            "    poll:\n      interval: 30m\n      waiting_on: a release tag\n",
+            "  completed:\n    final: true\n",
+            "  cancelled:\n    final: true\n",
+        ),
+    )
+    .unwrap();
+    let index = workspace.join("index.rhei.md");
+    fs::write(
+        &index,
+        format!(
+            "# Rhei: forge/widget#43 Widen the retry window\n**States:** grounded\n\n\
+             ---\nstructure:\n  maxLevels: 2\nmetadata:\n  tasks:\n    ticket:\n      \
+             stateVisits:\n        supervising: 14\n    ticket.ship:\n      \
+             budgetTicketId: 22fc840f\n      pollNextAttemptAt:\n        holding: {AHEAD}\n      \
+             stateVisits:\n        holding: 366\n---\n\n## What this workspace does\n\nShips.\n"
+        ),
+    )
+    .unwrap();
+    fs::write(
+        workspace.join("tasks/01-ticket.md"),
+        "### Step claim: Take the claim\n**State:** completed\n\nClaim.\n\n\
+         ### Ticket ticket: forge/widget#43 Widen the retry window\n**State:** supervising-14\n\n\
+         Work it.\n\n\
+         #### Step ticket.describe: Describe it\n**State:** completed\n**Prior:** Step claim\n\nSay.\n\n\
+         #### Step ticket.fix-2: Fix round 2\n**State:** cancelled\n\nFix.\n\n\
+         #### Step ticket.ship: Ship the change\n**State:** holding\n\
+         **Prior:** Step ticket.describe\n\nShip.\n",
+    )
+    .unwrap();
+    let runner = dir.path().join("runtime-stub");
+    fs::write(&runner, RUNNER).unwrap();
+    fs::set_permissions(&runner, fs::Permissions::from_mode(0o755)).unwrap();
+    crate::seams::summons::settle_executable(&runner);
+    fs::write(root.join("ready.json"), "[]").unwrap();
+    let group = RootPlans {
+        root: root.clone(),
+        plans: vec![PlanRef {
+            project: "widget".to_string(),
+            plan_id: plan_id.to_string(),
+            path: index.clone(),
+            item: Some("forge:widget/43".to_string()),
+            title: "Widen the retry window".to_string(),
+        }],
+    };
+    let config = WorkConfig {
+        runner: Some(runner.display().to_string()),
+        ..WorkConfig::default()
+    };
+    let plan = Plan::read(&index).unwrap().unwrap();
+    assert_eq!(
+        plan.poll_next_attempt(plan_id, "ticket.ship", "holding"),
+        Some(AHEAD)
+    );
+    fs::write(root.join(LOCK), "").unwrap();
+    let holder = fs::File::open(root.join(LOCK)).unwrap();
+    holder.lock().unwrap();
+    let board = board(&config, std::slice::from_ref(&group));
+    assert_eq!(verdict(&config, &group), Verdict::Parked);
+    drop(holder);
+    let op = &board.operations[0];
+    assert!(root.join("asked-ready").exists());
+    let paused = op.paused.clone().expect("the run is paused");
+    assert_eq!(paused.waits.len(), 1, "{:?}", paused.waits);
+    assert_eq!(paused.waits[0].ticket, "ticket.ship");
+    assert_eq!(paused.waits[0].plan_id, plan_id);
+    assert_eq!(paused.waits[0].waiting_on.as_deref(), Some("a release tag"));
+    assert_eq!(paused.next_look(), at(AHEAD));
+}
+
+/// A runner whose answer takes longer than the poll has left to wait does not
+/// leave the run paused on a look that came meanwhile: the pause is measured
+/// again once the runner answered (§FS-019-waiting.1.3.1).
+#[test]
+fn a_next_look_that_comes_while_the_runner_answers_is_due() {
+    let soon = Utc::now().timestamp() + 2;
+    let root = Root::new(
+        &[("specify", "needs-human"), ("ship", "holding")],
+        &[("ship", "holding", &soon.to_string())],
+    )
+    .ready("[]");
+    // The runner takes its time over the ready set.
+    let slow = RUNNER.replace(
+        "cat \"$2/ready.json\" ;;",
+        "sleep 3; cat \"$2/ready.json\" ;;",
+    );
+    assert_ne!(slow, RUNNER);
+    let runner = PathBuf::from(root.config.runner.clone().unwrap());
+    fs::remove_file(&runner).unwrap();
+    fs::write(&runner, slow).unwrap();
+    fs::set_permissions(&runner, fs::Permissions::from_mode(0o755)).unwrap();
+    crate::seams::summons::settle_executable(&runner);
+    let op = root.live();
+    assert!(root.asked_ready());
+    assert_eq!(op.paused, None);
+    assert_eq!(op.state(), "running");
 }
